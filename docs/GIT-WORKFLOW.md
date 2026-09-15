@@ -33,11 +33,17 @@ worktree 建议放在 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/
 - `codex/journey-documents-release`
 - `codex/root-journey-docs`
 - `codex/journey-release-env-fix`
-- `codex/journey-published-docs`（本次纯文档增量，base `670f34f`）
+- `codex/journey-published-docs`（20:23 发布后的纯文档增量，base `670f34f`，已合入 main `65362fc`）
 
 API、导出、UI、接入、迁移检查器与发布控制器均由非作者审查；环境传递修订 `684da03` → `2c9be6c` 经 finance_hub 独立复核，随后由集成人合入 integration `b1981a4f579d4893d0694993e2c03434bcb45553`，再合入 main `670f34ff44757791f7263c5ee229ffde775838ce`。运行代码已于 20:23 发布，后续纯文档仍走独立作者分支→非作者审查→integration→main；分段测试、失败修订和实际证据见 [HANDOFF](HANDOFF.md#当前候选与文件占用)。
 
 这些 refs 保存已审工作成果；是否上线仍须核对独立发布记录，不能单凭 Git 合并推断。单个功能分支可能不包含全部依赖，不可直接当完整应用部署；每轮核对实际 head、授权文件和依赖顺序，不复制旧候选目录，不重放已经合入的补丁。
+
+### 本轮旅行入口与静态发布
+
+UI `724e091`、构建 `cbb2609`／`225d84b`、发布控制器最终 `bed2229`、真实演练工具 `2241ea1` 及配套文档分别在独立 worktree 提交，由非作者审查；Compose 输入与静态 URL 修订再次审查后合入 integration `fec0e55`。组合验证与审查通过后，main `cd75b0b` 与其 tree 完全一致。运行版本随后于 2026-09-15 22:32:04（北京时间） 实际发布，Git 合并与发布仍是两个独立事实。
+
+发布后文档在 `codex/finance-static-published-docs`、base `cd75b0b` 单独提交审查；新任务重新登记负责人、base 和允许路径，已结束分支不永久占用文件。当前状态与测试范围见 [HANDOFF](HANDOFF.md)。
 
 ## 2. 创建任务 worktree
 

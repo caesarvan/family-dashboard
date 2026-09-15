@@ -1,6 +1,6 @@
 # 静态界面的 43→43 发布
 
-本工具是独立功能分支中的发布能力，尚未经本轮独立审查、真实 Docker 演练或生产执行。不能把本地命令替身测试标为发布成功。已上线版本及 Git 规则见 [README](../README.md)、[Git 协作](GIT-WORKFLOW.md)。历史 [42→43 控制器](JOURNEY-DOCUMENTS-RELEASE.md) 保持原字节，不对当前 43 表重复执行。
+本工具经非作者独立审查、最终镜像专项及真实两户 Docker 演练，已用于 2026-09-15 22:32:04（北京时间） 的旅行入口发布。镜像 `sha256:14c7db7ba55cb4bbbed919b0b14d4bb1b1670eeb07d9a6f90e05799220590dfb`，248 源文件；实际生产 1 户的 43 表与 2 张平台表保持，未执行 warm 或 schema 变更。完整证据见 [VALIDATION](VALIDATION.md)，Git 规则见 [协作指导](GIT-WORKFLOW.md)。历史 [42→43 控制器](JOURNEY-DOCUMENTS-RELEASE.md) 不对当前库重复执行。
 
 ## 适用范围
 
@@ -95,4 +95,4 @@ Python `activate(..., root=..., releases=..., project=..., volume=..., runner=..
 
 停服前失败保留原服务；停服后失败停止 app/sync/web，保留完整备份、输入、旧源码和部分安装现场，不自动恢复数据库、不盲目回退镜像。超时的 Docker 客户端不等于容器已停止；只针对本次精确 name、image、ownership label 的 helper 停止并读回，身份不符保留并要求人工处理。SIGINT/SIGTERM 进入同一保全路径，强制 kill 或主机掉电仍须维护者处理现场。
 
-本分支的 [控制器专项](../tests/test_static_release.py) 使用真实临时文件和命令替身，禁止真实子进程／网络；[数据库专项](../tests/test_static_release_database.py) 使用当前源码 factory 创建双家庭 43 表库，子进程硬拒 socket，验证非空资料 BLOB、真实启动、完整备份及拒绝边界。它们不代表真实 Docker 演练或生产恢复。独立作者审查和真实两户控制器演练仍是发布门槛。
+[控制器专项](../tests/test_static_release.py) 使用命令替身；[数据库专项](../tests/test_static_release_database.py) 用当前 factory、双家庭 SQLite 和真实 Flask 路由验证完整静态 SHA、匿名权限与数据保持。最终这两模块 112 项，连构建 23、演练安全 52，在最终 Linux 镜像共 187 项通过。另行实际运行的两户 Docker 演练验证旧会话、8 份资料和 3 库备份保持，不是这些替身测试的重复计数；生产发布及两次不同阶段的失败见 [VALIDATION](VALIDATION.md)。下一次发布仍须重新冻结候选、证明依赖适用性、独立审查并验证实际环境，不能直接复用旧 READY。
