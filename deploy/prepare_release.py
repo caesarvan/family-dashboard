@@ -13,7 +13,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ['app.py','member_sessions.py','tv_display.py','sync_health.py','cloud_accounts.py','cloud_providers.py','sync_worker.py','shopping_media.py','shopping_settlement.py','household_routines.py','spending_observations.py',
-         'finance_baseline.py','finance_source_bridge.py','journey_time.py','household_spaces.py','journey_workflows.py','finance_hub.py',
+         'finance_baseline.py','finance_source_bridge.py','journey_time.py','household_spaces.py','journey_workflows.py','journey_documents.py','finance_hub.py',
          'home_assistant.py','calendar_publish.py','task_publish.py','financial_files.py','investment_import.py','dashboard_preferences.py','data_portability.py','requirements.txt',
          'Dockerfile','compose.yaml','pytest.ini','.dockerignore','.gitignore','README.md']
 FOLDERS = ['static','deploy','docs','tests']
