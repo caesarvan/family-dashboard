@@ -7,3 +7,9 @@ data/
 .env*
 *credentials*
 test-results/
+*.key
+*.pem
+*.p12
+*.pfx
+*.bundle
+release*.tar.gz

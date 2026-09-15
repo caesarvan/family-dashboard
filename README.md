@@ -1,10 +1,18 @@
 # 家庭中枢 · Family Dashboard
 
-> **当前版本：2026-09-15 16:25:03（北京时间），镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。** 旅行执行进度、真实待同步提示及两个订单表头兼容已发布，保留此前全部模块；222 源文件、36 份 Markdown、101 个方法／路径模板、42 张户内表及 2 张平台表。本轮无结构迁移。真实云写与其他外部验收仍按 [VALIDATION](docs/VALIDATION.md) 单列。
+> **线上版本：2026-09-15 16:25:03（北京时间），镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。** 本次补齐 Git 与联合开发交接，通用源码包为 225 文件、38 份 Markdown；线上仍为 101 个方法／路径模板、42 张户内表及 2 张平台表。未上线候选和实际云服务验收分别见 [HANDOFF](docs/HANDOFF.md) 与 [VALIDATION](docs/VALIDATION.md)。
 
 面向两位家庭成员的日程、待办、采购、旅行、财务与助理工作台。手机和电脑负责维护，50／75 英寸电视负责常亮展示；两个住处的屏幕可各自设置侧重、布局和主题。目前支持邀请建立独立家庭，每户两位成员。
 
 本 README 汇总**软件方案、已开发功能、代码地图、接口入口、开发环境、部署指导与联合开发方式**。字段级接口、完整安装命令、用户操作和验收记录分别放在 `docs/`，通过下方导航进入。
+
+| 你要做什么 | 从这里开始 |
+|---|---|
+| 了解产品及全部已开发部分 | 本文「已开发范围与边界」「软件架构」「代码地图」 |
+| 开发一个模块 | [项目规则](AGENTS.md) → [交接与候选状态](docs/HANDOFF.md) → [Git 分支协作](docs/GIT-WORKFLOW.md) → 对应接口文档 |
+| 对接或修改 API | [基础 API](docs/API.md)、[平台 API](docs/PLATFORM-API.md)、[财务 API](docs/FINANCE-API.md)、[完整路由索引](docs/PLATFORM-ROUTES.md) |
+| 安装、更新、备份或排障 | [部署指导](docs/DEPLOYMENT.md)、[运维手册](docs/OPERATIONS.md)、[恢复演练](docs/RECOVERY-REHEARSAL.md) |
+| 把项目交给其他 agent | 源码 ZIP 供阅读；Git bundle 保留 main、候选分支和完整提交历史。恢复命令见 [Git 指导](docs/GIT-WORKFLOW.md) |
 
 ## 版本与交接状态
 
@@ -13,17 +21,18 @@
 | 项目 | 已核验结果 |
 |---|---|
 | 技术栈 | Flask／原生 JavaScript／SQLite；Docker Compose 运行 app、sync、web 三个服务 |
-| 交接内容 | 222 个源码文件、36 份 Markdown（含本 README）；源码包另附逐文件 SHA-256 清单 |
+| 交接内容 | 225 个源码文件、38 份 Markdown（含本 README 与 AGENTS）；源码包另附逐文件 SHA-256 清单 |
 | 接口与存储 | 101 个 Flask 方法／路径模板，另有 WSGI 家庭入口；每户 42 张表，平台 2 张表 |
 | 应用镜像后端测试（16:25） | Windows：1268 passed / 18 skipped；Linux：1285 passed / 1 skipped；每端完整收集 1286 项；两端不相加 |
 | 本轮浏览器检查 | 新旅行执行 53 项及原旅行／发布 8 组通过；临时 Flask/SQLite、真实 Edge、模拟云服务，零外站请求 |
-| 运行读回 | 三个服务运行、app 健康；六个既有 Microsoft／Google 来源有同步成功记录；旧数据及配置保留 |
+| 运行读回 | 2026-09-15 17:35 再查三服务运行、app 健康且镜像未变；222 文件与前次交接相同。六个来源成功记录属于先前发布验收，此次未重新读取业务数据库 |
+| Git 管理 | 独立项目仓库，main 与 codex/integration；每个任务独立分支/worktree；未配置远端或托管平台分支保护 |
 | 新增恢复工具验收 | 实际 Docker：65 项控制器检查、9 项种子检查、202 项恢复后检查；13 项独立安全测试；统计不与历史后端相加 |
 | 尚未完成的实际验收 | 新的云日历／待办写入、银行或电商自动连接、可选模型、实体电视长期运行和商业化运营 |
 
 详细测试、迁移与发布历史见 [VALIDATION](docs/VALIDATION.md)。公网浏览器曾受组织 SmartScreen 阻断，未绕过；容器内部验证不能替代公网与实体设备验收。
 
-本轮旅行执行与订单兼容增量已经合入并发布，没有待应用的历史补丁。下一轮开发前查看 [当前候选与文件占用](docs/HANDOFF.md#当前候选与文件占用)，按新任务明确唯一编辑者和基线，不重放历史补丁。
+旅行执行与订单兼容已经发布。新的**旅行资料上传、资料权限、完整细项展示与段落定位**保存在独立 Git 功能分支，尚未合入 main 或部署；候选需要联合验证及 42→43 迁移。接手前查看 [当前候选与文件占用](docs/HANDOFF.md#当前候选与文件占用)，不要将功能分支当成线上能力。
 
 | 入口 | 地址或文档 |
 |---|---|
@@ -34,7 +43,7 @@
 | 新 agent 阅读顺序 | 本 README → [HANDOFF](docs/HANDOFF.md) → 所负责模块契约 → [DEVELOPMENT](docs/DEVELOPMENT.md) |
 | 部署人员阅读顺序 | [DEPLOYMENT](docs/DEPLOYMENT.md) → [OPERATIONS](docs/OPERATIONS.md) → [VALIDATION](docs/VALIDATION.md) |
 
-本次交接另增加可复跑的[隔离 Docker 恢复演练](docs/RECOVERY-REHEARSAL.md)、合成 fixture 和安全测试，并校正当前版本与历史版本的文档标记。2026-09-15 16:54（北京时间）已在 racknerd 独立新卷完成实际演练；应用仍使用上述 16:25 镜像，无业务代码或数据库结构变更。交接包 222 文件／36 文档与 16:25 原发布包 218／35 分别记录。
+2026-09-15 16:54 已在 racknerd 新卷完成[隔离 Docker 恢复演练](docs/RECOVERY-REHEARSAL.md)。16:25 原发布包为 218 文件／35 文档，随后恢复工具交接为 222／36；本次 Git 规则与协作指导交接为 225／38。三者分别记录，运行镜像仍是 16:25 版本；本次文档与 Git 整理没有重启服务或修改数据库。
 
 ## 本次发布增量
 
@@ -256,7 +265,9 @@ node --test tests/test_calendar_views.js
 
 ## 多 agent 联合开发
 
-项目位于父 `AI` 仓库内，当前没有独立 Git 远端。接手先复核 Git 根目录和状态；不要对父工作区批量暂存、清理或重置，也不要假设服务器能通过 `git pull` 更新。
+项目已建立**独立本地 Git 仓库**，基线提交 `ad667bf2b744d707db080964c662249c7cd8b056`，标签 `baseline/2026-09-15-handoff`。父 `AI` 仓库通过本机 exclude 忽略本目录，原索引保持；当前没有远端，不使用 `git pull` 部署。
+
+**每个 agent 使用独立 `codex/<agent>-<task>` 分支与 worktree。** 提交后由另一位 agent 审查，集成人按依赖顺序合入 `codex/integration`；组合测试和再次审查通过后才合入 `main`。代码合入与生产部署是两个步骤。禁止不同 agent 共用工作目录；文件分工继续用于约定模块边界，不能替代分支隔离。命令和合并要求见 [Git 协作指导](docs/GIT-WORKFLOW.md)，自动读取的项目约定见 [AGENTS.md](AGENTS.md)。
 
 | 建议分工 | 独立文件与集成边界 |
 |---|---|
@@ -271,7 +282,7 @@ node --test tests/test_calendar_views.js
 | 数据导出 | `data_portability.py` 与对应 UI；只读数据快照、成员边界与格式兼容 |
 | 发布与独立验收 | Docker/Compose、发布白名单、文档、浏览器与隔离测试；正式发布只由一位维护者执行 |
 
-每个任务应明确：目标与验收场景、允许修改的文件、接口输入/输出/权限、数据迁移、不得触碰的生产状态，以及最终需交付的测试与截图。[联合开发接手说明](docs/HANDOFF.md) 提供可复制的任务模板与版本差异表。先约定契约再并行开发；结束时提交文件清单、行为变化、命令与结果、未验证范围和精确集成点。
+每个任务应明确：目标、base commit、分支与 worktree、允许文件、依赖提交、接口/权限、数据迁移和验收场景。[联合开发接手说明](docs/HANDOFF.md) 提供任务模板。交付时记录 head commit、diff、测试结果、未验证范围及审查结论；未完成审查的候选留在功能分支。
 
 采购实付、工作表和助理简报等历史候选均已合入发布，不重放旧补丁或用旧候选整目录覆盖。后续修改仍须协调共享文件：助理桥接使用 `journey-ui.js`，工作表、投资、对账与采购入口共用 `finance-hub.js`，采购入口还涉及 `shopping-ui.js`。独占负责人、BASE/RESULT 散列和同源码验证规则继续适用。
 
@@ -289,10 +300,11 @@ node --test tests/test_calendar_views.js
 
 接手顺序：本 README → [联合开发接手说明](docs/HANDOFF.md) → 本次负责模块的接口 → [开发与验收说明](docs/DEVELOPMENT.md)。部署人员另读 [部署指导](docs/DEPLOYMENT.md) 和 [运行与排障](docs/OPERATIONS.md)。
 
-交接包中的 `RELEASE-MANIFEST.json` 记录逐文件 SHA-256，用于确认各 agent 从同一份源码开始。它描述所交付的源码，不是服务器运行镜像的证明；线上版本按本页状态表及验收记录识别。
+交接包中的 `RELEASE-MANIFEST.json` 记录逐文件 SHA-256，Git bundle 保留提交和分支。新任务以明确 commit 为基线；本次源码 ZIP 对应 main，未审候选仅在 bundle 的功能分支中。归档清单不证明运行版本；服务器根目录旧清单仍记录 218 文件，17:35 已独立比对真实 222 文件，不能把该旧清单当作最新交接清单。
 
 | 文档 | 用途 |
 |---|---|
+| [项目规则](AGENTS.md)／[Git 分支与审查流程](docs/GIT-WORKFLOW.md) | 独立 worktree、任务分支、审查记录、集成与主分支合并；Git bundle 联合开发 |
 | [家庭例行计划](docs/ROUTINES.md) | 周期模板、未来日期、预览确认、下一期生成、共享导出与成员权限 |
 | [采购实付核对](docs/SHOPPING-SETTLEMENT.md) | 本人来源、CNY 整项替换、独立完成状态、预览／确认／撤销、旅行保护与私有导出 |
 | [同步状态与问题处理](docs/SYNC-HEALTH.md) | 全来源新鲜度、本人问题详情、只读接口、失败快照和原模块处理入口 |

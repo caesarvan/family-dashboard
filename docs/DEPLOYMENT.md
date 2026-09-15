@@ -113,7 +113,7 @@ app / sync 以 UID **10001** 运行，根文件系统只读，`/tmp` 为 tmpfs�
 
 镜像版本与摘要在 `Dockerfile`、`compose.yaml`、`deploy/renew.sh` 中固定。应用默认镜像名为 **`family-dashboard-app`**，sync 明确使用这个名字，因此不要仅修改 Compose 项目名或镜像标签而不同时更新两者。
 
-当前目录属于 Windows 上层 AI Git 工作区；截至本次交接尚未建立独立的 family-dashboard Git 仓库。不能假定服务器已经有可供 `git pull` 的项目远端，当前发布方式是经过核对的源码归档。
+本项目已建立独立本地 Git 仓库，各 agent 使用独立分支/worktree，审查后合入 main；操作见 [Git 协作指导](GIT-WORKFLOW.md)。当前没有托管远端，服务器继续使用经核对的源码归档发布，不执行 `git pull` 更新。
 
 ## 2. 配置、密钥与数据文件
 
@@ -321,7 +321,11 @@ docker run --rm \
 
 ### 5.1 准备并检查源码归档
 
-`prepare_release.py` 使用文件白名单，包含 `app.py`、`member_sessions.py`、provider/accounts/worker、media、财务基线，以及 `finance_source_bridge.py`、`journey_time.py`、`household_spaces.py`、`journey_workflows.py`、`finance_hub.py`、`financial_files.py`、`home_assistant.py`、`calendar_publish.py`、`task_publish.py`、`dashboard_preferences.py`、`data_portability.py`，还包含 `pytest.ini`、static、deploy、docs、tests 与 README。当前 Python 运行模块在 Dockerfile 中有明确 COPY，来源准备 CLI 随 deploy 目录交接。不包含根 `.env`、数据库、`data/`、`.venv/`、`test-results/` 或私人访问目录。它将 `deploy/*.sh` 的归档权限设为 0755，生成 `RELEASE-MANIFEST.json`，并在发现并行修改时拒绝替换旧归档。发布前应通知协作 Agent freeze 业务文件。
+`prepare_release.py` 使用文件白名单，包含当前 Python 模块、Docker/Compose、pytest.ini、static、deploy、docs、tests、README、AGENTS 和 `.cursor/rules/git-collaboration.mdc`。当前 Python 运行模块在 Dockerfile 中有明确 COPY，来源准备 CLI 随 deploy 目录交接。不包含 `.git`、根 `.env`、数据库、`data/`、`.venv/`、`test-results/` 或私人访问目录。它将 `deploy/*.sh` 的归档权限设为 0755，生成 `RELEASE-MANIFEST.json`，并在源码发生并行修改时拒绝替换旧归档。
+
+发布候选必须来自已按 [Git 流程](GIT-WORKFLOW.md) 审查并合入 main 的明确提交，在独立干净发布工作树中构建；记录 commit、归档 SHA、镜像 ID、测试与迁移类型。Git 合并不会更新正在运行的容器。各 agent 在自己的 worktree 开发，不直接改服务器目录；未审查的旅行资料候选不可按本节 42→42 流程发布，其新增表须另审 42→43 迁移。
+
+现有服务器的 `RELEASE-MANIFEST.json` 仍是 16:25 原发布的 218 文件清单；17:35 已按后续 222 文件交接清单独立核对实际文件。更新前使用与真实源文件匹配、已保存 SHA 的基线清单，不假定服务器根清单已随文档更新，也不能仅覆盖清单来消除不一致。本次 Git/文档交接为本地 225 文件；应用镜像、线上数据及运行配置保持。
 
 **这不是内容脱敏器。** 不得把真实财务 JSON、CSV、凭据或私人截图临时放入被整目录收录的 docs / tests / static / deploy。财务导入必须单独走第 7 节，不能加入发布包。Windows 本机至少检查归档路径和散列后再上传：
 
