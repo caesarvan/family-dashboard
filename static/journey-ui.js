@@ -4,6 +4,7 @@ window.JourneyUI = (() => {
   let current = null, draft = null, context = {}, preview = null, operationKey = '', requestNumber = 0, resolutions = {}, shiftImpact = null;
   let returnContext = null, draftSequence = 0;
   let execution = null, executionFilter = null;
+  let segmentEditTarget = null;
   const identity = actor => actor?.role === 'member' ? `${actor.householdId || 'default'}:${actor.id}` : '';
   const actorSnapshot = () => ({identity: identity(user), csrf});
   const sameActor = actor => actor.identity === identity(user) && actor.csrf === csrf && canEdit();
@@ -216,7 +217,7 @@ window.JourneyUI = (() => {
     if(point.instant&&point.timeZone!==reference)try{family=`<small class="journey-home-time">家庭时间 ${new Intl.DateTimeFormat('zh-CN',{timeZone:reference,year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(new Date(point.instant))} · ${esc(reference)}</small>`;}catch(_){}
     return `<strong>${esc(point.local.replace('T',' '))}</strong><small>${esc(point.timeZone)} ${esc(offsetLabel(point.offsetMinutes))}</small>${family}`;
   }
-  function segmentSummary(row,reference='Asia/Shanghai',event=null) {
+  function segmentSummary(row,reference='Asia/Shanghai',event=null,interactive=false) {
     const actual=actualSegment(row,event);row=actual.row;
     const kind=row.kind||'legacy_day';let timing='';
     if(kind==='flight'){
@@ -225,7 +226,15 @@ window.JourneyUI = (() => {
     }else if(kind==='stay')timing=`<p class="journey-stay-summary">${esc(row.propertyName)} · ${dayDiff(row.checkOutDate,row.checkInDate)} 晚</p><p>${esc(row.checkInDate)}${row.checkInTime?' '+esc(row.checkInTime):''} 入住 → ${esc(row.checkOutDate)}${row.checkOutTime?' '+esc(row.checkOutTime):''} 退房<br><small>${esc(row.timeZone)} · 退房日不计住宿${!row.checkInTime&&!row.checkOutTime?' · 入住退房时刻未填写':''}</small></p>`;
     else if(kind==='activity')timing=row.dateRange?`<p>${esc(row.dateRange.startDate)} → ${esc(row.dateRange.endDateExclusive)}（不含结束日）<br><small>${esc(row.timeZone)}</small></p>`:`<div class="journey-flight-times"><div>${localTime(row.start,reference)}</div><span class="journey-time-arrow">→</span><div>${localTime(row.end,reference)}</div></div>`;
     else timing=`<p>${esc(row.start)} — ${esc(row.end)} · 全天（含结束日）</p>`;
-    return `<article class="journey-itinerary-item ${row.bookingState==='cancelled'?'is-cancelled':''}" data-segment-key="${esc(row.key)}"><div class="journey-segment-head"><span class="journey-kind">${esc(kinds[kind])}</span><div class="journey-status-tags"><span>${esc(bookings[row.bookingState]||'计划中')}</span><span>${esc(policies[row.datePolicy]||'固定日期')}</span></div></div><h3>${esc(event?.title||row.title)}</h3>${actual.preserved?'<p class="journey-preserved-time">已保留当前日程的时间；以下显示实际保存值，与旅行草稿可能不同。</p>':''}${timing}<p class="help">${esc(event?.location??row.location??'')}</p>${row.bookingState==='cancelled'?'<p class="help">仅标记计划取消，保留日程与关联；不会向航司或住宿方取消预订。</p>':''}</article>`;
+    const saved=`${kind==='flight'&&row.flightNumber?`<p class="journey-saved-field"><strong>航班号</strong> ${esc(row.flightNumber)}</p>`:''}${kind==='stay'&&row.address?`<p class="journey-saved-field"><strong>完整地址</strong> ${esc(row.address)}</p>`:''}${event?.note||row.note?`<div class="journey-saved-note"><strong>备注 / 集合信息</strong><p>${esc(event?.note??row.note)}</p></div>`:''}`;
+    return `<article class="journey-itinerary-item ${row.bookingState==='cancelled'?'is-cancelled':''}" data-segment-key="${esc(row.key)}" tabindex="-1"><div class="journey-segment-head"><span class="journey-kind">${esc(kinds[kind])}</span><div class="journey-status-tags"><span>${esc(bookings[row.bookingState]||'计划中')}</span><span>${esc(policies[row.datePolicy]||'固定日期')}</span></div></div><h3>${esc(event?.title||row.title)}</h3>${actual.preserved?'<p class="journey-preserved-time">已保留当前日程的时间；以下显示实际保存值，与旅行草稿可能不同。</p>':''}${timing}<p class="help">${esc(event?.location??row.location??'')}</p>${saved}${row.bookingState==='cancelled'?'<p class="help">仅标记计划取消，保留日程与关联；不会向航司或住宿方取消预订。</p>':''}${interactive&&canEdit()&&!isDemo&&!isTV?`<div class="journey-segment-actions">${button('segment-documents','资料',`data-segment-key="${esc(row.key)}"`)}${button('segment-edit','编辑此项',`data-segment-key="${esc(row.key)}"`)}${button('copy-segment','复制已保存文字',`data-segment-key="${esc(row.key)}"`)}</div>`:''}</article>`;
+  }
+
+  function locateSegment(container,key,editing=false) {
+    if(!key||!container)return;
+    const node=[...container.querySelectorAll(editing?'.journey-v2-segment':'.journey-itinerary-item')].find(item=>(editing?item.dataset.key:item.dataset.segmentKey)===key);
+    if(!node)return;
+    node.classList.add('journey-segment-target');node.tabIndex=-1;node.focus({preventScroll:true});node.scrollIntoView({block:'start'});
   }
 
   function shell(title, html) {
@@ -299,7 +308,7 @@ window.JourneyUI = (() => {
     return {plan: value, summary: {create: {trips: 1, tasks: value.checklist.length, shopping: value.shopping.length, events: value.segments.length + 1}, update: {}, detach: 0, policyNotice: notice}, previewToken: null};
   }
 
-  async function open(id = '') {
+  async function open(id = '', options = {}) {
     returnContext = null;
     if (isTV) { shell('旅行工作台', '<p class="help">请在已登录的手机或电脑管理旅行。</p>'); return; }
     const number = ++requestNumber, actor = actorSnapshot();
@@ -314,7 +323,7 @@ window.JourneyUI = (() => {
       if (!isDemo && actor.identity) await verifyActor(actor, active);
       if (!active()) return;
       const found = journeys.find(item => item.id === id || item.tripId === id);
-      if (found) { renderDetail(found); return; }
+      if (found) { renderDetail(found,options); return; }
       if (id) {
         const trip = data.trips.find(item => item.id === id);
         if (trip) { createFromTrip(trip); return; }
@@ -322,7 +331,7 @@ window.JourneyUI = (() => {
       const workflowTrips = new Set(journeys.map(item => item.tripId));
       const legacy = (data?.trips || []).filter(trip => !workflowTrips.has(trip.id));
       shell('旅行工作台', `<div class="journey-hero"><div><span class="journey-kicker">PLANS INTO EVERYDAY ACTIONS</span><h3>从想出发，到准备好。</h3><p>把目的地、负责人、采购和日程放进同一份计划。</p></div>${(canEdit() || isDemo) ? button('create', '+ 规划下一程', '', false) : ''}${canEdit() && !isDemo ? button('assistant-brief','用文字整理旅行需求') : ''}</div>
-        ${isDemo ? '<p class="journey-notice">演示空间 · 可以体验预览，所有操作均不会保存。</p>' : ''}
+        ${canEdit()&&!isDemo&&!isTV?`<div class="journey-library-entry">${button('documents-library','我的旅行资料')}<p class="help">查看本人资料，包括尚未关联到现有旅行的文件。</p></div>`:''}${isDemo ? '<p class="journey-notice">演示空间 · 可以体验预览，所有操作均不会保存。</p>' : ''}
         <div class="journey-cards">${journeys.map(j => `<button class="journey-tile" data-journey="detail" data-id="${esc(j.id)}"><span class="journey-kicker">${esc(j.plan.destinations.map(d => d.city).join(' → '))}</span><h3>${esc(j.trip.title)}</h3><p>${esc(j.trip.start)} — ${esc(j.trip.end)}</p><div class="journey-tile-stats"><span>准备 ${j.progress.done} / ${j.progress.total}</span><strong>${money(j.budget.total)}</strong></div><div class="meter"><span style="width:${j.progress.total ? j.progress.done / j.progress.total * 100 : 0}%"></span></div></button>`).join('')}
         ${legacy.map(trip => `<article class="journey-tile legacy"><span class="journey-kicker">${esc(trip.destination)}</span><h3>${esc(trip.title)}</h3><p>${esc(trip.start)} — ${esc(trip.end)}</p><strong>${money(trip.budget)}</strong>${(canEdit() || isDemo) ? button('upgrade', '补全准备与日程 →', `data-id="${esc(trip.id)}"`) : ''}</article>`).join('')}</div>
         ${!journeys.length && !legacy.length ? '<div class="journey-empty"><span>✦</span><h3>下一段回忆，从这里开始</h3><p>先写下目的地和时间，准备清单与日程会一起生成。</p></div>' : ''}
@@ -462,6 +471,7 @@ window.JourneyUI = (() => {
       <p class="journey-notice">${esc(notice)}</p><p class="help">${isV2()?'修改旅行总日期不会自动改订航班或酒店。整体迁期时，只有明确允许随旅行迁期且尚未预订的项目可以移动，固定和已订项目保留。':'调整出发日期会移动准备事项截止日和已有分段；返程日期变化后，请核对每一站停留时间。'}</p>
       <div class="journey-error error" role="alert"></div><div class="dialog-footer">${button('list', '返回旅行工作台')}<button class="btn" type="submit">预览准备与日程 →</button></div></form>`);
     const form = document.getElementById('journey-form');
+    if(segmentEditTarget&&segmentEditTarget.journeyId===context.journeyId)locateSegment(form,segmentEditTarget.key,true);
     let previousStart = draft.start;
     form.querySelector('#journey-core-fields [name="start"]').addEventListener('change', () => {
       const delta = dayDiff(form.querySelector('#journey-core-fields [name="start"]').value, previousStart);
@@ -518,7 +528,7 @@ window.JourneyUI = (() => {
       event.preventDefault(); if (!canEdit() || !preview?.previewToken) return;
       const submit = form.querySelector('#journey-apply'); submit.disabled = true;
       // An already sent apply is not cancelled. Keep the original receipt and key for safe retries.
-      const receipt = preview.previewToken, operation = operationKey;
+      const receipt = preview.previewToken, operation = operationKey, segmentKey=segmentEditTarget&&segmentEditTarget.journeyId===context.journeyId?segmentEditTarget.key:'';
       await draftOperation(form, async ({check}) => {
         const result = await write('/journeys/apply', 'POST', {previewToken: receipt, idempotencyKey: operation});
         if (!await check()) return;
@@ -526,7 +536,7 @@ window.JourneyUI = (() => {
         const next = await api('/state');
         if (!await check()) return;
         data = next; online = true; lastFetch = displayTime(new Date()); renderBoard();
-        await open(result.id);
+        await open(result.id,{segmentKey});
         if (current?.id === result.id && document.getElementById('dialog').open && document.querySelector('.journey-detail-top')) toast('旅行、准备事项、采购与本地日程已关联');
       }, () => { if (preview?.previewToken === receipt && operationKey === operation) submit.disabled = false; });
     });
@@ -663,7 +673,9 @@ window.JourneyUI = (() => {
       const focused = document.activeElement?.closest('[data-journey]');
       const focus = focused && body.contains(focused) ? {...focused.dataset} : null;
       const focusedRegion = body.contains(document.activeElement) ? document.activeElement?.dataset?.journeyRegion : null;
+      const focusedSegment=body.contains(document.activeElement)?document.activeElement?.closest('.journey-itinerary-item')?.dataset.segmentKey:null;
       body.innerHTML = html; flow.html = html; placeTimeline(body, current);
+      if(focusedSegment)locateSegment(body,focusedSegment);
       if (flow.returnTarget) {
         const {kind,id}=flow.returnTarget, section=body.querySelector(`[data-journey-region="${kind}"]`);
         const row=[...(section?.querySelectorAll('[data-journey-item]')||[])].find(item=>item.dataset.journeyItem===id);
@@ -671,7 +683,7 @@ window.JourneyUI = (() => {
         section?.insertAdjacentHTML('afterbegin',`<p class="journey-return-result" role="status">${row?'已回到原事项，进度与预算已重新读取。':exists?'原事项仍保留，当前负责人筛选未显示；进度与预算已重新读取。':'原事项已移除或解除关联；已回到原区域并重新读取结果。'}</p>`);
       }
       if (focus) [...body.querySelectorAll('[data-journey]')].find(node=>node.dataset.journey===focus.journey && node.dataset.id===focus.id
-        && node.dataset.kind===focus.kind && node.dataset.publicationId===focus.publicationId)?.focus({preventScroll:true});
+        && node.dataset.kind===focus.kind && node.dataset.publicationId===focus.publicationId && node.dataset.segmentKey===focus.segmentKey)?.focus({preventScroll:true});
       else if (focusedRegion) [...body.querySelectorAll('[data-journey-region]')].find(node=>node.dataset.journeyRegion===focusedRegion)?.focus({preventScroll:true});
     }
     executionStatus(flow);
@@ -741,7 +753,18 @@ window.JourneyUI = (() => {
         flow.checkedAt=Date.now(); paintExecution(flow);
       } else if (action==='linked-edit') {
         keepExecutionFilter(flow); await editLinked(target);
-      } else if (action==='edit') { keepExecutionFilter(flow); editCurrent(); }
+      } else if (action==='edit'||action==='segment-edit') { keepExecutionFilter(flow); editCurrent(target.dataset.segmentKey||''); }
+      else if(action==='documents'||action==='segment-documents'){
+        if(!window.JourneyDocuments?.open)throw new Error('document_module_unavailable');
+        await window.JourneyDocuments.open({journeyId:flow.id,segmentKey:target.dataset.segmentKey||''});
+      } else if(action==='copy-segment'){
+        const key=target.dataset.segmentKey,row=current.plan.segments.find(item=>item.key===key);
+        if(!row)return;
+        const article=[...flow.node.querySelectorAll('.journey-itinerary-item')].find(item=>item.dataset.segmentKey===key);
+        const text=[...article.children].filter(node=>!node.classList.contains('journey-segment-actions')).map(node=>node.innerText).join('\n');
+        await navigator.clipboard.writeText(text);
+        if(executionActive(flow,sequence))toast('已复制当前保存的行程文字');
+      }
       else {
         keepExecutionFilter(flow);
         const expectedContext={identity:JSON.stringify([user.householdId||'default',user.id,user.auth_version]),csrf:flow.csrf};
@@ -789,24 +812,26 @@ window.JourneyUI = (() => {
     const timeline=container.querySelector('.journey-timeline')?.closest('.journey-panel'), grid=container.querySelector('.journey-detail-grid');
     if (timeline && grid) { timeline.classList.add('journey-v2-timeline'); grid.before(timeline); }
   }
-  function renderDetail(journey) {
+  function renderDetail(journey,options={}) {
     current = journey;
     const managed = canEdit() && !isDemo && !isTV;
     shell(journey.trip.title, `<section id="journey-execution" data-journey-id="${esc(journey.id)}">${managed?`<div class="journey-execution-toolbar"><label>准备事项负责人<select data-journey-owner-filter aria-label="准备事项负责人"><option value="all">全部</option><option value="mine">本人</option><option value="partner">另一位成员</option><option value="shared">共同</option></select></label>${button('refresh-execution','刷新执行状态')}</div><p id="journey-execution-status" role="status" aria-live="polite">正在读取最新事项与发布状态…</p><p class="journey-execution-help">按负责人筛选准备与采购，顶部进度仍统计整趟旅行。</p>`:''}<div id="journey-detail-body">${detailMarkup(journey,null)}</div></section>`);
     placeTimeline(document.getElementById('journey-detail-body'),journey); startExecution(journey);
+    locateSegment(document.getElementById('journey-detail-body'),typeof options.segmentKey==='string'?options.segmentKey:'');
   }
   function detailMarkup(journey, flow) {
     const trip = journey.trip, progress = journey.progress, budget = journey.budget, status = budgetStatus(budget.total, budget.paid, budget.reserved);
     const toggle = (item, kind) => canEdit() ? `<button class="check ${item.done ? 'done' : ''}" data-journey="toggle" data-kind="${kind}" data-id="${esc(item.id)}" aria-label="${item.done ? '恢复' : '完成'}${esc(item.title)}" aria-pressed="${!!item.done}">${item.done ? icon('check') : ''}</button>` : `<span class="check ${item.done ? 'done' : ''}">${item.done ? icon('check') : ''}</span>`;
-    return `<div class="journey-detail-top"><div><span class="journey-kicker">${esc(journey.plan.destinations.map(row => row.city).join(' → '))}</span><p>${esc(trip.start)} — ${esc(trip.end)} · ${journey.plan.memberIds.map(id => esc(person(id))).join('、')}</p></div><div class="journey-inline-actions">${button('list', '全部旅行')}${canEdit() ? button('edit', '调整计划') : ''}</div></div>
+    return `<div class="journey-detail-top"><div><span class="journey-kicker">${esc(journey.plan.destinations.map(row => row.city).join(' → '))}</span><p>${esc(trip.start)} — ${esc(trip.end)} · ${journey.plan.memberIds.map(id => esc(person(id))).join('、')}</p></div><div class="journey-inline-actions">${button('list', '全部旅行')}${canEdit()&&!isDemo&&!isTV?button('documents','旅行资料'):''}${canEdit() ? button('edit', '调整计划') : ''}</div></div>
       ${journey.plan.schemaVersion===2?`<div class="journey-destination-zones">${journey.plan.destinations.map(row=>`<span>${esc(row.city)} · ${esc(row.timeZone)}</span>`).join('')}<span>家庭参考 · ${esc(journey.plan.referenceTimezone)}</span></div>`:''}<div class="journey-metrics"><div><small>旅行总预算</small><strong>${money(budget.total)}</strong></div><div><small>已付款</small><strong>${money(budget.paid)}</strong></div><div><small>预留未付</small><strong>${money(budget.reserved)}</strong></div><div class="journey-budget-status ${status.kind}" data-budget-status="${status.kind}"><small>${status.label}</small><strong>${money(status.amount)}</strong></div></div><p class="journey-budget-explanation ${status.kind}">${esc(status.note)}</p>
       <div class="journey-detail-grid"><section class="journey-panel" data-journey-region="tasks" tabindex="-1"><div class="journey-section-heading"><h3>出发准备</h3>${canEdit() ? button('cloud-tasks', '连接待办清单') : ''}<span class="pill">${progress.done} / ${progress.total}</span></div><div class="meter"><span style="width:${progress.total ? progress.done / progress.total * 100 : 0}%"></span></div><div class="journey-task-list">${executionRows(journey.tasks,flow).map(task => `<div data-journey-item="${esc(task.id)}" class="journey-linked-row ${task.done ? 'completed' : ''}">${toggle(task, 'tasks')}<div><strong>${esc(task.title)}</strong><small>${esc(person(task.owner))} · ${esc(task.due || '未设截止日期')}</small>${taskPublicationMarkup(task,flow)}</div>${canEdit() ? button('linked-edit', '编辑', `data-kind="tasks" data-id="${esc(task.id)}"`) : ''}</div>`).join('') || '<p class="help">当前筛选下没有准备事项；全部事项可在调整计划中管理。</p>'}</div></section>
       <section class="journey-panel" data-journey-region="shopping" tabindex="-1"><div class="journey-section-heading"><h3>采购准备</h3><span class="pill">${progress.purchased} / ${progress.purchaseCount}</span></div><p class="help">预算 ${money(budget.purchaseBudget)}${budget.unknownPurchaseBudgets ? ` · ${budget.unknownPurchaseBudgets} 件未填` : ''} · 已买实付 ${money(budget.purchaseActual)}${budget.unknownPurchaseActuals ? ` · ${budget.unknownPurchaseActuals} 件未填实付` : ''}</p>${executionRows(journey.shopping,flow).map(item => `<div data-journey-item="${esc(item.id)}" class="journey-linked-row ${item.done ? 'completed' : ''}">${toggle(item, 'shopping')}<div><strong>${esc(item.title)}</strong><small>${esc(item.quantity)} · ${item.budget === null ? '预算待填' : money(item.budget)} · ${esc(person(item.owner))}</small></div>${canEdit() ? button('linked-edit', '图片 / 详情', `data-kind="shopping" data-id="${esc(item.id)}"`) : ''}</div>`).join('') || '<p class="help">当前筛选下没有采购；全部物品可在调整计划中管理。</p>'}<p class="journey-footnote">${esc(budget.note)}</p></section></div>
-      <section class="journey-panel"><div class="journey-section-heading"><h3>旅途时间线</h3>${canEdit() ? `<div class="journey-inline-actions">${button('cloud-calendar', '同步到云日历')}<a class="btn small secondary" href="${esc(journey.calendar.icsUrl)}" download>导出日历 .ics</a></div>` : ''}</div><div class="journey-timeline">${journey.plan.schemaVersion===2?journey.plan.segments.map(row=>segmentSummary(row,journey.plan.referenceTimezone,journey.events.find(event=>event.workflowKey==='segment:'+row.key))).join(''):journey.events.slice().sort((a,b)=>a.start.localeCompare(b.start)).map(event=>`<div><span class="journey-timeline-dot"></span><time>${esc(event.start.slice(0,10))} — ${esc(shiftDate(event.end.slice(0,10),-1))}</time><strong>${esc(event.title)}</strong><p>${esc(event.location)}</p></div>`).join('')}</div><div id="journey-cloud-calendar">${calendarPublicationMarkup(journey,flow)}</div><p class="help">本地日程已联动。选择本人已绑定的云日历，预览确认后发布；持续同步绑定会更新后续本地修改，远端冲突时暂停。ICS 为独立文件导出。</p></section>
+      <section class="journey-panel"><div class="journey-section-heading"><h3>旅途时间线</h3>${canEdit() ? `<div class="journey-inline-actions">${button('cloud-calendar', '同步到云日历')}<a class="btn small secondary" href="${esc(journey.calendar.icsUrl)}" download>导出日历 .ics</a></div>` : ''}</div><div class="journey-timeline">${journey.plan.schemaVersion===2?journey.plan.segments.map(row=>segmentSummary(row,journey.plan.referenceTimezone,journey.events.find(event=>event.workflowKey==='segment:'+row.key),true)).join(''):journey.events.slice().sort((a,b)=>a.start.localeCompare(b.start)).map(event=>`<div><span class="journey-timeline-dot"></span><time>${esc(event.start.slice(0,10))} — ${esc(shiftDate(event.end.slice(0,10),-1))}</time><strong>${esc(event.title)}</strong><p>${esc(event.location)}</p></div>`).join('')}</div><div id="journey-cloud-calendar">${calendarPublicationMarkup(journey,flow)}</div><p class="help">本地日程已联动。选择本人已绑定的云日历，预览确认后发布；持续同步绑定会更新后续本地修改，远端冲突时暂停。ICS 为独立文件导出。</p></section>
       ${trip.note ? `<section class="journey-panel"><h3>行程备注</h3><p class="journey-note-text">${esc(trip.note)}</p></section>` : ''}<p class="journey-notice">${esc(journey.policyNotice)}</p><div class="journey-error error" role="alert"></div>`;
   }
 
-  function editCurrent() {
+  function editCurrent(segmentKey='') {
+    segmentEditTarget=segmentKey?{journeyId:current.id,key:segmentKey}:null;
     context = {journeyId: current.id, revision: current.revision}; resolutions = {}; shiftImpact = null; draft = clone(current.plan);
     for (const name of ['title', 'start', 'end', 'budget', 'saved', 'paid', 'note']) draft[name] = current.trip[name];
     // Independent edits in the task/purchase managers remain authoritative.
@@ -826,8 +851,16 @@ window.JourneyUI = (() => {
   document.addEventListener('click', async event => {
     const target = event.target.closest('[data-journey]'); if (!target) return;
     const action = target.dataset.journey;
+    if(action==='documents-library'){
+      if(!canEdit()||isTV||isDemo)return;
+      const actor={...actorSnapshot(),authVersion:user.auth_version},number=requestNumber;
+      const active=()=>number===requestNumber&&target.isConnected&&document.getElementById('dialog').open;
+      try{await verifyActor(actor,active);if(active())await window.JourneyDocuments.open();}
+      catch(problem){if(active())error(problem);}
+      return;
+    }
     if (action === 'refresh-execution') { await refreshExecution(); return; }
-    if (['toggle','linked-edit','edit','cloud-tasks','cloud-calendar','task-publication','calendar-publication'].includes(action) && target.closest('#journey-execution')) {
+    if (['toggle','linked-edit','edit','segment-edit','documents','segment-documents','copy-segment','cloud-tasks','cloud-calendar','task-publication','calendar-publication'].includes(action) && target.closest('#journey-execution')) {
       await executionAction(target); return;
     }
     try {
