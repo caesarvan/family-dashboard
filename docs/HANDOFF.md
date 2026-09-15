@@ -35,7 +35,8 @@
 | `codex/journey-documents-portability` | finance_hub / journey-documents-portability | `8eb120e`；本人导出和恢复夹具，由 root 独立审查后合入 integration |
 | `codex/journey-documents-wiring` | 集成人 / journey-documents-wiring | `2774e75`；app、加载、Docker 与发布白名单，由 finance_hub 独立审查后合入 integration |
 | `codex/finance-journey-migration` | finance_hub / finance-journey-migration | `ec0ec4c`；可移植 42→43 检查器、16 项测试及契约，由 root 独立审查后合入 integration |
-| `codex/journey-documents-release` | journey_workflows / journey-documents-release | 专用发布控制器及命令替身测试；独立开发中，未获得生产执行结论 |
+| `codex/journey-documents-release` | journey_workflows / journey-documents-release | `aecfd6c`；专用发布控制器、66 项命令替身检查，由 root 独立审查后合入 integration；未执行生产迁移 |
+| `codex/journey-release-guide` | journey_workflows / journey-release-guide | `af81669`；发布输入、原始证据和失败处理指导，由 root 独立审查并复核文案修正后合入 integration |
 | `codex/root-journey-docs` | root / root-journey-docs | 当前候选的 README、接口索引、数据与部署文档；独立提交、交由非作者审查 |
 | `codex/docs-git-handoff`、`codex/git-workflow-guide` | 文档集成人与文档 agent，各自独立目录 | 本次 README、Git 规则与指导；通过独立审查后逐层合入 main |
 
