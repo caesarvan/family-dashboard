@@ -47,6 +47,11 @@ frozen=json.loads((inputs/'frozen.json').read_bytes())
 need(digest(source/'RELEASE-MANIFEST.json')==frozen['manifestSha256'])
 for name,value in frozen['sourceHashes'].items():need(digest(source/name)==value)
 for name,value in frozen['runtimeHashes'].items():need(digest(Path('/app')/name)==value)
+need('environment.json' in expected)
+environment=json.loads((inputs/'environment.json').read_bytes())
+need(isinstance(environment,dict) and environment.get('DATA_DIR')=='/data')
+need(all(isinstance(k,str) and k and '=' not in k and '\x00' not in k and isinstance(v,str) and '\x00' not in v for k,v in environment.items()))
+os.environ.update(environment)
 if action=='verify-image':print(json.dumps({'imageSourceVerified':True}));sys.exit(0)
 if 'backup-verification.json' in expected:
     backup=json.loads((inputs/'backup.json').read_bytes())
@@ -180,6 +185,25 @@ def runtime_hashes(values):
             if (name.endswith('.py') and '/' not in name) or name.startswith('static/') or name == 'requirements.txt'}
 
 
+def validated_environment(compose, running):
+    """Keep Compose's parsed values exactly; never interpret dotenv ourselves."""
+    need(isinstance(compose, dict) and isinstance(compose.get('services'), dict), 'compose_environment_invalid')
+    application = compose['services'].get('app')
+    need(isinstance(application, dict), 'compose_environment_invalid')
+    environment = application.get('environment')
+    need(isinstance(environment, dict) and environment.get('DATA_DIR') == '/data', 'compose_environment_invalid')
+    need(all(isinstance(k, str) and k and '=' not in k and '\x00' not in k
+             and isinstance(v, str) and '\x00' not in v for k, v in environment.items()), 'compose_environment_invalid')
+    need(isinstance(running, list) and all(isinstance(v, str) and '=' in v for v in running), 'running_environment_invalid')
+    actual = {}
+    for item in running:
+        key, value = item.split('=', 1)
+        need(key not in actual, 'running_environment_ambiguous')
+        actual[key] = value
+    need(all(k in actual and actual[k] == v for k, v in environment.items()), 'running_environment_mismatch')
+    return dict(environment)
+
+
 def command(arguments, *, cwd, input_bytes=None, timeout=180):
     try:
         result = subprocess.run(arguments, cwd=cwd, input=input_bytes, stdout=subprocess.PIPE,
@@ -269,7 +293,10 @@ def activate(candidate_root, image, manifest_sha, ready_sha, *, root=ROOT, relea
     volume_users = set(run(['docker', 'ps', '-q', '--no-trunc', '--filter', 'volume=' + VOLUME]).splitlines())
     need(volume_users == {old['app']['id'], old['sync']['id']}, 'unexpected_volume_user')
     need(run(['docker', 'image', 'inspect', '--format', '{{.Id}}', image]) == image, 'image_missing')
-    run(['docker', 'compose', 'config', '--quiet'])
+    parsed_environment = validated_environment(
+        json.loads(run(['docker', 'compose', 'config', '--format', 'json'])),
+        json.loads(run(['docker', 'inspect', '--format', '{{json .Config.Env}}', old['app']['id']])))
+    need(plain_file(root / '.env') == environment, 'environment_changed')
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
     releases.mkdir(mode=0o700, exist_ok=True)
     need(releases.resolve(strict=True) == releases, 'release_parent_symlink')
@@ -286,6 +313,7 @@ def activate(candidate_root, image, manifest_sha, ready_sha, *, root=ROOT, relea
 
     save_input('frozen.json', frozen)
     save_input('schema.json', {'sql': sql[0], 'sha256': schema_sha})
+    save_input('environment.json', parsed_environment)
     put(release / '.env', environment)
     put(release / 'READY.json', ready_raw)
     put(release / 'BASE-MANIFEST.json', base_raw)
@@ -301,6 +329,7 @@ def activate(candidate_root, image, manifest_sha, ready_sha, *, root=ROOT, relea
               'manifestSha256': manifest_sha, 'readySha256': ready_sha, 'baseManifestSha256': BASE_SHA,
               'oldManifestSha256': OLD_MANIFEST_SHA, 'schemaSha256': schema_sha,
               'helperSha256': candidate['files'][HELPER], 'releaseDirectory': str(release),
+              'resolvedEnvironmentSha256': input_hashes['environment.json'], 'resolvedEnvironmentMatchesRunningApp': True,
               'sourceBeforeSha256': sha((release / 'source-before.tar.gz').read_bytes()),
               'commitStarted': False, 'interrupted': False, 'automaticRestoreAttempted': False,
               'stops': [], 'helperContainers': [], 'helpersStoppedAfterFailure': []}
@@ -328,7 +357,7 @@ def activate(candidate_root, image, manifest_sha, ready_sha, *, root=ROOT, relea
         report['helperContainers'].append({'name': name, 'action': action}); record()
         args = ['docker', 'run', '--rm', '-i', '--name', name, '--network', 'none', '--read-only', '--user', '10001:10001',
                 '--memory', '384m', '--pids-limit', '128', '--cap-drop', 'ALL', '--security-opt', 'no-new-privileges:true',
-                '--tmpfs', '/tmp:rw,nosuid,noexec,size=64m', '--env-file', str(release / '.env'),
+                '--tmpfs', '/tmp:rw,nosuid,noexec,size=64m',
                 '-e', 'DATA_DIR=/data', '-e', 'PYTHONDONTWRITEBYTECODE=1',
                 '--mount', 'type=bind,src=' + str(candidate_root) + ',dst=/release-source,readonly',
                 '--mount', 'type=bind,src=' + str(inputs) + ',dst=/release-check,readonly']
