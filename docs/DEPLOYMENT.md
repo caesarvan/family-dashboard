@@ -8,6 +8,8 @@
 
 已随源码提供 [deploy/check_journey_documents_migration.py](../deploy/check_journey_documents_migration.py)，执行 `snapshot`、`validate-backup`、`warm`、`check` 四个动作；完整输入、命令和输出见 [迁移契约](JOURNEY-DOCUMENTS.md#一次性-4243-迁移检查器)。检查器不负责停服或恢复，不能把四条命令直接对运行中的数据库顺序执行。它拒绝旧表、行或序号漂移，拒绝新表预填和任何不匹配的 DDL，并在 warm 初始化前重新验证停写快照及全部备份。
 
+专用 [发布控制器](../deploy/activate_journey_documents_release.py) 已经独立审查，执行前仍须具备实际 Windows／Linux、浏览器、Docker 合成恢复与 Git 集成证据。四个 CLI 参数、只读挂载权限、READY 的五类证据和失败处理见 [完整发布指导](JOURNEY-DOCUMENTS-RELEASE.md)。当前仅有 66 项命令替身检查通过，不能把控制器存在或模拟通过当成生产迁移完成。
+
 发布者须冻结经 Git 审查的源码、不可变镜像及测试记录；保留原源码、原镜像和相配 `.env`，先停 web，再停 sync/app，确认不存在其他写入者。停止后采集快照、生成并验证完整备份组，再串行初始化所有家庭；app 健康及迁移后读回通过后才重开 sync/web。失败保留现场和备份；部分迁移不能当作成功重启，也不能用旧数据库盲目覆盖。生产恢复仍需按第 6 节明确范围并使旧成员会话失效。
 
 维护者已核对线上实际 222 文件源树与交接基线一致，但服务器根目录旧 `RELEASE-MANIFEST.json` 仍是 218 文件发布清单。首次候选激活必须同时绑定这份旧清单的原字节和独立核验的 222 文件基线，不能把旧清单直接当成完整当前源树，也不能先改写清单以绕过差异检查。Git 文档基线 225 文件尚未作为业务发布安装在服务器；完整状态见 [HANDOFF](HANDOFF.md)。

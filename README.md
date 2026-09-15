@@ -317,6 +317,7 @@ node --test tests/test_calendar_views.js
 | 文档 | 用途 |
 |---|---|
 | [旅行资料与预订凭证](docs/JOURNEY-DOCUMENTS.md) | 候选文件格式、五个接口、私有与共享范围、幂等重放、删除旅行保留资料及迁移 |
+| [旅行资料发布控制器](docs/JOURNEY-DOCUMENTS-RELEASE.md) | 一次性 42→43、候选与镜像绑定、READY 和原始证据合同、失败保全与运维边界 |
 | [项目规则](AGENTS.md)／[Git 分支与审查流程](docs/GIT-WORKFLOW.md) | 独立 worktree、任务分支、审查记录、集成与主分支合并；Git bundle 联合开发 |
 | [家庭例行计划](docs/ROUTINES.md) | 周期模板、未来日期、预览确认、下一期生成、共享导出与成员权限 |
 | [采购实付核对](docs/SHOPPING-SETTLEMENT.md) | 本人来源、CNY 整项替换、独立完成状态、预览／确认／撤销、旅行保护与私有导出 |
