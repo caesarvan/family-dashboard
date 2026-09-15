@@ -22,6 +22,20 @@
 
 本次与首次失败、配置反解修复、分段测试和实际发布的精确证据见 [VALIDATION](VALIDATION.md)。恢复 Python／SQL 和业务代码在本轮文档更新中保持原字节。
 
+## 新一轮旅行入口候选
+
+交接文档已于上一轮经 `c952a09` → integration `0f7693b` → main `65362fc` 独立审查、合入与同步，Git bundle 已实际克隆并核对 237 个源码文件；这次源码交接没有改变运行镜像。以下新任务均以 `65362fce3296b00d8bf05a6e54b9c89565cfc53c` 为共同 base，生产仍以本页已发布记录为准。
+
+| 分支 | 作者及独立 worktree | 允许的新增工作 |
+|---|---|---|
+| `codex/product-travel-entry` | product_interface / product-travel-entry | 三个前端接缝、首旅浏览器专项、两个旧测试的明确关闭步骤和 TRAVEL-ENTRY 文档 |
+| `codex/root-static-build` | root / root-static-build | 固定父镜像的静态层构建工具和独立专项；已由 journey_workflows 审查 |
+| `codex/finance-static-release` | finance_hub / finance-static-release | 严格限定的静态更新控制器、43 表保持检查、专项和 STATIC-RELEASE 指导 |
+| `codex/journey-static-rehearsal` | journey_workflows / journey-static-rehearsal | 使用全新两户虚构数据的 Docker 更新演练及资源边界专项 |
+| `codex/root-travel-entry-docs` | root / root-travel-entry-docs | 本轮总览、候选登记与已有文档导航 |
+
+各自提交后冻结完整 HEAD，由非作者审查；集成人逐项合入 integration 后核对组合证据并再次审查，才可合入 main。构建镜像本身不证明配置基线保持，后者由独立发布控制器比较实际 BASE-MANIFEST 后执行。新入口不新增后端 API、数据库表或自动云写入；见 [入口契约](TRAVEL-ENTRY.md) 与 [静态发布指导](STATIC-RELEASE.md)。
+
 ## 当前候选与文件占用
 
 旅行资料 API、导出、UI、接入、迁移与发布工具已经分模块审查，完成组合验收并于 20:23:00 发布。以下分支保留作者与审查历史，不代表还有待重放的补丁或永久文件占用；新的任务需重新登记独立分支、base 与允许路径。
@@ -30,7 +44,7 @@
 
 | 分支 | 本轮负责人 / worktree 目录名 | 已保存范围与状态 |
 |---|---|---|
-| `main` | 集成人 / 项目根目录 | 已发布业务基线与审查后的交接文档；当前为 `670f34f`，线上 106 路由、43 户内表 |
+| `main` | 集成人 / 项目根目录 | 已发布运行业务基线 `670f34f`；文档交接后为 `65362fc`，线上 106 路由、43 户内表 |
 | `codex/integration` | 集成人专用 | 仅合并审查通过的提交，不供模块 agent 直接开发 |
 | `codex/journey-documents-api` | journey_workflows / journey-documents-api | `90292c7`；product_interface 独立审查功能，root 复核末尾空行修正，已合入 integration |
 | `codex/journey-documents-ui` | product_interface / journey-documents-ui | `a9dd519`；journey_workflows 审查提出三项修复，作者修复后由 root 复核，已合入 integration |
