@@ -1,6 +1,6 @@
 # 家庭中枢 · Family Dashboard
 
-> **线上版本：2026-09-15 16:25:03（北京时间），镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。** 本次补齐 Git 与联合开发交接，通用源码包为 225 文件、38 份 Markdown；线上仍为 101 个方法／路径模板、42 张户内表及 2 张平台表。未上线候选和实际云服务验收分别见 [HANDOFF](docs/HANDOFF.md) 与 [VALIDATION](docs/VALIDATION.md)。
+> **线上版本：2026-09-15 16:25:03（北京时间），镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。** 已交付的 main `22fe53c` 历史源码包为 225 文件、38 份 Markdown；这不是当前旅行资料候选的文件数。线上仍为 101 个方法／路径模板、42 张户内表及 2 张平台表。未上线候选和实际云服务验收分别见 [HANDOFF](docs/HANDOFF.md) 与 [VALIDATION](docs/VALIDATION.md)。
 
 面向两位家庭成员的日程、待办、采购、旅行、财务与助理工作台。手机和电脑负责维护，50／75 英寸电视负责常亮展示；两个住处的屏幕可各自设置侧重、布局和主题。目前支持邀请建立独立家庭，每户两位成员。
 
@@ -21,7 +21,8 @@
 | 项目 | 已核验结果 |
 |---|---|
 | 技术栈 | Flask／原生 JavaScript／SQLite；Docker Compose 运行 app、sync、web 三个服务 |
-| 交接内容 | 225 个源码文件、38 份 Markdown（含本 README 与 AGENTS）；源码包另附逐文件 SHA-256 清单 |
+| 已交付的 main 历史包 | `22fe53c`：225 个源码文件、38 份 Markdown（含 README 与 AGENTS）；另附逐文件 SHA-256 清单 |
+| 旅行资料文档审查基线 | 未发布的 `9d47624`：234 文件、39 份 Markdown；后续发布工具和文档增量以实际提交及最终清单为准，不沿用旧包计数 |
 | 接口与存储 | 101 个 Flask 方法／路径模板，另有 WSGI 家庭入口；每户 42 张表，平台 2 张表 |
 | 应用镜像后端测试（16:25） | Windows：1268 passed / 18 skipped；Linux：1285 passed / 1 skipped；每端完整收集 1286 项；两端不相加 |
 | 本轮浏览器检查 | 新旅行执行 53 项及原旅行／发布 8 组通过；临时 Flask/SQLite、真实 Edge、模拟云服务，零外站请求 |
