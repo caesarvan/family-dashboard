@@ -141,6 +141,109 @@ def test_unsafe_paths_macros_embeddings_and_external_relationships_rejected(extr
         read_financial_file(file_payload(raw))
 
 
+CONTENT_TYPES_NS = 'http://schemas.openxmlformats.org/package/2006/content-types'
+BINARY_MACRO_MIME = 'application/vnd.ms-excel.sheet.binary.macroEnabled.main'
+UNUSED_BINARY_DEFAULT = f'<Default Extension="bin" ContentType="{BINARY_MACRO_MIME}"/>'
+
+
+def content_types_with_binary_default(declaration=UNUSED_BINARY_DEFAULT, extra=''):
+    return (f'<Types xmlns="{CONTENT_TYPES_NS}">{declaration}'
+            '<Default Extension="xml" ContentType="application/xml"/>'
+            '<Override PartName="/xl/workbook.xml" '
+            'ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
+            f'{extra}</Types>')
+
+
+def test_unused_binary_default_preserves_values_and_explicit_sheet_discovery():
+    raw = workbook(second_sheet=True, extra_parts={
+        '[Content_Types].xml': content_types_with_binary_default()})
+    payload = import_payload(raw)
+    discovery = parse_import({**payload, 'inspectSheets': True})
+    assert discovery['requiresSheetSelection'] is True
+    assert discovery['fileInfo']['sheets'] == ['支付账单', '订单']
+    assert discovery['rows'] == []
+    parsed = parse_import(import_payload(raw, sheet='订单'))
+    assert parsed['errorCount'] == 0 and len(parsed['rows']) == 1
+    assert parsed['rows'][0]['title'] == '第二工作表'
+    assert parsed['rows'][0]['date'] == '2026-09-15'
+    assert parsed['rows'][0]['amountCents'] == 2180
+
+
+def test_unused_binary_default_real_order_preview_confirm_and_dedup(app):
+    client, headers = member(app)
+    payload = {'source': 'taobao', 'kind': 'orders', 'file': file_payload(workbook(
+        rows=[['订单提交时间', '商品名称', '实付金额', '订单号', '币种', '订单状态'],
+              ['2026-09-14', '合成订单', '12.34', 'synthetic-order-1', 'CNY', '交易成功']],
+        extra_parts={'[Content_Types].xml': content_types_with_binary_default()}))}
+    discovery = client.post('/api/finance-hub/imports/preview',
+                            json={**payload, 'inspectSheets': True}, headers=headers)
+    assert discovery.status_code == 200 and discovery.json['previewToken'] is None
+    payload['file']['sheet'] = discovery.json['fileInfo']['sheets'][0]
+    shown = client.post('/api/finance-hub/imports/preview', json=payload, headers=headers)
+    assert shown.status_code == 200 and shown.json['errorCount'] == 0
+    assert shown.json['rows'][0]['flow'] == 'unknown'
+    assert shown.json['totals'][0]['netSpendCents'] == 0
+    assert client.get('/api/finance-hub/overview').json['totalRecordCount'] == 0
+    confirmation = {**payload, 'previewToken': shown.json['previewToken']}
+    saved = client.post('/api/finance-hub/imports/confirm', json=confirmation, headers=headers)
+    assert saved.status_code == 200 and saved.json['imported'] == 1
+    replay = client.post('/api/finance-hub/imports/confirm', json=confirmation, headers=headers)
+    assert replay.json['imported'] == 0 and replay.json['duplicates'] == 1
+    current = client.get('/api/finance-hub/overview?month=2026-09').json
+    assert current['transactionCount'] == 1 and current['totals'][0]['netSpendCents'] == 0
+
+
+@pytest.mark.parametrize('declaration', [
+    f'<Override PartName="/xl/unused.xml" ContentType="{BINARY_MACRO_MIME}"/>',
+    f'<Default Extension="xml" ContentType="{BINARY_MACRO_MIME}"/>',
+    '<Default Extension="bin" ContentType="application/vnd.ms-office.vbaProject"/>',
+    '<Default Extension="bin" ContentType="application/vnd.ms-excel.sheet.macroEnabled.main+xml"/>',
+    '<Default Extension="bin" ContentType="application/vnd.ms-excel.macrosheet+xml"/>',
+    f'<Default Extension="BIN" ContentType="{BINARY_MACRO_MIME}"/>',
+    f'<Default Extension="bin " ContentType="{BINARY_MACRO_MIME}"/>',
+    f'<Default xmlns="urn:unexpected" Extension="bin" ContentType="{BINARY_MACRO_MIME}"/>',
+    f'<Default Extension="bin" ContentType="{BINARY_MACRO_MIME}" PartName="/xl/unused.bin"/>',
+    f'<Default Extension="bin" ContentType="{BINARY_MACRO_MIME}"><Override/></Default>',
+    f'<Default Extension="bin" ContentType="{BINARY_MACRO_MIME}">unexpected</Default>',
+])
+def test_binary_macro_declaration_exception_is_exact_and_not_other_macros(declaration):
+    raw = workbook(extra_parts={'[Content_Types].xml': content_types_with_binary_default(declaration)})
+    for inspect in (False, True):
+        with pytest.raises(FinancialFileError, match='宏'):
+            read_financial_file(file_payload(raw), inspect_sheets=inspect)
+
+
+@pytest.mark.parametrize('case', ['binary', 'uppercase_binary', 'macro_payload', 'macro_override',
+                                 'external', 'embedded', 'formula', 'malicious_xml'])
+def test_unused_binary_default_does_not_bypass_other_rejections(case):
+    extra = {'[Content_Types].xml': content_types_with_binary_default()}
+    sheet = None
+    if case in {'binary', 'uppercase_binary', 'macro_payload'}:
+        name = {'binary':'xl/unused.bin', 'uppercase_binary':'xl/unused.BIN',
+                'macro_payload':'xl/vbaProject.bin'}[case]
+        extra[name] = b''  # Even an empty real binary part is still refused.
+    elif case == 'macro_override':
+        extra['[Content_Types].xml'] = content_types_with_binary_default(extra=
+            f'<Override PartName="/xl/unused.xml" ContentType="{BINARY_MACRO_MIME}"/>')
+    elif case == 'external':
+        extra['xl/worksheets/_rels/sheet1.xml.rels'] = (
+            f'<Relationships xmlns="{REL}"><Relationship Id="external" '
+            'Target="https://example.invalid/never-requested" TargetMode="External"/></Relationships>')
+    elif case == 'embedded':
+        extra['xl/embeddings/document.xml'] = '<x/>'
+    elif case == 'formula':
+        sheet = f'<worksheet xmlns="{NS}"><sheetData><row r="1"><c r="A1"><f>1+1</f><v>2</v></c></row></sheetData></worksheet>'
+    else:
+        sheet = '<!DOCTYPE worksheet [<!ENTITY a "unsafe">]><worksheet>&a;</worksheet>'
+    raw = workbook(extra_parts=extra, sheet_override=sheet)
+    with pytest.raises(FinancialFileError):
+        read_financial_file(file_payload(raw))
+    # Discovery never evaluates cells; its existing formula handling is unchanged.
+    if case != 'formula':
+        with pytest.raises(FinancialFileError):
+            read_financial_file(file_payload(raw), inspect_sheets=True)
+
+
 def test_expansion_limit_rejected_before_xml_parsing_and_slot_released():
     raw = workbook(extra_parts={'huge.xml': 'x' * (8 * 1024 * 1024 + 1)})
     assert len(raw) < MAX_FILE_BYTES

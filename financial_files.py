@@ -145,8 +145,22 @@ def _read_xlsx(raw, requested_sheet, *, inspect_sheets=False):
 
         # Inspect every relationship: no external network/resource references.
         content_types = _xml(read('[Content_Types].xml'))
-        if any(re.search(r'macroenabled|vbaproject|macrosheet', item.attrib.get('ContentType', ''), re.I) for item in content_types):
-            raise FinancialFileError('工作簿声明了宏内容，请另存为无宏 XLSX 或 CSV')
+        types_ns = 'http://schemas.openxmlformats.org/package/2006/content-types'
+        for item in content_types:
+            if re.search(r'macroenabled|vbaproject|macrosheet', item.attrib.get('ContentType', ''), re.I):
+                # Some value-only exporters leave an unused binary Default.
+                # OPC Defaults apply by extension; this exact declaration does
+                # not describe a part when the package has no .bin member.
+                unused_binary_default = (
+                    content_types.tag == f'{{{types_ns}}}Types'
+                    and item.tag == f'{{{types_ns}}}Default'
+                    and item.attrib == {'Extension': 'bin',
+                                        'ContentType': 'application/vnd.ms-excel.sheet.binary.macroEnabled.main'}
+                    and len(item) == 0 and not (item.text or '').strip()
+                    and not any(name.endswith('.bin') for name in names)
+                )
+                if not unused_binary_default:
+                    raise FinancialFileError('工作簿声明了宏内容，请另存为无宏 XLSX 或 CSV')
         rels = {}
         for member in members:
             if member.filename.lower().endswith('.rels'):
