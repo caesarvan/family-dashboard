@@ -4,6 +4,8 @@
 
 当前源码与文档数量以 [README](../README.md) 及逐文件交接清单为准；接口和存储结构见 [当前索引](PLATFORM-ROUTES.md)，运行版本与验收证据见 [VALIDATION](VALIDATION.md)。
 
+**当前开发入口：** 项目已建立独立 Git 仓库。每个 agent 使用独立分支及 worktree；先读 [项目规则](../AGENTS.md) 与 [Git 协作指导](GIT-WORKFLOW.md)。旅行资料功能仍位于独立候选分支，依赖与未验收项见 [HANDOFF](HANDOFF.md#当前候选与文件占用)；下方标有时间的批次记录不是待应用补丁。
+
 ## 财务月份、消费观察与导出开发入口
 
 历史月份导航涉及 finance_hub.py 和 finance-hub.js/.css；来源双模式涉及 spending_observations.py、finance_source_bridge.py、finance_baseline.py、deploy/prepare-finance-source.py 与两个来源 UI；导出涉及 data_portability.py 和 data-portability.js。三条流程分别维护，不因新增消费报告而修改原资产基线或实际账本。公共文件先登记唯一编辑者，接口见 [财务 API](FINANCE-API.md)、[消费观察](SPENDING-OBSERVATIONS.md)、[导出](PORTABILITY.md)。
@@ -16,7 +18,7 @@
 
 `register_routines(app,db,Problem,body,require_member,audit)` 必须在 assistant 和 portability 前登记；`app.extensions['household_routines'].tick()` 自建 app context，不依赖 g.actor。worker 按 `task_publish → calendar_publish → cloud_accounts → household_routines` 执行，阶段前检查 stop，已进入事务正常收尾。直接生成本地 entities，不能复用会自动写默认主清单的 add_item／task_write 路径。
 
-`brief(con)` 仅读当前家庭共享规则和实体，GET 不补期；导出只在 includeShared:true 调用 export_shared_routines(con)，禁止 nonce、会话及完整回执进入副本。三张新增表首次为空；备份须覆盖其完整内容，升级对旧 37 表严格保留。日期、当前实体保护、唯一期次和容量逻辑须一起维护。
+`brief(con)` 仅读当前家庭共享规则和实体，GET 不补期；导出只在 includeShared:true 调用 export_shared_routines(con)，禁止 nonce、会话及完整回执进入副本。三张表在 13:43 历史首次 37→40 迁移时为空并保留原 37 表；当前线上已是 42 表，本版无结构更新使用 42→42 检查。备份覆盖全部当前内容；日期、当前实体保护、唯一期次和容量逻辑须一起维护。
 
 在独立测试配置和临时数据库内运行：
 
@@ -105,15 +107,15 @@ python tests/browser_tv_onboarding_check.py
 
 ## 1. 当前项目和版本管理状态
 
-项目目录为 `C:\Users\caesarf\OneDrive - NVIDIA Corporation\Documents\AI\family-dashboard`。目前它不是独立 Git 仓库：`git rev-parse --show-toplevel` 指向父目录 `AI`，检查时整个 `family-dashboard` 子目录在父仓库内仍为未跟踪状态。因此当前没有可在本文引用的本项目提交号、默认分支、远端地址或 PR 流程。
+项目目录为 `C:\Users\caesarf\OneDrive - NVIDIA Corporation\Documents\AI\family-dashboard`，已建立独立本地 Git 仓库。基线为 `ad667bf2b744d707db080964c662249c7cd8b056`，默认分支 main，集成分支 codex/integration；旧旅行资料候选已按职责拆成独立功能分支。当前没有远端、托管 PR 或平台强制分支保护，审查以固定 commit 和本地报告记录。
 
-后续可单独安排建立版本库。在此之前，交接应携带明确文件清单、源码包、测试输出和部署记录。不要把父 `AI` 目录当作本项目范围执行批量暂存、清理或重置；其中包含其他项目。不要假设 `git diff` 为空就代表工作目录没有变化。
+父 AI 仓库的本机 exclude 忽略本项目，原索引保留。工作树位于维护者 `Documents/Codex/family-dashboard-access/worktrees` 下；其他机器按 [Git 指导](GIT-WORKFLOW.md) 创建自己的目录。每个任务独立 worktree，不对父 AI 目录批量暂存或清理。检查状态同时包括未跟踪文件，不能只看 git diff。
 
 当前本机和 racknerd 是不同副本。开发路径在本机，部署目录是服务器 `/opt/family-dashboard`。生产 `.env`、SQLite 数据卷和用户已修改的密码都是运行状态，不是可随源码覆盖的模板。
 
-每轮先核对 [当前候选与文件占用](HANDOFF.md#当前候选与文件占用)，再参考下表分配模块。同一文件只分配一位本轮编辑者，特别是助理与旅行共用的 `static/journey-ui.js`、工作表导入与对账共用的 `static/finance-hub.js`。任务应写明基线清单、独立目录、允许路径及 BASE 散列、依赖候选及 RESULT 散列、公共入口和统一集成人。
+每轮先核对 [当前候选与文件占用](HANDOFF.md#当前候选与文件占用)，按独立分支和 worktree 分配模块。共享文件如 journey-ui.js、finance-hub.js 的接口先协商，由集成人安排合并顺序；任务写明 base commit、允许路径、依赖提交、公共入口和集成人。
 
-应用补丁前，全部目标匹配 BASE 且新增文件不存在，才由集成人应用；全部匹配 RESULT 表示已合入，应跳过。混合状态或两者均不匹配时，检查差异并重新整合，不强行覆盖或重复应用。完成后核对 RESULT，记录本次测试对应的源码散列。独立候选与历史版本的通过数不自动成为新源码的验证结果。
+使用 Git diff 审查固定 base/head，审查通过后合入 integration；发生冲突时由集成人逐项解决并重新审查，不强行选择整份 ours/theirs。组合测试绑定实际合并提交，通过后再合入 main。散列保留为文件与归档证据，不替代 Git 历史或联合验证。
 
 ## 2. 已开发范围与文件地图
 
@@ -274,13 +276,13 @@ node --test tests/test_calendar_views.js
 
 ## 5. 多 Agent 协作方式
 
-共享目录中的文件修改立即相互可见。不要让多个 Agent 同时编辑 `app.py`、`static/app.js`、`static/style.css` 或部署配置，并期待最后自动合并。建议一次任务明确以下安排：
+每个 Agent 的每个任务都使用独立 `codex/<agent>-<task>` 分支和 worktree；禁止共用同一物理工作目录。开始时核对 `git rev-parse --show-toplevel`、`git branch --show-current`、HEAD 和干净状态。仓库主分支为 main，集成分支为 codex/integration，命令与固定提交审查见 [Git 指导](GIT-WORKFLOW.md)。
 
 1. 集成人持有公共后端、HTML 加载顺序、跨模块样式、依赖、发布脚本以及最终部署。
 2. 专项 Agent 持有互不重叠的模块文件和相应测试，先交付接口契约，再实现。
 3. 涉及跨文件依赖时，把请求发送给文件拥有者；不要悄悄修改不归自己持有的文件。
-4. 审查 Agent 默认只读，用具体文件、行为、证据说明问题。修改另行分派。
-5. 集成人检查全部修改后运行适用的隔离测试、浏览器布局验证，并决定何时发布。
+4. 审查 Agent 默认只读，审查明确的 base/head commit，用具体文件、行为、证据说明问题；修复在原任务分支形成新提交并再次审查。
+5. 审查通过后集成人合入 integration，执行对应组合测试和再次审查后才合入 main；部署另按已审查发布清单执行。失败候选保留分支，不通过复制文件混入主工作树。
 
 本项目可采用的分工示例：
 
@@ -298,7 +300,7 @@ node --test tests/test_calendar_views.js
 | 助理 Agent | `home_assistant.py`、`static/home-assistant.js/.css`、对应测试 | 输入范围、草案接口、确认动作，不直接写远端或金融账户 |
 | 工作台 Agent | `static/product-shell.js/.css`、工作台浏览器测试 | 页面路由、主题、密度与手机布局；不同时接管其他 Agent 的业务弹窗 |
 
-开始前写清任务目标、文件所有权、接口输入/输出、禁止触碰的数据、测试方式和交付标准。新 Agent 不需要获得生产密钥或整份个人财务仓库才能开发 UI 或 API；用虚构 fixture 即可。需要源数据时，单独限定私有来源范围。
+开始前写清任务目标、base commit、分支/worktree、允许路径、依赖提交、接口与交付标准。交付 head commit、diff、真实测试及未验证范围，文件散列可作为额外证据。新 Agent 用虚构 fixture 即可开发，不需要生产密钥或整份个人财务仓库。
 
 可复制的交接提示词：
 
@@ -346,8 +348,8 @@ node --test tests/test_calendar_views.js
 | 采购 | 预算、实付、参考图片在看板内保存 | 不自动产生荷包支出；图片解绑后的回收是后续上传触发，无独立管理界面 |
 | 通知与离线 | 在线轮询及页内提示 | 没有 WebSocket/SSE、原生推送或离线编辑队列 |
 | 账号/租户 | 邀请制多家庭，每户固定两成员，独立数据库与密钥；当前最多 30 户 | 无开放匿名注册、套餐计费、任意成员数量或通用角色管理；扩大容量需验证资源和隔离 |
-| 运维 | 单台服务器、Docker、同机 SQLite 备份和证书续期 | 异地加密备份、灾难恢复演练、高可用未完成 |
-| 工程协作 | 源码、测试和文档齐备 | 尚未建立本项目独立 Git 仓库、CI/CD、正式 schema 版本管理或 OpenAPI 自动生成 |
+| 运维 | 单台服务器、Docker、同机 SQLite 备份、证书续期；两户合成 Docker 恢复已完成 | 异地加密备份、生产覆盖恢复、跨机恢复及高可用未完成 |
+| 工程协作 | 独立 Git 仓库、各 agent 分支/worktree、源码测试和配套文档 | 无远端 PR/强制分支保护、CI/CD、正式 schema 版本管理或 OpenAPI 自动生成 |
 
 变更这些边界时，先更新合同和测试，再扩展实现；不要把路线图条目写入“已完成”。
 

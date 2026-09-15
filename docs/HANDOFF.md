@@ -10,7 +10,7 @@
 
 | 交接项 | 当前范围 |
 |---|---|
-| 当前源码 | 222 文件、36 份 Markdown；逐文件 SHA-256 见交接包 RELEASE-MANIFEST.json；发布后文档单独保留 BASE/RESULT |
+| 当前源码 | main 通用包 225 文件、38 份 Markdown；Git bundle 另保留未合入分支；逐文件 SHA-256 见对应包 RELEASE-MANIFEST.json |
 | 接口与存储 | 101 个 Flask 方法/路径模板，另有 WSGI 家庭入口；每户 42 表 + 平台 2 表；本轮结构不变 |
 | 后端 | Windows：1268 passed / 18 skipped；Linux：1285 passed / 1 skipped；每端完整收集 1286 项 |
 | 浏览器 | 新旅行执行 53 项、原旅行与发布 8 组；绑定最终源码、零外站请求；历史财务 222 项属于上一版 |
@@ -22,13 +22,31 @@
 
 ## 当前候选与文件占用
 
-本轮旅行执行已发布，恢复工具和文档已纳入本次交接，全部文件解除本轮占用。后续开发须重新登记唯一编辑者；不要将这些历史副本覆盖当前源码。
+已发布的旅行执行和恢复工具已经完成交接。**新旅行资料候选尚未合入或部署**，已从旧共享候选目录拆分保存为独立 Git 分支及 worktree。旧候选目录只作冻结证据，禁止继续在其中开发。
+
+仓库基线为 `ad667bf2b744d707db080964c662249c7cd8b056`，标签 `baseline/2026-09-15-handoff`。当前主仓为项目根目录，各工作树位于维护者本机 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/worktrees/` 下；换机器后按 [Git 指导](GIT-WORKFLOW.md) 从 bundle 创建自己的工作树，不复用这些机器绝对路径。
+
+| 分支 | 本轮负责人 / worktree 目录名 | 已保存范围与状态 |
+|---|---|---|
+| `main` | 集成人 / 项目根目录 | 已发布业务基线与审查后的交接文档；线上结构仍为 101 路由、42 户内表 |
+| `codex/integration` | 集成人专用 | 仅合并审查通过的提交，不供模块 agent 直接开发 |
+| `codex/journey-documents-api` | journey_workflows / journey-documents-api | 新资料模块、68 项专项与接口文档；提交 `6ef2516`，等待审查与联合验证 |
+| `codex/journey-documents-ui` | product_interface / journey-documents-ui | 新资料 JS/CSS、旅行 UI 与浏览器脚本；含新建向导空目标修复，完整资料场景仍待复验 |
+| `codex/journey-documents-portability` | finance_hub / journey-documents-portability | 私有导出、12 项跨模块专项与恢复夹具；提交 `8eb120e`，等待审查与联合验证 |
+| `codex/journey-documents-wiring` | 集成人 / journey-documents-wiring | app、HTML/JS 加载、Docker、发布白名单接入；提交 `2774e75`，等待审查 |
+| `codex/docs-git-handoff`、`codex/git-workflow-guide` | 文档集成人与文档 agent，各自独立目录 | 本次 README、Git 规则与指导；通过独立审查后逐层合入 main |
+
+候选目标是资料默认本人私有、明确选择后向本户成员共享，电视不能读取资料；PDF 仅下载，图片解码净化，删旅行保留上传者资料并可重新关联。拟增加 5 个方法/路径模板及 1 张表，最终为 106 路由、43 户内表。候选专文位于 API 分支的 `docs/JOURNEY-DOCUMENTS.md`，未加入 main 已上线接口索引。
+
+各模块分支保留独立职责，**单独分支不一定能启动完整新功能**。UI、导出和接线依赖新后端；完整测试须在审查后的集成提交上执行，不通过复制其他工作树文件拼装。此次将旧候选保存成 Git 提交，不等于它已被审查或通过联合测试。
+
+已有候选证据：后端 68 项通过、跨模块 12 项通过，本机合成恢复 seed 15 / verify 216；42→43 迁移检查的 13 项只属于隔离验证。资料浏览器曾在 16 项断言后因新建向导空目标异常退出；UI 分支两行修复的既有旅行细项 10 场景通过，完整资料迟到响应/切换身份/TV 场景、最终组合回归、Linux 镜像、实际 Docker 新结构恢复与正式迁移仍待完成。不得把原 42 表镜像的通过记录移作此候选验收。
 
 旅行执行跨模块接缝：`static/journey-ui.js/.css` 管详情刷新、负责人筛选和原流程返回；`task_publish.py`、`calendar_publish.py` 管 `localChangesPending` 的只读比较；`finance_hub.py` 管来源限定的订单表头兼容。验收入口为 `tests/browser_journey_execution_check.py`、`tests/test_publication_local_changes.py` 和 `tests/test_order_source_headers.py`。这些文件及接口变更由集成人协调，不能由旅行与云同步 agent 同时修改同一文件。见 [旅行执行契约](JOURNEY-EXECUTION.md)。
 
 本页不登记已结束任务的永久占用者。家庭例行计划、采购实付、同步问题中心、电视布局、投资导入、成员会话、旅行简报及更早的 worker／旅行返回／连接返回均已在当前版本内；旧候选只供追溯，不是待应用操作。**不要重复 apply 历史补丁，也不要用旧候选整目录覆盖当前源码。**
 
-下一轮开始前，由集成人登记目标、唯一编辑者、当前源码清单、允许路径、依赖与冻结状态。独立源码副本或隔离分支从当前基线建立；只交付授权文件的 BASE/RESULT 与精确 diff。模块负责人尚未提交冻结代码及散列时，其他 agent 不假定它已经合入。
+下一轮开始前，由集成人登记目标、独立分支/worktree、base commit、允许路径、依赖与冻结状态。只在自己的工作树提交；结束交付 head commit 与 diff，散列补充文件证据。其他 agent 未收到审查通过的提交时，不假定依赖已经合入。
 
 ### 本次财务增量的交接边界
 
@@ -90,9 +108,9 @@
 
 ## 文件所有权与协作协议
 
-1. **每个文件只有一位本轮编辑者。** 集成人默认负责 `app.py`、`static/app.js`、`static/index.html`、公共渲染接缝、依赖、Docker/Compose、发布白名单及最终部署。确需分派时明确到函数或 diff，并统一合并。
+1. **每个任务独立分支和 worktree。** 禁止多人编辑同一工作目录，即使计划修改不同文件也须隔离。集成人维护 main/integration，模块 agent 只维护分配的 codex 功能分支。共用文件变更先约定契约和顺序。
 2. **跨模块接缝先约定。** 助理与旅行共用 `journey-ui.js`；账单、投资、对账与采购入口共用 `finance-hub.js`，采购入口还涉及 `shopping-ui.js`；成员与电视入口共用 `product-shell.js`；会话、OAuth 和家庭路由跨后端。模块负责人提供精确输入/输出、权限与插入点，不直接覆盖另一人的文件。
-3. **用清单交付。** 独立候选给出允许路径、BASE/RESULT SHA-256、补丁或精确源码包和集成说明。全部目标匹配 BASE 且新增文件不存在才应用；全部匹配 RESULT 则已合入，应跳过。混合状态先检查差异并重新整合。
+3. **用提交审查和合并。** 交付 base/head commit、允许路径、diff、测试与未验证项；另一位 agent 审查固定提交。通过后集成人按依赖合入 integration，组合验证与再次审查后合入 main。Git 合并冲突逐项处理，禁止整目录覆盖或以旧 SHA 补丁绕过提交审查，详见 [Git 流程](GIT-WORKFLOW.md)。
 4. **按真实依赖记录验证。** 记录执行脚本、源码散列、临时配置、退出码、通过/跳过、截图及未覆盖范围。独立候选通过不自动代表组合版本通过；不要把多平台测试数相加当独立场景。
 5. **冻结后不再改源。** 新问题先通知集成人，再决定解除哪个文件的冻结。新增 Python 文件要检查 Docker COPY/发布白名单；新增静态模块要检查 `defer` 和 CSS 顺序。公共入口与最后发布由集成人处理。
 
@@ -105,22 +123,23 @@
 及负责模块的 API 契约。核对当前源码与线上版本，不重放历史补丁。
 
 目标：[用户能完成的具体操作及结果]
-基线：[源码包/清单标识、独立目录、允许路径的 BASE SHA-256]
-依赖：[需要的其他候选及已收到的 RESULT SHA-256；无则写无]
+基线：[base commit、codex/<agent>-<task> 分支、独立 worktree 绝对路径]
+依赖：[需要的其他分支及审查通过的 commit；无则写无]
 允许编辑：[唯一文件清单；共用文件需精确到授权范围]
 接口：[方法、路径、输入/输出、身份/家庭边界、版本和错误语义]
 集成人接缝：[模块注册、脚本/CSS顺序、数据迁移、公共文件]
 验收：[正常闭环、失败草稿、并发/迟到响应、跨成员/家庭/TV、视口]
-交付：[文件与散列、精确diff、真实命令/结果、截图、未验收范围]
+交付：[head commit、base...head diff、真实命令/结果、截图、未验收范围]
+审查：[另一位 agent 对固定 base/head 的结论；由集成人合并]
 
 使用临时数据库和虚构数据，不读取或上传生产凭据、真实账单或原始数据库。
 不改生产、不部署；测试通过不等于真实云账户/实体设备已验收。
-冻结后不改文件，新问题通知集成人。
+不编辑其他 worktree，不自行合入 integration/main。冻结后修复须新提交并重新审查。
 ```
 
 ## 接手后的首轮检查
 
-1. 核对工作目录、Git 根目录、`RELEASE-MANIFEST.json` 和正在修改文件的人。不要对父 AI 工作区批量暂存、重置或清理，不用旧候选整目录覆盖。
+1. 核对 Git 根目录、分支、HEAD、工作区状态和分配的 worktree；按 [Git 流程](GIT-WORKFLOW.md) 建立独立任务分支。使用源码归档时先核对清单，正式联合开发使用 bundle 恢复提交历史，不用旧候选整目录覆盖。
 2. 按 [DEVELOPMENT](DEVELOPMENT.md) 创建项目虚拟环境、安装 `requirements.txt` 和测试工具。生产是 Python 3.12，Windows 已使用 Python 3.14；前端无需 npm 构建。
 3. 按 [DEPLOYMENT 第 2 节](DEPLOYMENT.md#2-配置密钥与数据文件) 配置独立开发密钥、测试密码与临时 `DATA_DIR`，只绑定回环地址。Python 不自动读取 `.env`，不要复制生产配置。浏览器测试按各脚本使用自己的临时夹具。
 4. 先运行负责模块的已有测试，确认本机 Edge/Playwright 路径，再跑适用的真实临时浏览器。`pytest` 不自动运行 `*_check.py`；不要把旧生产 `live_check.py` 当默认回归。具体命令见 [开发与验收](DEVELOPMENT.md)。
@@ -135,4 +154,4 @@
 
 优先完成已实现能力的真实端到端验收：允许环境中的公网访问和 OAuth、两台电视长期展示、云任务/日历读回与冲突，以及真实脱敏账单/持仓和个人来源映射。每次选一个可观察闭环，保留现有数据与授权边界。
 
-之后再推进异地加密备份和恢复演练、同步错误趋势、队列容量、备份年龄与磁盘可观测性（当前来源状态页已实现）、更丰富成员角色、Apple 提醒事项桥接、提醒与助理偏好、离线能力和商业化条件。详细优先级见 [PRODUCT-PLAN](PRODUCT-PLAN.md)，各历史发布、失败修订和未验证记录见 [VALIDATION](VALIDATION.md)。本页不承诺这些后续项已经实现。
+两户虚构数据的实际 Docker 恢复已完成；之后推进异地加密备份、生产覆盖恢复及跨机恢复、同步错误趋势、队列容量、备份年龄与磁盘可观测性（当前来源状态页已实现）、更丰富成员角色、Apple 提醒事项桥接、离线能力和商业化条件。详细优先级见 [PRODUCT-PLAN](PRODUCT-PLAN.md)，各历史发布、失败修订和未验证记录见 [VALIDATION](VALIDATION.md)。
