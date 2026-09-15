@@ -37,6 +37,12 @@
 
 维护者须能访问 Docker、停止服务、写应用源码及受限发布目录，并能把校验输入设为 UID/GID 10001。控制器在 `/opt/family-dashboard-releases/journey-documents-<UTC标识>/` 创建独立目录，自动保存 `verification/` 输入；不能手工预填或覆盖它们。
 
+停服前，控制器读取 `docker compose config --format json` 的 `services.app.environment`，逐项与当前 app 容器的 `Config.Env` 比较。缺项、不同值、重复键或无效类型均拒绝继续；不自行解析 dotenv，也不单独剥掉某个字段的引号。Compose 解析后的引号、美元符号、反斜杠和换行必须完整保留，`DATA_DIR` 必须为 `/data`。
+
+Compose v2.40.3 在 JSON 序列化后把每个 `$` 渲染为 `$$`，见 [官方 `runConfig` / `escapeDollarSign`](https://github.com/docker/compose/blob/v2.40.3/cmd/compose/config.go#L173)。控制器的 `parse_compose_config_output` 先拒绝奇数个连续 `$`，只将每对 `$$` 还原一次，再解析 JSON；这是输出转义的反解，不是变量展开。不能用 `--no-interpolate` 代替，因为它不走同一完整解析流程；反解后仍须与实际 app 逐项相等，才可保存私有 JSON。
+
+解析结果以完整字符串字典写入私有 `verification/environment.json`，0400 权限、UID/GID 10001 所有，固定其原始字节 SHA。它含凭据，**不得放入 READY、源码包、普通测试证据或日志**。原 `.env` 仍单独原字节备份并持续核对；JSON 只是隔离校验容器的配置输入，不替换用户 `.env`。
+
 ## 3. READY 合同
 
 下例是有效 JSON 的**结构占位**，不是可用就绪报告；`verified:false` 和占位内容会被控制器拒绝。只在实际证据成立后生成真值，不应手工把 false 改成 true。
@@ -100,7 +106,7 @@
 
 ## 5. 一次性执行顺序
 
-1. 停机前核对全部源文件、READY、原始证据、环境散列、旧镜像、三服务健康状态和数据卷使用者；验证 Compose 配置。额外容器占用数据卷时拒绝继续。
+1. 停机前核对全部源文件、READY、原始证据、环境散列、旧镜像、三服务健康状态和数据卷使用者；验证 Compose 解析配置与正在运行的 app 对应键值一致。额外容器占用数据卷时拒绝继续。
 2. 新镜像先运行无数据卷的 `verify-image`：校验候选全源码和镜像 `/app` 中所有运行模块、静态资源、requirements 的字节。UID 10001 无法读取源码等问题会在停服前失败。
 3. 依次停止 `web`、`sync/app`；必须干净退出、非 OOM、退出码 0，并确认数据卷无其他运行容器。137 或 143 不能当作平稳停机。
 4. 新容器执行 `snapshot` 保存原 42 表状态；运行既有 `backup.py` 备份注册库和全部家庭；`validate-backup` 核对整组映射、大小、SHA 和 SQLite 内容，失败不得进入 warm。
@@ -110,7 +116,7 @@
 
 数据校验都在新镜像的独立容器中进行：网络禁用、只读根文件系统、UID/GID 10001、384 MiB 内存、受限进程数、tmpfs；候选挂载 `/release-source:ro`，输入挂载 `/release-check:ro`，数据卷挂 `/data`。这不等于数据卷只读：backup 和 warm 会按上述流程写入。
 
-`frozen.json`、`schema.json`、`before.json`、`backup.json`、`backup-verification.json` 逐步固定 SHA；每次调用前后复核源码、环境和输入。容器内再次验证这些散列、候选与镜像运行字节，并固定备份 manifest 的原始字节散列。schema 原文从候选 `journey_documents.SCHEMA_SQL` 读取，不能维护另一份手写 DDL。
+`frozen.json`、`schema.json`、`environment.json`、`before.json`、`backup.json`、`backup-verification.json` 逐步固定 SHA；每次调用前后复核源码、环境和输入。容器内再次验证这些散列、候选与镜像运行字节，并固定备份 manifest 的原始字节散列。校验容器不使用原 dotenv 的 `--env-file`；在校验 JSON 散列和字段后、导入应用前，通过 `os.environ.update` 注入已核对配置。schema 原文从候选 `journey_documents.SCHEMA_SQL` 读取，不能维护另一份手写 DDL。
 
 ## 6. 失败、记录与验收边界
 
@@ -118,6 +124,8 @@
 
 **不自动恢复数据库、源码或镜像，不清除迁移后的数据。** 源码安装中途失败也保留已写文件和完整旧源码 TAR。不得反复运行同一迁移来“试到成功”；维护者先查实际阶段、容器和备份，再另行审查修复或恢复方案。恢复备份可能带回旧会话，按 [恢复演练](RECOVERY-REHEARSAL.md) 和 [成员会话](MEMBER-SESSIONS.md) 的失效要求处理。
 
-每次发布目录保存 `deployment.json`、原始 READY/BASE/旧清单、源码 TAR、校验输入及原始证据副本；`.env` 为单独受限文件。部署记录输出阶段、服务、散列和安全汇总，不打印 `.env`、提供商输出或数据库内容。错误正文不外发，日志和备份仍只供授权维护者访问。
+每次发布目录保存 `deployment.json`、原始 READY/BASE/旧清单、源码 TAR、校验输入及原始证据副本；`.env` 和解析环境 JSON 均为受限文件。部署记录只提供 `resolvedEnvironmentSha256`、`resolvedEnvironmentMatchesRunningApp` 等散列、布尔及安全汇总，不打印配置值、提供商输出或数据库内容。错误正文不外发，日志和备份仍只供授权维护者访问。
 
 [控制流专项](../tests/test_journey_documents_release.py) 在提交 `aecfd6c373eb34c56e0144ee01b639c31389dd32` 已有 **66 项离线检查通过**：使用 fake Docker runner 和真实临时文件，覆盖门槛拒绝、备份失败禁止 warm、漂移与 DDL 失败、分步启动、部分安装失败、超时容器清理及保留现场。它没有执行真实 Docker、SSH 或生产迁移，也不是实际 Docker 恢复证据。迁移 SQLite 专项、当前源码组合测试、实际 Docker 合成恢复及正式发布必须分别记录。
+
+配置传递第一版提交 `684da033c4df3b38417b82a3f7e0b5dfe2885930` 的 **83 项通过** 属历史离线证据，尚未覆盖 Compose 输出的美元符号再转义。加入单次反解后，完整控制流专项 **100 项通过**，使用与官方渲染一致的 fake 输出验证 `$`、`$$`、`${VAR}`、奇数美元符号拒绝及私有 JSON 保真。Fake runner 结果不证明真实 Docker 的 dotenv 解析行为，实际 Docker 合成配置与迁移验证须另行记录。

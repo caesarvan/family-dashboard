@@ -56,6 +56,9 @@ class FakeDocker:
         self.stop_exit = 0
         self.volume_extra = False
         self.helpers = {}
+        self.compose_environment = {'DATA_DIR': '/data', 'PUBLIC_ORIGIN': 'https://synthetic.invalid',
+                                    'SECRET_KEY': 'synthetic-secret-do-not-print'}
+        self.app_environment = [k + '=' + v for k, v in self.compose_environment.items()]
         self.services = {n: {'id': str(i) * 64, 'image': C.PREVIOUS if n != 'web' else 'sha256:' + '8' * 64,
                              'running': True, 'exitCode': 0, 'oom': False,
                              'health': 'healthy' if n == 'app' else None}
@@ -72,6 +75,9 @@ class FakeDocker:
             return self.services[args[-1]]['id']
         if args[:2] == ['docker', 'inspect']:
             state = next(v for v in [*self.services.values(), *self.helpers.values()] if v['id'] == args[-1])
+            if args[3] == '{{json .Config.Env}}':
+                assert state is self.services['app']
+                return json.dumps(self.app_environment)
             if args[3] == '{{json .Mounts}}':
                 return json.dumps([{'Type': 'volume', 'Name': C.VOLUME, 'Destination': '/data', 'RW': True}])
             return json.dumps(state)
@@ -82,7 +88,9 @@ class FakeDocker:
         if args[:3] == ['docker', 'compose', 'config']:
             if self.fail == 'compose':
                 raise RuntimeError('fake compose invalid')
-            return ''
+            assert args[3:] == ['--format', 'json']
+            # Compose 2.40.3 escapeDollarSign runs after JSON serialization.
+            return json.dumps({'services': {'app': {'environment': self.compose_environment}}}).replace('$', '$$')
         if args[:2] == ['docker', 'ps']:
             if args[-1].startswith('name=^/'):
                 name = args[-1][7:-1]
@@ -131,6 +139,7 @@ class FakeDocker:
         assert args[args.index('--user') + 1] == '10001:10001'
         assert args[args.index('--memory') + 1] == '384m'
         assert args[args.index('--tmpfs') + 1].endswith('size=64m')
+        assert '--env-file' not in args
         assert args[-5:-2] == [IMAGE, 'python', '-']
         mounts = [args[i + 1] for i, value in enumerate(args) if value == '--mount']
         assert any(x.endswith('dst=/release-source,readonly') for x in mounts)
@@ -138,6 +147,7 @@ class FakeDocker:
         inputs = Path(check_mount.split(',src=', 1)[1].split(',dst=', 1)[0])
         for name, expected in json.loads(args[-1]).items():
             assert digest((inputs / name).read_bytes()) == expected
+        assert 'environment.json' in json.loads(args[-1])
         if action == 'verify-image':
             assert not any('type=volume' in x for x in mounts)
         else:
@@ -195,7 +205,7 @@ class Fixture:
         for name, raw in self.base.items():
             write(self.root / name, raw)
         write(self.root / 'RELEASE-MANIFEST.json', self.old_manifest)
-        write(self.root / '.env', b'SECRET_KEY=synthetic-secret-do-not-print\n')
+        write(self.root / '.env', b'SECRET_KEY="synthetic-secret-do-not-print"\nPUBLIC_ORIGIN="https://synthetic.invalid"\n')
         self.values = {**self.base, 'app.py': b'# new reviewed application\n',
                        'Dockerfile': b'COPY app.py journey_documents.py ./\n',
                        'journey_documents.py': b'SCHEMA_SQL = "CREATE TABLE journey_documents(id TEXT);"\n',
@@ -273,6 +283,121 @@ class Fixture:
 @pytest.fixture
 def f(tmp_path, monkeypatch):
     return Fixture(tmp_path, monkeypatch)
+
+
+@pytest.mark.parametrize('value', ['$', '$$', '${VAR}', '$rate', '$$$', 'a$$${VAR}$$z',
+                                  '"quote" $x C:\\key\nline\r\n密钥', r'literal\u0024', 'no dollars'])
+def test_compose_render_escape_is_reversed_once_without_variable_expansion(value, monkeypatch):
+    monkeypatch.setenv('VAR', 'must-never-be-expanded')
+    environment = {'DATA_DIR': '/data', 'SECRET_KEY': value, 'PUBLIC_ORIGIN': 'https://synthetic.invalid'}
+    model = {'services': {'app': {'environment': environment}}, 'other': {'$$key': 'also$escaped'}}
+    text = json.dumps(model, ensure_ascii=False).replace('$', '$$')
+    parsed = C.parse_compose_config_output(text)
+    assert parsed == model
+    assert C.validated_environment(parsed, [k + '=' + v for k, v in environment.items()]) == environment
+    # JSON re-encoding the private input must preserve the original values,
+    # including literal $$ and JSON escapes; do not unescape it a second time.
+    assert json.loads(C.encoded(environment)) == environment
+
+
+@pytest.mark.parametrize('value', ['$', '$$$', '$$$$$', '${VAR}', '$$left$right', '$left$$right'])
+def test_compose_render_rejects_unpaired_dollars_with_safe_error(value):
+    text = json.dumps({'private': value})
+    with pytest.raises(RuntimeError, match='^compose_config_dollar_escape_invalid$'):
+        C.parse_compose_config_output(text)
+
+
+def test_compose_render_rejects_bad_json_without_exposing_original_text():
+    with pytest.raises(RuntimeError, match='^compose_config_json_invalid$'):
+        C.parse_compose_config_output('{"private":"sensitive$$value"')
+
+
+def test_unpaired_compose_output_is_rejected_before_downtime(f):
+    original = f.runner
+    def malformed(args, **kwargs):
+        result = original(args, **kwargs)
+        if args[:3] == ['docker', 'compose', 'config']:
+            return result.replace('synthetic-secret-do-not-print', 'sensitive$unpaired')
+        return result
+    f.runner = malformed
+    with pytest.raises(RuntimeError, match='^compose_config_dollar_escape_invalid$'): f.activate()
+    assert not f.releases.exists() and all(s['running'] for s in original.services.values())
+    assert not any(a[:3] == ['docker', 'compose', 'stop'] or a[:2] == ['docker', 'run'] for a in original.calls)
+
+
+def test_resolved_environment_is_private_exact_and_raw_dotenv_is_preserved(f, monkeypatch):
+    # Compose is the parser; this fake supplies its result and the real app's
+    # Config.Env independently. The actual container guard is exercised below.
+    secret = '"quoted" \'single\' $cash${TOKEN}$$ C:\\private\\key\nsecond\r\n密钥=tail'
+    environment = {**f.runner.compose_environment, 'SECRET_KEY': secret, 'EMPTY': ''}
+    f.runner.compose_environment = environment
+    f.runner.app_environment = [k + '=' + v for k, v in environment.items()] + ['IMAGE_ONLY=unchanged']
+    raw = (f.root / '.env').read_bytes()
+    writes = []
+    original_put = C.put
+    def capture(path, value, owner=False):
+        if path.name == 'environment.json': writes.append((path, value, owner))
+        return original_put(path, value, owner)
+    monkeypatch.setattr(C, 'put', capture)
+    report = f.activate()
+    assert len(writes) == 1 and writes[0][2] is True
+    path, stored, _ = writes[0]
+    assert json.loads(stored) == environment and path.read_bytes() == stored
+    assert report['resolvedEnvironmentSha256'] == digest(stored)
+    assert report['inputHashes']['environment.json'] == digest(stored)
+    assert report['resolvedEnvironmentMatchesRunningApp'] is True
+    assert (f.root / '.env').read_bytes() == raw
+    assert (Path(report['releaseDirectory']) / '.env').read_bytes() == raw
+    assert secret not in json.dumps(report, ensure_ascii=False)
+    assert 'SECRET_KEY' not in json.dumps(report)
+    assert 'SECRET_KEY' not in (f.candidate / 'READY.json').read_text()
+    assert all(secret not in arg for args in f.runner.calls for arg in args)
+    assert all('--env-file' not in args for args in f.runner.calls)
+    import os
+    if os.name != 'nt':
+        stat = path.stat()
+        assert stat.st_mode & 0o777 == 0o400 and stat.st_uid == stat.st_gid == 10001
+
+
+@pytest.mark.parametrize('change,label', [
+    ('secret', 'running_environment_mismatch'), ('origin', 'running_environment_mismatch'),
+    ('missing', 'running_environment_mismatch'), ('duplicate', 'running_environment_ambiguous'),
+    ('null', 'compose_environment_invalid'), ('number', 'compose_environment_invalid'),
+    ('data-dir', 'compose_environment_invalid'), ('nul-value', 'compose_environment_invalid'),
+    ('bad-key', 'compose_environment_invalid'), ('malformed-running', 'running_environment_invalid'),
+])
+def test_resolved_environment_rejects_drift_before_any_downtime(f, change, label):
+    if change in ('secret', 'origin'):
+        key = 'SECRET_KEY' if change == 'secret' else 'PUBLIC_ORIGIN'
+        f.runner.app_environment = [x for x in f.runner.app_environment if not x.startswith(key + '=')]
+        f.runner.app_environment.append(key + '=sensitive-mismatch')
+    elif change == 'missing': f.runner.app_environment = ['DATA_DIR=/data']
+    elif change == 'duplicate': f.runner.app_environment.append('SECRET_KEY=sensitive-duplicate')
+    elif change == 'null': f.runner.compose_environment['SECRET_KEY'] = None
+    elif change == 'number': f.runner.compose_environment['SECRET_KEY'] = 123
+    elif change == 'data-dir': f.runner.compose_environment['DATA_DIR'] = '/other'
+    elif change == 'nul-value': f.runner.compose_environment['SECRET_KEY'] = 'bad\x00value'
+    elif change == 'bad-key': f.runner.compose_environment['BAD=KEY'] = 'private'
+    else: f.runner.app_environment.append('malformed-private-value')
+    with pytest.raises(RuntimeError, match='^' + label + '$'):
+        f.activate()
+    assert not any(a[:3] == ['docker', 'compose', 'stop'] or a[:2] == ['docker', 'run'] for a in f.runner.calls)
+    assert all(s['running'] for s in f.runner.services.values())
+    assert not f.releases.exists() and not f.migrated.exists()
+
+
+def test_raw_dotenv_drift_during_resolution_is_rejected_before_downtime(f):
+    original = f.runner
+    def mutate(args, **kwargs):
+        result = original(args, **kwargs)
+        if args[:3] == ['docker', 'compose', 'config']:
+            (f.root / '.env').write_bytes(b'changed during read-only preflight')
+        return result
+    f.runner = mutate
+    with pytest.raises(RuntimeError, match='^environment_changed$'):
+        f.activate()
+    assert not f.releases.exists() and all(s['running'] for s in original.services.values())
+    assert not any(a[:3] == ['docker', 'compose', 'stop'] or a[:2] == ['docker', 'run'] for a in original.calls)
 
 
 def test_success_real_file_install_after_backups_and_checks(f):
@@ -370,11 +495,12 @@ def test_unclean_stop_cannot_reach_snapshot(f, exit_code):
     assert f.runner.actions == ['verify-image'] and not f.migrated.exists()
 
 
-@pytest.mark.parametrize('target', ['environment', 'candidate', 'before', 'schema', 'backup', 'root-compose'])
+@pytest.mark.parametrize('target', ['environment', 'resolved-environment', 'candidate', 'before', 'schema', 'backup', 'root-compose'])
 def test_hash_drift_after_stop_blocks_warm_without_overwriting_originals(f, target):
     def mutate(action, inputs):
         if action != 'validate-backup': return
         path = {'environment': f.root / '.env', 'candidate': f.candidate / 'app.py',
+                'resolved-environment': inputs / 'environment.json',
                 'before': inputs / 'before.json', 'schema': inputs / 'schema.json',
                 'backup': inputs / 'backup.json', 'root-compose': f.root / 'compose.yaml'}[target]
         path.chmod(0o600); path.write_bytes(b'changed after verification')
@@ -444,15 +570,20 @@ def test_manifest_and_evidence_paths_cannot_escape_or_include_private_inputs(nam
     with pytest.raises(RuntimeError): C.relative(name)
 
 
-def test_container_guard_checks_image_source_and_backup_manifest_before_runpy():
+@pytest.mark.parametrize('secret', ['"double" and \'single\'', '$cash${TOKEN}$$', r'C:\private\path',
+                                    'first\nsecond\r\nthird', ' unicode 密钥 = with spaces '])
+def test_container_guard_checks_image_source_and_backup_manifest_before_runpy(secret):
     # Execute the real stdin guard with a synthetic in-memory filesystem and a
     # fake runpy, not a second implementation of its checks.
     import sys
+    import os
     code = compile(C.CONTAINER_CODE, '<real-container-guard>', 'exec')
     source = b'# candidate module'; backup_bytes = b'{"frozen":"backup"}'
     frozen = {'manifestSha256': digest(b'manifest'), 'sourceHashes': {'app.py': digest(source)},
               'runtimeHashes': {'app.py': digest(source)}}
     payloads = {'/release-check/frozen.json': C.encoded(frozen), '/release-source/RELEASE-MANIFEST.json': b'manifest',
+                '/release-check/environment.json': C.encoded({'DATA_DIR': '/data', 'SECRET_KEY': secret,
+                                                             'PUBLIC_ORIGIN': 'https://synthetic.invalid'}),
                 '/release-source/app.py': source, '/app/app.py': source,
                 '/release-check/backup.json': C.encoded({'manifest': 'manifest-2026Z.json'}),
                 '/release-check/backup-verification.json': C.encoded({'manifestSha256': digest(backup_bytes)}),
@@ -472,11 +603,22 @@ def test_container_guard_checks_image_source_and_backup_manifest_before_runpy():
                 exec(code, {})
         execute()
         assert dispatch.call_count == 1
+        assert os.environ['SECRET_KEY'] == secret
+        assert os.environ['PUBLIC_ORIGIN'] == 'https://synthetic.invalid'
         dispatch.reset_mock()
         payloads['/app/app.py'] = b'different runtime'
         with pytest.raises(RuntimeError, match='frozen_input_mismatch'): execute()
         assert not dispatch.called
         payloads['/app/app.py'] = source
         payloads['/data/backups/manifest-2026Z.json'] = b'different backup'
+        with pytest.raises(RuntimeError, match='frozen_input_mismatch'): execute()
+        assert not dispatch.called
+        payloads['/data/backups/manifest-2026Z.json'] = backup_bytes
+        original_environment = payloads['/release-check/environment.json']
+        payloads['/release-check/environment.json'] = C.encoded({'DATA_DIR': '/data', 'SECRET_KEY': 'tampered'})
+        with pytest.raises(RuntimeError, match='frozen_input_mismatch'): execute()
+        assert not dispatch.called
+        payloads['/release-check/environment.json'] = original_environment
+        del expected['environment.json']
         with pytest.raises(RuntimeError, match='frozen_input_mismatch'): execute()
         assert not dispatch.called
