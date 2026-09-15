@@ -1,12 +1,12 @@
 # 家庭看板接口文档
 
-**当前版本：2026-09-15 16:25:03（北京时间），镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。** 旅行执行进度、真实待同步提示及两个订单表头兼容已发布，保留此前全部模块；源码／文档数量见 README 和逐文件清单、101 个方法／路径模板、42 张户内表及 2 张平台表。本轮无结构迁移。真实云写与其他外部验收仍按 [VALIDATION](VALIDATION.md) 单列。
+**当前版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
 
 > 本文保留基础版本 35 个 HTTP 操作的详细字段。平台扩展后的完整路由见 [当前路由索引](PLATFORM-ROUTES.md)；新家庭、偏好、助理与旅行见 [平台扩展](PLATFORM.md)，账单/XLSX/投资见 [财务导入](FINANCE-IMPORT.md)。请勿把下方基础接口计数当作新版本总数。
 
-## 旅行资料候选接口
+## 旅行资料接口
 
-当前 Git 集成源码增加以下五个操作，总计 **106 个方法／路径模板、43 张户内表及 2 张平台表**；页首 101／42／2 是已部署基线，候选尚未发布。完整请求、响应、文件校验与状态码见 [旅行资料契约](JOURNEY-DOCUMENTS.md)。
+旅行资料以下五个成员操作已于 20:23:00 发布；当前总计 **106 个方法／路径模板、43 张户内表及 2 张平台表**。请求、响应、文件校验和状态码见 [旅行资料契约](JOURNEY-DOCUMENTS.md)。
 
 | 方法 | 路径 | 用途 |
 |---|---|---|
@@ -42,11 +42,11 @@
 
 ## 投资持仓导入接口
 
-2026-09-15 08:56:01 发布新增 GET /api/finance-hub/investments/imports/template、POST /api/finance-hub/investments/imports/preview 及 POST /api/finance-hub/investments/imports/confirm，均要求本人成员身份；POST 适用同源与 CSRF 校验，电视无权访问。接口完整请求、响应、文件列、金额/日期规则、来源映射、预览期限、409 和重复确认见 [投资持仓契约](INVESTMENT-IMPORT.md)。该增量已发布；当前完整索引结构为 101 个 Flask 方法/路径模板、42 张户内表与 2 张平台表，基础契约和历次版本不混同，实际验收见 [VALIDATION](VALIDATION.md)。
+2026-09-15 08:56:01 发布新增 GET /api/finance-hub/investments/imports/template、POST /api/finance-hub/investments/imports/preview 及 POST /api/finance-hub/investments/imports/confirm，均要求本人成员身份；POST 适用同源与 CSRF 校验，电视无权访问。接口完整请求、响应、文件列、金额/日期规则、来源映射、预览期限、409 和重复确认见 [投资持仓契约](INVESTMENT-IMPORT.md)。该增量已发布；当前完整索引结构为 106 个 Flask 方法/路径模板、43 张户内表与 2 张平台表，基础契约和历次版本不混同，实际验收见 [VALIDATION](VALIDATION.md)。
 
 ## 同步状态增量接口
 
-2026-09-15 10:43:53 已发布只读 `GET /api/sync-health`（成员专用），以及既有 `GET /api/state` 中的 `sync.health`（家庭聚合，TV 可读）。它不写数据库、不访问第三方、不重试队列；完整字段、原因码、5 分钟阈值、发布问题权限与 503 见 [同步状态契约](SYNC-HEALTH.md)。该 10:43:53 历史版本总计 95 个 Flask 方法/路径模板且无 schema 变化；当前版本结构为 101 个方法/路径模板、42 张户内表与 2 张平台表。
+2026-09-15 10:43:53 已发布只读 `GET /api/sync-health`（成员专用），以及既有 `GET /api/state` 中的 `sync.health`（家庭聚合，TV 可读）。它不写数据库、不访问第三方、不重试队列；完整字段、原因码、5 分钟阈值、发布问题权限与 503 见 [同步状态契约](SYNC-HEALTH.md)。该 10:43:53 历史版本总计 95 个 Flask 方法/路径模板且无 schema 变化；当前版本结构为 106 个方法/路径模板、43 张户内表与 2 张平台表。
 
 ## 1. 通用约定
 

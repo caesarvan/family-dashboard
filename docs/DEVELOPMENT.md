@@ -1,10 +1,10 @@
 # 开发与多 Agent 交接
 
-**当前版本：2026-09-15 16:25:03（北京时间），镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。** 旅行执行进度、真实待同步提示及两个订单表头兼容已发布，保留此前全部模块；源码与文档数量见 [README](../README.md) 及逐文件交接清单；101 个方法／路径模板、42 张户内表及 2 张平台表。本轮无结构迁移。真实云写与其他外部验收仍按 [VALIDATION](VALIDATION.md) 单列。
+**当前版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
 
 当前源码与文档数量以 [README](../README.md) 及逐文件交接清单为准；接口和存储结构见 [当前索引](PLATFORM-ROUTES.md)，运行版本与验收证据见 [VALIDATION](VALIDATION.md)。
 
-**当前开发入口：** 项目已建立独立 Git 仓库。每个 agent 使用独立分支及 worktree；先读 [项目规则](../AGENTS.md) 与 [Git 协作指导](GIT-WORKFLOW.md)。旅行资料 API、导出、UI、接入和迁移检查器已分别提交，经非作者审查后合入集成分支，正在组合验证；尚未部署，依赖与未验收项见 [HANDOFF](HANDOFF.md#当前候选与文件占用)。候选结构为 106 路由／43 户内表，页首保留生产基线；下方标有时间的批次记录不是待应用补丁。
+**当前开发入口：** 项目使用独立 Git 仓库，每个 agent 独立分支与 worktree。旅行资料及发布配置修订已由非作者审查，经 integration `b1981a4` 合入 main `670f34f` 并正式发布。当前为 106 路由／43 户内表／2 平台表；新任务仍需登记明确 base、允许路径和依赖。先读 [项目规则](../AGENTS.md)、[Git 指导](GIT-WORKFLOW.md) 与 [HANDOFF](HANDOFF.md#当前候选与文件占用)。历史批次不是待应用补丁。
 
 旅行资料专项入口为 [API](../tests/test_journey_documents.py)、[导出与模块组合](../tests/test_journey_documents_integration.py)、[可移植迁移](../tests/test_journey_documents_migration.py)、[浏览器流程](../tests/browser_journey_documents_check.py)。后端专项共用实际临时 Flask／SQLite；浏览器使用本机 Edge 和虚构文件，身份切换、下载和重试均需真实运行验证。恢复夹具包含新表与文件，须配套新镜像。测试报告绑定实际提交和文件散列，不累加不同历史版本的通过数。
 
@@ -12,7 +12,7 @@
 
 历史月份导航涉及 finance_hub.py 和 finance-hub.js/.css；来源双模式涉及 spending_observations.py、finance_source_bridge.py、finance_baseline.py、deploy/prepare-finance-source.py 与两个来源 UI；导出涉及 data_portability.py 和 data-portability.js。三条流程分别维护，不因新增消费报告而修改原资产基线或实际账本。公共文件先登记唯一编辑者，接口见 [财务 API](FINANCE-API.md)、[消费观察](SPENDING-OBSERVATIONS.md)、[导出](PORTABILITY.md)。
 
-2026-09-15 15:10 财务增量的回归入口为 [月份 API](../tests/test_finance_import_navigation.py)、[观察 API/CLI](../tests/test_spending_observations.py)、[月份浏览器](../tests/browser_finance_import_navigation_check.py)、[观察浏览器](../tests/browser_spending_observations_check.py)、[导出保护浏览器](../tests/browser_data_portability_guard_check.py)。均使用虚构文件和临时数据库；该历史财务组合的 10 个脚本、重试观察修正、依赖复用和不计通过的导出限制见 VALIDATION。16:25 历史无结构更新使用 42→42；旅行资料候选另走 42→43，不重放 15:10 的历史两表迁移。
+2026-09-15 15:10 财务增量的回归入口为 [月份 API](../tests/test_finance_import_navigation.py)、[观察 API/CLI](../tests/test_spending_observations.py)、[月份浏览器](../tests/browser_finance_import_navigation_check.py)、[观察浏览器](../tests/browser_spending_observations_check.py)、[导出保护浏览器](../tests/browser_data_portability_guard_check.py)。均使用虚构文件和临时数据库；该历史财务组合的 10 个脚本、重试观察修正、依赖复用和不计通过的导出限制见 VALIDATION。16:25 历史无结构更新使用 42→42；本次旅行资料已经独立完成 42→43，不重放 15:10 的历史两表迁移。
 
 ## 家庭例行计划开发入口
 
@@ -20,7 +20,7 @@
 
 `register_routines(app,db,Problem,body,require_member,audit)` 必须在 assistant 和 portability 前登记；`app.extensions['household_routines'].tick()` 自建 app context，不依赖 g.actor。worker 按 `task_publish → calendar_publish → cloud_accounts → household_routines` 执行，阶段前检查 stop，已进入事务正常收尾。直接生成本地 entities，不能复用会自动写默认主清单的 add_item／task_write 路径。
 
-`brief(con)` 仅读当前家庭共享规则和实体，GET 不补期；导出只在 includeShared:true 调用 export_shared_routines(con)，禁止 nonce、会话及完整回执进入副本。三张表在 13:43 历史首次 37→40 迁移时为空并保留原 37 表；16:25 线上版本为 42 表，当时无结构更新使用 42→42；旅行资料候选须按新增表独立迁移。备份覆盖全部当前内容；日期、当前实体保护、唯一期次和容量逻辑须一起维护。
+`brief(con)` 仅读当前家庭共享规则和实体，GET 不补期；导出只在 includeShared:true 调用 export_shared_routines(con)，禁止 nonce、会话及完整回执进入副本。三张表在 13:43 历史首次 37→40 迁移时为空并保留原 37 表；16:25 历史版本为 42 表，当时无结构更新使用 42→42；20:23 资料版本已完成独立 42→43，不能重放其一次性迁移。备份覆盖全部当前内容；日期、当前实体保护、唯一期次和容量逻辑须一起维护。
 
 在独立测试配置和临时数据库内运行：
 
