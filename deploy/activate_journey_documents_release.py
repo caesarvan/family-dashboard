@@ -185,6 +185,21 @@ def runtime_hashes(values):
             if (name.endswith('.py') and '/' not in name) or name.startswith('static/') or name == 'requirements.txt'}
 
 
+def parse_compose_config_output(text):
+    """Reverse Compose's output escaping once; never expand variables.
+
+    Compose v2.40.3 cmd/compose/config.go runConfig/escapeDollarSign doubles
+    every dollar after JSON serialization, including already literal dollars.
+    https://github.com/docker/compose/blob/v2.40.3/cmd/compose/config.go#L481
+    """
+    need(isinstance(text, str), 'compose_config_output_invalid')
+    need(all(len(m.group()) % 2 == 0 for m in re.finditer(r'\$+', text)), 'compose_config_dollar_escape_invalid')
+    try:
+        return json.loads(text.replace('$$', '$'))
+    except ValueError:
+        raise RuntimeError('compose_config_json_invalid') from None
+
+
 def validated_environment(compose, running):
     """Keep Compose's parsed values exactly; never interpret dotenv ourselves."""
     need(isinstance(compose, dict) and isinstance(compose.get('services'), dict), 'compose_environment_invalid')
@@ -294,7 +309,7 @@ def activate(candidate_root, image, manifest_sha, ready_sha, *, root=ROOT, relea
     need(volume_users == {old['app']['id'], old['sync']['id']}, 'unexpected_volume_user')
     need(run(['docker', 'image', 'inspect', '--format', '{{.Id}}', image]) == image, 'image_missing')
     parsed_environment = validated_environment(
-        json.loads(run(['docker', 'compose', 'config', '--format', 'json'])),
+        parse_compose_config_output(run(['docker', 'compose', 'config', '--format', 'json'])),
         json.loads(run(['docker', 'inspect', '--format', '{{json .Config.Env}}', old['app']['id']])))
     need(plain_file(root / '.env') == environment, 'environment_changed')
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')

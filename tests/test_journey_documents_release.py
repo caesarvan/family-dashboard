@@ -89,7 +89,8 @@ class FakeDocker:
             if self.fail == 'compose':
                 raise RuntimeError('fake compose invalid')
             assert args[3:] == ['--format', 'json']
-            return json.dumps({'services': {'app': {'environment': self.compose_environment}}})
+            # Compose 2.40.3 escapeDollarSign runs after JSON serialization.
+            return json.dumps({'services': {'app': {'environment': self.compose_environment}}}).replace('$', '$$')
         if args[:2] == ['docker', 'ps']:
             if args[-1].startswith('name=^/'):
                 name = args[-1][7:-1]
@@ -282,6 +283,46 @@ class Fixture:
 @pytest.fixture
 def f(tmp_path, monkeypatch):
     return Fixture(tmp_path, monkeypatch)
+
+
+@pytest.mark.parametrize('value', ['$', '$$', '${VAR}', '$rate', '$$$', 'a$$${VAR}$$z',
+                                  '"quote" $x C:\\key\nline\r\n密钥', r'literal\u0024', 'no dollars'])
+def test_compose_render_escape_is_reversed_once_without_variable_expansion(value, monkeypatch):
+    monkeypatch.setenv('VAR', 'must-never-be-expanded')
+    environment = {'DATA_DIR': '/data', 'SECRET_KEY': value, 'PUBLIC_ORIGIN': 'https://synthetic.invalid'}
+    model = {'services': {'app': {'environment': environment}}, 'other': {'$$key': 'also$escaped'}}
+    text = json.dumps(model, ensure_ascii=False).replace('$', '$$')
+    parsed = C.parse_compose_config_output(text)
+    assert parsed == model
+    assert C.validated_environment(parsed, [k + '=' + v for k, v in environment.items()]) == environment
+    # JSON re-encoding the private input must preserve the original values,
+    # including literal $$ and JSON escapes; do not unescape it a second time.
+    assert json.loads(C.encoded(environment)) == environment
+
+
+@pytest.mark.parametrize('value', ['$', '$$$', '$$$$$', '${VAR}', '$$left$right', '$left$$right'])
+def test_compose_render_rejects_unpaired_dollars_with_safe_error(value):
+    text = json.dumps({'private': value})
+    with pytest.raises(RuntimeError, match='^compose_config_dollar_escape_invalid$'):
+        C.parse_compose_config_output(text)
+
+
+def test_compose_render_rejects_bad_json_without_exposing_original_text():
+    with pytest.raises(RuntimeError, match='^compose_config_json_invalid$'):
+        C.parse_compose_config_output('{"private":"sensitive$$value"')
+
+
+def test_unpaired_compose_output_is_rejected_before_downtime(f):
+    original = f.runner
+    def malformed(args, **kwargs):
+        result = original(args, **kwargs)
+        if args[:3] == ['docker', 'compose', 'config']:
+            return result.replace('synthetic-secret-do-not-print', 'sensitive$unpaired')
+        return result
+    f.runner = malformed
+    with pytest.raises(RuntimeError, match='^compose_config_dollar_escape_invalid$'): f.activate()
+    assert not f.releases.exists() and all(s['running'] for s in original.services.values())
+    assert not any(a[:3] == ['docker', 'compose', 'stop'] or a[:2] == ['docker', 'run'] for a in original.calls)
 
 
 def test_resolved_environment_is_private_exact_and_raw_dotenv_is_preserved(f, monkeypatch):

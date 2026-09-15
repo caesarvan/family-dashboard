@@ -39,6 +39,8 @@
 
 停服前，控制器读取 `docker compose config --format json` 的 `services.app.environment`，逐项与当前 app 容器的 `Config.Env` 比较。缺项、不同值、重复键或无效类型均拒绝继续；不自行解析 dotenv，也不单独剥掉某个字段的引号。Compose 解析后的引号、美元符号、反斜杠和换行必须完整保留，`DATA_DIR` 必须为 `/data`。
 
+Compose v2.40.3 在 JSON 序列化后把每个 `$` 渲染为 `$$`，见 [官方 `runConfig` / `escapeDollarSign`](https://github.com/docker/compose/blob/v2.40.3/cmd/compose/config.go#L173)。控制器的 `parse_compose_config_output` 先拒绝奇数个连续 `$`，只将每对 `$$` 还原一次，再解析 JSON；这是输出转义的反解，不是变量展开。不能用 `--no-interpolate` 代替，因为它不走同一完整解析流程；反解后仍须与实际 app 逐项相等，才可保存私有 JSON。
+
 解析结果以完整字符串字典写入私有 `verification/environment.json`，0400 权限、UID/GID 10001 所有，固定其原始字节 SHA。它含凭据，**不得放入 READY、源码包、普通测试证据或日志**。原 `.env` 仍单独原字节备份并持续核对；JSON 只是隔离校验容器的配置输入，不替换用户 `.env`。
 
 ## 3. READY 合同
@@ -126,4 +128,4 @@
 
 [控制流专项](../tests/test_journey_documents_release.py) 在提交 `aecfd6c373eb34c56e0144ee01b639c31389dd32` 已有 **66 项离线检查通过**：使用 fake Docker runner 和真实临时文件，覆盖门槛拒绝、备份失败禁止 warm、漂移与 DDL 失败、分步启动、部分安装失败、超时容器清理及保留现场。它没有执行真实 Docker、SSH 或生产迁移，也不是实际 Docker 恢复证据。迁移 SQLite 专项、当前源码组合测试、实际 Docker 合成恢复及正式发布必须分别记录。
 
-本次配置传递修订后的完整控制流专项为 **83 项通过**，含原控制流、新增配置漂移拒绝、私有 JSON 篡改，以及实际执行 stdin 校验代码时的特殊字符保真。Compose 结果和运行容器配置由 fake runner 提供；该结果不证明真实 Docker 的 dotenv 解析行为，实际 Docker 合成配置与迁移验证须另行记录。
+配置传递第一版提交 `684da033c4df3b38417b82a3f7e0b5dfe2885930` 的 **83 项通过** 属历史离线证据，尚未覆盖 Compose 输出的美元符号再转义。加入单次反解后，完整控制流专项 **100 项通过**，使用与官方渲染一致的 fake 输出验证 `$`、`$$`、`${VAR}`、奇数美元符号拒绝及私有 JSON 保真。Fake runner 结果不证明真实 Docker 的 dotenv 解析行为，实际 Docker 合成配置与迁移验证须另行记录。
