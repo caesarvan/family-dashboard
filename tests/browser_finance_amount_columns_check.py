@@ -99,10 +99,11 @@ def main():
                     else: assert state['totals'][0]['orderCents'] == state['totals'][0]['netSpendCents'] == 8000
                     passed(f'{fmt}_{width}_confirmed_amount_readback_and_separate_orders')
                     form_for('taobao' if fmt == 'csv' else 'wechat', file); choose(2)
-                    expect(page.locator('.fh-table')).to_contain_text('重复')
+                    expect(page.locator('.fh-table')).to_contain_text('与原记录不同 · 保留原记录')
                     page.locator('[data-fh=confirm]').click(); expect(page.locator('.fh-ledger')).to_be_visible()
                     assert counts()['totalRecordCount'] == before + 1
-                    assert next(row for row in counts()['transactions'] if row['title'] == 'SYNTHETIC_' + fmt)['amountCents'] == 8000
+                    retained = next(row for row in counts()['transactions'] if row['id'] == record['id'])
+                    assert retained['amountCents'] == 8000 and retained == record
                     passed(f'{fmt}_{width}_reimport_other_column_keeps_existing_amount')
 
                 # Delayed preview must not replace a later import form.
