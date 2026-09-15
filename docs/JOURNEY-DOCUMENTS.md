@@ -1,6 +1,6 @@
 # 旅行资料与预订凭证
 
-**状态：独立源码候选，尚未发布。** 本模块管理成员主动上传的虚构或本人文件；本轮测试仅使用合成输入、临时家庭库和本地请求。实际测试结果需按冻结源码另行记录，不能由代码存在推断浏览器、真实凭证、生产迁移或恢复已经验收。生产版本见 [README](../README.md) 与 [VALIDATION](VALIDATION.md)。
+**状态：已于 2026-09-15 20:23:00（北京时间）发布。** 模块管理成员主动上传的文件，默认本人私有；API／浏览器使用虚构输入验证，43 表完整组 Docker 恢复与 42→43 配置迁移分别有实际记录。生产迁移及容器内部读回已通过，不代表真实预订凭证、公网浏览器、实体设备或新云写已验收。完整范围见 [README](../README.md) 与 [VALIDATION](VALIDATION.md)。
 
 实现为 [journey_documents.py](../journey_documents.py)，专项为 [test_journey_documents.py](../tests/test_journey_documents.py)。注册接缝为 `register_journey_documents(app, db, Problem, body, require_member, limited, audit)`；必须在旅行表和成员会话初始化后注册。公开常量 `SCHEMA_SQL` 是新增表、索引和触发器的唯一参考结构，没有默认资料或后台任务。
 

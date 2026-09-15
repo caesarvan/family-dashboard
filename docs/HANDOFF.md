@@ -1,52 +1,56 @@
 # 联合开发接手说明
 
-**当前版本：2026-09-15 16:25:03（北京时间），镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。** 旅行执行进度、真实待同步提示及两个订单表头兼容已发布，保留此前全部模块；源码／文档数量见 README 和逐文件清单、101 个方法／路径模板、42 张户内表及 2 张平台表。本轮无结构迁移。真实云写与其他外部验收仍按 [VALIDATION](VALIDATION.md) 单列。
+**当前版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
 ## 当前发布与源码状态
 
-本次于 **2026-09-15 16:25:03（北京时间）** 发布 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。本轮旅行执行、待同步状态与订单表头兼容已合入，无结构变化；15:10:00 财务版本及其 40→42 迁移保留为历史记录。
+本次于 **2026-09-15 20:23:00（北京时间）** 发布 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`，由 42 张户内表升级至 43 张。原代码、原始 `.env` 和完整备份在迁移前保全；原 42 表结构、行与序号在停写核对窗口保持。
 
 | 交接项 | 当前范围 |
 |---|---|
-| 当前源码 | main 通用包 225 文件、38 份 Markdown；Git bundle 另保留未合入分支；逐文件 SHA-256 见对应包 RELEASE-MANIFEST.json |
-| 接口与存储 | 101 个 Flask 方法/路径模板，另有 WSGI 家庭入口；每户 42 表 + 平台 2 表；本轮结构不变 |
-| 后端 | Windows：1268 passed / 18 skipped；Linux：1285 passed / 1 skipped；每端完整收集 1286 项 |
-| 浏览器 | 新旅行执行 53 项、原旅行与发布 8 组；绑定最终源码、零外站请求；历史财务 222 项属于上一版 |
-| 发布核对 | 停入口与写入后全家庭备份，42→42 表结构和数据逐项保持；42 静态资源与 18 匿名 GET 检查 |
-| 源码边界 | 仅源码／测试／文档；.env、数据库、真实财务输入和 test-results 不随通用包分发 |
-| 未验证范围 | 真实消费观察输入、新云写、公网、真实模型、银行／券商、私人来源完整映射、实体设备和生产覆盖恢复仍单列 |
+| 源码／Git | 237 文件、40 Markdown；已审 integration `b1981a4` 合入 main `670f34f`，文档后续单独审查、合入与同步 |
+| 接口与存储 | 106 个 Flask 方法／路径模板，另有 WSGI 家庭入口；43 户内表 + 2 平台表 |
+| Windows | 1495 项：1477 passed / 18 skipped，分段与精准重试去重；保留首轮失败 |
+| Linux | 1495 项：1494 passed / 1 skipped；同镜像原 full 1461 去旧控制器 66，加当前 100 定向实测 |
+| 浏览器 | 资料 43 + 细项 10 + 执行 53 + 返回 23 = 129；受影响依赖逐字一致，0 外站请求 |
+| 发布读回 | 20:23:44：237 源文件、44 静态匹配，8 匿名 401；实际 1 户 43 表、平台注册 2 表，三服务正常 |
+| Docker 恢复 | 两户 43 表恢复 65 / 15 / 216、8 份资料；与单户 42→43 配置迁移演练分开 |
+| 分发边界 | 通用包不含 .env、真实数据库／财务输入、私有 test-results；完整文件备份与本人元数据 ZIP 不同 |
+| 未验收 | 真实新增云写、消费观察输入接受、模型、银行／券商、公网、实体设备及生产覆盖恢复 |
 
-本次交接另含 `deploy/rehearse_restore.py`、`tests/restore_rehearsal_fixture.py`、`tests/test_recovery_rehearsal_safety.py` 和[恢复演练文档](RECOVERY-REHEARSAL.md)。运行镜像保持 16:25 版本；16:54 已完成真实 Docker 合成演练。此增量只含工具、测试和文档；历史完整后端 1286 项与新增安全测试 13 项分别记录。后续修改恢复文档中的 Python／SQL 时，同时复核提取逻辑和实际演练，不能仅更新一份复制的算法。
+本次与首次失败、配置反解修复、分段测试和实际发布的精确证据见 [VALIDATION](VALIDATION.md)。恢复 Python／SQL 和业务代码在本轮文档更新中保持原字节。
 
 ## 当前候选与文件占用
 
-已发布的旅行执行和恢复工具已经完成交接。**新旅行资料已分模块审查并合入 `codex/integration`，尚未部署**。本节记录集成到 `31397f9423e64a30de6f746bc517868aeb0cdcd5` 时的进度；此时 main 为 `22fe53c`，后续应先核对实际 Git refs，不能凭本段旧快照判断发布状态。旧共享候选目录只作冻结证据，禁止继续在其中开发。
+旅行资料 API、导出、UI、接入、迁移与发布工具已经分模块审查，完成组合验收并于 20:23:00 发布。以下分支保留作者与审查历史，不代表还有待重放的补丁或永久文件占用；新的任务需重新登记独立分支、base 与允许路径。
 
 仓库基线为 `ad667bf2b744d707db080964c662249c7cd8b056`，标签 `baseline/2026-09-15-handoff`。当前主仓为项目根目录，各工作树位于维护者本机 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/worktrees/` 下；换机器后按 [Git 指导](GIT-WORKFLOW.md) 从 bundle 创建自己的工作树，不复用这些机器绝对路径。
 
 | 分支 | 本轮负责人 / worktree 目录名 | 已保存范围与状态 |
 |---|---|---|
-| `main` | 集成人 / 项目根目录 | 已发布业务基线与审查后的交接文档；线上结构仍为 101 路由、42 户内表 |
+| `main` | 集成人 / 项目根目录 | 已发布业务基线与审查后的交接文档；当前为 `670f34f`，线上 106 路由、43 户内表 |
 | `codex/integration` | 集成人专用 | 仅合并审查通过的提交，不供模块 agent 直接开发 |
 | `codex/journey-documents-api` | journey_workflows / journey-documents-api | `90292c7`；product_interface 独立审查功能，root 复核末尾空行修正，已合入 integration |
 | `codex/journey-documents-ui` | product_interface / journey-documents-ui | `a9dd519`；journey_workflows 审查提出三项修复，作者修复后由 root 复核，已合入 integration |
 | `codex/journey-documents-portability` | finance_hub / journey-documents-portability | `8eb120e`；本人导出和恢复夹具，由 root 独立审查后合入 integration |
 | `codex/journey-documents-wiring` | 集成人 / journey-documents-wiring | `2774e75`；app、加载、Docker 与发布白名单，由 finance_hub 独立审查后合入 integration |
 | `codex/finance-journey-migration` | finance_hub / finance-journey-migration | `ec0ec4c`；可移植 42→43 检查器、16 项测试及契约，由 root 独立审查后合入 integration |
-| `codex/journey-documents-release` | journey_workflows / journey-documents-release | `aecfd6c`；专用发布控制器、66 项命令替身检查，由 root 独立审查后合入 integration；未执行生产迁移 |
+| `codex/journey-documents-release` | journey_workflows / journey-documents-release | `aecfd6c`；专用发布控制器、66 项命令替身检查，由 root 独立审查后合入 integration；此旧 66 项记录仅覆盖初版，后续环境修订与真实发布见下文 |
 | `codex/journey-release-guide` | journey_workflows / journey-release-guide | `af81669`；发布输入、原始证据和失败处理指导，由 root 独立审查并复核文案修正后合入 integration |
-| `codex/root-journey-docs` | root / root-journey-docs | 当前候选的 README、接口索引、数据与部署文档；独立提交、交由非作者审查 |
-| `codex/docs-git-handoff`、`codex/git-workflow-guide` | 文档集成人与文档 agent，各自独立目录 | 本次 README、Git 规则与指导；通过独立审查后逐层合入 main |
+| `codex/journey-release-env-fix` | journey_workflows / journey-release-env-fix | `684da03` → `2c9be6c`，配置解析与美元输出反解；finance_hub 独立审查，100 项控制流通过，经 integration `b1981a4` 合入 main `670f34f` |
+| `codex/journey-published-docs` | journey_workflows / journey-published-docs | 本次仅 README/docs 更新，base `670f34f`，由非作者审查后交集成人合入；不修改运行代码 |
+| `codex/root-journey-docs` | root / root-journey-docs | 旅行资料集成阶段的 README、接口索引、数据与部署文档；已独立审查并合入 |
+| `codex/docs-git-handoff`、`codex/git-workflow-guide` | 文档集成人与文档 agent，各自独立目录 | 此前 README、Git 规则与指导；已通过独立审查逐层合入 main，保留历史分支 |
 
-候选实现资料默认本人私有、明确选择后向本户成员共享，电视不能读取资料；PDF 仅下载，图片解码净化，删旅行保留上传者资料并可重新关联。新增 5 个方法/路径模板及 1 张表，候选为 **106 路由、43 户内表及 2 张平台表**；完整字段见 [旅行资料契约](JOURNEY-DOCUMENTS.md)，生成索引反映候选源码，不能理解为线上结构已经改变。
+已发布资料默认本人私有、明确共享后伙伴只读，TV 不可读；PDF 仅下载、图片净化，删除旅行保留上传者资料。当前 **106 路由、43 户内表及 2 平台表**，完整契约见 [旅行资料](JOURNEY-DOCUMENTS.md)。
 
 各模块分支保留独立职责，**单独分支不一定能启动完整新功能**。UI、导出和接线依赖新后端；完整测试在审查后的集成提交上执行，不通过复制其他工作树文件拼装。浏览器验证使用固定提交的 detached worktree，作者仍只在自己的功能分支修复；修复再次审查和 Git 合并后才验证新提交。
 
 已完成的组合证据：`edc4ad9` 上资料 API／导出组合 **85 passed**（68 + 12 + 原导出 5），后续仅 API 末尾空行整理不改变 AST；`c91c6fe` 上完整资料浏览器 **43/43**、原详情 **10/10**、执行流程 **53/53**、返回流程 **23/23** 通过，共 129 项，232 个受控源文件前后相同且无页面错误或外站请求。43 项包含刷新后的准确分段焦点、四种空闲身份切换清屏，以及成功响应丢失后原旅行删除／重新关联的幂等重试。迁移工具在无 Git 的独立 TAR 解压目录中 **16 passed**，不依赖开发者路径。
 
-本机合成恢复 seed 15 / verify 216 是独立夹具记录；完整后端、Linux 镜像、新 43 表实际 Docker 恢复、最终集成复核与正式迁移尚待绑定最终源码完成。旧浏览器失败和后续修复分开保留，原 42 表镜像的通过记录不能移作此候选验收。当前通用源码排除全部真实输入、配置和私有 `test-results/`。
+原本机 seed 15 / verify 216 仅为夹具验证；后续同镜像两户真实 Docker 恢复已完成 65 / 15 / 216，8 个关联依赖文件保持原字节，因此对最终环境修订复用。另有单户 42→43 真 Docker 配置迁移演练，不能混算成恢复检查。Windows、Linux 的最终去重范围及生产迁移均已按最终源码记录，旧失败不隐去。
 
 旅行执行跨模块接缝：`static/journey-ui.js/.css` 管详情刷新、负责人筛选和原流程返回；`task_publish.py`、`calendar_publish.py` 管 `localChangesPending` 的只读比较；`finance_hub.py` 管来源限定的订单表头兼容。验收入口为 `tests/browser_journey_execution_check.py`、`tests/test_publication_local_changes.py` 和 `tests/test_order_source_headers.py`。这些文件及接口变更由集成人协调，不能由旅行与云同步 agent 同时修改同一文件。见 [旅行执行契约](JOURNEY-EXECUTION.md)。
 
@@ -81,6 +85,7 @@
 | 云账户与同步 | `cloud_accounts.py`、`cloud_providers.py`、`sync_worker.py`、`static/accounts-ui.js` | [账号接入](ACCOUNT-SYNC.md)、[连接返回](CONNECTION-RETURN.md)；成员授权、选源、账号锁、分页后替换与失败保旧。停止信号不保证在途请求立即结束 |
 | 云日历与本地待办发布 | `calendar_publish.py`、`task_publish.py`、对应 UI | [日历发布](CALENDAR-PUBLISH.md)、[待办发布](TASK-PUBLISH.md)；明确预览确认、原幂等标识、ETag/冲突、目标重连与本地实体 ID。不确定创建不得盲目重发 POST |
 | 旅行与跨模块联动 | `journey_workflows.py`、`journey_time.py`、`static/journey-ui.js/.css`、旅行示例 JSON | [平台 API](PLATFORM-API.md)、[旅行时间](TRAVEL-DETAILS-PLAN.md)；v1/v2、各地时间/IANA、排他日期、稳定 key、三方比较、待办/采购/日程联动和返回原计划 |
+| 旅行资料 | `journey_documents.py`、`static/journey-documents.js/.css` | [资料契约](JOURNEY-DOCUMENTS.md)；上传者权限、文件净化／下载、稳定分段、幂等 tombstone、孤立资料、元数据导出及备份 |
 | 私有账本与投资 | `finance_hub.py`、`financial_files.py`、`investment_import.py`、对应 UI | [财务 API](FINANCE-API.md)、[账单导入](FINANCE-IMPORT.md)、[持仓导入](INVESTMENT-IMPORT.md)；整数分、分币种、未知值、工作表/金额选择、对账及原始来源标识。预览与确认分开 |
 | 独立消费观察 | `spending_observations.py`、`finance_source_bridge.py`、`finance_baseline.py`、来源准备器和 UI | [消费观察](SPENDING-OBSERVATIONS.md)；需要已有本人基线，滚动覆盖、原基线不变、独立回执；不代表核对实付或自动银行接入 |
 | 个人财务基线来源 | `finance_baseline.py`、`finance_source_bridge.py`、`deploy/prepare-finance-source.py`、对应 UI | [来源桥](FINANCE-SOURCE-BRIDGE.md)；私人映射、日期/覆盖范围、版本 CAS、缺源保旧。不能将个人银行余额当公共荷包，真实映射仍需核对 |
@@ -88,7 +93,7 @@
 | 本人数据副本 | `data_portability.py`、`static/data-portability.js` | [导出契约](PORTABILITY.md)；仅本人私密与显式勾选的共同记录。排除令牌、会话/设备认证表和暂存预览；不是数据库恢复包 |
 | 部署与备份 | `Dockerfile`、`compose.yaml`、`deploy/` | [部署指导](DEPLOYMENT.md)、[运维说明](OPERATIONS.md)；源码白名单、现有配置、全部家庭、停止写入、成组备份及相配恢复 |
 
-当前路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md) 和 [contract-inventory.json](contract-inventory.json)，结构为 101 个方法/路径模板、42 张户内表与 2 张平台表，须与最终源码实例化一致。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
+当前路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md) 和 [contract-inventory.json](contract-inventory.json)，结构为 106 个方法/路径模板、43 张户内表与 2 张平台表，须与最终源码实例化一致。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
 
 ## 例行计划公共接缝
 
@@ -96,11 +101,11 @@
 
 `data_portability.py` 只在 `includeShared=true` 时加入 `shared.routines`。`home_assistant.py` 调用只读 `brief(con)`；`static/home-assistant.js` 按存在的数据显示例行计划待处理组。`static/product-shell.js` 提供三个入口并在共享状态刷新时通知例行模块；通知不发送请求、不重置草稿。新模块在 `product-shell.js` 之前加载。公开接口为 `HouseholdRoutines.open({planId?})`、`refresh()` 和 `notifyStateChanged()`。返回桥支持原待办／采购编辑器与 TaskPublish 初始选择页；保留未保存字段、图片和写中保护，显式返回重新核对原计划，不接管助理外层的关闭返回处理。Docker COPY 和 `deploy/prepare_release.py` 白名单都包含新后端。
 
-当前完整结构为 101 路由／42 户内表／2 平台表；例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
+当前完整结构为 106 路由／43 户内表／2 平台表；例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
 
 ## 已开发与待真实验证
 
-目前可用的本地完整流程包括：家庭进入/邀请与会话管理；日程和主清单连接；多城市旅行经表单预览确认联动准备、采购和日程；助理处理原事项或整理旅行简报；私人账单/持仓文件预览确认与本人导出；本人付款经预览确认核对原共享采购、订单对账后返回、来源变化复核与明确解除；两台电视分别配对并保存显示设置；按来源检查同步新鲜度并打开本人原问题。云写入始终由独立授权和明确确认驱动。
+目前可用的流程还包括旅行／分段资料夹、本人资料库、明确共享和逐份文件下载；现有本地完整流程包括：家庭进入/邀请与会话管理；日程和主清单连接；多城市旅行经表单预览确认联动准备、采购和日程；助理处理原事项或整理旅行简报；私人账单/持仓文件预览确认与本人导出；本人付款经预览确认核对原共享采购、订单对账后返回、来源变化复核与明确解除；两台电视分别配对并保存显示设置；按来源检查同步新鲜度并打开本人原问题。云写入始终由独立授权和明确确认驱动。
 
 | 尚需实际验收或实现 | 必须保留的界限 |
 |---|---|
@@ -152,9 +157,9 @@
 5. 明确接口/迁移/隐私变化后再编码。公共 API、数据模型、用户步骤、错误行为和相应测试一起交付；金额是整数分、不同币种分别计算，日期语义按旅行契约。
 6. 由集成人检查合并结果，完成对应组合测试、冻结、打包及发布。源码打包只收白名单，不生成凭据，也不是内容脱敏器；不能把私人文件临时放到 `docs/tests/static/deploy`。
 
-部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与 [已有服务器更新](DEPLOYMENT.md#5-已有服务器发布更新)。15:10:00 历史财务版本完成 40→42 消费观察迁移。本版使用第 5.2 节 42→42 无结构更新，保留全部 42 表、列、行、schema 和 SQLite 序号；拒绝 40 表输入，不能改数字绕过。历史 37→40 例行迁移保留独立证据。
+部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。本次已经完成 [一次性 42→43](JOURNEY-DOCUMENTS-RELEASE.md)；当前 43 表不能重跑该控制器，也不能使用 DEPLOYMENT 第 5.2 节历史 42→42 算法。后续 43→43 指导尚待单独实现验证，禁止仅改表数；旧 37→40、40→42 继续保留历史范围。
 
-更新保留 `.env` 和主密钥，先关闭 web，再停止 sync/app，核对注册目录、全部家庭与完整备份组后串行初始化。app 启动读回通过才开放 sync/web；提交前按已审路径受控恢复，已有业务写入后先保全现场，不能让旧镜像盲接未知库。恢复使用相配源码、密钥、注册目录与家庭映射；**恢复后先使目标家庭旧成员登录失效，再启动 app/web 核对，最后才恢复 sync**。具体步骤见 [部署与恢复](DEPLOYMENT.md#6-备份恢复与回滚)、[运维](OPERATIONS.md) 和 [会话恢复要求](MEMBER-SESSIONS.md#恢复后使旧成员登录失效)。上一财务版本的 165／119 项离线激活／控制器恢复、79 项文档零结构检查均不是生产恢复演练。
+更新保留 `.env` 和主密钥，先关闭 web，再停止 sync/app，核对注册目录、全部家庭与完整备份组后串行初始化。app 启动读回通过才开放 sync/web；本次控制器任何失败均停止并保全现场，不自动恢复数据库。需要恢复时另行确定相配源码、密钥、注册目录与家庭映射，不能让旧镜像盲接未知库；已有业务写入时不能用旧快照覆盖。**恢复后先使目标家庭旧成员登录失效，再启动 app/web 核对，最后才恢复 sync**。具体步骤见 [部署与恢复](DEPLOYMENT.md#6-备份恢复与回滚)、[运维](OPERATIONS.md) 和 [会话恢复要求](MEMBER-SESSIONS.md#恢复后使旧成员登录失效)。上一财务版本的 165／119 项离线激活／控制器恢复、79 项文档零结构检查均不是生产恢复演练。
 
 ## 后续工作
 

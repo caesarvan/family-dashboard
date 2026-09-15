@@ -1,6 +1,6 @@
 # 独立消费观察
 
-**当前版本：2026-09-15 16:25:03（北京时间），镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。** 旅行执行进度、真实待同步提示及两个订单表头兼容已发布，保留此前全部模块；源码与文档数量见 [README](../README.md) 及逐文件交接清单；101 个方法／路径模板、42 张户内表及 2 张平台表。本轮无结构迁移。真实云写与其他外部验收仍按 [VALIDATION](VALIDATION.md) 单列。
+**当前版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
 
 ## 用途与操作路径
 
@@ -200,7 +200,7 @@ CREATE INDEX IF NOT EXISTS finance_spending_receipts_owner
 
 存在独立观察时，private 响应增加 `spendingObservation:{revision,sourceDigest,acceptedAt,origin,warnings,assetBaselineUnchanged}`。其中 revision／sourceDigest 标识独立快照，即使 origin 为 `baseline`；origin 可能为 `baseline` 或 `spending_observation`。页面显示的是所选观察自己的生成时间、请求区间与质量状态，不能据此宣称资产余额更新。
 
-本人 ZIP 的 `personal.spendingObservations` 含 `{current,receipts}`，只导出本人规范化当前快照和公开业务回执字段；shared 不包含观察，伴侣不读取它。具体导出与恢复范围统一见 [PORTABILITY](PORTABILITY.md) 和 [DEPLOYMENT](DEPLOYMENT.md)。2026-09-15 15:10 的历史版本已按两表新增方案核验 40→42 迁移，该次首次迁移并非零 schema 变化；16:25 运行版本没有结构迁移，当前后续无结构变化更新使用另列的 42→42 检查。
+本人 ZIP 的 `personal.spendingObservations` 含 `{current,receipts}`，只导出本人规范化当前快照和公开业务回执字段；shared 不包含观察，伴侣不读取它。具体导出与恢复范围统一见 [PORTABILITY](PORTABILITY.md) 和 [DEPLOYMENT](DEPLOYMENT.md)。2026-09-15 15:10 的历史版本已按两表新增方案核验 40→42 迁移，该次首次迁移并非零 schema 变化；16:25 历史运行版本没有结构迁移，当时使用 42→42 检查；20:23 旅行资料已独立完成 42→43。旧零结构示例不能用于当前 43 表，后续 43→43 指导尚待独立实现与验证。
 
 ## 验证与接手
 
