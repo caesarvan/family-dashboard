@@ -4,6 +4,22 @@
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
+## 待办起步与订单文件兼容候选
+
+本轮共同 base 为 `daf5ab4e7adbddb994ca5c1fd745180d5d912c63`，这是旅行入口发布后已审文档的主分支基线。每个任务仍使用独立目录；只读审查使用冻结提交的 detached worktree。
+
+| 分支 | 独占 worktree | 允许范围 |
+|---|---|---|
+| `codex/product-task-start` | product-task-start | `static/product-shell.js`、`static/task-publish.js`、`static/accounts-ui.js`、新起步浏览器测试、连接返回与用户指导 |
+| `codex/finance-order-samples` | finance-order-samples | `financial_files.py`、合成 reader 测试和 `FINANCE-IMPORT.md`；真实输入只在本机临时预览 |
+| `codex/root-task-import-handoff` | root-task-import-handoff | README、HANDOFF、VALIDATION；无运行文件编辑 |
+
+待办分支初版 `a3183ed` 的同时点击问题由非作者实际复现，暂缓合入后交原作者修订；原提交、测试与问题记录保留。审查者不直接编辑作者目录。集成人按固定 SHA 接收通过复审的候选，再做组合测试和审查，最后才合入 main。
+
+财务候选 `fe2d043` 已通过 root 非作者审查并合入 integration `f78c8ca`；待办最终 `05d388d` 通过 journey_workflows 复审后合入 integration `83a1a71`。该组合为 249 源文件、42 Markdown、44 静态资源；接口与表结构不变。主分支合入仍须依据这个组合的测试及再次审查，不能用单模块通过代替。
+
+这批代码尚未发布，已知线上版本仍为下节 22:32 的镜像。候选包含后端 reader 改动，现有 static-only 控制器不能用于它；也不能重放一次性 42→43 迁移。后续需按无 schema 变化的后端更新单独准备镜像、备份、演练和读回，不得只改表数绕过发布范围。没有新 API、表、依赖或环境变量。
+
 ## 当前发布与源码状态
 
 本次于 **2026-09-15 22:32:04（北京时间）** 发布 `sha256:14c7db7ba55cb4bbbed919b0b14d4bb1b1670eeb07d9a6f90e05799220590dfb`。该镜像只追加静态层；没有 schema 初始化、后端或依赖变化。实际 1 户的 43 表与 2 张平台表在停写至 HTTP 核对窗口保持，2 库完整备份和原配置已保全。
