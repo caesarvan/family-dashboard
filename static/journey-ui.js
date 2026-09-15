@@ -471,7 +471,7 @@ window.JourneyUI = (() => {
       <p class="journey-notice">${esc(notice)}</p><p class="help">${isV2()?'修改旅行总日期不会自动改订航班或酒店。整体迁期时，只有明确允许随旅行迁期且尚未预订的项目可以移动，固定和已订项目保留。':'调整出发日期会移动准备事项截止日和已有分段；返程日期变化后，请核对每一站停留时间。'}</p>
       <div class="journey-error error" role="alert"></div><div class="dialog-footer">${button('list', '返回旅行工作台')}<button class="btn" type="submit">预览准备与日程 →</button></div></form>`);
     const form = document.getElementById('journey-form');
-    if(segmentEditTarget?.journeyId===context.journeyId)locateSegment(form,segmentEditTarget.key,true);
+    if(segmentEditTarget&&segmentEditTarget.journeyId===context.journeyId)locateSegment(form,segmentEditTarget.key,true);
     let previousStart = draft.start;
     form.querySelector('#journey-core-fields [name="start"]').addEventListener('change', () => {
       const delta = dayDiff(form.querySelector('#journey-core-fields [name="start"]').value, previousStart);
@@ -528,7 +528,7 @@ window.JourneyUI = (() => {
       event.preventDefault(); if (!canEdit() || !preview?.previewToken) return;
       const submit = form.querySelector('#journey-apply'); submit.disabled = true;
       // An already sent apply is not cancelled. Keep the original receipt and key for safe retries.
-      const receipt = preview.previewToken, operation = operationKey, segmentKey=segmentEditTarget?.journeyId===context.journeyId?segmentEditTarget.key:'';
+      const receipt = preview.previewToken, operation = operationKey, segmentKey=segmentEditTarget&&segmentEditTarget.journeyId===context.journeyId?segmentEditTarget.key:'';
       await draftOperation(form, async ({check}) => {
         const result = await write('/journeys/apply', 'POST', {previewToken: receipt, idempotencyKey: operation});
         if (!await check()) return;
