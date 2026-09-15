@@ -144,6 +144,11 @@ const noteField=(value='',label='备注')=>`<label class="field full"><span>${la
 const formFooter=(kind,item)=>`<div class="error" role="alert"></div><div class="dialog-footer">${item?`<button type="button" class="btn danger" data-action="delete" data-kind="${kind}" data-id="${item.id}">删除</button>`:''}<button type="button" class="btn secondary" data-action="close">取消</button><button class="btn" type="submit">保存</button></div>`;
 function bindForm(callback){const form=$('#dialog form');form.onsubmit=async e=>{e.preventDefault();const button=$('button[type=submit]',form);button.disabled=true;$('.error',form).textContent='';try{await callback(Object.fromEntries(new FormData(form)),form);closeModal();await refresh(true);toast('已保存，两块看板会自动更新')}catch(err){$('.error',form).textContent=err.message;if(err.status===409)await refresh()}finally{button.disabled=false}}}
 function editItem(kind,id='',extras={}){
+  if(kind==='trips'&&!id){
+    if(isTV||(!canEdit()&&!isDemo))return;
+    if(typeof window.JourneyUI?.create!=='function'){toast('旅行规划组件尚未加载，请刷新后重试；没有创建旅行。',true);return}
+    return window.JourneyUI.create();
+  }
   if(kind==='shopping')return ShoppingUI.openEditor(id,extras);
   if(!canEdit())return;activeManager='';const item=data[kind].find(i=>i.id===id),v=item||extras;
   if(item?.sync){toast('同步内容请在原应用修改；可在看板勾选完成或恢复。');return}
@@ -295,6 +300,7 @@ document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-action]');if(!b)return;const action=b.dataset.action,kind=b.dataset.kind,id=b.dataset.id;
   try{
     if(action==='close'){closeModal();return}if(action==='reload'){location.reload();return}if(action==='home'){closeModal();window.scrollTo({top:0,behavior:'smooth'});return}
+    if((action==='add'&&kind==='trips')||action==='add-trip'){await editItem('trips');return}
     if(!canEdit()){if(isDemo)toast('这是演示预览。登录后即可维护真实内容。');return}
     if(action==='add'){editItem(kind);return}if(action==='edit'){editItem(kind,id);return}
     if(action==='manage'){manage(kind);return}

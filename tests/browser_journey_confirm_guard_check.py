@@ -115,6 +115,8 @@ def main():
                                 'revisions': dict(con.execute('SELECT id,revision FROM journey_workflows'))}
 
                 def fresh_review(title):
+                    if page.locator('#dialog').is_visible():
+                        page.locator('#dialog [data-action=close]').click()
                     page.evaluate('JourneyUI.create()')
                     for name, value in {'title': title, 'start': '2026-12-01', 'end': '2026-12-05'}.items():
                         page.locator('#journey-core-fields [name=' + name + ']').fill(value)
