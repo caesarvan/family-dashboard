@@ -7,14 +7,14 @@ window.JourneyDocuments = (() => {
   const allowed=()=>!isDemo&&!isTV&&canEdit();
   const actor=()=>({id:user?.id,household:user?.householdId||'default',version:user?.auth_version,csrf});
   const matches=(a,u,c)=>u?.role==='member'&&a.id===u.id&&a.household===(u.householdId||'default')&&a.version===u.auth_version&&a.csrf===c;
-  const owns=f=>current===f&&f.generation===generation&&f.route===location.href&&f.node.isConnected&&document.getElementById('dialog')?.open&&document.querySelector('#dialog .dialog-content')?.contains(f.node);
+  const owns=f=>!!f&&current===f&&f.generation===generation&&f.route===location.href&&f.node.isConnected&&document.getElementById('dialog')?.open&&document.querySelector('#dialog .dialog-content')?.contains(f.node);
   const identityError=()=>Object.assign(new Error('identity'),{identityChanged:true});
   const button=(action,label,attrs='')=>`<button type="button" class="btn small secondary" data-jd="${action}" ${attrs}>${label}</button>`;
   const field=(label,name,value,attrs='')=>`<label class="field"><span>${label}</span><input name="${name}" value="${escape(value)}" ${attrs}></label>`;
   const bytes=n=>n>=1000000?(n/1000000).toFixed(1)+' MB':Math.ceil(n/1000)+' KB';
   const when=value=>{const date=new Date(value);return Number.isFinite(date.getTime())?date.toLocaleDateString('zh-CN'):'日期待核对';};
   function clearUrls(){for(const url of urls)URL.revokeObjectURL(url);urls.clear();}
-  function neutral(f){if(!owns(f))return;f.node.innerHTML='<p role="alert">登录成员或家庭已变化，资料已收起。请刷新后重新进入。</p>';f.model=null;f.epoch++;}
+  function neutral(f){if(!owns(f))return;f.node.innerHTML='<p role="alert">登录成员或家庭已变化，资料已收起。请刷新后重新进入。</p>';f.model=null;f.epoch++;current=null;generation++;}
   function message(f,text){if(owns(f)){let box=f.node.querySelector('[data-jd-message]');if(!box){f.node.insertAdjacentHTML('beforeend','<p class="jd-message" data-jd-message role="status"></p>');box=f.node.querySelector('[data-jd-message]');}box.textContent=text;}}
   const description=status=>status===409?'资料已有变化，或本次提交无法继续。草稿仍保留，请读取最新版本并核对后再保存。':status===413?'文件过大，请选择不超过 5 MB 的文件。':status===403?'你不能管理这份资料。':status===404?'这份资料或旅行已不存在，或当前成员不可见。':'暂时无法完成，请稍后重试。尚未确认成功的上传会沿用原请求核对，避免重复创建。';
   async function job(f,form,work,onFailure=null){
@@ -108,7 +108,7 @@ window.JourneyDocuments = (() => {
       f.confirmed=true; // A readback failure must never become another POST/PATCH.
       if(!await j.check())return;
       if(!response?.document)throw new Error('invalid_response');
-      f.journeyId=data.journeyId||'';f.segmentKey=data.segmentKey;
+      f.journeyId=response.document.journeyId||'';f.segmentKey=f.journeyId?response.document.segmentKey||'':'';
       await readAfterWrite(f,j);
     },error=>{
       message(f,error.status===400?'文件或填写内容未通过检查：'+(error.message==='file'?'请选择格式与扩展名一致的 PDF、JPG、PNG 或 WebP。':error.message)+(error.message?.includes('400 万像素')?' 请先导出不超过 2000 × 2000 像素的图片，再重新选择。':'')+' 原表单已保留。':description(error.status));
@@ -166,8 +166,10 @@ window.JourneyDocuments = (() => {
     if(action==='upload'){void job(f,null,async j=>{if(await j.check())editor(f);});return;}
     if(action==='back'){void job(f,null,async j=>{if(await j.check())await window.JourneyUI.open(f.journeyId,{segmentKey:f.segmentKey});});}
   });
-  const cleanup=()=>{if(current&&!owns(current)){current.model=null;current=null;generation++;}};
-  new MutationObserver(cleanup).observe(document.getElementById('dialog'),{childList:true,subtree:true});
+  const cleanup=()=>{if(!current)return;if(!owns(current)){current.model=null;current.epoch++;current=null;generation++;return;}if(!allowed()||!matches(current.actor,user,csrf))neutral(current);};
+  const observer=new MutationObserver(cleanup);
+  observer.observe(document.getElementById('dialog'),{childList:true,subtree:true,attributes:true,attributeFilter:['open']});
+  observer.observe(document.getElementById('app'),{childList:true,subtree:true});
   document.getElementById('dialog').addEventListener('close',cleanup);
   window.addEventListener('pagehide',()=>{current=null;generation++;clearUrls();});
   return {open};

@@ -683,7 +683,7 @@ window.JourneyUI = (() => {
         section?.insertAdjacentHTML('afterbegin',`<p class="journey-return-result" role="status">${row?'已回到原事项，进度与预算已重新读取。':exists?'原事项仍保留，当前负责人筛选未显示；进度与预算已重新读取。':'原事项已移除或解除关联；已回到原区域并重新读取结果。'}</p>`);
       }
       if (focus) [...body.querySelectorAll('[data-journey]')].find(node=>node.dataset.journey===focus.journey && node.dataset.id===focus.id
-        && node.dataset.kind===focus.kind && node.dataset.publicationId===focus.publicationId)?.focus({preventScroll:true});
+        && node.dataset.kind===focus.kind && node.dataset.publicationId===focus.publicationId && node.dataset.segmentKey===focus.segmentKey)?.focus({preventScroll:true});
       else if (focusedRegion) [...body.querySelectorAll('[data-journey-region]')].find(node=>node.dataset.journeyRegion===focusedRegion)?.focus({preventScroll:true});
     }
     executionStatus(flow);

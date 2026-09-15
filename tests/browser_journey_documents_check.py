@@ -45,6 +45,35 @@ def sources():
     return {p.relative_to(ROOT).as_posix():sha(p) for p in sorted(paths)}
 
 
+def check_segment_focus_after_refresh(page, context, base, journey_id, segment_key):
+    """Use the real polling timer and a shared task change to force a body repaint."""
+    expect(page.locator('[data-journey=refresh-execution]')).to_be_enabled()
+    cards=page.locator('.journey-itinerary-item')
+    assert cards.nth(1).get_attribute('data-segment-key')==segment_key
+    card=page.locator('.journey-itinerary-item[data-segment-key="'+segment_key+'"]')
+    title=card.locator('h3').inner_text()
+    first_title=cards.first.locator('h3').inner_text()
+    assert title!=first_title
+    button=card.locator('[data-journey=copy-segment]')
+    page.evaluate("()=>navigator.clipboard.writeText('')")
+    button.focus();original=button.element_handle()
+    state=context.request.get(base+'/api/journeys/'+journey_id)
+    assert state.status==200
+    task=state.json()['tasks'][0]
+    member=context.request.get(base+'/api/me')
+    assert member.status==200
+    updated=context.request.patch(base+'/api/items/tasks/'+task['id'],headers={'X-CSRF-Token':member.json()['csrf']},
+                                  data={'revision':task['revision'],'done':not task['done']})
+    assert updated.status==200
+    page.wait_for_function('(node)=>!node.isConnected',arg=original,timeout=20000)
+    expect(button).to_be_focused()
+    assert button.get_attribute('data-segment-key')==segment_key
+    page.keyboard.press('Enter')
+    page.wait_for_function('(title)=>navigator.clipboard.readText().then(text=>text.includes(title))',arg=title)
+    copied=page.evaluate('()=>navigator.clipboard.readText()')
+    assert title in copied and first_title not in copied
+
+
 def main():
     out=ROOT/'test-results';out.mkdir(exist_ok=True)
     stamp=datetime.now().strftime('%Y%m%dT%H%M%S%f')
@@ -155,6 +184,8 @@ def main():
                         passed('saved_flight_address_notes_visible_without_private_document_fetch')
                         stay.locator('[data-journey=copy-segment]').click();flow.page.wait_for_function("()=>navigator.clipboard.readText().then(t=>t.includes('虚构完整地址'))")
                         passed('explicit_copy_contains_saved_address_and_meeting_information')
+                        check_segment_focus_after_refresh(flow.page,flow.ctx,base,jid,segment_key)
+                        passed('automatic_repaint_keeps_second_segment_button_focus_and_Enter_copies_original_segment')
                         stay.locator('[data-journey=segment-edit]').click();expect(flow.page.locator('.journey-v2-segment.journey-segment-target')).to_have_attribute('data-key',segment_key)
                         form=flow.page.locator('#journey-form');form.locator('.journey-v2-segment[data-key="'+segment_key+'"] [name=note]').fill('已更新的合成集合信息')
                         form.locator('[type=submit]').click();flow.page.locator('#journey-apply').click();expect(flow.page.locator('.journey-itinerary-item.journey-segment-target')).to_have_attribute('data-segment-key',segment_key)
@@ -215,6 +246,30 @@ def main():
                         partner.open('');expect(partner.page.locator('.jd-card')).to_have_count(0)
                         passed('partner_can_download_shared_only_has_no_management_and_owner_library_stays_private')
                     finally:partner.close()
+                    for view in ('list','upload'):
+                        for replacement in ('logout','member'):
+                            flow=Flow();active=flow
+                            try:
+                                flow.open();private_title='空闲私人资料 '+view+' '+replacement
+                                form=flow.upload(private_title)
+                                if view=='list':flow.save(form);original=flow.page.locator('.jd-grid').element_handle()
+                                else:original=form.element_handle()
+                                flow.page.wait_for_function('()=>window.jdPending===0')
+                                assert not flow.held
+                                reads=sum(path.startswith('/api/journey-documents') for _,path in flow.calls)
+                                if replacement=='logout':
+                                    assert flow.ctx.request.post(base+'/api/logout',headers=auth(flow.ctx),data={}).status==200
+                                    flow.page.evaluate('async()=>{await refresh(true);}')
+                                    expect(flow.page.locator('#login-form')).to_be_visible()
+                                else:flow.switch(2)
+                                expect(flow.page.locator('[data-jd-root]')).to_contain_text('资料已收起')
+                                assert not original.evaluate('(node)=>node.isConnected')
+                                expect(flow.page.locator('#dialog')).not_to_contain_text(private_title)
+                                expect(flow.page.locator('#dialog')).not_to_contain_text('synthetic.pdf')
+                                expect(flow.page.locator('#journey-document-form')).to_have_count(0)
+                                assert sum(path.startswith('/api/journey-documents') for _,path in flow.calls)==reads
+                                passed('idle_'+view+'_'+replacement+'_redraw_clears_private_content_without_document_request_or_click')
+                            finally:flow.close()
                     # A failed response may follow an already accepted upload.
                     flow=Flow();active=flow
                     try:
@@ -227,6 +282,34 @@ def main():
                         uploads=len(flow.payloads);flow.fail.clear();flow.page.locator('[data-jd=refresh]').click();expect(flow.page.locator('.jd-card').filter(has_text='已保存但读回失败')).to_be_visible();assert len(flow.payloads)==uploads
                         passed('accepted_upload_then_readback_failure_retries_GET_only')
                     finally:flow.close()
+                    for change in ('deleted_journey','reassociated'):
+                        original_journey=create({**deepcopy(plan),'title':'虚构重放旅行 '+change},'synthetic-replay-'+change)
+                        flow=Flow();active=flow
+                        try:
+                            flow.open(original_journey);title='原关联变化后重放 '+change
+                            form=flow.upload(title);flow.hold('/api/journey-documents','POST');form.locator('[type=submit]').click();flow.waiting()
+                            saved=sql('SELECT id FROM journey_documents WHERE title=?',(title,));assert len(saved)==1
+                            document_id=saved[0]['id']
+                            flow.release(True);expect(form.locator('[type=submit]')).to_be_enabled()
+                            if change=='deleted_journey':
+                                original=admin.request.get(base+'/api/journeys/'+original_journey).json()
+                                deleted=admin.request.delete(base+'/api/items/trips/'+original['trip']['id'],headers=auth(admin),data={'revision':original['trip']['revision']})
+                                assert deleted.status==200
+                            else:
+                                current=admin.request.get(base+'/api/journey-documents?journeyId='+original_journey).json()['documents'][0]
+                                updated=admin.request.patch(base+'/api/journey-documents/'+document_id,headers=auth(admin),data={
+                                    'revision':current['revision'],'title':current['title'],'visibility':'private','segmentKey':segment_key,'journeyId':other})
+                                assert updated.status==200
+                            flow.save(form)
+                            assert flow.payloads[-1]==flow.payloads[-2]
+                            expect(flow.page.locator(f'[data-document-id="{document_id}"]')).to_be_visible()
+                            heading=flow.page.locator('.jd-heading h3')
+                            expect(heading).to_have_text('我的旅行资料' if change=='deleted_journey' else '虚构资料旅行 B')
+                            row=sql('SELECT journey_id FROM journey_documents WHERE id=?',(document_id,))[0]
+                            assert row['journey_id']==(None if change=='deleted_journey' else other)
+                            assert len(sql('SELECT id FROM journey_documents WHERE title=?',(title,)))==1
+                            passed('accepted_upload_lost_response_'+change+'_replay_uses_current_document_location')
+                        finally:flow.close()
                     for path,method in [('/api/journey-documents','GET'),('/api/journey-documents','POST'),('/api/journey-documents/'+shared_id+'/file','GET')]:
                         for replacement in ('draft','member','household'):
                             for error in (False,True):
