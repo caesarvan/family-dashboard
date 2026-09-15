@@ -1,40 +1,39 @@
 # 联合开发接手说明
 
-**当前版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
+**当前版本：2026-09-15 22:32:04（北京时间），镜像 `sha256:14c7db7ba55cb4bbbed919b0b14d4bb1b1670eeb07d9a6f90e05799220590dfb`。** 新建旅行入口与原预览／确认向导统一，静态更新已发布；248 源文件、42 份 Markdown、44 静态资源，106 个方法／路径模板、43 张户内表及 2 张平台表。原后端与依赖保持，测试和真实接入边界见 [VALIDATION](VALIDATION.md)。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
 ## 当前发布与源码状态
 
-本次于 **2026-09-15 20:23:00（北京时间）** 发布 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`，由 42 张户内表升级至 43 张。原代码、原始 `.env` 和完整备份在迁移前保全；原 42 表结构、行与序号在停写核对窗口保持。
+本次于 **2026-09-15 22:32:04（北京时间）** 发布 `sha256:14c7db7ba55cb4bbbed919b0b14d4bb1b1670eeb07d9a6f90e05799220590dfb`。该镜像只追加静态层；没有 schema 初始化、后端或依赖变化。实际 1 户的 43 表与 2 张平台表在停写至 HTTP 核对窗口保持，2 库完整备份和原配置已保全。
 
 | 交接项 | 当前范围 |
 |---|---|
-| 源码／Git | 237 文件、40 Markdown；已审 integration `b1981a4` 合入 main `670f34f`，文档后续单独审查、合入与同步 |
-| 接口与存储 | 106 个 Flask 方法／路径模板，另有 WSGI 家庭入口；43 户内表 + 2 平台表 |
-| Windows | 1495 项：1477 passed / 18 skipped，分段与精准重试去重；保留首轮失败 |
-| Linux | 1495 项：1494 passed / 1 skipped；同镜像原 full 1461 去旧控制器 66，加当前 100 定向实测 |
-| 浏览器 | 资料 43 + 细项 10 + 执行 53 + 返回 23 = 129；受影响依赖逐字一致，0 外站请求 |
-| 发布读回 | 20:23:44：237 源文件、44 静态匹配，8 匿名 401；实际 1 户 43 表、平台注册 2 表，三服务正常 |
-| Docker 恢复 | 两户 43 表恢复 65 / 15 / 216、8 份资料；与单户 42→43 配置迁移演练分开 |
-| 分发边界 | 通用包不含 .env、真实数据库／财务输入、私有 test-results；完整文件备份与本人元数据 ZIP 不同 |
-| 未验收 | 真实新增云写、消费观察输入接受、模型、银行／券商、公网、实体设备及生产覆盖恢复 |
+| 源码／Git | 248 文件、42 Markdown；已审 integration `fec0e55` → main `cd75b0b`，相同 tree；纯文档随后独立交接 |
+| 接口与存储 | 106 方法／路径模板，另有 WSGI 家庭入口；43 户内表 + 2 平台表 |
+| 旧后端适用性 | Windows 1477/18、Linux 1494/1，各 1495；依赖字节未变，保留原失败和精准重试的分段证据，本轮未重跑全套 |
+| 新工具 | 最终 Linux 187 passed：构建 23、控制器／数据库 112、演练安全 52，不与旧后端混算 |
+| 受影响浏览器 | 新旅行入口 27 + 草稿 32 + 确认 5 = 64；另有原核心流程记录，0 外站；旧资料版 129 仅作历史 |
+| 实际 Docker 演练 | 两户 43 表、旧会话、8 份资料与 3 库组备份保持；没有恢复操作，13 资源清理通过 |
+| 生产读回 | 44 静态 SHA、8 匿名 401；三服务正常、app 健康；22:32:15 全部 248 源文件和原 `.env` 再次核对 |
+| 分发及未验收 | 不含私有配置、数据库／财务输入或 test-results；真实新增云写、公网、实体设备、模型与生产覆盖恢复仍单列 |
 
-本次与首次失败、配置反解修复、分段测试和实际发布的精确证据见 [VALIDATION](VALIDATION.md)。恢复 Python／SQL 和业务代码在本轮文档更新中保持原字节。
+## 本轮已完成的旅行入口与静态发布
 
-## 新一轮旅行入口候选
+以下分支以 `65362fc` 为共同开发基线，已由非作者审查并逐层合入 `fec0e55`，最终 main 为 `cd75b0b`。它们保留作者历史，不代表永久文件占用或待重放补丁。
 
-交接文档已于上一轮经 `c952a09` → integration `0f7693b` → main `65362fc` 独立审查、合入与同步，Git bundle 已实际克隆并核对 237 个源码文件；这次源码交接没有改变运行镜像。以下新任务均以 `65362fce3296b00d8bf05a6e54b9c89565cfc53c` 为共同 base，生产仍以本页已发布记录为准。
-
-| 分支 | 作者及独立 worktree | 允许的新增工作 |
+| 分支 | 作者／独立 worktree | 已审交付 |
 |---|---|---|
-| `codex/product-travel-entry` | product_interface / product-travel-entry | 三个前端接缝、首旅浏览器专项、两个旧测试的明确关闭步骤和 TRAVEL-ENTRY 文档 |
-| `codex/root-static-build` | root / root-static-build | 固定父镜像的静态层构建工具和独立专项；已由 journey_workflows 审查 |
-| `codex/finance-static-release` | finance_hub / finance-static-release | 严格限定的静态更新控制器、43 表保持检查、专项和 STATIC-RELEASE 指导 |
-| `codex/journey-static-rehearsal` | journey_workflows / journey-static-rehearsal | 使用全新两户虚构数据的 Docker 更新演练及资源边界专项 |
-| `codex/root-travel-entry-docs` | root / root-travel-entry-docs | 本轮总览、候选登记与已有文档导航 |
+| `codex/product-travel-entry` | product_interface / product-travel-entry | `724e091`：三个前端接缝、入口专项和两项旧脚本准备步骤 |
+| `codex/root-static-build` | root / root-static-build | `cbb2609` 与文案修订 `225d84b`：固定父镜像、完整 static 单层构建 |
+| `codex/finance-static-release` | finance_hub / finance-static-release | 最终 `bed2229`：严格配置、43 表保持与真实 Flask 静态读回；Compose 和 URL 修订均重新审查 |
+| `codex/journey-static-rehearsal` | journey_workflows / journey-static-rehearsal | `2241ea1`：调用真实控制器的独立两户 Docker 演练及资源边界 |
+| `codex/root-travel-entry-docs` | root / root-travel-entry-docs | `5a30f18`：总览、模块和发布导航 |
 
-各自提交后冻结完整 HEAD，由非作者审查；集成人逐项合入 integration 后核对组合证据并再次审查，才可合入 main。构建镜像本身不证明配置基线保持，后者由独立发布控制器比较实际 BASE-MANIFEST 后执行。新入口不新增后端 API、数据库表或自动云写入；见 [入口契约](TRAVEL-ENTRY.md) 与 [静态发布指导](STATIC-RELEASE.md)。
+本轮发布后的 README/docs 在 `codex/finance-static-published-docs` 独立 worktree 整理，base 为 `cd75b0b`；仍按非作者审查 → integration → main 交接，不能跨目录编辑或把文档提交当作再次发布。下一轮重新登记 base、允许路径、依赖与验证范围。
+
+新入口不增加后端 API、表或自动云写入。接口见 [TRAVEL-ENTRY](TRAVEL-ENTRY.md)，部署见 [STATIC-RELEASE](STATIC-RELEASE.md)，两次不同阶段的失败和实际重试见 [VALIDATION](VALIDATION.md)。
 
 ## 当前候选与文件占用
 
@@ -44,7 +43,7 @@
 
 | 分支 | 本轮负责人 / worktree 目录名 | 已保存范围与状态 |
 |---|---|---|
-| `main` | 集成人 / 项目根目录 | 已发布运行业务基线 `670f34f`；文档交接后为 `65362fc`，线上 106 路由、43 户内表 |
+| `main` | 集成人 / 项目根目录 | 本轮已发布运行基线 `cd75b0b`，248 文件、106 路由、43 户内表；后续纯文档提交另记，不改变镜像 |
 | `codex/integration` | 集成人专用 | 仅合并审查通过的提交，不供模块 agent 直接开发 |
 | `codex/journey-documents-api` | journey_workflows / journey-documents-api | `90292c7`；product_interface 独立审查功能，root 复核末尾空行修正，已合入 integration |
 | `codex/journey-documents-ui` | product_interface / journey-documents-ui | `a9dd519`；journey_workflows 审查提出三项修复，作者修复后由 root 复核，已合入 integration |
@@ -54,7 +53,7 @@
 | `codex/journey-documents-release` | journey_workflows / journey-documents-release | `aecfd6c`；专用发布控制器、66 项命令替身检查，由 root 独立审查后合入 integration；此旧 66 项记录仅覆盖初版，后续环境修订与真实发布见下文 |
 | `codex/journey-release-guide` | journey_workflows / journey-release-guide | `af81669`；发布输入、原始证据和失败处理指导，由 root 独立审查并复核文案修正后合入 integration |
 | `codex/journey-release-env-fix` | journey_workflows / journey-release-env-fix | `684da03` → `2c9be6c`，配置解析与美元输出反解；finance_hub 独立审查，100 项控制流通过，经 integration `b1981a4` 合入 main `670f34f` |
-| `codex/journey-published-docs` | journey_workflows / journey-published-docs | 本次仅 README/docs 更新，base `670f34f`，由非作者审查后交集成人合入；不修改运行代码 |
+| `codex/journey-published-docs` | journey_workflows / journey-published-docs | 20:23 发布后的纯文档 `c952a09`，经 integration `0f7693b` 合入 main `65362fc`，已结束 |
 | `codex/root-journey-docs` | root / root-journey-docs | 旅行资料集成阶段的 README、接口索引、数据与部署文档；已独立审查并合入 |
 | `codex/docs-git-handoff`、`codex/git-workflow-guide` | 文档集成人与文档 agent，各自独立目录 | 此前 README、Git 规则与指导；已通过独立审查逐层合入 main，保留历史分支 |
 
@@ -62,7 +61,7 @@
 
 各模块分支保留独立职责，**单独分支不一定能启动完整新功能**。UI、导出和接线依赖新后端；完整测试在审查后的集成提交上执行，不通过复制其他工作树文件拼装。浏览器验证使用固定提交的 detached worktree，作者仍只在自己的功能分支修复；修复再次审查和 Git 合并后才验证新提交。
 
-已完成的组合证据：`edc4ad9` 上资料 API／导出组合 **85 passed**（68 + 12 + 原导出 5），后续仅 API 末尾空行整理不改变 AST；`c91c6fe` 上完整资料浏览器 **43/43**、原详情 **10/10**、执行流程 **53/53**、返回流程 **23/23** 通过，共 129 项，232 个受控源文件前后相同且无页面错误或外站请求。43 项包含刷新后的准确分段焦点、四种空闲身份切换清屏，以及成功响应丢失后原旅行删除／重新关联的幂等重试。迁移工具在无 Git 的独立 TAR 解压目录中 **16 passed**，不依赖开发者路径。
+20:23 资料版历史组合证据（不计入本轮变化 JS 的浏览器验收）：`edc4ad9` 上资料 API／导出组合 **85 passed**（68 + 12 + 原导出 5），后续仅 API 末尾空行整理不改变 AST；`c91c6fe` 上完整资料浏览器 **43/43**、原详情 **10/10**、执行流程 **53/53**、返回流程 **23/23** 通过，共 129 项，232 个受控源文件前后相同且无页面错误或外站请求。43 项包含刷新后的准确分段焦点、四种空闲身份切换清屏，以及成功响应丢失后原旅行删除／重新关联的幂等重试。迁移工具在无 Git 的独立 TAR 解压目录中 **16 passed**，不依赖开发者路径。
 
 原本机 seed 15 / verify 216 仅为夹具验证；后续同镜像两户真实 Docker 恢复已完成 65 / 15 / 216，恢复的资料为 8 份；恢复所需源码依赖保持原字节，复用同镜像原记录。另有单户 42→43 真 Docker 配置迁移演练，不能混算成恢复检查。Windows、Linux 的最终去重范围及生产迁移均已按最终源码记录，旧失败不隐去。
 
