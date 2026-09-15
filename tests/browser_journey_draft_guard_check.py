@@ -46,6 +46,8 @@ def main():
                     raise AssertionError('Held request boundary not reached')
                 def count():return len(ctx.request.get(base+'/api/journeys').json()['journeys'])
                 def new(title='旧旅行草稿A'):
+                    if page.locator('#dialog').is_visible():
+                        page.locator('#dialog [data-action=close]').click()
                     page.evaluate('JourneyUI.create()');page.locator('#journey-core-fields [name=title]').fill(title)
                     page.locator('.journey-destination [name=city]').fill('虚构城市')
                 def review():
