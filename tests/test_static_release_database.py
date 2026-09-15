@@ -69,6 +69,66 @@ for household in platform.households():platform.child(household)
 assert application.test_client().get('/healthz').status_code==200
 print('started-without-worker')
 '''
+HTTP_READBACK = GUARD + r'''
+import hashlib,importlib.util,io,json,urllib.request,urllib.error,urllib.parse
+from contextlib import redirect_stdout
+from pathlib import Path
+root=Path(sys.argv[1]);sys.path.insert(0,str(root))
+from app import create_app
+application=create_app({'TESTING':True})
+client=application.test_client()
+spec=importlib.util.spec_from_file_location('actual_static_controller',root/'deploy/activate_static_release.py')
+controller=importlib.util.module_from_spec(spec);spec.loader.exec_module(controller)
+static={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest()
+        for p in (root/'static').rglob('*') if p.is_file()}
+# Container /app file verification has separate coverage. Here the unchanged
+# READBACK_CODE must exercise Flask's real URL map and exact served file bytes.
+expected={'runtimeHashes':{},'staticHashes':static,'anonymousPaths':controller.ANONYMOUS_PATHS}
+calls=[]
+class Response:
+    def __init__(self,response):self.status=response.status_code;self.body=response.get_data()
+    def __enter__(self):return self
+    def __exit__(self,*args):return False
+    def read(self):return self.body
+class ClientOpener:
+    def open(self,url,timeout):
+        parsed=urllib.parse.urlsplit(url)
+        assert parsed.scheme=='http' and parsed.netloc=='127.0.0.1:8000' and timeout==20
+        assert not parsed.query and not parsed.fragment
+        response=client.get(parsed.path,follow_redirects=False)
+        calls.append((parsed.path,response.status_code))
+        if response.status_code>=300:
+            raise urllib.error.HTTPError(url,response.status_code,'synthetic response',{},None)
+        return Response(response)
+def opener(*handlers):
+    assert handlers[0].proxies=={}
+    assert handlers[1].redirect_request(None,None,None,None,None,None) is None
+    return ClientOpener()
+urllib.request.build_opener=opener
+def readback(code):
+    sys.argv=['readback',json.dumps(expected)]
+    output=io.StringIO()
+    with redirect_stdout(output):exec(compile(code,'<actual-readback>','exec'),{'__name__':'__main__'})
+    return json.loads(output.getvalue())
+result=readback(controller.READBACK_CODE)
+controller.verify_http(result,static)
+assert len(calls)==1+len(static)+len(controller.ANONYMOUS_PATHS)
+assert all(('/' if n=='static/index.html' else '/'+n,200) in calls for n in static)
+assert all((n,401) in calls for n in controller.ANONYMOUS_PATHS)
+# Reproduce the exact old bug through the same real Flask routes. A permissive
+# URL mock would wrongly pass this negative control.
+broken=controller.READBACK_CODE.replace("urllib.parse.quote(name,safe='/')",
+    "urllib.parse.quote(name.removeprefix('static/'),safe='/')")
+assert broken!=controller.READBACK_CODE
+old=readback(broken)
+missing=sum(v['status']==404 for v in old['staticAssets'].values())
+assert missing==len(static)-1 and old['staticAssets']['static/index.html']['status']==200
+try:controller.verify_http(old,static)
+except RuntimeError as error:assert str(error)=='http_static'
+else:raise AssertionError('Broken static URL unexpectedly accepted')
+print(json.dumps({'staticAssets':len(static),'anonymousChecks':len(controller.ANONYMOUS_PATHS),
+                  'oldUrl404s':missing,'actualReadbackPassed':True,'networkCalls':0}))
+'''
 
 
 def isolated_env(data):
@@ -127,6 +187,16 @@ def test_real_startup_preserves_two_household_blobs_rows_schema_and_backup_group
     for uid,h in before['households'].items():
         assert h['tables']['journey_documents']['count']==2
         assert len(h['tables'])==43
+
+
+def test_actual_readback_uses_real_flask_static_routes_and_preserves_all_databases(state):
+    data,inputs,before,_=state
+    result=json.loads(child(HTTP_READBACK,data))
+    static_count=sum(p.is_file() for p in (ROOT/'static').rglob('*'))
+    assert result=={'staticAssets':static_count,'anonymousChecks':8,'oldUrl404s':static_count-1,
+                   'actualReadbackPassed':True,'networkCalls':0}
+    assert C.snapshot(data)==before
+    assert C.run('check',data,inputs)['originalTablesPreserved']==43
 
 
 @pytest.mark.parametrize('sql',[

@@ -483,7 +483,7 @@ def test_readback_code_only_uses_fixed_loopback_gets_without_proxies(monkeypatch
     exec(compile(C.READBACK_CODE,'<readback>','exec'),{'__name__':'__main__'})
     result=json.loads(capsys.readouterr().out)
     C.verify_http(result,expected['staticHashes'])
-    assert 'http://127.0.0.1:8000/a%20space.js' in calls
+    assert 'http://127.0.0.1:8000/static/a%20space.js' in calls
     assert len(calls)==2+len(C.ANONYMOUS_PATHS)
 
 
