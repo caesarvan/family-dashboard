@@ -1,12 +1,16 @@
 # 开发与多 Agent 交接
 
-**当前版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
+当前运行版本、源码候选和实际验证分别以 [README](../README.md)、[HANDOFF](HANDOFF.md) 和 [VALIDATION](VALIDATION.md) 为准。本文保留各模块开发契约及历史测试入口；历史提交、镜像和计数不代表当前候选已验收。
 
-当前源码与文档数量以 [README](../README.md) 及逐文件交接清单为准；接口和存储结构见 [当前索引](PLATFORM-ROUTES.md)，运行版本与验收证据见 [VALIDATION](VALIDATION.md)。
+先读 [项目规则](../AGENTS.md) 和 [Git 指导](GIT-WORKFLOW.md)。每个任务使用集成人指定的独立分支、worktree、base 和允许路径；非作者审查后合入 integration，组合验收及再次审查通过后再进入 main。不要在主仓、集成目录或其他作者目录直接开发。
 
-**当前开发入口：** 项目使用独立 Git 仓库，每个 agent 独立分支与 worktree。旅行资料及发布配置修订已由非作者审查，经 integration `b1981a4` 合入 main `670f34f` 并正式发布。当前为 106 路由／43 户内表／2 平台表；新任务仍需登记明确 base、允许路径和依赖。先读 [项目规则](../AGENTS.md)、[Git 指导](GIT-WORKFLOW.md) 与 [HANDOFF](HANDOFF.md#当前候选与文件占用)。历史批次不是待应用补丁。
+## 淘宝订单与商品明细开发入口
 
-旅行资料专项入口为 [API](../tests/test_journey_documents.py)、[导出与模块组合](../tests/test_journey_documents_integration.py)、[可移植迁移](../tests/test_journey_documents_migration.py)、[浏览器流程](../tests/browser_journey_documents_check.py)。后端专项共用实际临时 Flask／SQLite；浏览器使用本机 Edge 和虚构文件，身份切换、下载和重试均需真实运行验证。恢复夹具包含新表与文件，须配套新镜像。测试报告绑定实际提交和文件散列，不累加不同历史版本的通过数。
+`financial_files.py` 只向调用方提供可选的服务器内部工作表结构；`finance_hub.py` 在淘宝订单来源、精确表头与明确合并范围同时匹配时生成订单和商品明细。内部结构不得进入 API 响应；原始商品数量、标价、运费不分摊，金额只取订单实付。规范见 [导入](FINANCE-IMPORT.md)、[API](FINANCE-API.md)、[数据模型](DATA-MODEL.md)。
+
+前端所有明细视图使用 `static/finance-hub.js` 的同一渲染函数；商品地址只显示文本，不构造图片或网页请求。测试入口为 `tests/test_taobao_order_groups.py` 与 `tests/browser_order_items_check.py`。后者 `--mode contract` 仅验证合成服务器契约，`--mode adapter` 才执行合成 XLSX 的实际解析器；最终组合使用 adapter 模式。旧金额列、月份导航、对账、导出和采购实付路径按实际受影响范围回归。
+
+测试使用虚构输入、独立临时数据库与本机 Edge。真实源文件只用于已授权的本地临时预览，不作为 fixture，不确认导入，也不进入 Git 或交付包。源码更新没有 schema 变化，不能借用 static-only 发布入口。
 
 ## 财务月份、消费观察与导出开发入口
 

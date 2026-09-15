@@ -4,21 +4,24 @@
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
-## 待办起步与订单文件兼容候选
+## 淘宝订单分组与商品明细候选（尚未部署）
 
-本轮共同 base 为 `daf5ab4e7adbddb994ca5c1fd745180d5d912c63`，这是旅行入口发布后已审文档的主分支基线。每个任务仍使用独立目录；只读审查使用冻结提交的 detached worktree。
+本轮共同 base 为 `923975454564e6914b638e90c1602d603e342430`。该提交已接收上一轮待办起步与 XLSX 声明兼容的审查结果；它与已审 integration `02597e5` 的文件树一致，不能把下方保留的历史分支再应用一遍。
 
 | 分支 | 独占 worktree | 允许范围 |
 |---|---|---|
-| `codex/product-task-start` | product-task-start | `static/product-shell.js`、`static/task-publish.js`、`static/accounts-ui.js`、新起步浏览器测试、连接返回与用户指导 |
-| `codex/finance-order-samples` | finance-order-samples | `financial_files.py`、合成 reader 测试和 `FINANCE-IMPORT.md`；真实输入只在本机临时预览 |
-| `codex/root-task-import-handoff` | root-task-import-handoff | README、HANDOFF、VALIDATION；无运行文件编辑 |
+| `codex/finance-taobao-order-groups` | finance-taobao-order-groups | `financial_files.py`、`finance_hub.py`、新订单测试和三份财务／数据契约 |
+| `codex/product-order-items` | product-order-items | `static/finance-hub.js/.css`、新明细浏览器测试和用户指导 |
+| `codex/journey-source-release` | journey-source-release | 无 schema 变化的更新工具、工具专项及发布指导；独立审查，不与业务代码共用工作区 |
+| `codex/root-order-group-handoff` | root-order-group-handoff | README、HANDOFF、VALIDATION、DEVELOPMENT；无运行文件编辑 |
 
-待办分支初版 `a3183ed` 的同时点击问题由非作者实际复现，暂缓合入后交原作者修订；原提交、测试与问题记录保留。审查者不直接编辑作者目录。集成人按固定 SHA 接收通过复审的候选，再做组合测试和审查，最后才合入 main。
+后端与界面先约定 `orderItems`／`orderGroup` 及 `conflictCount`／`row.conflict` 契约，再分别实现。界面分支可以用服务器侧的合成契约测试，但必须标明未执行新解析器；非作者审查后才由集成人 Git 合并，并在组合版本实际执行 XLSX → 预览 → 确认 → 账本流程。禁止复制另一位作者尚未审查的文件。
 
-财务候选 `fe2d043` 已通过 root 非作者审查并合入 integration `f78c8ca`；待办最终 `05d388d` 通过 journey_workflows 复审后合入 integration `83a1a71`。该组合为 249 源文件、42 Markdown、44 静态资源；接口与表结构不变。主分支合入仍须依据这个组合的测试及再次审查，不能用单模块通过代替。
+每个作者交付固定 base/head；审查者在 detached worktree 只读检查，有问题交原作者修订。只有集成人操作 integration 和 main，组合测试与再次审查通过后才合入 main。当前没有 remote 或托管平台强制保护，协作协议见 [GIT-WORKFLOW](GIT-WORKFLOW.md)。
 
-这批代码尚未发布，已知线上版本仍为下节 22:32 的镜像。候选包含后端 reader 改动，现有 static-only 控制器不能用于它；也不能重放一次性 42→43 迁移。后续需按无 schema 变化的后端更新单独准备镜像、备份、演练和读回，不得只改表数绕过发布范围。没有新 API、表、依赖或环境变量。
+本轮没有新 API、表、依赖或环境变量。所有商品明细留在本人的交易 JSON；共同财务只返回已允许的汇总，电视不能读取私人明细。JSON 副本保留明细，CSV 仍是一单一行；订单不自动成为付款或退款。
+
+后端 `df9ef6b`、界面 `4186bbe` 通过 root 非作者审查后合入 `b0acd800`；旧金额断言修订 `275c5a5` 另经审查合入 `481c907`。该候选为 251 源文件、42 Markdown、44 静态资源，406 后端与 65 浏览器的分段验证及原失败见 [VALIDATION](VALIDATION.md)。最终 main、integration 和同树关系以交付清单为准。已知线上运行仍是下节 22:32 镜像；后端更新工具完成与 Git 合并均不代表已经上线。
 
 ## 当前发布与源码状态
 
