@@ -13,7 +13,7 @@
 | `main`／主仓库 | 集成人 | 稳定源码。禁止直接编辑或直接提交业务修改；仅接收审查通过的集成提交。部署仍另走发布流程。 |
 | `codex/integration`／独立集成 worktree | 唯一集成人 | 按依赖顺序合入已审查分支，解决组合问题、运行组合验收；不能当作所有 agent 的公共工作目录。 |
 | `codex/<agent>-<task>`／每任务独立 worktree | 本任务作者 | 仅编辑授权路径，提交实现、测试和配套文档。公共接口变更先约定。 |
-| 指定提交的 detached worktree | 独立审查者 | 只读检查已提交代码；不替作者修改、不更新功能分支。运行测试需另获相应授权并使用虚构数据。 |
+| 指定提交的 detached worktree | 独立审查者 | 只读检查已提交代码；不替作者修改、不更新功能分支。按审查任务运行适用测试，使用独立临时数据；不执行生产操作。 |
 
 worktree 建议放在 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/worktrees/`。worktree 内的 `.git` 通常是指向主仓库管理目录的文件，这是正常状态。所有 worktree 共享提交对象和 refs，但各自有工作文件、索引及当前分支。
 
@@ -23,7 +23,7 @@ worktree 建议放在 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/
 
 ### 已保存但尚未审查合并的旅行资料代码
 
-本指南基线中保留了下列历史候选分支：
+本项目目前保留以下尚未合入的候选分支：
 
 - `codex/journey-documents-api`
 - `codex/journey-documents-portability`
