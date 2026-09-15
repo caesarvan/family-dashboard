@@ -205,7 +205,7 @@ def read(path):
 health,_=read('/healthz')
 static={}
 for name,digest in expected['staticHashes'].items():
-    status,body=read('/' if name=='static/index.html' else '/'+urllib.parse.quote(name.removeprefix('static/'),safe='/'))
+    status,body=read('/' if name=='static/index.html' else '/'+urllib.parse.quote(name,safe='/'))
     static[name]={'status':status,'sha256':hashlib.sha256(body).hexdigest()}
 anonymous={path:read(path)[0] for path in expected['anonymousPaths']}
 print(json.dumps({'healthStatus':health,'staticAssets':static,'anonymousChecks':anonymous}))
