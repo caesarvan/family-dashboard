@@ -32,6 +32,8 @@ window.AccountsReturn = (() => {
     return me.user;
   }
   function target(value) {
+    // Configuration has no publishing target and can never select records implicitly.
+    if (value?.kind === 'task-setup' && Object.keys(value).length === 1) return {kind:'task-setup'};
     if (!value || !['calendar', 'tasks'].includes(value.kind)) throw stale();
     if (validId(value.journeyId)) return {kind:value.kind, journeyId:value.journeyId};
     if (value.kind === 'tasks' && Array.isArray(value.entityIds) && value.entityIds.length > 0 && value.entityIds.length <= 100 && value.entityIds.every(validId) && new Set(value.entityIds).size === value.entityIds.length) return {kind:'tasks', entityIds:[...value.entityIds]};
@@ -41,6 +43,7 @@ window.AccountsReturn = (() => {
     await verify(flow.context);
     if (current !== flow) throw stale();
     const t = flow.target;
+    if (t.kind === 'task-setup') return; // Identity-only configuration, no publication API.
     const path = t.kind === 'calendar' ? '/calendar-publish/journeys/' + encodeURIComponent(t.journeyId)
       : '/task-publish/state?' + new URLSearchParams(t.journeyId ? {journeyId:t.journeyId} : {entityIds:t.entityIds.join(',')});
     await api(path); // Read the original records in the current household; cache no content.
@@ -48,22 +51,34 @@ window.AccountsReturn = (() => {
     if (current !== flow) throw stale();
   }
   async function begin(value, context) {
+    const origin = document.querySelector('#dialog .dialog-content');
     const selected = target(value); clear(); const ticket = generation;
     context = context || await capture(); await verify(context);
     if (ticket !== generation) throw stale();
     const flow = {target:selected, context, flowId:crypto.randomUUID(), restored:false}; current = flow;
-    try { await recheck(flow); await accountsModal(); }
+    try {
+      await recheck(flow);
+      if (!origin?.isConnected || !document.querySelector('#dialog')?.open) throw stale();
+      await accountsModal();
+    }
     catch (error) { clear(flow); throw error; }
   }
   function footer() {
     if (!current || !same(current.context)) return '';
+    if (current.target.kind === 'task-setup') return `<div class="info-box" id="account-return-context"><p>可以先选择常用清单，也可以暂不连接。返回后继续安排家庭待办；这里不会自动创建待办或发布到云端。</p><button class="btn secondary" type="button" id="account-return">返回待办</button><p class="error" id="account-return-error" role="alert"></p></div>`;
     const label = current.target.kind === 'calendar' ? '日历发布' : '待办发布';
     return `<div class="info-box" id="account-return-context"><p>${current.restored ? '授权页面已返回。请重新读取原记录并开始新的选择。' : '配置完成后可返回原发布页，重新读取日程或待办。'}选择来源只开启读取同步；发布仍需另行预览和确认。</p><button class="btn secondary" type="button" id="account-return">${current.restored ? '重新打开' : '返回'}${label}</button><p class="error" id="account-return-error" role="alert"></p></div>`;
   }
   async function resume(button) {
-    const flow = current; if (!flow) throw stale(); button.disabled = true;
+    const flow = current; if (!flow) throw stale(); if (button.disabled) return; button.disabled = true;
     try {
-      await recheck(flow); const selected = flow.target, context = flow.context; clear(flow);
+      await recheck(flow);
+      if (!button.isConnected || !document.querySelector('#dialog')?.open) throw stale();
+      const selected = flow.target, context = flow.context;
+      if (selected.kind === 'task-setup') {
+        await ProductShell.openTasks({originNode:button}, context); clear(flow); return;
+      }
+      clear(flow);
       if (selected.kind === 'calendar') await CalendarPublish.open(selected.journeyId, context);
       else await TaskPublish.open(selected.journeyId ? {journeyId:selected.journeyId} : {entityIds:selected.entityIds}, context);
     } catch (error) {

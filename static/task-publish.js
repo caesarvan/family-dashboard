@@ -31,7 +31,9 @@ window.TaskPublish=(()=>{
   }
   function render(){
     const linked=new Set(state.publications.map(p=>p.entityId));
-    openModal('连接待办主清单',`<div class="fh-workspace" id="task-publish-root"><div><div class="eyebrow">YOUR TASKS, CONNECTED</div><h3>把准备事项带到常用清单</h3><p class="help">本人已绑定清单可作为目标。家庭主清单由该账户拥有者明确开放给双方使用；看板负责人保留，不会转换成云端指派。</p></div>${state.sources.length?`<form id="task-publish-form"><label class="field"><span>同步到哪份清单</span><select name="sourceId">${state.sources.map(s=>`<option value="${esc(s.id)}">${esc(providers[s.provider])} · ${esc(s.name)}${s.primary?' · 家庭主清单':''}${!s.writeAuthorized?' · 需重新授权':''}</option>`).join('')}</select></label><p class="help">请勾选本次需要同步的项目。已连接项目保留原绑定。</p><div class="fh-ledger">${state.tasks.map(t=>`<label class="fh-transaction"><input type="checkbox" name="entityId" value="${esc(t.id)}" ${linked.has(t.id)?'disabled':''}><div class="fh-transaction-main"><strong>${esc(t.title)}</strong><small>${esc(person(t.owner))} · ${esc(t.due||'未设截止日期')} · ${t.done?'已完成':'未完成'}${linked.has(t.id)?(state.publications.find(p=>p.entityId===t.id)?.status==='disconnected'?' · 来源已断开，可勾选重连原清单':' · 已连接'):''}</small></div></label>`).join('')||'<p class="help">当前没有可选的本地待办。</p>'}</div><button class="btn" type="submit">预览选中待办</button></form>`:'<div class="info-box"><p>尚无可用的目标清单。连接本人账户并选择来源后，可返回这里重新选择待办；伴侣也可明确开放家庭主清单。</p><button class="btn secondary" data-tp="connect">连接账户或选择来源</button></div>'}<section><div class="fh-section-title"><h4>同步进度</h4><button class="btn small secondary" data-tp="refresh">刷新</button></div><div id="task-publications">${rows()}</div></section><div class="error" id="task-publish-error" role="alert"></div><p class="fh-note">${esc(state.note)}</p>${scope.journeyId?'<button class="btn secondary" data-tp="back">返回旅行计划</button>':''}</div>`,true);
+    const emptyStart=!scope.journeyId && !scope.entityIds?.length && !state.tasks.length;
+    const start=`<div class="info-box" data-task-start><h4>从第一件待办开始</h4><p>先把要做的事记在家庭清单里，暂不连接账户也能使用。${state.sources.length?'已有可用清单；保存本地待办后，可再选择要同步的项目。':'也可以先设置常用清单，再回来安排。'}</p><div class="dialog-footer"><button type="button" class="btn" data-tp="add-first">添加第一件待办</button><button type="button" class="btn secondary" data-tp="task-setup">${state.sources.length?'管理常用清单':'先设置常用清单'}</button></div><p class="help">本地待办由家人共同查看；同步到云端仍需选择、预览和确认。</p></div>`;
+    openModal('连接待办主清单',`<div class="fh-workspace" id="task-publish-root"><div><div class="eyebrow">YOUR TASKS, CONNECTED</div><h3>把准备事项带到常用清单</h3><p class="help">本人已绑定清单可作为目标。家庭主清单由该账户拥有者明确开放给双方使用；看板负责人保留，不会转换成云端指派。</p></div>${emptyStart?start:state.sources.length?`<form id="task-publish-form"><label class="field"><span>同步到哪份清单</span><select name="sourceId">${state.sources.map(s=>`<option value="${esc(s.id)}">${esc(providers[s.provider])} · ${esc(s.name)}${s.primary?' · 家庭主清单':''}${!s.writeAuthorized?' · 需重新授权':''}</option>`).join('')}</select></label><p class="help">请勾选本次需要同步的项目。已连接项目保留原绑定。</p><div class="fh-ledger">${state.tasks.map(t=>`<label class="fh-transaction"><input type="checkbox" name="entityId" value="${esc(t.id)}" ${linked.has(t.id)?'disabled':''}><div class="fh-transaction-main"><strong>${esc(t.title)}</strong><small>${esc(person(t.owner))} · ${esc(t.due||'未设截止日期')} · ${t.done?'已完成':'未完成'}${linked.has(t.id)?(state.publications.find(p=>p.entityId===t.id)?.status==='disconnected'?' · 来源已断开，可勾选重连原清单':' · 已连接'):''}</small></div></label>`).join('')||'<p class="help">当前没有可选的本地待办。</p>'}</div><button class="btn" type="submit">预览选中待办</button></form>`:'<div class="info-box"><p>尚无可用的目标清单。连接本人账户并选择来源后，可返回这里重新选择待办；伴侣也可明确开放家庭主清单。</p><button class="btn secondary" data-tp="connect">连接账户或选择来源</button></div>'}<section><div class="fh-section-title"><h4>同步进度</h4><button class="btn small secondary" data-tp="refresh">刷新</button></div><div id="task-publications">${rows()}</div></section><div class="error" id="task-publish-error" role="alert"></div><p class="fh-note">${esc(state.note)}</p>${scope.journeyId?'<button class="btn secondary" data-tp="back">返回旅行计划</button>':''}</div>`,true);
     const form=document.querySelector('#task-publish-form');
     if(form){
       const updateChoices=()=>{for(const input of form.querySelectorAll('[name=entityId]')){const p=state.publications.find(p=>p.entityId===input.value);input.disabled=!!p&&!p.reconnectSourceIds?.includes(form.elements.sourceId.value);if(input.disabled)input.checked=false}};
@@ -56,10 +58,16 @@ window.TaskPublish=(()=>{
   document.querySelector('#dialog')?.addEventListener('close',()=>{stop();view++;pending=null;conflict=null});
   document.addEventListener('click',async e=>{
     if(e.target.closest('[data-task-publish-open]')){await open();return}
-    const b=e.target.closest('[data-tp]');if(!b||!canEdit())return;let ticket=view;const content=b.closest('.dialog-content');
+    const b=e.target.closest('[data-tp]');if(!b||!canEdit()||b.disabled)return;let ticket=view;const content=b.closest('.dialog-content');
     try{
       const action=b.dataset.tp;b.disabled=true;
       if(action==='refresh'){await open(scope);return}
+      if(action==='add-first' || action==='task-setup'){
+        stop();ticket=++view;pending=null;conflict=null;
+        if(action==='add-first') await ProductShell.openTasks({create:true,originNode:b},context);
+        else await AccountsReturn.begin({kind:'task-setup'},context);
+        return;
+      }
       if(action==='back'){stop();view++;await JourneyUI.open(scope.journeyId);return}
       if(action==='connect'){stop();ticket=++view;pending=null;conflict=null;
         const target=scope.journeyId?{kind:'tasks',journeyId:scope.journeyId}:{kind:'tasks',entityIds:scope.entityIds?.length?[...scope.entityIds]:state.tasks.map(t=>t.id)};

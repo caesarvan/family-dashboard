@@ -183,7 +183,7 @@
     const all=data[kind] || [], list=[...all].filter(item=>(filter==='all'||(filter==='done'?item.done:!item.done))&&(!searchText||(item.title+' '+(item.note||'')).toLocaleLowerCase().includes(searchText.toLocaleLowerCase()))).sort((a,b)=>Number(a.done)-Number(b.done)||(a.due||'9999').localeCompare(b.due||'9999'));
     const add=canEdit()?`<button class="ps-button primary" data-action="add" data-kind="${kind}">${glyph('plus')}${shopping?'添加采购':'添加待办'}</button>`:'';
     const known=shopping?all.filter(i=>!i.done&&Number.isInteger(i.budget)):[], unknown=shopping?all.filter(i=>!i.done&&!Number.isInteger(i.budget)):[];
-    return `${pageHeading(route,add)}${shopping?`<div class="ps-shopping-totals"><div><small>待采购预算 · 已填写部分</small><strong>${money(known.reduce((sum,i)=>sum+i.budget,0))}</strong></div><p>${unknown.length?`另有 ${unknown.length} 件尚未填写预算`:'每一笔预算，都为共同生活做准备。'}</p><span>${glyph('lock')}共享采购</span></div>`:''}<section class="ps-workspace-panel"><div class="ps-list-toolbar"><div class="ps-filter-tabs" role="group" aria-label="清单状态">${[['pending',shopping?'待采购':'待完成'],['done',shopping?'已买到':'已完成'],['all','全部']].map(([value,label])=>`<button data-ps-filter="${value}" data-ps-kind="${kind}" aria-pressed="${filter===value}" class="${filter===value?'selected':''}">${label}<span>${value==='all'?all.length:all.filter(i=>value==='done'?i.done:!i.done).length}</span></button>`).join('')}</div>${canEdit()&&!isDemo?`<button type="button" class="ps-button subtle" data-ps-module="HouseholdRoutines">${glyph('calendar')}例行计划</button>`:''}${!shopping&&canEdit()?`<button type="button" class="ps-button subtle ps-task-publish-trigger" data-task-publish-open="1">${glyph('link')}同步本地待办</button>`:''}<label class="ps-inline-search">${glyph('search')}<input data-ps-list-search placeholder="搜索${shopping?'采购':'待办'}" aria-label="搜索${shopping?'采购':'待办'}" value="${esc(searchText)}"></label></div><div class="ps-full-list manager-list">${list.length?list.map(item=>listRow(kind,item,true)).join(''):`<div class="ps-empty-state">${glyph(shopping?'bag':'check')}<h2>${searchText?'没有找到匹配内容':filter==='done'?'还没有完成记录':shopping?'需要什么，就记在这里':'这一刻，清单很轻盈'}</h2><p>${searchText?'换个关键词再试试。':shopping?'添加预算、数量和参考图片，让采购更省心。':'从一个小任务开始，给共同生活留个提醒。'}</p></div>`}</div></section>`;
+    return `${pageHeading(route,add)}${shopping?`<div class="ps-shopping-totals"><div><small>待采购预算 · 已填写部分</small><strong>${money(known.reduce((sum,i)=>sum+i.budget,0))}</strong></div><p>${unknown.length?`另有 ${unknown.length} 件尚未填写预算`:'每一笔预算，都为共同生活做准备。'}</p><span>${glyph('lock')}共享采购</span></div>`:''}<section class="ps-workspace-panel"><div class="ps-list-toolbar"><div class="ps-filter-tabs" role="group" aria-label="清单状态">${[['pending',shopping?'待采购':'待完成'],['done',shopping?'已买到':'已完成'],['all','全部']].map(([value,label])=>`<button data-ps-filter="${value}" data-ps-kind="${kind}" aria-pressed="${filter===value}" class="${filter===value?'selected':''}">${label}<span>${value==='all'?all.length:all.filter(i=>value==='done'?i.done:!i.done).length}</span></button>`).join('')}</div>${canEdit()&&!isDemo?`<button type="button" class="ps-button subtle" data-ps-module="HouseholdRoutines">${glyph('calendar')}例行计划</button>`:''}${!shopping&&canEdit()?`<button type="button" class="ps-button subtle ps-task-publish-trigger" data-task-publish-open="1">${glyph('link')}${all.length?'同步本地待办':'开始安排待办'}</button>`:''}<label class="ps-inline-search">${glyph('search')}<input data-ps-list-search placeholder="搜索${shopping?'采购':'待办'}" aria-label="搜索${shopping?'采购':'待办'}" value="${esc(searchText)}"></label></div><div class="ps-full-list manager-list">${list.length?list.map(item=>listRow(kind,item,true)).join(''):`<div class="ps-empty-state">${glyph(shopping?'bag':'check')}<h2>${searchText?'没有找到匹配内容':filter==='done'?'还没有完成记录':shopping?'需要什么，就记在这里':'这一刻，清单很轻盈'}</h2><p>${searchText?'换个关键词再试试。':shopping?'添加预算、数量和参考图片，让采购更省心。':'从一个小任务开始，给共同生活留个提醒。'}</p></div>`}</div></section>`;
   }
   function tripsWorkspace() {
     const trips=[...(data.trips || [])].sort((a,b)=>a.start.localeCompare(b.start));
@@ -340,6 +340,26 @@
     };
     await load();
   }
+  let taskStartSequence = 0;
+  async function openTasks({create=false,originNode}={}, expectedContext) {
+    // A return belongs to its original dialog button, not a later page or draft.
+    const ticket=++taskStartSequence, owns=()=>ticket===taskStartSequence && originNode?.isConnected && document.querySelector('#dialog')?.open;
+    if (isTV || isDemo || !canEdit() || !owns()) throw new Error('页面已变化，请从待办重新进入。');
+    const context=expectedContext || await AccountsReturn.capture();
+    await AccountsReturn.verify(context);
+    if (!owns()) throw new Error('页面已变化，请从待办重新进入。');
+    const latest=await api('/state');
+    await AccountsReturn.verify(context);
+    if (!owns()) throw new Error('页面已变化，请从待办重新进入。');
+    if (!data || latest.revision>=data.revision) data=latest;
+    navigate('tasks');
+    if (create) {
+      editItem('tasks');
+      // The first item is local even if setup selected a default cloud list.
+      const selector=document.querySelector('#dialog form')?.elements.sourceId;
+      if (selector) {selector.value='';selector.dispatchEvent(new Event('change',{bubbles:true}));}
+    }
+  }
   function openCreate() {
     if (!canEdit()) return;
     openModal('记一件事',`<p class="help">无论一件小事，还是一段旅程，都从这里开始。</p><div class="ps-create-grid">${[['events','日程安排','calendar','留好时间与地点'],['tasks','共同待办','check','分工，把事情往前推'],['shopping','采购计划','bag','数量、预算与参考图片'],['trips','旅行计划','plane','下一站，和你一起']].map(([kind,title,symbol,desc])=>`<button class="ps-feature-link" data-action="add" data-kind="${kind}">${glyph(symbol)}<span>${title}<small>${desc}</small></span>${glyph('arrow')}</button>`).join('')}</div>`);
@@ -398,5 +418,5 @@
   window.addEventListener('popstate',()=>{if(data&&!isTV)navigate(routeFromLocation(),false);});
   setInterval(()=>{if(!document.hidden&&user&&!isTV&&!isDemo){void refreshPreferences();void refreshLayout().catch(()=>{});}},60000);
   setTheme(DEFAULTS);
-  root.ProductShell={navigate,openPreferences,openLayout,openSearch,refreshPreferences,refreshLayout,getLayout:()=>normalizedLayout(dashboardLayout),refresh(){renderBoard();},getPreferences:()=>({...prefs}),getRoute:()=>currentRoute};
+  root.ProductShell={navigate,openTasks,openPreferences,openLayout,openSearch,refreshPreferences,refreshLayout,getLayout:()=>normalizedLayout(dashboardLayout),refresh(){renderBoard();},getPreferences:()=>({...prefs}),getRoute:()=>currentRoute};
 })(window);
