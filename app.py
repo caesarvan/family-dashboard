@@ -21,6 +21,7 @@ from finance_source_bridge import register_finance_source_bridge
 from household_spaces import register_preferences, register_spaces
 from home_assistant import register_assistant
 from journey_workflows import register_journeys
+from journey_documents import register_journey_documents
 from finance_hub import register_finance_hub
 from calendar_publish import register_calendar_publish
 from dashboard_preferences import register_dashboard_layout
@@ -181,6 +182,8 @@ def create_app(config=None):
     def guard():
         if request.path == '/api/photos' and request.method == 'POST':
             request.max_content_length = 8_000_000
+        if request.path == '/api/journey-documents' and request.method == 'POST':
+            request.max_content_length = 7_200_000
         if request.path in {'/api/finance-hub/imports/preview', '/api/finance-hub/imports/confirm', '/api/finance-hub/investments/imports/preview'} and request.method == 'POST':
             request.max_content_length = 3_000_000
         if request.path in {'/api/finance-baseline/imports/preview', '/api/finance-baseline/imports/confirm'} and request.method == 'POST':
@@ -211,6 +214,10 @@ def create_app(config=None):
         response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
         if request.path.startswith(("/api/", "/auth/")):
             response.headers["Cache-Control"] = "no-store"
+        if request.path.startswith('/api/journey-documents'):
+            response.headers['Cache-Control'] = 'private, no-store'
+            if request.path.endswith('/file'):
+                response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox; frame-ancestors 'none'"
         if request.path.startswith('/auth/'):
             response.headers['Referrer-Policy'] = 'no-referrer'
         return response
@@ -221,6 +228,8 @@ def create_app(config=None):
 
     @app.errorhandler(413)
     def too_large(error):
+        if request.path == '/api/journey-documents':
+            return jsonify(error='旅行资料文件过大，请选择不超过 5 MB 的 PDF 或图片'), 413
         if request.path.startswith('/api/finance-baseline/imports/'):
             return jsonify(error='来源更新包过大，请精简来源说明后重新生成'), 413
         return jsonify(error="图片过大，请压缩后重试" if request.path == '/api/photos' else "文件太大，请缩小导出的日期范围"), 413
@@ -619,6 +628,7 @@ def create_app(config=None):
     register_preferences(app, db, Problem, body, require_member, audit)
     register_dashboard_layout(app, db, Problem, body, require_member, audit)
     register_journeys(app, db, Problem, body, require_member, audit)
+    register_journey_documents(app, db, Problem, body, require_member, limited, audit)
     register_calendar_publish(app, db, Problem, body, require_member, audit)
     register_task_publish(app, db, Problem, body, require_member, audit)
     register_sync_health(app, db, require_member)
