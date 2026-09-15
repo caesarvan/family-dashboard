@@ -50,7 +50,7 @@
 
 已完成的组合证据：`edc4ad9` 上资料 API／导出组合 **85 passed**（68 + 12 + 原导出 5），后续仅 API 末尾空行整理不改变 AST；`c91c6fe` 上完整资料浏览器 **43/43**、原详情 **10/10**、执行流程 **53/53**、返回流程 **23/23** 通过，共 129 项，232 个受控源文件前后相同且无页面错误或外站请求。43 项包含刷新后的准确分段焦点、四种空闲身份切换清屏，以及成功响应丢失后原旅行删除／重新关联的幂等重试。迁移工具在无 Git 的独立 TAR 解压目录中 **16 passed**，不依赖开发者路径。
 
-原本机 seed 15 / verify 216 仅为夹具验证；后续同镜像两户真实 Docker 恢复已完成 65 / 15 / 216，8 个关联依赖文件保持原字节，因此对最终环境修订复用。另有单户 42→43 真 Docker 配置迁移演练，不能混算成恢复检查。Windows、Linux 的最终去重范围及生产迁移均已按最终源码记录，旧失败不隐去。
+原本机 seed 15 / verify 216 仅为夹具验证；后续同镜像两户真实 Docker 恢复已完成 65 / 15 / 216，恢复的资料为 8 份；恢复所需源码依赖保持原字节，复用同镜像原记录。另有单户 42→43 真 Docker 配置迁移演练，不能混算成恢复检查。Windows、Linux 的最终去重范围及生产迁移均已按最终源码记录，旧失败不隐去。
 
 旅行执行跨模块接缝：`static/journey-ui.js/.css` 管详情刷新、负责人筛选和原流程返回；`task_publish.py`、`calendar_publish.py` 管 `localChangesPending` 的只读比较；`finance_hub.py` 管来源限定的订单表头兼容。验收入口为 `tests/browser_journey_execution_check.py`、`tests/test_publication_local_changes.py` 和 `tests/test_order_source_headers.py`。这些文件及接口变更由集成人协调，不能由旅行与云同步 agent 同时修改同一文件。见 [旅行执行契约](JOURNEY-EXECUTION.md)。
 
