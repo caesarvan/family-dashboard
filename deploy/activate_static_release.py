@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import subprocess
 import tarfile
 
 
@@ -52,7 +53,28 @@ need, sha, encoded = L.need, L.sha, L.encoded
 hash_string, relative, plain_file = L.hash_string, L.relative, L.plain_file
 read_manifest, integer = L.read_manifest, L.integer
 parse_compose_config_output, validated_environment = L.parse_compose_config_output, L.validated_environment
-command, put, runtime_hashes, FORMAT = L.command, L.put, L.runtime_hashes, L.FORMAT
+put, runtime_hashes, FORMAT = L.put, L.runtime_hashes, L.FORMAT
+
+
+def host_environment():
+    """Freeze CLI interpolation inputs without inheriting Docker/Compose selectors."""
+    value = dict(os.environ)
+    need(not any(k.upper().startswith(('COMPOSE_', 'DOCKER_')) for k in value),
+         'host_docker_compose_environment')
+    return value
+
+
+def command(arguments, *, cwd, env, input_bytes=None, timeout=180):
+    # Never emit argv, environment, stdout or stderr on failure: any can be private.
+    need(isinstance(env, dict), 'command_environment_missing')
+    try:
+        result = subprocess.run(arguments, cwd=cwd, env=dict(env), input=input_bytes,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                timeout=timeout, check=False)
+    except subprocess.TimeoutExpired:
+        raise RuntimeError('command_timeout') from None
+    need(result.returncode == 0, 'command_failed_' + str(result.returncode))
+    return result.stdout.decode('utf-8').strip()
 
 
 def source_files(directory, hashes):
@@ -196,6 +218,7 @@ def verify_http(value, hashes):
     need(value.get('anonymousChecks') == {n: 401 for n in ANONYMOUS_PATHS}, 'http_anonymous')
 def _activate(candidate_root, image, manifest_sha, ready_sha, *, root=ROOT, releases=RELEASES,
               project='family-dashboard', volume=VOLUME, runner=command):
+    process_environment = host_environment()
     need(isinstance(project, str) and re.fullmatch('[a-z0-9][a-z0-9_-]{1,62}', project), 'project_name')
     need(volume == project + '_household-data', 'project_volume')
     candidate_root, root, releases = map(Path, (candidate_root, root, releases))
@@ -234,11 +257,22 @@ def _activate(candidate_root, image, manifest_sha, ready_sha, *, root=ROOT, rele
     environment = plain_file(root / '.env')
     need(hash_string(ready.get('environmentSha256')) and sha(environment) == ready['environmentSha256'], 'environment_changed')
     frozen = {'manifestSha256': manifest_sha, 'sourceHashes': candidate['files'], 'runtimeHashes': runtime_hashes(values)}
+    compose_prefix = ['docker', 'compose', '--project-name', project,
+                      '--file', str(root / 'compose.yaml'), '--env-file', str(root / '.env')]
+    compose_configuration = None
 
     def run(args, **kwargs):
         if args[:2] == ['docker', 'compose']:
-            args = args[:2] + ['--project-name', project] + args[2:]
-        return runner(args, cwd=root, **kwargs)
+            need(plain_file(root / 'compose.yaml') == old_values['compose.yaml'], 'compose_file_changed')
+            need(plain_file(root / '.env') == environment, 'environment_changed')
+            if args[2] == 'up':
+                current = parse_compose_config_output(runner(
+                    compose_prefix + ['config', '--format', 'json'], cwd=root,
+                    env=dict(process_environment)))
+                need(compose_configuration is not None and encoded(current) == compose_configuration,
+                     'compose_configuration_changed')
+            args = compose_prefix + args[2:]
+        return runner(args, cwd=root, env=dict(process_environment), **kwargs)
 
     def inspect(cid):
         need(re.fullmatch('[a-f0-9]{64}', cid) is not None, 'container_id')
@@ -268,8 +302,10 @@ def _activate(candidate_root, image, manifest_sha, ready_sha, *, root=ROOT, rele
     parent_meta = json.loads(run(['docker', 'image', 'inspect', previous]))
     child_meta = json.loads(run(['docker', 'image', 'inspect', image]))
     verify_images(parent_meta, child_meta, previous, image)
+    parsed_compose = parse_compose_config_output(run(['docker', 'compose', 'config', '--format', 'json']))
+    compose_configuration = encoded(parsed_compose)
     parsed_environment = validated_environment(
-        parse_compose_config_output(run(['docker', 'compose', 'config', '--format', 'json'])),
+        parsed_compose,
         json.loads(run(['docker', 'inspect', '--format', '{{json .Config.Env}}', old['app']['id']])))
     need(plain_file(root / '.env') == environment, 'environment_changed')
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
@@ -288,6 +324,7 @@ def _activate(candidate_root, image, manifest_sha, ready_sha, *, root=ROOT, rele
 
     save_input('frozen.json', frozen)
     save_input('environment.json', parsed_environment)
+    save_input('compose-config.json', parsed_compose)
     put(release / '.env', environment)
     put(release / 'READY.json', ready_raw)
     put(release / 'BASE-MANIFEST.json', base_raw)
@@ -303,6 +340,7 @@ def _activate(candidate_root, image, manifest_sha, ready_sha, *, root=ROOT, rele
               'manifestSha256': manifest_sha, 'readySha256': ready_sha, 'baseManifestSha256': ready['baseManifestSha256'],
               'oldManifestSha256': ready['oldManifestSha256'], 'helperSha256': candidate['files'][HELPER], 'mode': 'static-only', 'releaseDirectory': str(release),
               'resolvedEnvironmentSha256': input_hashes['environment.json'], 'resolvedEnvironmentMatchesRunningApp': True,
+              'resolvedComposeSha256': input_hashes['compose-config.json'], 'composeInputsExplicit': True,
               'sourceBeforeSha256': sha((release / 'source-before.tar.gz').read_bytes()),
               'commitStarted': False, 'interrupted': False, 'automaticRestoreAttempted': False,
               'project': project, 'volume': volume,

@@ -68,7 +68,9 @@ READY 的 SHA 由调用者独立传入；不能手工把未通过报告改成 ve
 
 默认生产根为 `/opt/family-dashboard`，发布记录在同级 `family-dashboard-releases/static-<UTC>`；非覆盖创建。先独占发布锁，固定实际旧镜像、完整原清单及仍安装的原 RELEASE-MANIFEST，保留其原字节差异，不拿新清单覆盖原件来制造一致。
 
-停服前按 Compose 实际解析环境，并与正在运行 app 的 Config.Env 逐项比较。复用已冻结的 Compose 输出反解，保留引号、美元符号、换行和反斜杠；不自行解析 dotenv。完整环境只写私有 `verification/environment.json`，0400、UID 10001，绑定字节 SHA。原 `.env` 独立保全并反复核对，不进入日志、普通证据或源码 TAR。
+所有 Compose 命令固定 `--project-name PROJECT --file ROOT/compose.yaml --env-file ROOT/.env`，不自动合入 `compose.override.yaml` 等旁路文件。首个命令前拒绝宿主进程中任何 `COMPOSE_`／`DOCKER_` 前缀变量（含空值、大小写变体）；随后每个命令使用核对时的环境副本，不继承后来的进程环境变化。原 Compose 文件和 `.env` 在调用时再次核对字节。
+
+停服前按 Compose 实际解析环境，并与正在运行 app 的 Config.Env 逐项比较。完整解析配置也单独冻结，每次 `up` 前整体重读核对，不能只凭相同环境放行不同 command、entrypoint 或 mounts。复用已冻结的 Compose 输出反解，保留引号、美元符号、换行和反斜杠；不自行解析 dotenv。完整环境与配置只写私有 `verification/environment.json`、`compose-config.json`，0400、UID 10001，绑定字节 SHA；普通结果只记 SHA。原 `.env` 独立保全并反复核对，不进入日志、普通证据或源码 TAR。
 
 1. 无数据卷的新镜像容器验证完整源、后端及静态文件集合；失败不停止原服务。
 2. 停 web，再停止 sync/app；均必须 exit 0、无 OOM，并确认没有其他运行容器使用目标卷。维护者同时保证没有宿主机上的导入、维护或其他写者。
@@ -85,7 +87,7 @@ READY 的 SHA 由调用者独立传入；不能手工把未通过报告改成 ve
 
 `check` 返回 households、originalTablesPreserved=43、newTables=0、schemaIndexesAndTriggersVerified=true、allOriginalRowsAndSequencesPreserved=true、以及完全相同的 backup proof。缺库不创建替代库，表缺失、结构漂移、资料 BLOB 变化、序号变化或备份重封均拒绝。
 
-Python `activate(..., root=..., releases=..., project=..., volume=..., runner=...)` 允许真实合成演练显式指定全新目录和独立 Compose 项目；volume 必须为 `project + '_household-data'`，镜像 tag 为 `project + '-app'`，所有 Compose 调用固定该 project。CLI 不暴露这些 override。演练使用新合成配置和数据，不能复制生产 .env、证书或真实库，也不能取消安全断言。
+Python `activate(..., root=..., releases=..., project=..., volume=..., runner=...)` 允许真实合成演练显式指定全新目录和独立 Compose 项目；volume 必须为 `project + '_household-data'`，镜像 tag 为 `project + '-app'`，所有 Compose 调用固定该 project、配置文件及环境文件。`runner(args, *, cwd, env, input_bytes=None, timeout=180)` 必须把传入的环境副本用于实际进程，不能改回继承宿主环境。CLI 不暴露这些 override。演练使用新合成配置和数据，不能复制生产 .env、证书或真实库，也不能取消安全断言。
 
 冻结复用依赖：旧 `activate_journey_documents_release.py` SHA `703a1540f7a632301382ec32aaee3b68e2c2157943469a71492a0d1a9e75972c`；旧 `check_journey_documents_migration.py` SHA `11adc9f40bf68aaca7015f3c9f18f92c7aa648b6c379b0812b60b5d22cd2781f`。导入前核对字节，只调用安全路径、摘要、备份核验与环境解析等纯函数；不调用旧 activate/preserved/warm。
 

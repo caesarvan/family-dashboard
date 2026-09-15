@@ -8,6 +8,7 @@ from copy import deepcopy
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 import subprocess
 import tarfile
@@ -49,6 +50,8 @@ class FakeDocker:
     def __init__(self, fixture):
         self.f = fixture
         self.calls = []
+        self.raw_calls = []
+        self.environments = []
         self.actions = []
         self.fail = None
         self.mutate = None
@@ -59,6 +62,7 @@ class FakeDocker:
         self.compose_environment = {'DATA_DIR': '/data', 'PUBLIC_ORIGIN': 'https://synthetic.invalid',
                                     'SECRET_KEY': 'synthetic-secret-do-not-print'}
         self.app_environment = [k + '=' + v for k, v in self.compose_environment.items()]
+        self.compose_extra = {}
         self.services = {n: {'id': str(i) * 64, 'image': fixture.previous if n != 'web' else 'sha256:' + '8' * 64,
                              'running': True, 'exitCode': 0, 'oom': False,
                              'health': 'healthy' if n == 'app' else None}
@@ -71,11 +75,16 @@ class FakeDocker:
     def proof(self):
         return {'databases': 3, 'manifestSha256': digest(b'{"synthetic":true}'), 'groupVerified': True}
 
-    def __call__(self, args, *, cwd, input_bytes=None, timeout=180):
+    def __call__(self, args, *, cwd, env, input_bytes=None, timeout=180):
         assert Path(cwd) == self.f.root
+        assert isinstance(env, dict) and not any(k.upper().startswith(('COMPOSE_', 'DOCKER_')) for k in env)
+        self.raw_calls.append(list(args))
+        self.environments.append(dict(env))
         if args[:2] == ['docker', 'compose']:
-            assert args[2:4] == ['--project-name', self.f.project]
-            args = args[:2] + args[4:]
+            assert args[2:8] == ['--project-name', self.f.project,
+                                '--file', str(self.f.root / 'compose.yaml'),
+                                '--env-file', str(self.f.root / '.env')]
+            args = args[:2] + args[8:]
         self.calls.append(list(args))
         if args[:3] == ['docker', 'compose', 'ps']:
             return self.services[args[-1]]['id']
@@ -106,7 +115,8 @@ class FakeDocker:
                 raise RuntimeError('fake compose invalid')
             assert args[3:] == ['--format', 'json']
             # Compose 2.40.3 escapeDollarSign runs after JSON serialization.
-            return json.dumps({'services': {'app': {'environment': self.compose_environment}}}).replace('$', '$$')
+            return json.dumps({'services': {'app': {'environment': self.compose_environment,
+                                                   **self.compose_extra}}}).replace('$', '$$')
         if args[:2] == ['docker', 'ps']:
             if args[-1].startswith('name=^/'):
                 name = args[-1][7:-1]
@@ -361,11 +371,11 @@ def test_unclean_stop_blocks_snapshot(f,exit_code):
     assert f.runner.actions==['verify-image']
 
 
-@pytest.mark.parametrize('target',['.env','candidate','before','backup','resolved'])
+@pytest.mark.parametrize('target',['.env','compose','candidate','before','backup','resolved'])
 def test_input_drift_after_stop_is_not_silently_accepted(f,target):
     def mutate(action,inputs):
         if action!='validate-backup':return
-        path={'.env':f.root/'.env','candidate':f.candidate/'app.py','before':inputs/'before.json',
+        path={'.env':f.root/'.env','compose':f.root/'compose.yaml','candidate':f.candidate/'app.py','before':inputs/'before.json',
               'backup':inputs/'backup.json','resolved':inputs/'environment.json'}[target]
         path.chmod(0o600);path.write_bytes(b'changed')
     f.runner.mutate=mutate
@@ -475,3 +485,85 @@ def test_readback_code_only_uses_fixed_loopback_gets_without_proxies(monkeypatch
     C.verify_http(result,expected['staticHashes'])
     assert 'http://127.0.0.1:8000/a%20space.js' in calls
     assert len(calls)==2+len(C.ANONYMOUS_PATHS)
+
+
+@pytest.mark.parametrize('filename', ['compose.override.yaml', 'compose.override.yml',
+                                     'docker-compose.override.yaml', 'docker-compose.override.yml'])
+def test_explicit_compose_file_excludes_automatic_override_files(f, filename):
+    # The fake runner requires the exact full prefix on every invocation. These
+    # untracked files must neither be selected nor installed by the controller.
+    override = b'services:\n  app:\n    entrypoint: [unexpected-command]\n'
+    write(f.root / filename, override)
+    assert f.activate()['status'] == 'published'
+    assert (f.root / filename).read_bytes() == override
+    compose_calls = [x for x in f.runner.raw_calls if x[:2] == ['docker', 'compose']]
+    assert compose_calls and all(x[2:8] == ['--project-name', f.project,
+        '--file', str(f.root / 'compose.yaml'), '--env-file', str(f.root / '.env')] for x in compose_calls)
+    assert all(x.count('--file') == 1 and filename not in x for x in compose_calls)
+
+
+@pytest.mark.parametrize('key', ['COMPOSE_FILE', 'COMPOSE_PROJECT_NAME', 'COMPOSE_PROFILES',
+                               'COMPOSE_ENV_FILES', 'COMPOSE_DISABLE_ENV_FILE',
+                               'DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_CONFIG', 'compose_file'])
+def test_host_docker_compose_selectors_are_rejected_before_any_command(f, monkeypatch, key):
+    monkeypatch.setenv(key, 'synthetic-private-selector')
+    with pytest.raises(RuntimeError, match='^host_docker_compose_environment$'):
+        f.activate()
+    assert not f.runner.raw_calls and all(x['running'] for x in f.runner.services.values())
+
+
+def test_even_empty_host_selector_is_rejected(f, monkeypatch):
+    monkeypatch.setenv('COMPOSE_FILE', '')
+    with pytest.raises(RuntimeError, match='host_docker_compose_environment'):
+        f.activate()
+    assert not f.runner.raw_calls
+
+
+@pytest.mark.parametrize('key,value', [('command', ['unreviewed-command']),
+    ('entrypoint', ['unreviewed-entrypoint']), ('volumes', ['/other:/data'])])
+def test_same_app_environment_cannot_hide_complete_compose_drift_before_start(f, key, value):
+    def mutate(action, inputs):
+        if action == 'verify-image':
+            f.runner.compose_extra[key] = value
+    f.runner.mutate = mutate
+    with pytest.raises(RuntimeError, match='release_failed_at_start-application'):
+        f.activate()
+    assert not any(x[:3] == ['docker', 'compose', 'up'] for x in f.runner.calls)
+    assert not any(x['running'] for x in f.runner.services.values())
+    assert f.report()['resolvedComposeSha256']
+    assert f.report()['resolvedEnvironmentMatchesRunningApp'] is True
+
+
+def test_commands_keep_frozen_environment_when_process_environment_changes_later(f, monkeypatch):
+    monkeypatch.setenv('STATIC_SYNTHETIC_VALUE', 'original-$-"-\\-\n')
+    def mutate(action, inputs):
+        if action == 'verify-image':
+            monkeypatch.setenv('STATIC_SYNTHETIC_VALUE', 'later-value')
+            monkeypatch.setenv('COMPOSE_FILE', 'later-unreviewed-config')
+    f.runner.mutate = mutate
+    assert f.activate()['status'] == 'published'
+    assert f.runner.environments and all(e['STATIC_SYNTHETIC_VALUE'] == 'original-$-"-\\-\n'
+                                       and 'COMPOSE_FILE' not in e for e in f.runner.environments)
+
+
+def test_real_command_adapter_passes_snapshot_without_secret_output(monkeypatch, capsys, tmp_path):
+    supplied = {'PATH': 'synthetic-path', 'PRIVATE': 'quoted-"-$-\\-\n-value'}
+    seen = []
+    def fake(args, **kwargs):
+        seen.append(kwargs)
+        return subprocess.CompletedProcess(args, 0, b'synthetic result\n', b'private stderr')
+    monkeypatch.setattr(subprocess, 'run', fake)
+    assert C.command(['docker', 'version'], cwd=tmp_path, env=supplied) == 'synthetic result'
+    assert seen[0]['env'] == supplied and seen[0]['env'] is not supplied
+    assert capsys.readouterr().out == ''
+
+
+@pytest.mark.parametrize('failure', ['exit', 'timeout'])
+def test_command_errors_do_not_expose_configuration(monkeypatch, tmp_path, failure):
+    def fake(args, **kwargs):
+        if failure == 'timeout':
+            raise subprocess.TimeoutExpired(args, 1, output=b'private value', stderr=b'private value')
+        return subprocess.CompletedProcess(args, 1, b'private value', b'private value')
+    monkeypatch.setattr(subprocess, 'run', fake)
+    with pytest.raises(RuntimeError, match='^command_(failed_1|timeout)$'):
+        C.command(['docker', 'version'], cwd=tmp_path, env={'PRIVATE': 'private value'})
