@@ -24,6 +24,7 @@ class Fixture:
                        'static/index.html': b'<p>Synthetic new trip entry</p>',
                        'static/app.js': b'const synthetic = true;\n',
                        'deploy/build_static_release.py': Path(B.__file__).read_bytes(),
+                       'deploy/release_core.py': Path(B.core.__file__).read_bytes(),
                        'deploy/activate_journey_documents_release.py': Path(B.common.__file__).read_bytes()}
         self.freeze()
         config = {'User': '10001', 'Env': ['DATA_DIR=/data', 'PYTHONDONTWRITEBYTECODE=1'],

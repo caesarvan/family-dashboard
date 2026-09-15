@@ -96,3 +96,5 @@ Python `activate(..., root=..., releases=..., project=..., volume=..., runner=..
 停服前失败保留原服务；停服后失败停止 app/sync/web，保留完整备份、输入、旧源码和部分安装现场，不自动恢复数据库、不盲目回退镜像。超时的 Docker 客户端不等于容器已停止；只针对本次精确 name、image、ownership label 的 helper 停止并读回，身份不符保留并要求人工处理。SIGINT/SIGTERM 进入同一保全路径，强制 kill 或主机掉电仍须维护者处理现场。
 
 [控制器专项](../tests/test_static_release.py) 使用命令替身；[数据库专项](../tests/test_static_release_database.py) 用当前 factory、双家庭 SQLite 和真实 Flask 路由验证完整静态 SHA、匿名权限与数据保持。最终这两模块 112 项，连构建 23、演练安全 52，在最终 Linux 镜像共 187 项通过。另行实际运行的两户 Docker 演练验证旧会话、8 份资料和 3 库备份保持，不是这些替身测试的重复计数；生产发布及两次不同阶段的失败见 [VALIDATION](VALIDATION.md)。下一次发布仍须重新冻结候选、证明依赖适用性、独立审查并验证实际环境，不能直接复用旧 READY。
+
+后端根 Python 与静态共同变化时，另见 [无 schema 源码更新](SOURCE-RELEASE.md)。两个入口复用唯一事务核心和原发布锁；本静态入口仍固定 static-only，拒绝后端变化，不能通过 READY.mode 升级策略。新入口的实现、实际演练与生产发布须分别验证。此次共享抽取仅为上文静态工具白名单增加 `deploy/release_core.py`；`deploy/source_release.py` 不列入静态白名单，其他限制保持。
