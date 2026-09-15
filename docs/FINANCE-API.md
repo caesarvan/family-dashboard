@@ -108,6 +108,33 @@
 
 当前没有单独的流水分页或搜索接口；500 条显示上限是可见列表限制，不能把它误当成汇总只含 500 条。每位成员最多保留 20,000 条账单/订单记录。
 
+### 淘宝合并订单明细候选契约
+
+独立候选新增可选 `orderItems`／`orderGroup`，直接位于预览 `rows[]` 和已保存交易对象上；overview、对账的 transaction／left／right 沿用同一份本人数据。普通记录没有这些字段。入口仍是现有 imports/preview 与 imports/confirm，没有新 API 或表。
+
+仅服务端从已校验的淘宝 XLSX 精确 11 列表头及 A/B/C/D/J/K 同跨度合并几何生成字段；客户端不能通过独立 JSON 元数据绕过附件解析。格式与拒绝条件见 [导入说明](FINANCE-IMPORT.md#淘宝明确合并订单组独立候选尚未发布)。
+
+| 字段 | 类型与含义 |
+| --- | --- |
+| `orderItems[]` | 按原工作表顺序保存全部商品明细，不依据数量扩展条目 |
+| `title` | 必填文本，1～500 字符；交易顶层 title 仍是最多 200 字符的摘要 |
+| `variant` | 规格原文，最多 500 字符，可空 |
+| `quantityText` / `listedAmountText` | 数量／商品金额原文，各最多 100 字符，可空，不解析或分摊 |
+| `productUrl` | 链接原文，最多 2000 字符，可空；按惰性文本显示，不抓取或执行 |
+| `sourceLine` | 商品在原工作表的 1-based 物理行号 |
+| `orderGroup.format` | 固定 `taobao-merged-v1` |
+| `orderGroup.itemCount` | 商品明细条目数，等于 orderItems 长度；不是购买数量之和 |
+| `orderGroup.sourceRows` | 全组原工作表物理行号，按原顺序 |
+| `orderGroup.shippingAmountText` | 组首运费原文，最多 100 字符；不与实付金额重复相加 |
+
+以上商品文本仅去首尾空白；文件原有公式、宏、外链关系等拒绝规则不放宽。`amountCents` 只取组首「实付金额」一次，`line` 为组首物理行号；`sourceLine`／`sourceRows` 保存后仍保留。reader 的内部 rows／mergeRefs 不进入 `fileInfo`、交易或导出。
+
+正常预览增加每行 `conflict:boolean` 和顶层 `conflictCount`；`duplicateCount` 包含冲突，`newCount` 只数新记录。只有新输入含本格式时，才按 owner/source/kind/externalId 查找旧订单，而不依赖会随状态改变的 flow 指纹。金额、日期、币种、状态、flow、商品业务字段或运费变化均冲突保留旧值；旧记录缺明细与新有明细也冲突。比较排除 sourceLine／sourceRows，商品明细顺序及重复条目次数保留为业务比较的一部分。多个历史同编号订单视为冲突且不新增，不自动修复旧库。
+
+确认在现有写事务内重新使用同一匹配规则，重复发送不新增订单；`resultMonths` 按真正现存且保留的唯一记录日期计算，包括冲突旧值。普通 CSV、其他来源和 payments 指纹不变；删除后的旧确认仍遵循原导入规则，不新增永久墓碑或稳定历史回执语义。订单金额不变为支付支出、退款或共同消费，后续订单／付款核对及采购实付只使用明确的付款分配。
+
+个人 ZIP 的 JSON 交易保留两个可选字段；CSV 仍是每订单一行摘要。伙伴、电视、共享汇总、公共余额与采购实体均不获得商品明细。
+
 ### `totals[]` 口径
 
 每个币种一项，字段为 `currency`、`count`、`expenseCents`、`incomeCents`、`refundCents`、`transferCents`、`unknownCents`、`excludedCents`、`orderCents`、`categories`、`netSpendCents`、`recordedSurplusCents`，另有 `duplicateCents` 和 `duplicateCount` 表示本人确认后排除的重复支付/退款。

@@ -150,6 +150,120 @@ def normalized_flow(raw, category, status, kind):
     return 'unknown'
 
 
+TAOBAO_ORDER_HEADERS = ['订单号', '订单提交时间', '订单状态', '店铺名称', '商品名称',
+                       '商品链接', '型号款式', '商品数量', '商品金额', '实付金额', '运费']
+TAOBAO_ORDER_COLUMNS = (0, 1, 2, 3, 9, 10)
+
+
+def _taobao_order_groups(structure):
+    """Read explicit order spans, never fill blank rows by their neighbours."""
+    if not structure:
+        return None
+    table, refs = structure['rows'], structure['mergeRefs']
+    header = table.get(1, [])
+    if header != TAOBAO_ORDER_HEADERS or not refs:
+        return None
+    def invalid():
+        raise FinanceHubError('淘宝订单合并结构不完整或有冲突，请核对原文件的订单组；未补填日期或金额')
+    physical = {r for r, values in table.items() if r > 1 and any(v.strip() for v in values)}
+    if not physical or len(refs) > 30_000:
+        invalid()
+    coverage = {c: {} for c in TAOBAO_ORDER_COLUMNS}
+    for ref in refs:
+        match = re.fullmatch(r'([A-Z]{1,3})([1-9]\d{0,5})(?::([A-Z]{1,3})([1-9]\d{0,5}))?', ref)
+        if not match:
+            invalid()
+        left, first, right, last = match.groups()
+        right, last = right or left, last or first
+        col = 0
+        for char in left:
+            col = col * 26 + ord(char) - 64
+        col -= 1
+        first, last = int(first), int(last)
+        if left != right or col not in coverage or not 2 <= first <= last <= max(table):
+            invalid()
+        for row in range(first, last + 1):
+            if row not in physical or row in coverage[col]:
+                invalid()
+            coverage[col][row] = (first, last)
+    result, consumed = [], set()
+    for first in sorted(physical):
+        if first in consumed:
+            continue
+        spans = {coverage[col].get(first, (first, first)) for col in TAOBAO_ORDER_COLUMNS}
+        if len(spans) != 1:
+            invalid()
+        begin, last = next(iter(spans))
+        if begin != first:
+            invalid()
+        anchor = table[first]
+        if len(anchor) != 11 or any(not anchor[c].strip() for c in TAOBAO_ORDER_COLUMNS):
+            invalid()
+        items = []
+        source_rows = list(range(first, last + 1))
+        for row in source_rows:
+            if row not in physical or row in consumed:
+                invalid()
+            if any(coverage[c].get(row, (row, row)) != (first, last) for c in TAOBAO_ORDER_COLUMNS):
+                invalid()
+            values = table[row]
+            if len(values) > 11:
+                invalid()
+            values = values + [''] * (11 - len(values))
+            if row != first and any(values[c].strip() for c in TAOBAO_ORDER_COLUMNS):
+                invalid()
+            items.append({'title': clean(values[4], 500, required=True), 'variant': clean(values[6], 500),
+                          'quantityText': clean(values[7], 100), 'listedAmountText': clean(values[8], 100),
+                          'productUrl': clean(values[5], 2000), 'sourceLine': row})
+            consumed.add(row)
+        result.append((first, anchor, {'orderItems': items, 'orderGroup': {
+            'format': 'taobao-merged-v1', 'itemCount': len(items), 'sourceRows': source_rows,
+            'shippingAmountText': clean(anchor[10], 100)}}))
+    if consumed != physical:
+        invalid()
+    return result
+
+
+def _order_details_signature(row):
+    if 'orderItems' not in row and 'orderGroup' not in row:
+        return None
+    items = row.get('orderItems')
+    group = row.get('orderGroup')
+    if not isinstance(items, list) or not isinstance(group, dict):
+        return ('invalid',)
+    fields = ('title', 'variant', 'quantityText', 'listedAmountText', 'productUrl')
+    return ([{k: item.get(k) for k in fields} if isinstance(item, dict) else None for item in items],
+            {k: group.get(k) for k in ('format', 'itemCount', 'shippingAmountText')})
+
+
+def _import_conflict(old, new):
+    return (any(old.get(k) != new.get(k) for k in ('amountCents', 'currency', 'date'))
+            or _order_details_signature(old) != _order_details_signature(new)
+            or (_is_grouped_order(new) and any(old.get(k) != new.get(k) for k in ('status', 'flow'))))
+
+
+def _is_grouped_order(row):
+    return (row.get('source') == 'taobao' and row.get('kind') == 'orders'
+            and isinstance(row.get('orderGroup'), dict)
+            and row['orderGroup'].get('format') == 'taobao-merged-v1')
+
+
+def _index_order(existing):
+    index = {}
+    for fingerprint, row in existing.items():
+        if row.get('source') == 'taobao' and row.get('kind') == 'orders' and row.get('externalId'):
+            index.setdefault(row['externalId'], []).append(fingerprint)
+    return index
+
+
+def _import_matches(row, existing, order_index):
+    # Only explicit grouped inputs use this lookup. Keep historical fingerprints
+    # intact, including any ambiguous old duplicates; never migrate or merge them.
+    if _is_grouped_order(row) and row['externalId'] in order_index:
+        return order_index[row['externalId']]
+    return [row['fingerprint']] if row['fingerprint'] in existing else []
+
+
 def parse_import(payload):
     source = payload.get('source', 'generic')
     kind = payload.get('kind', 'payments')
@@ -160,11 +274,13 @@ def parse_import(payload):
         raise FinanceHubError('inspectSheets 必须为布尔值')
     if inspect_sheets and ('file' not in payload or 'amountColumn' in payload):
         raise FinanceHubError('请先选择 XLSX 工作表，再选择金额列并预览')
-    file_info = None
+    file_info, structure = None, None
     if 'file' in payload:
         if 'csv' in payload:
             raise FinanceHubError('请仅提交一个文件或 CSV 文本')
-        text, file_info = read_financial_file(payload['file'], inspect_sheets=inspect_sheets)
+        text, file_info = read_financial_file(payload['file'], inspect_sheets=inspect_sheets,
+                                              include_structure=source == 'taobao' and kind == 'orders')
+        structure = file_info.pop('_worksheetStructure', None)
     else:
         text = payload.get('csv')
     if inspect_sheets:
@@ -238,10 +354,13 @@ def parse_import(payload):
                 'amountSelection': amount_selection, 'requiresAmountSelection': True}
     original_amount_column = mapping['amount']
     mapping['amount'] = selected
+    grouped = _taobao_order_groups(structure)
+    if grouped is not None:
+        warnings.append('已按明确合并范围分组；每个订单只统计一次实付金额，商品标价、数量和运费不作付款分摊。')
     try:
         reader = csv.reader(io.StringIO('\n'.join(lines[start + 1:])), delimiter=delimiter, strict=True)
-        for row in reader:
-            line_number = start + 1 + reader.line_num
+        entries = grouped if grouped is not None else ((start + 1 + reader.line_num, row, None) for row in reader)
+        for line_number, row, order_metadata in entries:
             if not row or not any(value.strip() for value in row):
                 continue
             if len(result) + len(errors) >= MAX_ROWS:
@@ -260,7 +379,12 @@ def parse_import(payload):
                 when = valid_date(f'{int(match[1]):04}-{int(match[2]):02}-{int(match[3]):02}')
                 amount = cents(cell('amount'))
                 currency = currency_code(cell('currency', 'CNY'))
-                title = clean(cell('title') or '未命名记录', 200)
+                if order_metadata:
+                    items = order_metadata['orderItems']
+                    suffix = f' 等 {len(items)} 项商品' if len(items) > 1 else ''
+                    title = items[0]['title'][:200 - len(suffix)] + suffix
+                else:
+                    title = clean(cell('title') or '未命名记录', 200)
                 category = clean(cell('category') or '未分类', 60)
                 external = clean(cell('externalId'), 160)
                 status = clean(cell('status'), 80)
@@ -287,7 +411,7 @@ def parse_import(payload):
                                'paymentId': clean(cell('paymentId'), 160),
                                'originalTransactionId': clean(cell('originalTransactionId'), 160),
                                'source': source, 'kind': kind, 'fingerprint': fingerprint,
-                               'visibility': 'private', 'line': line_number})
+                               'visibility': 'private', 'line': line_number, **(order_metadata or {})})
             except FinanceHubError as exc:
                 errors.append({'line': line_number, 'message': str(exc)})
     except csv.Error:
@@ -699,12 +823,18 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
         payload = body()
         parsed = parse_import(payload)
         parsed.setdefault('requiresSheetSelection', False)
-        existing = {r[0] for r in db().execute('SELECT fingerprint FROM hub_transactions WHERE owner=?', (uid,))}
-        seen = set(existing)
+        seen = {r['fingerprint']: _row(r) for r in db().execute('SELECT * FROM hub_transactions WHERE owner=?', (uid,))}
+        order_index = _index_order(seen)
         for row in parsed['rows']:
-            row['duplicate'] = row['fingerprint'] in seen
-            seen.add(row['fingerprint'])
+            matches = _import_matches(row, seen, order_index)
+            row['duplicate'] = bool(matches)
+            row['conflict'] = bool(matches) and (len(matches) > 1 or any(_import_conflict(seen[key], row) for key in matches))
+            if not row['duplicate']:
+                seen[row['fingerprint']] = row
+                if row['source'] == 'taobao' and row['kind'] == 'orders' and row['externalId']:
+                    order_index.setdefault(row['externalId'], []).append(row['fingerprint'])
         parsed['duplicateCount'] = sum(row['duplicate'] for row in parsed['rows'])
+        parsed['conflictCount'] = sum(row['conflict'] for row in parsed['rows'])
         parsed['newCount'] = len(parsed['rows']) - parsed['duplicateCount']
         parsed['totals'] = transaction_totals([row for row in parsed['rows'] if not row['duplicate']])
         parsed['previewToken'] = signer.dumps({'owner': uid, 'digest': fingerprint_payload(payload)}) if not parsed['errorCount'] and not parsed['requiresAmountSelection'] and not parsed['requiresSheetSelection'] else None
@@ -738,13 +868,16 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
         conn.execute('BEGIN IMMEDIATE')
         try:
             existing = {r['fingerprint']: _row(r) for r in conn.execute('SELECT * FROM hub_transactions WHERE owner=?', (uid,))}
+            order_index = _index_order(existing)
             inserted, duplicates, conflicts = 0, 0, 0
+            result_keys = set()
             for row in parsed['rows']:
                 key = row['fingerprint']
-                if key in existing:
+                matches = _import_matches(row, existing, order_index)
+                if matches:
                     duplicates += 1
-                    old = existing[key]
-                    if any(old.get(k) != row.get(k) for k in ['amountCents', 'currency', 'date']):
+                    result_keys.update(matches)
+                    if len(matches) > 1 or any(_import_conflict(existing[match], row) for match in matches):
                         conflicts += 1
                     continue
                 if len(existing) >= MAX_RECORDS:
@@ -756,9 +889,11 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
                 conn.execute('INSERT INTO hub_transactions(id,owner,fingerprint,data,created_at) VALUES(?,?,?,?,?)',
                              (rid, uid, key, json.dumps(row, ensure_ascii=False), stamp()))
                 existing[key] = row
+                if row['source'] == 'taobao' and row['kind'] == 'orders' and row['externalId']:
+                    order_index.setdefault(row['externalId'], []).append(key)
+                result_keys.add(key)
                 inserted += 1
             # Count unique persisted records, including the retained version of a conflict.
-            result_keys = {row['fingerprint'] for row in parsed['rows']}
             result_counts = Counter(existing[key]['date'][:7] for key in result_keys)
             result_months = [{'month': value, 'recordCount': result_counts[value]} for value in sorted(result_counts, reverse=True)]
             if inserted:

@@ -94,7 +94,7 @@ def _excel_date(value, epoch1904):
         raise FinancialFileError('Excel 日期单元格无效') from None
 
 
-def _read_xlsx(raw, requested_sheet, *, inspect_sheets=False):
+def _read_xlsx(raw, requested_sheet, *, inspect_sheets=False, include_structure=False):
     if raw.startswith(bytes.fromhex('D0CF11E0A1B11AE1')):
         raise FinancialFileError('不支持加密工作簿或旧版 XLS；请解密并另存为 XLSX 或 CSV')
     if not isinstance(requested_sheet, str) or len(requested_sheet) > 100:
@@ -297,12 +297,20 @@ def _read_xlsx(raw, requested_sheet, *, inspect_sheets=False):
         content = stream.getvalue()
         if len(content.encode()) > MAX_FILE_BYTES:
             raise FinancialFileError('工作表文本超过 2 MB，请按月份拆分')
-        return content, {'format': 'xlsx', 'encoding': 'OOXML / UTF-8', 'sheet': chosen['name'],
-                         'sheets': [sheet['name'] for sheet in sheets], 'worksheetRows': len(table),
-                         'note': '仅导入所选工作表的纯值；Excel 中已经丢失的长编号精度无法恢复，请在预览中核对原始编号。'}
+        info = {'format': 'xlsx', 'encoding': 'OOXML / UTF-8', 'sheet': chosen['name'],
+                'sheets': [sheet['name'] for sheet in sheets], 'worksheetRows': len(table),
+                'note': '仅导入所选工作表的纯值；Excel 中已经丢失的长编号精度无法恢复，请在预览中核对原始编号。'}
+        if include_structure:
+            # Internal opt-in for a source-specific parser, never a client file
+            # option. The caller must remove this before returning fileInfo.
+            info['_worksheetStructure'] = {
+                'rows': table,
+                'mergeRefs': [node.get('ref', '') for node in root.findall(f'{{{NS}}}mergeCells/{{{NS}}}mergeCell')],
+            }
+        return content, info
 
 
-def _read_financial_file(file, *, inspect_sheets=False):
+def _read_financial_file(file, *, inspect_sheets=False, include_structure=False):
     if not isinstance(file, dict) or set(file) - {'name', 'contentBase64', 'encoding', 'sheet'}:
         raise FinancialFileError('文件字段不正确')
     name = file.get('name')
@@ -324,7 +332,7 @@ def _read_financial_file(file, *, inspect_sheets=False):
     if suffix in {'xls', 'xlsm', 'xlsb', 'xltm'}:
         raise FinancialFileError('不支持旧版 XLS、宏或二进制工作簿；请另存为无公式 XLSX 或 CSV')
     if suffix == 'xlsx':
-        text, info = _read_xlsx(raw, file.get('sheet', ''), inspect_sheets=inspect_sheets)
+        text, info = _read_xlsx(raw, file.get('sheet', ''), inspect_sheets=inspect_sheets, include_structure=include_structure)
     elif suffix in {'csv', 'txt'}:
         encoding = file.get('encoding', 'auto')
         if not isinstance(encoding, str) or encoding not in {'auto', 'utf-8', 'gb18030'}:
@@ -350,12 +358,14 @@ def _read_financial_file(file, *, inspect_sheets=False):
     return text, info
 
 
-def read_financial_file(file, *, inspect_sheets=False):
+def read_financial_file(file, *, inspect_sheets=False, include_structure=False):
     if type(inspect_sheets) is not bool:
         raise FinancialFileError('工作表读取模式必须为布尔值')
+    if type(include_structure) is not bool:
+        raise FinancialFileError('工作表结构读取模式必须为布尔值')
     if not FILE_PARSE_SLOT.acquire(blocking=False):
         raise FinancialFileError('正在处理另一份账单文件，请稍后重试', 429)
     try:
-        return _read_financial_file(file, inspect_sheets=inspect_sheets)
+        return _read_financial_file(file, inspect_sheets=inspect_sheets, include_structure=include_structure)
     finally:
         FILE_PARSE_SLOT.release()
