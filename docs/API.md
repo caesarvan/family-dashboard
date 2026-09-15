@@ -4,6 +4,22 @@
 
 > 本文保留基础版本 35 个 HTTP 操作的详细字段。平台扩展后的完整路由见 [当前路由索引](PLATFORM-ROUTES.md)；新家庭、偏好、助理与旅行见 [平台扩展](PLATFORM.md)，账单/XLSX/投资见 [财务导入](FINANCE-IMPORT.md)。请勿把下方基础接口计数当作新版本总数。
 
+## 旅行资料候选接口
+
+当前 Git 集成源码增加以下五个操作，总计 **106 个方法／路径模板、43 张户内表及 2 张平台表**；页首 101／42／2 是已部署基线，候选尚未发布。完整请求、响应、文件校验与状态码见 [旅行资料契约](JOURNEY-DOCUMENTS.md)。
+
+| 方法 | 路径 | 用途 |
+|---|---|---|
+| GET | `/api/journey-documents` | 带 `journeyId` 读取该旅行中本人和家人共享的资料；不带时读取本人资料库 |
+| POST | `/api/journey-documents` | 上传一份 PDF 或图片；首次成功 201，相同 `requestId` 重放成功 200 |
+| PATCH | `/api/journey-documents/<id>` | 上传者以 `revision` 修改标题、共享范围及旅行／分段关联 |
+| DELETE | `/api/journey-documents/<id>` | 上传者以 `revision` 删除；清除文件并保留阻止旧请求复活的记录 |
+| GET | `/api/journey-documents/<id>/file` | 身份核验后下载原 PDF 或净化后的 JPEG；返回附件，非 JSON |
+
+五项均要求成员身份；匿名 401、电视 403，其他家庭或不可见资料 404。只有上传者可修改和删除，家人对明确共享且仍关联有效旅行的资料只读。写入仍使用同源 JSON、CSRF；POST 包含 Base64 文件，请求体上限 **7,200,000 字节**，原文件上限 **5,000,000 字节**，不适用下文常规 600,000 字节上限。并发版本或幂等冲突返回 409，不能自动覆盖或更换请求标识重发。
+
+删除旅行后资料留在上传者的库中，并按仅本人可见处理。文件和下载地址不进入共享 state、日历、任务或助理；个人 ZIP 仅含允许导出的元数据，见 [数据副本](PORTABILITY.md)。
+
 线上已于 2026-09-15 02:33:28 发布旅行细项、日历复核及[财务来源预览与 CAS 确认](FINANCE-SOURCE-BRIDGE.md)。本文第 5.5 节属于该版本；真实来源映射与余额日期尚需核对，未启用持续导入。
 
 本文基础契约保留 2026-09-14 核对的 `app.py`、`cloud_accounts.py`、`cloud_providers.py`、`shopping_media.py` 和 `finance_baseline.py` 字段，供前端、后端和联合开发 Agent 对接。原范围为 **33 条显式路由注册、35 个业务 HTTP 方法操作**；本轮新增操作另列，不据此推断当前总数。Flask 自动生成的 `HEAD`、`OPTIONS` 不重复计数，动态实体类型也不展开计数。

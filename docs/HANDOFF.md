@@ -22,7 +22,7 @@
 
 ## 当前候选与文件占用
 
-已发布的旅行执行和恢复工具已经完成交接。**新旅行资料候选尚未合入或部署**，已从旧共享候选目录拆分保存为独立 Git 分支及 worktree。旧候选目录只作冻结证据，禁止继续在其中开发。
+已发布的旅行执行和恢复工具已经完成交接。**新旅行资料已分模块审查并合入 `codex/integration`，尚未部署**。本节记录集成到 `31397f9423e64a30de6f746bc517868aeb0cdcd5` 时的进度；此时 main 为 `22fe53c`，后续应先核对实际 Git refs，不能凭本段旧快照判断发布状态。旧共享候选目录只作冻结证据，禁止继续在其中开发。
 
 仓库基线为 `ad667bf2b744d707db080964c662249c7cd8b056`，标签 `baseline/2026-09-15-handoff`。当前主仓为项目根目录，各工作树位于维护者本机 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/worktrees/` 下；换机器后按 [Git 指导](GIT-WORKFLOW.md) 从 bundle 创建自己的工作树，不复用这些机器绝对路径。
 
@@ -30,17 +30,22 @@
 |---|---|---|
 | `main` | 集成人 / 项目根目录 | 已发布业务基线与审查后的交接文档；线上结构仍为 101 路由、42 户内表 |
 | `codex/integration` | 集成人专用 | 仅合并审查通过的提交，不供模块 agent 直接开发 |
-| `codex/journey-documents-api` | journey_workflows / journey-documents-api | 新资料模块、68 项专项与接口文档；提交 `6ef2516`，等待审查与联合验证 |
-| `codex/journey-documents-ui` | product_interface / journey-documents-ui | 新资料 JS/CSS、旅行 UI 与浏览器脚本；含新建向导空目标修复，完整资料场景仍待复验 |
-| `codex/journey-documents-portability` | finance_hub / journey-documents-portability | 私有导出、12 项跨模块专项与恢复夹具；提交 `8eb120e`，等待审查与联合验证 |
-| `codex/journey-documents-wiring` | 集成人 / journey-documents-wiring | app、HTML/JS 加载、Docker、发布白名单接入；提交 `2774e75`，等待审查 |
+| `codex/journey-documents-api` | journey_workflows / journey-documents-api | `90292c7`；product_interface 独立审查功能，root 复核末尾空行修正，已合入 integration |
+| `codex/journey-documents-ui` | product_interface / journey-documents-ui | `a9dd519`；journey_workflows 审查提出三项修复，作者修复后由 root 复核，已合入 integration |
+| `codex/journey-documents-portability` | finance_hub / journey-documents-portability | `8eb120e`；本人导出和恢复夹具，由 root 独立审查后合入 integration |
+| `codex/journey-documents-wiring` | 集成人 / journey-documents-wiring | `2774e75`；app、加载、Docker 与发布白名单，由 finance_hub 独立审查后合入 integration |
+| `codex/finance-journey-migration` | finance_hub / finance-journey-migration | `ec0ec4c`；可移植 42→43 检查器、16 项测试及契约，由 root 独立审查后合入 integration |
+| `codex/journey-documents-release` | journey_workflows / journey-documents-release | 专用发布控制器及命令替身测试；独立开发中，未获得生产执行结论 |
+| `codex/root-journey-docs` | root / root-journey-docs | 当前候选的 README、接口索引、数据与部署文档；独立提交、交由非作者审查 |
 | `codex/docs-git-handoff`、`codex/git-workflow-guide` | 文档集成人与文档 agent，各自独立目录 | 本次 README、Git 规则与指导；通过独立审查后逐层合入 main |
 
-候选目标是资料默认本人私有、明确选择后向本户成员共享，电视不能读取资料；PDF 仅下载，图片解码净化，删旅行保留上传者资料并可重新关联。拟增加 5 个方法/路径模板及 1 张表，最终为 106 路由、43 户内表。候选专文位于 API 分支的 `docs/JOURNEY-DOCUMENTS.md`，未加入 main 已上线接口索引。
+候选实现资料默认本人私有、明确选择后向本户成员共享，电视不能读取资料；PDF 仅下载，图片解码净化，删旅行保留上传者资料并可重新关联。新增 5 个方法/路径模板及 1 张表，候选为 **106 路由、43 户内表及 2 张平台表**；完整字段见 [旅行资料契约](JOURNEY-DOCUMENTS.md)，生成索引反映候选源码，不能理解为线上结构已经改变。
 
-各模块分支保留独立职责，**单独分支不一定能启动完整新功能**。UI、导出和接线依赖新后端；完整测试须在审查后的集成提交上执行，不通过复制其他工作树文件拼装。此次将旧候选保存成 Git 提交，不等于它已被审查或通过联合测试。
+各模块分支保留独立职责，**单独分支不一定能启动完整新功能**。UI、导出和接线依赖新后端；完整测试在审查后的集成提交上执行，不通过复制其他工作树文件拼装。浏览器验证使用固定提交的 detached worktree，作者仍只在自己的功能分支修复；修复再次审查和 Git 合并后才验证新提交。
 
-已有候选证据：后端 68 项通过、跨模块 12 项通过，本机合成恢复 seed 15 / verify 216；42→43 迁移检查的 13 项只属于隔离验证。资料浏览器曾在 16 项断言后因新建向导空目标异常退出；UI 分支两行修复的既有旅行细项 10 场景通过，完整资料迟到响应/切换身份/TV 场景、最终组合回归、Linux 镜像、实际 Docker 新结构恢复与正式迁移仍待完成。不得把原 42 表镜像的通过记录移作此候选验收。
+已完成的组合证据：`edc4ad9` 上资料 API／导出组合 **85 passed**（68 + 12 + 原导出 5），后续仅 API 末尾空行整理不改变 AST；`c91c6fe` 上完整资料浏览器 **43/43**、原详情 **10/10**、执行流程 **53/53**、返回流程 **23/23** 通过，共 129 项，232 个受控源文件前后相同且无页面错误或外站请求。43 项包含刷新后的准确分段焦点、四种空闲身份切换清屏，以及成功响应丢失后原旅行删除／重新关联的幂等重试。迁移工具在无 Git 的独立 TAR 解压目录中 **16 passed**，不依赖开发者路径。
+
+本机合成恢复 seed 15 / verify 216 是独立夹具记录；完整后端、Linux 镜像、新 43 表实际 Docker 恢复、最终集成复核与正式迁移尚待绑定最终源码完成。旧浏览器失败和后续修复分开保留，原 42 表镜像的通过记录不能移作此候选验收。当前通用源码排除全部真实输入、配置和私有 `test-results/`。
 
 旅行执行跨模块接缝：`static/journey-ui.js/.css` 管详情刷新、负责人筛选和原流程返回；`task_publish.py`、`calendar_publish.py` 管 `localChangesPending` 的只读比较；`finance_hub.py` 管来源限定的订单表头兼容。验收入口为 `tests/browser_journey_execution_check.py`、`tests/test_publication_local_changes.py` 和 `tests/test_order_source_headers.py`。这些文件及接口变更由集成人协调，不能由旅行与云同步 agent 同时修改同一文件。见 [旅行执行契约](JOURNEY-EXECUTION.md)。
 

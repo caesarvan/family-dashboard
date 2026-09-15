@@ -1,6 +1,6 @@
 # 家庭中枢 · Family Dashboard
 
-> **线上版本：2026-09-15 16:25:03（北京时间），镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。** 本次补齐 Git 与联合开发交接，通用源码包为 225 文件、38 份 Markdown；线上仍为 101 个方法／路径模板、42 张户内表及 2 张平台表。未上线候选和实际云服务验收分别见 [HANDOFF](docs/HANDOFF.md) 与 [VALIDATION](docs/VALIDATION.md)。
+> **线上版本：2026-09-15 16:25:03（北京时间），镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`。** 已交付的 main `22fe53c` 历史源码包为 225 文件、38 份 Markdown；这不是当前旅行资料候选的文件数。线上仍为 101 个方法／路径模板、42 张户内表及 2 张平台表。未上线候选和实际云服务验收分别见 [HANDOFF](docs/HANDOFF.md) 与 [VALIDATION](docs/VALIDATION.md)。
 
 面向两位家庭成员的日程、待办、采购、旅行、财务与助理工作台。手机和电脑负责维护，50／75 英寸电视负责常亮展示；两个住处的屏幕可各自设置侧重、布局和主题。目前支持邀请建立独立家庭，每户两位成员。
 
@@ -21,7 +21,8 @@
 | 项目 | 已核验结果 |
 |---|---|
 | 技术栈 | Flask／原生 JavaScript／SQLite；Docker Compose 运行 app、sync、web 三个服务 |
-| 交接内容 | 225 个源码文件、38 份 Markdown（含本 README 与 AGENTS）；源码包另附逐文件 SHA-256 清单 |
+| 已交付的 main 历史包 | `22fe53c`：225 个源码文件、38 份 Markdown（含 README 与 AGENTS）；另附逐文件 SHA-256 清单 |
+| 旅行资料文档审查基线 | 未发布的 `9d47624`：234 文件、39 份 Markdown；后续发布工具和文档增量以实际提交及最终清单为准，不沿用旧包计数 |
 | 接口与存储 | 101 个 Flask 方法／路径模板，另有 WSGI 家庭入口；每户 42 张表，平台 2 张表 |
 | 应用镜像后端测试（16:25） | Windows：1268 passed / 18 skipped；Linux：1285 passed / 1 skipped；每端完整收集 1286 项；两端不相加 |
 | 本轮浏览器检查 | 新旅行执行 53 项及原旅行／发布 8 组通过；临时 Flask/SQLite、真实 Edge、模拟云服务，零外站请求 |
@@ -32,7 +33,15 @@
 
 详细测试、迁移与发布历史见 [VALIDATION](docs/VALIDATION.md)。公网浏览器曾受组织 SmartScreen 阻断，未绕过；容器内部验证不能替代公网与实体设备验收。
 
-旅行执行与订单兼容已经发布。新的**旅行资料上传、资料权限、完整细项展示与段落定位**保存在独立 Git 功能分支，尚未合入 main 或部署；候选需要联合验证及 42→43 迁移。接手前查看 [当前候选与文件占用](docs/HANDOFF.md#当前候选与文件占用)，不要将功能分支当成线上能力。
+旅行执行与订单兼容已经发布。新的**旅行资料上传、资料权限、完整细项展示与段落定位**正在独立 Git 集成分支中验证，尚未部署；候选需要联合验证及 42→43 迁移。接手前查看 [当前候选与文件占用](docs/HANDOFF.md#当前候选与文件占用)，不要将功能分支当成线上能力。
+
+### 旅行资料候选
+
+从旅行或具体航班、住宿、活动进入资料夹，上传 PDF/JPG/PNG/WebP。资料默认仅上传者可见，明确设为共享后本户另一成员可读；电视始终不能读取。资料可改标题、关联旅行或分段，支持逐份下载和删除。删除旅行后文件仍保留在上传者的“我的旅行资料”，可重新关联；文件不会进入云日历、待办或助理上下文。边界和五个接口见 [旅行资料契约](docs/JOURNEY-DOCUMENTS.md)。
+
+旅行详情同时展示已保存的航班号、起降、住宿地址、活动地点与备注，并可复制；从日程可定位具体分段。候选在固定集成提交 `c91c6fe` 上完成资料 43、原细项 10、执行 53、返回 23，共 **129 项浏览器检查**；包括刷新焦点、身份变化清屏和上传重放读回。均使用临时 Flask／SQLite、真实 Edge 与虚构文件，零外站请求；Linux 镜像、最终发布与实体设备验收仍单列。
+
+本候选结构为 **106 个方法／路径模板、43 张户内表及 2 张平台表**，新增一张资料表、两个显式索引和解除关联触发器。新表迁移时为空，既有 42 表、行、索引和序号须保持。线上仍是上表基线；当前源码索引见 [路由与表](docs/PLATFORM-ROUTES.md)，完整恢复与实际发布分别验收。
 
 | 入口 | 地址或文档 |
 |---|---|
@@ -145,6 +154,7 @@ family-dashboard/
 ├─ data_portability.py         # 个人数据副本、格式与导出白名单
 ├─ journey_workflows.py        # 旅行及任务/采购/日程联动
 ├─ journey_time.py             # 当地时间、IANA/DST、航班/住宿/活动投影
+├─ journey_documents.py        # 候选：成员资料、上传/下载、权限与旅行关联
 ├─ finance_baseline.py         # 财务基线与共享白名单
 ├─ finance_source_bridge.py    # 来源候选、日期/覆盖校验与 CAS 接收回执
 ├─ spending_observations.py    # 本人消费观察、覆盖校验与独立持久回执
@@ -163,6 +173,7 @@ family-dashboard/
 │  ├─ household-routines.js / household-routines.css  # 例行模板、预览、历史与原事项返回
 │  ├─ finance-source-ui.js      # 来源文件、本人预览与确认界面
 │  ├─ journey-ui.js / calendar-publish.js / task-publish.js
+│  ├─ journey-documents.js / journey-documents.css  # 候选：本人资料与旅行资料夹
 │  ├─ home-assistant.js / household-spaces.js
 │  ├─ data-portability.js
 │  ├─ member-sessions.js / member-sessions.css  # 本人登录设备与撤销
@@ -179,7 +190,7 @@ family-dashboard/
 
 ## 接口与数据契约
 
-当前结构为 **101 个 Flask 方法/路径模板**，含 `GET /api/routines/context`、`POST /api/routines/preview` 与 `POST /api/routines/confirm`。另有 WSGI `GET /space/<slug>`，HEAD/OPTIONS 不重复计数。以 [路由索引](docs/PLATFORM-ROUTES.md)、[机器结构](docs/contract-inventory.json)和冻结源码实例化结果为准；例行字段与权限见 [ROUTINES](docs/ROUTINES.md)，既有采购字段继续见 [采购核对](docs/SHOPPING-SETTLEMENT.md#5-接口与数据模型)。
+线上基线是 **101 个 Flask 方法/路径模板**；旅行资料候选为 **106 个**，新增五个成员专用资料接口。另有 WSGI `GET /space/<slug>`，HEAD/OPTIONS 不重复计数。以 [本地候选路由索引](docs/PLATFORM-ROUTES.md)、[机器结构](docs/contract-inventory.json)和冻结源码实例化结果为准；例行字段与权限见 [ROUTINES](docs/ROUTINES.md)，既有采购字段继续见 [采购核对](docs/SHOPPING-SETTLEMENT.md#5-接口与数据模型)。
 
 | 接口族 | 内容与权限 |
 |---|---|
@@ -192,6 +203,7 @@ family-dashboard/
 | `/api/preferences` | 本人成员偏好 GET/PUT；完整三字段 `theme`、`density`、`homeView`，电视不用此写接口 |
 | `/api/dashboard-layout` | 本人卡片顺序/隐藏 GET/PUT，完整 revision/order/hidden，冲突返回 409 |
 | `/api/journeys/*` | 旅行预览、签名确认、事务更新和关联实体版本核对 |
+| `/api/journey-documents*`（候选） | 本人/旅行资料库、上传、元数据修改、删除与认证附件下载；所有 TV 访问被拒，上传者明确决定共享范围 |
 | `/api/calendar-publish/*` | 本人云账户写授权、预览确认、发布状态与冲突恢复 |
 | `/api/task-publish/*` | 本地任务预览确认、目标主清单、发布状态、暂停恢复与冲突选择 |
 | `/api/finance-hub/*`、财务基线与个人财务接口 | 本人私有账本、导入、预算与投资；共享内容只返回明确授权的汇总 |
@@ -304,6 +316,7 @@ node --test tests/test_calendar_views.js
 
 | 文档 | 用途 |
 |---|---|
+| [旅行资料与预订凭证](docs/JOURNEY-DOCUMENTS.md) | 候选文件格式、五个接口、私有与共享范围、幂等重放、删除旅行保留资料及迁移 |
 | [项目规则](AGENTS.md)／[Git 分支与审查流程](docs/GIT-WORKFLOW.md) | 独立 worktree、任务分支、审查记录、集成与主分支合并；Git bundle 联合开发 |
 | [家庭例行计划](docs/ROUTINES.md) | 周期模板、未来日期、预览确认、下一期生成、共享导出与成员权限 |
 | [采购实付核对](docs/SHOPPING-SETTLEMENT.md) | 本人来源、CNY 整项替换、独立完成状态、预览／确认／撤销、旅行保护与私有导出 |
@@ -319,7 +332,7 @@ node --test tests/test_calendar_views.js
 | [家庭成员使用手册](docs/USER-GUIDE.md) | 日程、待办、采购、旅行、财务、连接、电视与设置的操作路径 |
 | [联合开发接手说明](docs/HANDOFF.md) | 线上/本地版本差异、模块接缝、独占文件、可复制的 agent 任务模板 |
 | [平台架构与扩展](docs/PLATFORM.md) | 多家庭隔离、调度、助理、财务、旅行及运行约束 |
-| [路由与存储索引](docs/PLATFORM-ROUTES.md) | 101 个方法/路径模板、42 张户内表及 2 张平台表；须与最终临时数据库实例化清单一致，字段见各模块专文 |
+| [路由与存储索引](docs/PLATFORM-ROUTES.md) | 候选 106 个方法/路径模板、43 张户内表及 2 张平台表；线上基线仍为 101/42，字段见各模块专文 |
 | [基础接口契约](docs/API.md) | 登录、CSRF、基础 CRUD、日程、采购、设备、财务基线等请求与响应；扩展字段参见对应模块文档 |
 | [平台扩展接口契约](docs/PLATFORM-API.md) | 旅行计划字段、预览确认、版本幂等、助理、家庭空间与偏好的完整请求/响应 |
 | [财务扩展接口契约](docs/FINANCE-API.md) | 账单预览与确认、账本、分类预算、投资字段及权限/错误约定 |

@@ -31,6 +31,18 @@
 
 ## 权限与请求
 
+### 旅行资料候选扩展
+
+当前 Git 集成源码已接入旅行资料元数据；线上仍是页首 42 表基线，候选尚未部署。两个原接口保持不变，ZIP 仍为五个文件、`schemaVersion: 1`，64 MiB 未压缩内容上限保持。
+
+摘要始终包含 `personal.journeyDocuments` 和 `shared.journeyDocuments` 计数；没有资料表时两项为零。本人全部未删除资料只计入 personal 一次，包括本人共享和旅行删除后保留的资料。shared 仅统计另一成员明确共享且仍关联有效旅行的资料，不包含本人的重复记录。
+
+`data.json` 增加 `coverage.journeyDocuments: "metadata_only"` 和始终存在的 `personal.journeyDocuments` 数组。只有 `includeShared: true` 才有 `shared.journeyDocuments`。两处都仅包含以下 13 个字段：
+
+`id`、`journeyId`、`owner`、`title`、`filename`、`mimeType`、`bytes`、`visibility`、`segmentKey`、`unlinked`、`createdAt`、`updatedAt`、`revision`。
+
+`visibility` 是当前有效范围，孤立资料为 private；不导出 BLOB、下载 URL、上传请求标识、内容摘要、删除标志，以及界面派生的 `segmentMissing`／`canManage`。已删除资料不在副本中。旅行文件须在资料夹逐份下载；没有文件批量导出、ZIP 还原或一键重新导入接口，完整字段见 [资料契约](JOURNEY-DOCUMENTS.md)。
+
 两个接口均要求成员登录；匿名返回 401，电视返回 403。写接口另需同源 JSON 和 `X-CSRF-Token`，参见 [基础 API](API.md)。成员由会话确定，不能传入 owner 读取另一人的数据。
 
 | 方法 | 路径 | 响应 |
@@ -38,14 +50,14 @@
 | GET | `/api/portability/summary` | 本人记录数量、共享实体数量、格式与覆盖提示 |
 | POST | `/api/portability/export` | `application/zip` 附件，私有且禁止缓存 |
 
-空库摘要示例（字段计数随真实保存数据变化）：
+候选空库摘要示例（字段计数随真实保存数据变化）：
 
 ```json
 {
-  "personal": {"transactions":0,"investments":0,"budgets":0,"financeBaselines":0,"assistantPlans":0},
-  "shared": {},
+  "personal": {"transactions":0,"investments":0,"budgets":0,"financeBaselines":0,"assistantPlans":0,"journeyDocuments":0},
+  "shared": {"journeyDocuments":0},
   "format": "zip",
-  "note": "导出的是当前保存的记录，并非已覆盖全部金融账户。参考图片只含编号和尺寸，不包含图片文件；账号连接需要重新授权。"
+  "note": "导出的是当前保存的记录，并非已覆盖全部金融账户。采购图片和旅行资料仅含元数据，不包含文件；旅行文件请在资料夹逐份下载。账号连接需要重新授权。"
 }
 ```
 

@@ -4,7 +4,7 @@
 
 本表描述**本地源码**，其与正式版本的差异见 [交接说明](HANDOFF.md)。表用于定位代码；字段、权限、错误和状态机参见 [README 文档导航](../README.md#文档导航)。
 
-Flask HTTP 方法与路径组合：**101**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
+Flask HTTP 方法与路径组合：**106**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
 
 | 方法 | 路径 | 实现 |
 |---|---|---|
@@ -66,6 +66,11 @@ Flask HTTP 方法与路径组合：**101**；另有 `GET /space/<slug>`。HEAD/O
 | POST | `/api/items/<kind>` | [app.py](../app.py) · `add_item` |
 | DELETE | `/api/items/<kind>/<uid>` | [app.py](../app.py) · `delete_item` |
 | PATCH | `/api/items/<kind>/<uid>` | [app.py](../app.py) · `edit_item` |
+| GET | `/api/journey-documents` | [journey_documents.py](../journey_documents.py) · `list_journey_documents` |
+| POST | `/api/journey-documents` | [journey_documents.py](../journey_documents.py) · `upload_journey_document` |
+| DELETE | `/api/journey-documents/<document_id>` | [journey_documents.py](../journey_documents.py) · `delete_journey_document` |
+| PATCH | `/api/journey-documents/<document_id>` | [journey_documents.py](../journey_documents.py) · `update_journey_document` |
+| GET | `/api/journey-documents/<document_id>/file` | [journey_documents.py](../journey_documents.py) · `download_journey_document` |
 | GET | `/api/journeys` | [journey_workflows.py](../journey_workflows.py) · `journey_list` |
 | GET | `/api/journeys/<uid>` | [journey_workflows.py](../journey_workflows.py) · `journey_detail` |
 | GET | `/api/journeys/<uid>/calendar` | [journey_workflows.py](../journey_workflows.py) · `journey_calendar` |
@@ -112,9 +117,9 @@ Flask HTTP 方法与路径组合：**101**；另有 `GET /space/<slug>`。HEAD/O
 
 ## 每户业务数据表
 
-共 **42** 张表：
+共 **43** 张表：
 
-`assistant_plans`, `attempts`, `audit`, `calendar_publications`, `cloud_accounts`, `cloud_items`, `cloud_oauth_states`, `cloud_sources`, `cloud_writes`, `devices`, `entities`, `finance_baselines`, `finance_source_receipts`, `finance_spending_observations`, `finance_spending_receipts`, `household_routines`, `hub_budgets`, `hub_imports`, `hub_investment_import_previews`, `hub_investment_import_receipts`, `hub_investment_links`, `hub_investment_sources`, `hub_investments`, `hub_reconciliations`, `hub_shopping_settlement_receipts`, `hub_shopping_settlements`, `hub_transactions`, `journey_actions`, `journey_links`, `journey_workflows`, `member_dashboard_layout`, `member_preferences`, `member_session_browsers`, `member_sessions`, `photo_refs`, `photos`, `private_finance`, `routine_occurrences`, `routine_receipts`, `settings`, `task_publications`, `users`
+`assistant_plans`, `attempts`, `audit`, `calendar_publications`, `cloud_accounts`, `cloud_items`, `cloud_oauth_states`, `cloud_sources`, `cloud_writes`, `devices`, `entities`, `finance_baselines`, `finance_source_receipts`, `finance_spending_observations`, `finance_spending_receipts`, `household_routines`, `hub_budgets`, `hub_imports`, `hub_investment_import_previews`, `hub_investment_import_receipts`, `hub_investment_links`, `hub_investment_sources`, `hub_investments`, `hub_reconciliations`, `hub_shopping_settlement_receipts`, `hub_shopping_settlements`, `hub_transactions`, `journey_actions`, `journey_documents`, `journey_links`, `journey_workflows`, `member_dashboard_layout`, `member_preferences`, `member_session_browsers`, `member_sessions`, `photo_refs`, `photos`, `private_finance`, `routine_occurrences`, `routine_receipts`, `settings`, `task_publications`, `users`
 
 ## 平台注册目录
 
