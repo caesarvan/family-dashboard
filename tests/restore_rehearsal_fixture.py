@@ -304,6 +304,60 @@ def png(number):
     return 'data:image/png;base64,' + base64.b64encode(target.getvalue()).decode()
 
 
+def synthetic_pdf():
+    """Small valid PDF assembled from fixed synthetic objects, with no input file."""
+    content = b'BT /F1 12 Tf 20 40 Td (Synthetic recovery document) Tj ET\n'
+    objects = [b'<< /Type /Catalog /Pages 2 0 R >>',
+               b'<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+               b'<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 100] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+               b'<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>',
+               b'<< /Length ' + str(len(content)).encode() + b' >>\nstream\n' + content + b'endstream']
+    output, offsets = bytearray(b'%PDF-1.4\n'), [0]
+    for index, value in enumerate(objects, 1):
+        offsets.append(len(output))
+        output.extend(str(index).encode() + b' 0 obj\n' + value + b'\nendobj\n')
+    start = len(output)
+    output.extend(b'xref\n0 6\n0000000000 65535 f \n')
+    for offset in offsets[1:]:
+        output.extend(f'{offset:010d} 00000 n \n'.encode())
+    output.extend(b'trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n' + str(start).encode() + b'\n%%EOF\n')
+    return bytes(output)
+
+
+def seed_journey(client, run_id, household_id):
+    plan = {'title': 'Synthetic recovery journey', 'start': '2026-12-03', 'end': '2026-12-05',
+            'international': False, 'memberIds': ['member1', 'member2'], 'budget': 0,
+            'destinations': [{'key': 'synthetic-city', 'country': 'Synthetic', 'city': 'Recovery',
+                              'arrival': '2026-12-03', 'departure': '2026-12-05'}],
+            'checklist': [], 'shopping': [], 'segments': []}
+    preview = client.request('POST', '/api/journeys/preview', {'plan': plan})
+    return client.request('POST', '/api/journeys/apply',
+                          {'previewToken': preview['previewToken'], 'idempotencyKey': run_id + '-' + household_id}, status=201)
+
+
+DOCUMENT_METADATA = ('id', 'journeyId', 'owner', 'title', 'filename', 'mimeType', 'bytes',
+                     'visibility', 'segmentKey', 'unlinked', 'createdAt', 'updatedAt', 'revision')
+
+
+def seed_documents(client, journey_id, marker, number):
+    documents = []
+    for visibility in ('private', 'shared'):
+        raw = synthetic_pdf() if visibility == 'private' else base64.b64decode(png(number).split(',', 1)[1])
+        mime = 'application/pdf' if visibility == 'private' else 'image/png'
+        result = client.request('POST', '/api/journey-documents', {
+            'journeyId': journey_id, 'requestId': secrets.token_hex(16), 'visibility': visibility,
+            'title': marker + '-' + visibility + '-document',
+            'file': {'name': 'synthetic.pdf' if visibility == 'private' else 'synthetic.png',
+                     'mimeType': mime, 'dataBase64': base64.b64encode(raw).decode()}}, status=201)
+        document = result['document']
+        content = client.request('GET', '/api/journey-documents/' + document['id'] + '/file', raw=True)
+        require(content == raw if visibility == 'private' else document['mimeType'] == 'image/jpeg' and content != raw)
+        require(document['bytes'] == len(content))
+        documents.append({'metadata': {key: document[key] for key in DOCUMENT_METADATA},
+                          'sha256': digest(content), 'bytes': len(content)})
+    return documents
+
+
 def seed(args, audit, data_dir, expected_path, run_id):
     audit.stage = 'empty_isolated_seed_target'
     require(not expected_path.exists())
@@ -328,7 +382,7 @@ def seed(args, audit, data_dir, expected_path, run_id):
     for index, house in enumerate(houses):
         hid, slug = house['id'], house['slug']
         entry = '/space/' + slug
-        item = {'id': hid, 'slug': slug, 'entry': entry, 'members': {}, 'tasks': [], 'shopping': [], 'photos': []}
+        item = {'id': hid, 'slug': slug, 'entry': entry, 'members': {}, 'tasks': [], 'shopping': [], 'photos': [], 'documents': []}
         for number in (1, 2):
             audit.stage = 'seed_shared_private_and_photos'
             client = admin if hid == 'default' and number == 1 else Client(args.base_url, audit)
@@ -336,7 +390,14 @@ def seed(args, audit, data_dir, expected_path, run_id):
                 client.login(entry, number, password(hid, number, run_id))
             uid = 'member' + str(number)
             clients[(hid, uid)] = client
+            if number == 1:
+                created_journey = seed_journey(client, run_id, hid)
+                item['journeyId'] = created_journey['id']
+                item['tripId'] = created_journey['tripId']
+                audit.check('seed_' + slug + '_journey_created_by_actual_api')
             marker = 'SYNTHETIC-' + hid + '-' + uid
+            item['documents'].extend(seed_documents(client, item['journeyId'], marker, index * 2 + number))
+            audit.check('seed_' + slug + '_' + uid + '_private_pdf_shared_sanitized_image')
             task = client.request('POST', '/api/items/tasks', {'title': marker + '-task', 'owner': 'shared', 'note': 'Synthetic recovery fixture'}, status=201)
             item['tasks'].append(task['id'])
             photos = []
@@ -391,17 +452,18 @@ def seed(args, audit, data_dir, expected_path, run_id):
     expected['registry'] = snapshot(data_dir / 'platform.sqlite3')
     expected['databases'] = {house['id']: snapshot(database_path(data_dir, house['id'])) for house in houses}
     expected['fingerprints'] = {hid: digest(value) for hid, value in expected['databases'].items()}
-    require(all(sum(not name.startswith('sqlite_') for name in value['tables']) == 42 for value in expected['databases'].values()))
+    require(all(sum(not name.startswith('sqlite_') for name in value['tables']) == 43 for value in expected['databases'].values()))
     require(len(expected['registry']['tables']) == 2)
     require(all(len(value['tables']['cloud_oauth_states']['rows']) == 2 for value in expected['databases'].values()))
-    audit.check('seed_snapshot_contains_two_42_table_households_and_two_registry_tables')
+    audit.check('seed_snapshot_contains_two_43_table_households_and_two_registry_tables')
     descriptor = os.open(expected_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, 'w', encoding='utf-8') as output:
         output.write(canonical(expected) + '\n')
         output.flush()
         os.fsync(output.fileno())
     audit.check('seed_expected_written_exclusively')
-    return {'households': 2, 'members': 4, 'tasks': 4, 'shopping': 4, 'photos': 8, 'tvs': 2, 'oauthStates': 4, 'fakeAccounts': 2}
+    return {'households': 2, 'members': 4, 'tasks': 4, 'shopping': 4, 'photos': 8, 'tvs': 2, 'oauthStates': 4, 'fakeAccounts': 2,
+            'journeys': 2, 'journeyDocuments': 8}
 
 
 def compare_restored(old, new, audit, label, seeded_at):
@@ -487,6 +549,22 @@ def verify(args, audit, data_dir, expected_path, run_id):
                 if allowed:
                     require(digest(content) == photo['sha256'] and len(content) == photo['bytes'])
             audit.check(slug + '_' + uid + '_attached_shared_unattached_owner_only_photos')
+            documents = client.request('GET', '/api/journey-documents?journeyId=' + house['journeyId'])['documents']
+            expected_documents = [doc for doc in house['documents'] if doc['metadata']['owner'] == uid or doc['metadata']['visibility'] == 'shared']
+            require({doc['id'] for doc in documents} == {doc['metadata']['id'] for doc in expected_documents})
+            own_documents = client.request('GET', '/api/journey-documents')['documents']
+            require({doc['id'] for doc in own_documents} == {doc['metadata']['id'] for doc in house['documents'] if doc['metadata']['owner'] == uid})
+            for document in house['documents']:
+                meta = document['metadata']
+                allowed = meta['owner'] == uid or meta['visibility'] == 'shared'
+                content = client.request('GET', '/api/journey-documents/' + meta['id'] + '/file', status=200 if allowed else 404, raw=allowed)
+                require(meta['title'] not in canonical(state) and meta['id'] not in canonical(state))
+                if allowed:
+                    actual = next(doc for doc in documents if doc['id'] == meta['id'])
+                    require({key: actual[key] for key in DOCUMENT_METADATA} == meta)
+                    require(actual['canManage'] == (meta['owner'] == uid))
+                    require(digest(content) == document['sha256'] and len(content) == document['bytes'])
+            audit.check(slug + '_' + uid + '_document_metadata_file_hash_private_shared_and_state_isolation')
         audit.stage = 'restored_tv_and_key_verification'
         tv = Client(args.base_url, audit, house['tv']['cookies'])
         state = tv.request('GET', '/api/state')
@@ -500,6 +578,11 @@ def verify(args, audit, data_dir, expected_path, run_id):
             if photo['attached']:
                 require(digest(content) == photo['sha256'])
         audit.check(slug + '_original_tv_read_only_and_photo_permissions_preserved')
+        tv.request('GET', '/api/journey-documents', status=403)
+        tv.request('GET', '/api/journey-documents?journeyId=' + house['journeyId'], status=403)
+        for document in house['documents']:
+            tv.request('GET', '/api/journey-documents/' + document['metadata']['id'] + '/file', status=403)
+        audit.check(slug + '_original_tv_cannot_read_journey_document_metadata_or_files')
         with read_db(database_path(data_dir, hid)) as con:
             token = con.execute('SELECT tokens FROM cloud_accounts WHERE id=?', (house['cloud']['accountId'],)).fetchone()
         require(token and digest(token[0].encode()) == house['cloud']['ciphertextSha256'])
@@ -519,6 +602,10 @@ def verify(args, audit, data_dir, expected_path, run_id):
             client.request('GET', '/api/photos/' + other['photos'][0]['id'], status=404)
             client.request('GET', '/api/finance-hub/reconciliation?transactionId=' + other['members'][uid]['transactionId'], status=404)
             audit.check(house['slug'] + '_' + uid + '_cross_household_entity_photo_finance_404')
+            client.request('GET', '/api/journey-documents?journeyId=' + other['journeyId'], status=404)
+            for document in other['documents']:
+                client.request('GET', '/api/journey-documents/' + document['metadata']['id'] + '/file', status=404)
+            audit.check(house['slug'] + '_' + uid + '_cross_household_journey_documents_404')
     # Authentication verification necessarily creates fresh sessions/attempts.
     # Every other table, including audit and sqlite_sequence, must still match
     # the original synthetic business snapshot after the denied write probes.
@@ -531,7 +618,8 @@ def verify(args, audit, data_dir, expected_path, run_id):
                     all(before['tables'][name] == after['tables'][name] for name in before['tables'] if name not in auth_tables))
     audit.check('platform_unchanged_after_http_permission_probes', snapshot(data_dir / 'platform.sqlite3') == expected['registry'])
     audit.check('fixture_used_only_loopback_http_and_no_provider_endpoint', not audit.external)
-    return {'households': 2, 'members': 4, 'householdTablesEach': 42, 'registryTables': 2, 'photos': 8, 'tvs': 2,
+    return {'households': 2, 'members': 4, 'householdTablesEach': 43, 'registryTables': 2, 'photos': 8, 'tvs': 2,
+            'journeys': 2, 'journeyDocuments': 8,
             'oldCookiesRejected': 4, 'oldOAuthStatesRejected': 4, 'fakeTokensDecrypted': 2}
 
 

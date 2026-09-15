@@ -147,7 +147,7 @@ function editItem(kind,id='',extras={}){
   if(kind==='shopping')return ShoppingUI.openEditor(id,extras);
   if(!canEdit())return;activeManager='';const item=data[kind].find(i=>i.id===id),v=item||extras;
   if(item?.sync){toast('同步内容请在原应用修改；可在看板勾选完成或恢复。');return}
-  if(kind==='events'&&item?.travelTiming&&item?.journeyId&&window.JourneyUI){JourneyUI.open(item.journeyId);return}
+  if(kind==='events'&&item?.travelTiming&&item?.journeyId&&window.JourneyUI){JourneyUI.open(item.journeyId,{segmentKey:item.travelTiming.segmentKey});return}
   const taskSources=(data.sync?.taskSources||[]).filter(source=>source.writable!==false);
   const useCloudTask=kind==='tasks'&&!item&&taskSources.length>0;
   const defaultTaskSource=v.tripId?'':(data.sync?.primaryTaskSource?.id||'');

@@ -4,13 +4,15 @@
 
 当前源码与文档数量以 [README](../README.md) 及逐文件交接清单为准；接口和存储结构见 [当前索引](PLATFORM-ROUTES.md)，运行版本与验收证据见 [VALIDATION](VALIDATION.md)。
 
-**当前开发入口：** 项目已建立独立 Git 仓库。每个 agent 使用独立分支及 worktree；先读 [项目规则](../AGENTS.md) 与 [Git 协作指导](GIT-WORKFLOW.md)。旅行资料功能仍位于独立候选分支，依赖与未验收项见 [HANDOFF](HANDOFF.md#当前候选与文件占用)；下方标有时间的批次记录不是待应用补丁。
+**当前开发入口：** 项目已建立独立 Git 仓库。每个 agent 使用独立分支及 worktree；先读 [项目规则](../AGENTS.md) 与 [Git 协作指导](GIT-WORKFLOW.md)。旅行资料 API、导出、UI、接入和迁移检查器已分别提交，经非作者审查后合入集成分支，正在组合验证；尚未部署，依赖与未验收项见 [HANDOFF](HANDOFF.md#当前候选与文件占用)。候选结构为 106 路由／43 户内表，页首保留生产基线；下方标有时间的批次记录不是待应用补丁。
+
+旅行资料专项入口为 [API](../tests/test_journey_documents.py)、[导出与模块组合](../tests/test_journey_documents_integration.py)、[可移植迁移](../tests/test_journey_documents_migration.py)、[浏览器流程](../tests/browser_journey_documents_check.py)。后端专项共用实际临时 Flask／SQLite；浏览器使用本机 Edge 和虚构文件，身份切换、下载和重试均需真实运行验证。恢复夹具包含新表与文件，须配套新镜像。测试报告绑定实际提交和文件散列，不累加不同历史版本的通过数。
 
 ## 财务月份、消费观察与导出开发入口
 
 历史月份导航涉及 finance_hub.py 和 finance-hub.js/.css；来源双模式涉及 spending_observations.py、finance_source_bridge.py、finance_baseline.py、deploy/prepare-finance-source.py 与两个来源 UI；导出涉及 data_portability.py 和 data-portability.js。三条流程分别维护，不因新增消费报告而修改原资产基线或实际账本。公共文件先登记唯一编辑者，接口见 [财务 API](FINANCE-API.md)、[消费观察](SPENDING-OBSERVATIONS.md)、[导出](PORTABILITY.md)。
 
-2026-09-15 15:10 财务增量的回归入口为 [月份 API](../tests/test_finance_import_navigation.py)、[观察 API/CLI](../tests/test_spending_observations.py)、[月份浏览器](../tests/browser_finance_import_navigation_check.py)、[观察浏览器](../tests/browser_spending_observations_check.py)、[导出保护浏览器](../tests/browser_data_portability_guard_check.py)。均使用虚构文件和临时数据库；该历史财务组合的 10 个脚本、重试观察修正、依赖复用和不计通过的导出限制见 VALIDATION。当前后续无结构变化更新必须保持 42→42 检查，不重放 15:10 的历史两表迁移。
+2026-09-15 15:10 财务增量的回归入口为 [月份 API](../tests/test_finance_import_navigation.py)、[观察 API/CLI](../tests/test_spending_observations.py)、[月份浏览器](../tests/browser_finance_import_navigation_check.py)、[观察浏览器](../tests/browser_spending_observations_check.py)、[导出保护浏览器](../tests/browser_data_portability_guard_check.py)。均使用虚构文件和临时数据库；该历史财务组合的 10 个脚本、重试观察修正、依赖复用和不计通过的导出限制见 VALIDATION。16:25 历史无结构更新使用 42→42；旅行资料候选另走 42→43，不重放 15:10 的历史两表迁移。
 
 ## 家庭例行计划开发入口
 
@@ -18,7 +20,7 @@
 
 `register_routines(app,db,Problem,body,require_member,audit)` 必须在 assistant 和 portability 前登记；`app.extensions['household_routines'].tick()` 自建 app context，不依赖 g.actor。worker 按 `task_publish → calendar_publish → cloud_accounts → household_routines` 执行，阶段前检查 stop，已进入事务正常收尾。直接生成本地 entities，不能复用会自动写默认主清单的 add_item／task_write 路径。
 
-`brief(con)` 仅读当前家庭共享规则和实体，GET 不补期；导出只在 includeShared:true 调用 export_shared_routines(con)，禁止 nonce、会话及完整回执进入副本。三张表在 13:43 历史首次 37→40 迁移时为空并保留原 37 表；当前线上已是 42 表，本版无结构更新使用 42→42 检查。备份覆盖全部当前内容；日期、当前实体保护、唯一期次和容量逻辑须一起维护。
+`brief(con)` 仅读当前家庭共享规则和实体，GET 不补期；导出只在 includeShared:true 调用 export_shared_routines(con)，禁止 nonce、会话及完整回执进入副本。三张表在 13:43 历史首次 37→40 迁移时为空并保留原 37 表；16:25 线上版本为 42 表，当时无结构更新使用 42→42；旅行资料候选须按新增表独立迁移。备份覆盖全部当前内容；日期、当前实体保护、唯一期次和容量逻辑须一起维护。
 
 在独立测试配置和临时数据库内运行：
 
@@ -170,23 +172,24 @@ python tests/browser_tv_onboarding_check.py
 5. `finance-baseline.js`：导出 `window.FinanceBaseline`。
 6. `finance-source-ui.js`：02:33 已发布，导出 `window.FinanceSourceUI`，由本人基线页进入候选预览。
 7. `journey-ui.js`：导出 `window.JourneyUI`。
-8. `calendar-publish.js`：导出 `window.CalendarPublish`；复用财务中枢工作区 CSS。
-9. `task-publish.js`：导出 `window.TaskPublish`，处理待办页/旅行/助理的显式发布入口。
-10. `finance-hub.js`：导出 `window.FinanceHub`。
-11. `investment-import.js`：导出 `window.InvestmentImport`，由财务中枢进入持仓文件预览与确认。
-12. `home-assistant.js`：家庭助理工作区。
-13. `household-spaces.js`：家庭入口与邀请流程。
-14. `data-portability.js`：导出 `window.DataPortability`，处理成员设置页下载。
-15. `member-sessions.js`：导出 `window.MemberSessions`，处理本人登录设备与会话撤销。
-16. `tv-display.js`：导出 `window.TVDisplay`，手机按设备设置及电视实际排布。
-17. `sync-health.js`：导出 `window.SyncHealth`，只读问题弹窗与局部状态指示器。
-18. `shopping-settlement.js`：导出 `window.ShoppingSettlement`，只在成员主动选择后核对采购实付。
-19. `household-routines.js`：导出 `window.HouseholdRoutines`，共享计划、预览、确认、历史与原事项返回。
-20. `product-shell.js`：最后加载，接管成员工作台、导航和主题；电视分支调用 `TVDisplay.applyBoard()`。
+8. `journey-documents.js`：候选，导出 `window.JourneyDocuments`，依赖成员身份、通用弹窗和旅行返回入口。
+9. `calendar-publish.js`：导出 `window.CalendarPublish`；复用财务中枢工作区 CSS。
+10. `task-publish.js`：导出 `window.TaskPublish`，处理待办页/旅行/助理的显式发布入口。
+11. `finance-hub.js`：导出 `window.FinanceHub`。
+12. `investment-import.js`：导出 `window.InvestmentImport`，由财务中枢进入持仓文件预览与确认。
+13. `home-assistant.js`：家庭助理工作区。
+14. `household-spaces.js`：家庭入口与邀请流程。
+15. `data-portability.js`：导出 `window.DataPortability`，处理成员设置页下载。
+16. `member-sessions.js`：导出 `window.MemberSessions`，处理本人登录设备与会话撤销。
+17. `tv-display.js`：导出 `window.TVDisplay`，手机按设备设置及电视实际排布。
+18. `sync-health.js`：导出 `window.SyncHealth`，只读问题弹窗与局部状态指示器。
+19. `shopping-settlement.js`：导出 `window.ShoppingSettlement`，只在成员主动选择后核对采购实付。
+20. `household-routines.js`：导出 `window.HouseholdRoutines`，共享计划、预览、确认、历史与原事项返回。
+21. `product-shell.js`：最后加载，接管成员工作台、导航和主题；电视分支调用 `TVDisplay.applyBoard()`。
 
 `app.js` 在 `DOMContentLoaded` 才调用 `boot()`，此时上述模块已执行。不要提前执行 `boot()`，也不要把依赖公共状态的模块改成 `async` 加载。原生顶层 `let` / `const` 能被后续脚本引用，但不一定是 `window` 的属性；用 `window.data` 替代 `data` 会改变行为。
 
-CSS 顺序为 `style.css → calendar.css → shopping.css → finance-baseline.css → journey-ui.css → finance-hub.css → home-assistant.css → product-shell.css → member-sessions.css → investment-import.css → tv-display.css → sync-health.css → shopping-settlement.css → household-routines.css`，最后一项为例行计划模块样式。工作台样式覆盖基础布局，随后加载的模块样式使用各自范围内的选择器。电视外观只作用于电视和其预览，不覆盖成员主题。工作台接管成员端渲染；原 `renderBoard()` 仍用于电视。需要稳定存在的行为应使用文档级事件委托或模块的重新绑定入口，并避免重绘清空未保存的弹窗。电视字段及接缝见 [电视布局契约](TV-DISPLAY.md)。同步摘要由 updateFooter() 调用 SyncHealth.refreshIndicators() 局部更新，same revision 不等于状态未变；详情只为当前成员读取，见 [SYNC-HEALTH](SYNC-HEALTH.md)。
+CSS 顺序为 `style.css → calendar.css → shopping.css → finance-baseline.css → journey-ui.css → journey-documents.css → finance-hub.css → home-assistant.css → product-shell.css → member-sessions.css → investment-import.css → tv-display.css → sync-health.css → shopping-settlement.css → household-routines.css`，最后一项为例行计划模块样式。工作台样式覆盖基础布局，随后加载的模块样式使用各自范围内的选择器。电视外观只作用于电视和其预览，不覆盖成员主题。工作台接管成员端渲染；原 `renderBoard()` 仍用于电视。需要稳定存在的行为应使用文档级事件委托或模块的重新绑定入口，并避免重绘清空未保存的弹窗。电视字段及接缝见 [电视布局契约](TV-DISPLAY.md)。同步摘要由 updateFooter() 调用 SyncHealth.refreshIndicators() 局部更新，same revision 不等于状态未变；详情只为当前成员读取，见 [SYNC-HEALTH](SYNC-HEALTH.md)。
 
 公共依赖主要包括：
 
