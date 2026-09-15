@@ -374,4 +374,3 @@ def register_journey_documents(app, db, Problem, body, require_member, limited, 
         response.headers['X-Content-Type-Options'] = 'nosniff'
         response.headers['Content-Security-Policy'] = "sandbox; default-src 'none'"
         return response
-
