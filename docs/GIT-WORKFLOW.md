@@ -190,13 +190,13 @@ Get-FileHash -LiteralPath $bundle -Algorithm SHA256
 
 bundle 不会自动携带未提交或未跟踪文件、未入库的工作目录配置和虚拟环境，也不保留原 worktree 布局；密钥与生产数据是否存在于提交历史，必须由上述交付前审查确认。交付 bundle 的 SHA-256、refs／完整提交清单和各分支“已审查／待审查／未合入”的状态；不得把含未合分支的 bundle 描述为全部功能已通过。
 
-接收端选择不存在的新目录。显式检出 `main`，避免把其他分支当作稳定版本：
+接收端选择不存在的新目录。显式检出 `main`，避免把其他分支当作稳定版本。为保持当前源码与 manifest 的字节一致，本项目沿用 `core.autocrlf=false`；bundle 不携带仓库配置，因此 clone 时须显式设置，行尾规范化须单独审查，不混入功能提交：
 
 ```powershell
 $bundle = '<收到并核对SHA256的bundle绝对路径>'
 $cloneDir = '<不存在的新仓库绝对目录>'
 if (Test-Path -LiteralPath $cloneDir) { throw '目标已存在，不覆盖' }
-Invoke-CheckedGit -GitArgs @('clone', '--branch', 'main', $bundle, $cloneDir)
+Invoke-CheckedGit -GitArgs @('clone', '--config', 'core.autocrlf=false', '--branch', 'main', $bundle, $cloneDir)
 Invoke-CheckedGit -GitArgs @('-C', $cloneDir, 'branch', '--all')
 Invoke-CheckedGit -GitArgs @('-C', $cloneDir, 'rev-parse', 'HEAD')
 Invoke-CheckedGit -GitArgs @('-C', $cloneDir, 'remote', '-v')
