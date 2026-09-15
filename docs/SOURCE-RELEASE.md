@@ -1,6 +1,6 @@
 # 无 schema 变化的源码更新（43→43）
 
-此入口用于经过逐文件审查的既有根 Python 与静态文件更新。目前属于待审工具实现；本页不代表已经完成新镜像 Docker 演练或生产发布。当前运行版本及实际记录仍以 [VALIDATION](VALIDATION.md) 为准。纯静态更新继续使用 [STATIC-RELEASE](STATIC-RELEASE.md)，不能修改 READY.mode 来提升原静态入口的权限。
+此入口用于经过逐文件审查的既有根 Python 与静态文件更新。工具固定提交 `4c05e50` 已通过非作者代码审查，并在集成版本 `e0769e3` 完成 Windows 269 项组合；本页不代表已经完成新镜像 Linux 测试、Docker 演练或生产发布。当前运行版本及实际记录仍以 [VALIDATION](VALIDATION.md) 为准。纯静态更新继续使用 [STATIC-RELEASE](STATIC-RELEASE.md)，不能修改 READY.mode 来提升原静态入口的权限。
 
 ## 范围与共同安全流程
 

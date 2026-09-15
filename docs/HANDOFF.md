@@ -4,6 +4,14 @@
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
+## 源码发布准备（尚未部署）
+
+业务已审 main 为 `c8d41889a4eee6caa35e6da5c71486c2e9aef1eb`。工具分支 `codex/journey-source-release` 固定 `9239754` → `4c05e5019aeb182f5ae23d183ec525dffc72ac60`，由 finance_hub 在 detached worktree 独立审查。root 将 integration 对齐业务 main 后，Git 合入工具得到 `e0769e3cb9d341c73e5b21c1043eb943ddbf0be3`；255 源文件、43 Markdown、44 静态资源，接口与表数不变。最终 main 与同树关系仍以交付清单为准。
+
+工具共用一个事务核心，静态入口保持原限制；源码入口允许明确审查的既有 Python／静态差异，保留原配置、停写备份和完整数据比较。当前 Windows 269 项组合通过，独立审查另核验 106 项。Linux、受影响浏览器组合和真实双户演练在各自新输出目录执行，不复用旧静态发布的验收结论。入口与要求见 [SOURCE-RELEASE](SOURCE-RELEASE.md)，测试口径见 [VALIDATION](VALIDATION.md)。
+
+真正生产 BASE 来自 22:32 发布包的 248 文件，不能使用包含未上线业务的 main 代替。两项 Python 和五项静态文件的运行差异均须绑定旧／新 SHA；部署前还须读取当前线上 manifest、配置和容器状态。源包与 Git 合并均不代表生产已经更新。
+
 ## 淘宝订单分组与商品明细候选（尚未部署）
 
 本轮共同 base 为 `923975454564e6914b638e90c1602d603e342430`。该提交已接收上一轮待办起步与 XLSX 声明兼容的审查结果；它与已审 integration `02597e5` 的文件树一致，不能把下方保留的历史分支再应用一遍。

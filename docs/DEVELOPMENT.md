@@ -4,6 +4,12 @@
 
 先读 [项目规则](../AGENTS.md) 和 [Git 指导](GIT-WORKFLOW.md)。每个任务使用集成人指定的独立分支、worktree、base 和允许路径；非作者审查后合入 integration，组合验收及再次审查通过后再进入 main。不要在主仓、集成目录或其他作者目录直接开发。
 
+## 43→43 源码发布工具开发入口
+
+[release_core.py](../deploy/release_core.py) 保存共同升级事务；[source_release.py](../deploy/source_release.py) 固定选择源码模式，原静态入口固定选择静态模式。不要复制事务代码，也不要从 READY 的内容动态提升权限。变更部署工具时，继续保留旧静态测试，并运行 [SOURCE-RELEASE](SOURCE-RELEASE.md) 列出的当前后端、工具、浏览器与真实 Docker 验证。
+
+Windows 工具组合入口是 `tests/test_static_build.py`、`tests/test_static_release.py`、`tests/test_static_release_database.py`、`tests/test_static_rehearsal_safety.py` 和 `tests/test_source_release.py`。命令替身验证与实际镜像验证分别记录；源码模式不能宣称变更过的 Python 仍可直接复用旧后端结论。所有报告绑定真实 BASE、最终候选和原始结果，生产数据仅由单独发布步骤处理。
+
 ## 淘宝订单与商品明细开发入口
 
 `financial_files.py` 只向调用方提供可选的服务器内部工作表结构；`finance_hub.py` 在淘宝订单来源、精确表头与明确合并范围同时匹配时生成订单和商品明细。内部结构不得进入 API 响应；原始商品数量、标价、运费不分摊，金额只取订单实付。规范见 [导入](FINANCE-IMPORT.md)、[API](FINANCE-API.md)、[数据模型](DATA-MODEL.md)。
