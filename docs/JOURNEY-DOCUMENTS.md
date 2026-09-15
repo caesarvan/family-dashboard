@@ -139,3 +139,53 @@ segmentKey 不是 SQL 外键。调整／删除分段不修改附件、不删除 
 专项覆盖真实临时 SQLite/Flask 会话与两家庭、PDF 原字节、图片净化、严格类型与限额、事务回滚、并发幂等／CAS／配额、旅程删除保留文件、分段缺失、旧请求不复活及只读元数据导出。浏览器迟到响应、整体导出和恢复组合由对应独立专项另行给出结果；真实凭证可读性、公网、实体设备和外部预订状态不属于合成验证结论。
 
 本候选的上述后端专项已实际运行 **68 passed，38.24 秒**，使用 `tests/test_journey_documents.py` 和严格拒网的临时库；JUnit 保存于私有 `test-results/journey-documents-api.xml`。这是模块专项结果，不是完整应用、浏览器或生产发布验收。其他 agent 的导出／恢复组合须使用各自报告及对应依赖散列，不合并计作这 68 项。
+
+## 一次性 42→43 迁移检查器
+
+[deploy/check_journey_documents_migration.py](../deploy/check_journey_documents_migration.py) 提供可随源码交付的检查器，不依赖 Git、开发者目录或旧候选定位文件。它只接受旧 42 张户内表，迁移后须恰好 43 张；不是后续 43→43 更新或通用恢复工具，不能修改表数来绕过校验。
+
+保留检查覆盖平台注册库的两表、全部注册家庭及其对应数据库、每张旧表的列／外键／行摘要、全部旧 schema 对象与 SQLite 内部序号。新 `journey_documents` 必须为空，表、两个显式索引、自动索引和触发器须与当前 [SCHEMA_SQL](../journey_documents.py) 完全一致。BLOB 按原字节 SHA-256 纳入行摘要；输出不含业务行、文件内容、账号名或金额。这里验证逻辑内容和结构保留，不要求迁移后 SQLite 文件物理字节不变。
+
+### 输入、命令与输出
+
+在冻结的新源码根目录可调用 `schema_definition()`，得到 `{"sql":"原始 SCHEMA_SQL 字符串","sha256":"其 UTF-8 SHA-256"}`。部署控制器将此写为 `schema.json`，并记录该 JSON 文件本身的 SHA-256；检查器还会从自身源码根目录的 `journey_documents.py` 读取常量并逐字比较，不能靠自带的 SQL／散列认可另一份结构。
+
+`DATA_DIR`（或 `--data-dir`）指向明确选定的数据库卷。默认只读输入目录 `/release-check` 可用 `--inputs-dir` 指定，含：
+
+| 文件 | 内容与产生方式 |
+|---|---|
+| `schema.json` | 上述精确的 `sql`／`sha256` 对象，四个动作均要求 |
+| `before.json` | 停止全部写入后，`snapshot` 返回的完整 JSON；后续三个动作要求 |
+| `backup.json` | 原 `deploy/backup.py` 的 `backup_all()` 返回值 `{manifest,databases}`；`validate-backup` 与 `warm` 要求 |
+
+备份 manifest 及它列出的 SQLite 快照位于同一数据卷的原 `backups/`／子家庭备份目录。检查器拒绝越界路径、符号链接、缺失或零字节输入；备份必须包含唯一且完整的平台注册库／家庭映射，每份文件大小、SHA-256 与停写快照的逻辑内容均匹配。它不自行创建或替换备份。
+
+以下命令在部署控制器准备的隔离容器中执行，源码挂在 `/release-source`，输入目录只读；仅 `warm` 需要数据库卷可写。所有命令只把结果写到 stdout，由外层保存并绑定散列，不能把重定向目标放在只读输入挂载内。
+
+```sh
+python /release-source/deploy/check_journey_documents_migration.py snapshot --data-dir /data --inputs-dir /release-check
+python /release-source/deploy/check_journey_documents_migration.py validate-backup --data-dir /data --inputs-dir /release-check
+python /release-source/deploy/check_journey_documents_migration.py warm --data-dir /data --inputs-dir /release-check
+python /release-source/deploy/check_journey_documents_migration.py check --data-dir /data --inputs-dir /release-check
+```
+
+这四行不是可以直接对运行中数据库连续执行的部署脚本。外层先停写并固定 `schema.json`；保存 snapshot 为 `before.json` 后创建完整备份，再保存 `backup.json`，才能验证和迁移。只挂检查器单文件不够：`/release-source` 必须是已冻结的完整新源码，其运行模块须与已验证的新镜像一致。
+
+- `snapshot`：只读旧 42 表，返回 `{registry,households}`，用于生成 `before.json`。
+- `validate-backup`：先确认当下数据库仍等于 `before.json`，再核对备份全组；返回 `{databases,manifestSha256,groupVerified:true}`。
+- `warm`：重复旧状态和备份全组检查后，调用真实 `create_app()`，串行初始化所有注册家庭，再比较完整前后快照。不会启动 worker 或调用云 tick；返回下述保留结果，另加 `cloudTicks:0` 与 `backup` 核验结果。失败可能已留下部分家庭的新表，不能因此重开写入或盲目重试。
+- `check`：只读已迁移状态，返回 `{households,originalTablesPreserved:42,newTables:1,newTableEmpty:true,schemaIndexesAndTriggersVerified:true,allOriginalRowsAndSequencesPreserved:true}`。
+
+可直接调用的函数为 `schema_definition()`、`snapshot(root,allow_new=False)`、`preserved(before,after,sql)`、`validated_backup(root,before,backup)` 与 `run(action,root,inputs)`；后三项中的 `before` 必须来自已冻结旧状态。只有 `run('warm',...)` 会初始化数据库。命令失败返回非零退出码，不生成通过结果；禁止使用 `python -O` 或 `PYTHONOPTIMIZE`，检查器会拒绝禁用断言的运行方式。
+
+### 外层控制器与测试边界
+
+外层发布流程仍负责：冻结旧 42 表版本和新版本、源码清单／镜像／检查器／DDL／三个输入文件及备份 manifest 的原字节散列；停止所有 app／worker／web 写入；保留 `.env`、主密钥、家庭派生密钥和原家庭映射；按完整备份组处理失败恢复，恢复后先使对应家庭旧会话失效，再按部署流程恢复服务。本工具不执行 Docker、SSH、停服、配置替换或恢复，也不能单凭自身检查证明这些外部步骤已完成。
+
+[tests/test_journey_documents_migration.py](../tests/test_journey_documents_migration.py) 在独立 Python 进程中使用当前应用 factory，仅关闭新增 `register_journey_documents` 来构造精确旧 42 表；再由另一个进程运行真实当前 factory 迁至 43 表。两家庭、任务、会话与备份均为虚构输入，子进程硬拒 socket 网络。该测试不读取 Git、真实配置或历史候选路径，可从解压源码 TAR 运行：
+
+```sh
+python -m pytest -q tests/test_journey_documents_migration.py
+```
+
+原 13 个迁移／失配场景继续覆盖旧数据、旧索引、序号、家庭集合、新表预填／列／索引／触发器、重复迁移和备份缺失／校验和；另检查当前 DDL 绑定及 warm 在备份失败前不初始化。此夹具是隔离旧结构模拟，不能代替冻结的真实旧版本→新版本、实际停写和容器部署验收，更不证明生产恢复已经完成。
