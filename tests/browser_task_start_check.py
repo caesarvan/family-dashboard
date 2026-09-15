@@ -295,6 +295,36 @@ def main():
                         assert len([x for x in f.calls if x==('GET','/api/state')])==2  # boot + one first-item read
                         passed('repeat-first-item-click-uses-one-navigation-read')
                     finally:f.close()
+                    for first,second,path in [('add-first','task-setup','/api/state'),('task-setup','add-first','/api/me')]:
+                        for fail in [False,True]:
+                            f=Flow();page=f.page
+                            try:
+                                f.start();f.hold(path)
+                                page.locator('[data-tp='+first+']').click();f.waiting()
+                                expect(page.locator('[data-tp='+first+']')).to_be_disabled()
+                                other=page.locator('[data-tp='+second+']');expect(other).to_be_disabled()
+                                before=list(f.calls)
+                                # Disabled controls cannot be clicked by a user. Even a dispatched
+                                # event must not start another async action while the first waits.
+                                other.dispatch_event('click')
+                                page.wait_for_timeout(50)
+                                assert f.calls==before,'competing action sent a request'
+                                f.release(error=fail)
+                                if fail:
+                                    expect(page.locator('#task-publish-error')).not_to_be_empty()
+                                    expect(page.locator('[data-tp='+first+']')).to_be_enabled()
+                                    expect(page.locator('[data-tp='+second+']')).to_be_enabled()
+                                    page.locator('[data-tp='+second+']').click()
+                                active=second if fail else first
+                                if active=='add-first':
+                                    expect(page.locator('#dialog [name=title]')).to_be_visible()
+                                    assert page.locator('#account-return').count()==0
+                                else:
+                                    expect(page.locator('#account-return')).to_have_text('返回待办')
+                                    assert page.locator('#dialog [name=title]').count()==0
+                                assert not entities() and not publications()
+                                passed('exclusive-start-'+first+('-failure-restores-both' if fail else '-blocks-competing-setup'))
+                            finally:f.close()
                     f=Flow(demo=True);page=f.page
                     try:
                         assert page.locator('[data-task-publish-open]').count()==0
@@ -306,8 +336,12 @@ def main():
                     # Actual TV cookie is created through pairing APIs in the temporary household.
                     tv=browser.new_context();tv.request.get(base+'/api/me')
                     start=tv.request.post(base+'/api/pair/start',data={});assert start.status==200
+                    # Numerous isolated identity cases may evict the oldest fixture session
+                    # under the real16-session cap. Authenticate the fixture admin anew.
+                    report['tvFixtureOriginalAdminSessionValid']=bool(admin.request.get(base+'/api/me').json().get('user'))
+                    login(admin)
                     pair=admin.request.post(base+'/api/pair/approve',headers=headers(admin),data={'code':start.json()['code']})
-                    assert pair.status==200
+                    assert pair.status==200,('synthetic pair approval status',pair.status)
                     status=tv.request.post(base+'/api/pair/poll',data={'secret':start.json()['secret']});assert status.status==200 and status.json()['approved']
                     def tv_route(route):
                         if route.request.url.startswith(base+'/'):route.continue_()

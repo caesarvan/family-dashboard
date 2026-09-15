@@ -64,8 +64,14 @@ window.TaskPublish=(()=>{
       if(action==='refresh'){await open(scope);return}
       if(action==='add-first' || action==='task-setup'){
         stop();ticket=++view;pending=null;conflict=null;
-        if(action==='add-first') await ProductShell.openTasks({create:true,originNode:b},context);
-        else await AccountsReturn.begin({kind:'task-setup'},context);
+        const choices=[...content.querySelectorAll('[data-tp=add-first],[data-tp=task-setup]')];
+        choices.forEach(button=>button.disabled=true);
+        try {
+          if(action==='add-first') await ProductShell.openTasks({create:true,originNode:b},context);
+          else await AccountsReturn.begin({kind:'task-setup'},context);
+        } finally {
+          if(ticket===view && content.isConnected) choices.forEach(button=>button.disabled=false);
+        }
         return;
       }
       if(action==='back'){stop();view++;await JourneyUI.open(scope.journeyId);return}
