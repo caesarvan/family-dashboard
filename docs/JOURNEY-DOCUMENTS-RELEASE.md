@@ -1,6 +1,6 @@
 # 旅行资料：42→43 发布控制器
 
-本文说明 [发布控制器](../deploy/activate_journey_documents_release.py) 的准备条件和一次性迁移流程，不代表候选已获部署许可或已经上线。当前发布事实见 [VALIDATION](VALIDATION.md)，资料权限与生命周期见 [JOURNEY-DOCUMENTS](JOURNEY-DOCUMENTS.md)，通用安装与运维见 [DEPLOYMENT](DEPLOYMENT.md)。
+本文说明 [发布控制器](../deploy/activate_journey_documents_release.py) 的一次性 42→43 合同。本次已于 2026-09-15 20:23:00 实际发布，具体环境修订、首次失败与最终证据见 [VALIDATION](VALIDATION.md)。工具只适用下述旧基线，不能再对当前 43 表重复执行；当前通用维护见 [DEPLOYMENT](DEPLOYMENT.md)，资料权限见 [JOURNEY-DOCUMENTS](JOURNEY-DOCUMENTS.md)。
 
 ## 1. 固定基线与适用范围
 

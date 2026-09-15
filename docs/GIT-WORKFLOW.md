@@ -23,7 +23,7 @@ worktree 建议放在 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/
 
 ### 旅行资料的实际协作示例
 
-本项目按以下职责保留候选分支：
+本项目保留以下已审查功能分支，记录独立作者及合入顺序；它们不是需要重新应用的补丁：
 
 - `codex/journey-documents-api`
 - `codex/journey-documents-portability`
@@ -32,10 +32,12 @@ worktree 建议放在 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/
 - `codex/finance-journey-migration`
 - `codex/journey-documents-release`
 - `codex/root-journey-docs`
+- `codex/journey-release-env-fix`
+- `codex/journey-published-docs`（本次纯文档增量，base `670f34f`）
 
-API、导出、UI、接入和迁移检查器已由非作者审查后，经 Git 合入集成分支；具体提交和未完成门槛见 [当前交接](HANDOFF.md#当前候选与文件占用)。UI 审查发现的问题由原作者在自己的分支修复，再由非作者复核。组合浏览器测试在固定集成提交的 detached worktree 执行，验证目录不承担代码修复。
+API、导出、UI、接入、迁移检查器与发布控制器均由非作者审查；环境传递修订 `684da03` → `2c9be6c` 经 finance_hub 独立复核，随后由集成人合入 integration `b1981a4f579d4893d0694993e2c03434bcb45553`，再合入 main `670f34ff44757791f7263c5ee229ffde775838ce`。运行代码已于 20:23 发布，后续纯文档仍走独立作者分支→非作者审查→integration→main；分段测试、失败修订和实际证据见 [HANDOFF](HANDOFF.md#当前候选与文件占用)。
 
-这些 refs 保存了工作成果，不能据此认定功能已合入 `main` 或已上线。分支之间存在模块注册、导出、UI 加载等依赖；单个分支的模块依赖可能不完整，不能直接当作完整应用运行。每轮仍须核对实际 head、授权文件、依赖顺序及审查结果，不能重复套用旧候选目录或假设功能分支已相互包含。
+这些 refs 保存已审工作成果；是否上线仍须核对独立发布记录，不能单凭 Git 合并推断。单个功能分支可能不包含全部依赖，不可直接当完整应用部署；每轮核对实际 head、授权文件和依赖顺序，不复制旧候选目录，不重放已经合入的补丁。
 
 ## 2. 创建任务 worktree
 
