@@ -6,6 +6,11 @@ Proofs bind the complete source manifest, recipe, parent layers, image config,
 backend bytes and every resulting static file. Invoke with a new output path:
 
   python deploy/build_static_release.py SOURCE PARENT_IMAGE MANIFEST_SHA OUTPUT
+
+This builder does not authorize deployment or compare the candidate Dockerfile,
+Compose and Nginx files with the installed source. The static release controller
+must separately compare its externally approved base manifest and reject changes
+to those deployment files before stopping or installing anything.
 """
 from datetime import datetime, timezone
 import argparse
