@@ -1,0 +1,7 @@
+[Unit]
+Description=Backup family dashboard SQLite database
+After=docker.service
+Requires=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/family-dashboard/deploy/backup.sh

@@ -1,0 +1,25 @@
+.member-sessions{font-size:14px;min-width:0;line-height:1.65}
+.member-sessions .ms-intro{display:flex;align-items:flex-start;gap:14px;margin:2px 0 22px}
+.member-sessions .ms-symbol{display:grid;place-items:center;flex:none;width:44px;height:44px;border-radius:14px;color:var(--sage);background:var(--ps-tint,#b4d9af15)}
+.member-sessions h3{font-size:18px;line-height:1.45;margin:0 0 7px;font-weight:600}
+.member-sessions p{margin:0;color:var(--muted);font-size:12px;line-height:1.8}
+.member-sessions .ms-toolbar{display:flex;gap:12px;justify-content:space-between;align-items:center;margin:0 0 12px;color:var(--muted);font-size:12px}
+.member-sessions .ms-list{display:grid;gap:12px}
+.member-sessions .ms-card{border:1px solid var(--edge);border-radius:15px;background:var(--ps-soft,var(--card));padding:17px;min-width:0}
+.member-sessions .ms-card.is-current{border-color:var(--sage);background:var(--ps-tint,#b4d9af15)}
+.member-sessions .ms-card-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}
+.member-sessions h4{font-size:14px;font-weight:600;margin:0;overflow-wrap:anywhere}
+.member-sessions .ms-badge{font-size:10px;white-space:nowrap;padding:3px 9px;border:1px solid var(--edge);border-radius:30px;color:var(--muted)}
+.member-sessions .ms-badge.current{color:var(--sage);border-color:var(--sage)}
+.member-sessions dl{display:grid;gap:8px;margin:0;font-size:12px}
+.member-sessions dl>div{display:flex;justify-content:space-between;gap:16px;flex-wrap:wrap}
+.member-sessions dt{color:var(--muted)}.member-sessions dd{margin:0;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
+.member-sessions .ms-current-note{margin-top:15px;font-size:11px}.member-sessions .ms-card>.ms-revoke{margin-top:16px}
+.member-sessions .ms-footnote{font-size:11px;margin-top:18px}.member-sessions .ms-message{font-size:12px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--sage);margin-top:16px;min-height:0}
+.member-sessions .ms-message.error{color:var(--danger)}.member-sessions .ms-message:empty{display:none}
+.member-sessions .ms-footer{display:flex;margin-top:18px;padding-top:16px;border-top:1px solid var(--edge)}
+body.product-shell .member-sessions .btn{min-height:44px;font-size:12px;white-space:normal;line-height:1.5}body.product-shell .member-sessions .ms-revoke{color:var(--danger)}
+body.product-shell .member-sessions .ms-danger{background:var(--danger);color:var(--bg);border-color:var(--danger)}
+.member-sessions .ms-empty,.member-sessions .ms-confirm{padding:10px 0}.member-sessions .ms-empty>.ms-symbol,.member-sessions .ms-confirm>.ms-symbol{margin-bottom:17px}
+.member-sessions .ms-empty>.btn{margin-top:18px}.member-sessions .ms-confirm-actions{display:flex;gap:12px;justify-content:flex-end;margin-top:25px;flex-wrap:wrap}
+@media(max-width:600px){.member-sessions{font-size:13px}.member-sessions .ms-intro{gap:11px;margin-bottom:18px}.member-sessions h3{font-size:17px}.member-sessions .ms-card{padding:14px}.member-sessions .ms-card-heading{align-items:flex-start;gap:8px}.member-sessions .ms-symbol{width:37px;height:37px;border-radius:12px}.member-sessions .ms-confirm-actions>.btn{flex:1}.member-sessions .ms-footer>.btn{width:100%}.member-sessions dl{font-size:11px}.member-sessions .ms-badge{padding:3px 7px}}

@@ -1,0 +1,7 @@
+[Unit]
+Description=Renew family dashboard TLS certificate
+After=docker.service network-online.target
+Requires=docker.service
+[Service]
+Type=oneshot
+ExecStart=/opt/family-dashboard/deploy/renew.sh

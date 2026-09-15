@@ -1,0 +1,2583 @@
+{
+  "generatedAt": "2026-09-15T06:20:20.834170+00:00",
+  "scope": "local source; isolated new databases; no production verification",
+  "routes": [
+    {
+      "method": "GET",
+      "path": "/",
+      "source": "app.py",
+      "endpoint": "index"
+    },
+    {
+      "method": "GET",
+      "path": "/api/accounts",
+      "source": "cloud_accounts.py",
+      "endpoint": "accounts"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/accounts/<account_id>",
+      "source": "cloud_accounts.py",
+      "endpoint": "disconnect"
+    },
+    {
+      "method": "GET",
+      "path": "/api/accounts/<account_id>/sources",
+      "source": "cloud_accounts.py",
+      "endpoint": "sources"
+    },
+    {
+      "method": "POST",
+      "path": "/api/accounts/<account_id>/sources",
+      "source": "cloud_accounts.py",
+      "endpoint": "sources"
+    },
+    {
+      "method": "POST",
+      "path": "/api/accounts/<account_id>/sync",
+      "source": "cloud_accounts.py",
+      "endpoint": "sync_now"
+    },
+    {
+      "method": "POST",
+      "path": "/api/accounts/bind",
+      "source": "cloud_accounts.py",
+      "endpoint": "bind"
+    },
+    {
+      "method": "GET",
+      "path": "/api/assistant/brief",
+      "source": "home_assistant.py",
+      "endpoint": "get_brief"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assistant/journey-brief",
+      "source": "home_assistant.py",
+      "endpoint": "journey_brief"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assistant/plan",
+      "source": "home_assistant.py",
+      "endpoint": "plan"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assistant/plans/<uid>/apply",
+      "source": "home_assistant.py",
+      "endpoint": "apply_plan"
+    },
+    {
+      "method": "GET",
+      "path": "/api/auth/providers",
+      "source": "cloud_accounts.py",
+      "endpoint": "providers"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar-publish/authorize",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_authorize"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar-publish/confirm",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_confirm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/calendar-publish/journeys/<journey_id>",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_state"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar-publish/preview",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar-publish/publications/<rid>/conflict-confirm",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_conflict_confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar-publish/publications/<rid>/conflict-preview",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_conflict_preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar-publish/publications/<rid>/pause",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_pause"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar-publish/publications/<rid>/resume",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_resume"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar-publish/publications/<rid>/retry",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_retry"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar-publish/publications/<rid>/review-confirm",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_review_confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar-publish/publications/<rid>/review-preview",
+      "source": "calendar_publish.py",
+      "endpoint": "publication_review_preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/calendar/import",
+      "source": "app.py",
+      "endpoint": "calendar_import"
+    },
+    {
+      "method": "GET",
+      "path": "/api/dashboard-layout",
+      "source": "dashboard_preferences.py",
+      "endpoint": "dashboard_layout"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/dashboard-layout",
+      "source": "dashboard_preferences.py",
+      "endpoint": "dashboard_layout"
+    },
+    {
+      "method": "GET",
+      "path": "/api/devices",
+      "source": "app.py",
+      "endpoint": "devices"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/devices/<uid>",
+      "source": "app.py",
+      "endpoint": "revoke_device"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/devices/<uid>",
+      "source": "app.py",
+      "endpoint": "edit_device"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance",
+      "source": "app.py",
+      "endpoint": "finance_update"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-baseline/imports/confirm",
+      "source": "finance_source_bridge.py",
+      "endpoint": "finance_source_confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-baseline/imports/preview",
+      "source": "finance_source_bridge.py",
+      "endpoint": "finance_source_preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-baseline/imports/status",
+      "source": "finance_source_bridge.py",
+      "endpoint": "finance_source_status"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-baseline/private",
+      "source": "finance_baseline.py",
+      "endpoint": "private_baseline"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance-hub/budgets",
+      "source": "finance_hub.py",
+      "endpoint": "hub_put_budget"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/imports/confirm",
+      "source": "finance_hub.py",
+      "endpoint": "hub_confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/imports/preview",
+      "source": "finance_hub.py",
+      "endpoint": "hub_preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/investments",
+      "source": "finance_hub.py",
+      "endpoint": "hub_create_investment"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/finance-hub/investments/<rid>",
+      "source": "finance_hub.py",
+      "endpoint": "hub_delete_investment"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/finance-hub/investments/<rid>",
+      "source": "finance_hub.py",
+      "endpoint": "hub_update_investment"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/investments/imports/confirm",
+      "source": "investment_import.py",
+      "endpoint": "investment_import_confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/investments/imports/preview",
+      "source": "investment_import.py",
+      "endpoint": "investment_import_preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/investments/imports/template",
+      "source": "investment_import.py",
+      "endpoint": "investment_import_template"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/overview",
+      "source": "finance_hub.py",
+      "endpoint": "hub_overview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/reconciliation",
+      "source": "finance_hub.py",
+      "endpoint": "hub_reconciliation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/reconciliation/<rid>/revoke",
+      "source": "finance_hub.py",
+      "endpoint": "hub_reconciliation_revoke"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/reconciliation/confirm",
+      "source": "finance_hub.py",
+      "endpoint": "hub_reconciliation_confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/reconciliation/preview",
+      "source": "finance_hub.py",
+      "endpoint": "hub_reconciliation_preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/shared",
+      "source": "finance_hub.py",
+      "endpoint": "hub_shared"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/shopping-settlements/confirm",
+      "source": "shopping_settlement.py",
+      "endpoint": "settlement_confirm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/shopping-settlements/context",
+      "source": "shopping_settlement.py",
+      "endpoint": "settlement_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/shopping-settlements/preview",
+      "source": "shopping_settlement.py",
+      "endpoint": "settlement_preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/template",
+      "source": "finance_hub.py",
+      "endpoint": "hub_template"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/finance-hub/transactions/<rid>",
+      "source": "finance_hub.py",
+      "endpoint": "hub_delete_transaction"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/finance-hub/transactions/<rid>",
+      "source": "finance_hub.py",
+      "endpoint": "hub_patch_transaction"
+    },
+    {
+      "method": "POST",
+      "path": "/api/items/<kind>",
+      "source": "app.py",
+      "endpoint": "add_item"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/items/<kind>/<uid>",
+      "source": "app.py",
+      "endpoint": "delete_item"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/items/<kind>/<uid>",
+      "source": "app.py",
+      "endpoint": "edit_item"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journeys",
+      "source": "journey_workflows.py",
+      "endpoint": "journey_list"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journeys/<uid>",
+      "source": "journey_workflows.py",
+      "endpoint": "journey_detail"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journeys/<uid>/calendar",
+      "source": "journey_workflows.py",
+      "endpoint": "journey_calendar"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journeys/<uid>/calendar.ics",
+      "source": "journey_workflows.py",
+      "endpoint": "journey_calendar_ics"
+    },
+    {
+      "method": "POST",
+      "path": "/api/journeys/apply",
+      "source": "journey_workflows.py",
+      "endpoint": "journey_apply"
+    },
+    {
+      "method": "POST",
+      "path": "/api/journeys/preview",
+      "source": "journey_workflows.py",
+      "endpoint": "journey_preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journeys/templates",
+      "source": "journey_workflows.py",
+      "endpoint": "journey_templates"
+    },
+    {
+      "method": "POST",
+      "path": "/api/login",
+      "source": "app.py",
+      "endpoint": "login"
+    },
+    {
+      "method": "POST",
+      "path": "/api/logout",
+      "source": "app.py",
+      "endpoint": "logout"
+    },
+    {
+      "method": "GET",
+      "path": "/api/me",
+      "source": "app.py",
+      "endpoint": "me"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pair/approve",
+      "source": "app.py",
+      "endpoint": "pair_approve"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pair/poll",
+      "source": "app.py",
+      "endpoint": "pair_poll"
+    },
+    {
+      "method": "POST",
+      "path": "/api/pair/start",
+      "source": "app.py",
+      "endpoint": "pair_start"
+    },
+    {
+      "method": "POST",
+      "path": "/api/photos",
+      "source": "shopping_media.py",
+      "endpoint": "upload_photo"
+    },
+    {
+      "method": "GET",
+      "path": "/api/photos/<uid>",
+      "source": "shopping_media.py",
+      "endpoint": "get_photo"
+    },
+    {
+      "method": "POST",
+      "path": "/api/portability/export",
+      "source": "data_portability.py",
+      "endpoint": "export_data"
+    },
+    {
+      "method": "GET",
+      "path": "/api/portability/summary",
+      "source": "data_portability.py",
+      "endpoint": "export_summary"
+    },
+    {
+      "method": "GET",
+      "path": "/api/preferences",
+      "source": "household_spaces.py",
+      "endpoint": "preferences"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/preferences",
+      "source": "household_spaces.py",
+      "endpoint": "preferences"
+    },
+    {
+      "method": "GET",
+      "path": "/api/private-finance",
+      "source": "app.py",
+      "endpoint": "private_finance"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/private-finance",
+      "source": "app.py",
+      "endpoint": "private_finance"
+    },
+    {
+      "method": "POST",
+      "path": "/api/profile",
+      "source": "app.py",
+      "endpoint": "profile"
+    },
+    {
+      "method": "POST",
+      "path": "/api/routines/confirm",
+      "source": "household_routines.py",
+      "endpoint": "routine_confirm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/routines/context",
+      "source": "household_routines.py",
+      "endpoint": "routine_context"
+    },
+    {
+      "method": "POST",
+      "path": "/api/routines/preview",
+      "source": "household_routines.py",
+      "endpoint": "routine_preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sessions",
+      "source": "member_sessions.py",
+      "endpoint": "sessions_list"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/sessions/<session_id>",
+      "source": "member_sessions.py",
+      "endpoint": "session_delete"
+    },
+    {
+      "method": "POST",
+      "path": "/api/sessions/revoke-others",
+      "source": "member_sessions.py",
+      "endpoint": "sessions_revoke_others"
+    },
+    {
+      "method": "GET",
+      "path": "/api/spaces/current",
+      "source": "household_spaces.py",
+      "endpoint": "current_space"
+    },
+    {
+      "method": "POST",
+      "path": "/api/spaces/invitations",
+      "source": "household_spaces.py",
+      "endpoint": "invite_household"
+    },
+    {
+      "method": "POST",
+      "path": "/api/spaces/redeem",
+      "source": "household_spaces.py",
+      "endpoint": "redeem_household"
+    },
+    {
+      "method": "GET",
+      "path": "/api/state",
+      "source": "app.py",
+      "endpoint": "state"
+    },
+    {
+      "method": "GET",
+      "path": "/api/sync-health",
+      "source": "sync_health.py",
+      "endpoint": "sync_health"
+    },
+    {
+      "method": "POST",
+      "path": "/api/task-publish/confirm",
+      "source": "task_publish.py",
+      "endpoint": "task_publication_confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/task-publish/preview",
+      "source": "task_publish.py",
+      "endpoint": "task_publication_preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/task-publish/publications/<rid>/<action>",
+      "source": "task_publish.py",
+      "endpoint": "task_publication_action"
+    },
+    {
+      "method": "GET",
+      "path": "/api/task-publish/state",
+      "source": "task_publish.py",
+      "endpoint": "task_publication_state"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/<provider>/callback",
+      "source": "cloud_accounts.py",
+      "endpoint": "callback"
+    },
+    {
+      "method": "GET",
+      "path": "/auth/<provider>/login",
+      "source": "cloud_accounts.py",
+      "endpoint": "external_login"
+    },
+    {
+      "method": "GET",
+      "path": "/demo",
+      "source": "app.py",
+      "endpoint": "index"
+    },
+    {
+      "method": "GET",
+      "path": "/healthz",
+      "source": "app.py",
+      "endpoint": "health"
+    },
+    {
+      "method": "GET",
+      "path": "/static/<path:name>",
+      "source": "app.py",
+      "endpoint": "asset"
+    },
+    {
+      "method": "GET",
+      "path": "/tv",
+      "source": "app.py",
+      "endpoint": "index"
+    }
+  ],
+  "wsgiRoutes": [
+    {
+      "method": "GET",
+      "path": "/space/<slug>",
+      "source": "household_spaces.py"
+    }
+  ],
+  "householdTables": {
+    "assistant_plans": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "data",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "applied_at",
+        "type": "REAL",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
+    "attempts": [
+      {
+        "name": "ip",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "category",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "stamp",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "audit": [
+      {
+        "name": "id",
+        "type": "INTEGER",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "actor",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "action",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "target",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "stamp",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "calendar_publications": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "journey_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "entity_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "provider",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "calendar_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "remote_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "etag",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "last_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "local_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "pending_data",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "pending_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "pending_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "error",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "attempts",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "next_attempt",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "review_required",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "cloud_accounts": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "provider",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "client_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "subject",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "email",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "tokens",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "needs_reauth",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "cloud_items": [
+      {
+        "name": "entity_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "source_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "remote_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "cloud_oauth_states": [
+      {
+        "name": "state_hash",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "browser_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "provider",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "mode",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "auth_version",
+        "type": "INTEGER",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "verifier",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "client_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "auth_context",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "cloud_sources": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "remote_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "is_primary",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "last_success",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "next_attempt",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "error",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "failures",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "cloud_writes": [
+      {
+        "name": "source_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "remote_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "record",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "devices": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "code",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "secret_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "focus",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "approved",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "calendar_view",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "display_layout",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "entities": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "data",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "finance_baselines": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "private_data",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "shared_data",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "content_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "finance_source_receipts": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "candidate_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expected_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expected_source_digest",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "baseline_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "accepted_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "finance_spending_observations": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "candidate_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "candidate_json",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "accepted_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "finance_spending_receipts": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "candidate_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expected_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expected_baseline_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "observation_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "accepted_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "household_routines": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "template",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "schedule",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "state",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "current_index",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_by",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_budgets": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "month",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "currency",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "category",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "amount_cents",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_imports": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "imported_count",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_investment_import_previews": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "context_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "snapshot",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_investment_import_receipts": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "confirmed_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_investment_links": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "source_name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "holding_key",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "investment_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_investment_sources": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "source_name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_investments": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "data",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_reconciliations": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "left_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "right_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "amount_cents",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "confirm_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_shopping_settlement_receipts": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "nonce_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "operation",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "link_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_shopping_settlements": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "payment_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "shopping_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "amount_cents",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "before_values",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "projected_values",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "applied_shopping_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_snapshot",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_transactions": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "fingerprint",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "data",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "journey_actions": [
+      {
+        "name": "actor",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "action_key",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "operation_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "journey_links": [
+      {
+        "name": "journey_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "item_key",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "entity_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "journey_workflows": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "trip_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "plan",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_by",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "member_dashboard_layout": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "data",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "member_preferences": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "data",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "member_session_browsers": [
+      {
+        "name": "browser_hash",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "generation",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "member_sessions": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "credential_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "auth_version",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "browser_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "device",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "last_seen_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revoked_at",
+        "type": "REAL",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "legacy",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "retain_until",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "photo_refs": [
+      {
+        "name": "photo_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "entity_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      }
+    ],
+    "photos": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "content",
+        "type": "BLOB",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "size",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "width",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "height",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_by",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "private_finance": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "data",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "routine_occurrences": [
+      {
+        "name": "plan_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "occurrence_index",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "entity_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "scheduled_on",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "state",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "closed_at",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
+    "routine_receipts": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "nonce_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "operation",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "plan_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "settings": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "data",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "task_publications": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "entity_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "account_owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "provider",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "list_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "journey_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "target_key",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "previous_status",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "remote_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "etag",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "baseline_data",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "pending_data",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "pending_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "attempted",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "error",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "attempts",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "next_attempt",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "users": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "username",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "password",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "auth_version",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ]
+  },
+  "platformTables": {
+    "household_invitations": [
+      {
+        "name": "hash",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "used_at",
+        "type": "REAL",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
+    "households": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "slug",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ]
+  }
+}

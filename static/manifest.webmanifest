@@ -1,0 +1,18 @@
+{
+  "id": "/",
+  "name": "家庭中枢 · 一起过好每一天",
+  "short_name": "家庭中枢",
+  "lang": "zh-CN",
+  "description": "安排、采购、旅行、财务与家庭助理，一个入口。",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#102019",
+  "theme_color": "#102019",
+  "icons": [{"src": "/static/home.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}],
+  "shortcuts": [
+    {"name": "家庭日程", "url": "/#calendar"},
+    {"name": "采购清单", "url": "/#shopping"},
+    {"name": "家庭助理", "url": "/#assistant"}
+  ]
+}

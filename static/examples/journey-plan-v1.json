@@ -1,0 +1,101 @@
+{
+  "schemaVersion": 1,
+  "title": "虚构示例 · 东京京都巴黎三城旅行",
+  "start": "2027-10-01",
+  "end": "2027-10-12",
+  "international": true,
+  "budget": 2000000,
+  "saved": 500000,
+  "paid": 300000,
+  "note": "格式示例，所有金额、班次与住宿均为虚构。请替换日期、目的地及预算并在表单核对，再预览确认。金额单位为人民币分。",
+  "destinations": [
+    {
+      "key": "tokyo",
+      "country": "日本",
+      "city": "东京",
+      "arrival": "2027-10-01",
+      "departure": "2027-10-04"
+    },
+    {
+      "key": "kyoto",
+      "country": "日本",
+      "city": "京都",
+      "arrival": "2027-10-04",
+      "departure": "2027-10-07"
+    },
+    {
+      "key": "paris",
+      "country": "法国",
+      "city": "巴黎",
+      "arrival": "2027-10-07",
+      "departure": "2027-10-12"
+    }
+  ],
+  "checklist": [
+    {
+      "key": "budget-review",
+      "title": "核对旅行预算与付款节点",
+      "owner": "shared",
+      "dueOffsetDays": -30,
+      "note": "示例：在出发前30天核对预算。"
+    },
+    {
+      "key": "booking-review",
+      "title": "核对往返交通与住宿资料",
+      "owner": "shared",
+      "dueOffsetDays": -14,
+      "note": "示例：填入自己已确认的预订资料。"
+    },
+    {
+      "key": "packing",
+      "title": "一起整理行李清单",
+      "owner": "shared",
+      "dueOffsetDays": -2,
+      "note": ""
+    }
+  ],
+  "shopping": [
+    {
+      "key": "adapter",
+      "title": "转换插头（示例）",
+      "quantity": "1 个",
+      "owner": "shared",
+      "budget": 8000,
+      "note": "8000分 = 80元；先核对已有物品。"
+    },
+    {
+      "key": "organizer",
+      "title": "收纳袋（示例）",
+      "quantity": "1 组",
+      "owner": "shared",
+      "budget": null,
+      "note": "预算尚未确定，null 不代表零元。"
+    }
+  ],
+  "segments": [
+    {
+      "key": "tokyo-days",
+      "title": "东京停留（虚构）",
+      "start": "2027-10-01",
+      "end": "2027-10-04",
+      "location": "日本 · 东京",
+      "note": "日期级分段，end 包含当天。"
+    },
+    {
+      "key": "kyoto-days",
+      "title": "京都停留（虚构）",
+      "start": "2027-10-04",
+      "end": "2027-10-07",
+      "location": "日本 · 京都",
+      "note": "日期级分段，end 包含当天。"
+    },
+    {
+      "key": "paris-days",
+      "title": "巴黎停留（虚构）",
+      "start": "2027-10-07",
+      "end": "2027-10-12",
+      "location": "法国 · 巴黎",
+      "note": "日期级分段，end 包含当天。"
+    }
+  ]
+}

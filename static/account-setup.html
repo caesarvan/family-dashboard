@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>账号接入设置 · 家庭看板</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <style>
+    .setup-shell{max-width:1000px;padding-bottom:60px}.setup-shell h1{font-size:32px;margin:0 0 12px}.setup-shell h2{font-size:23px;margin:0 0 18px}.setup-shell h3{font-size:17px;margin:24px 0 10px}.setup-shell .card{margin:20px 0;padding:26px 30px}.setup-shell p,.setup-shell li{line-height:1.9}.setup-shell li{margin:8px 0}.setup-shell ol{padding-left:24px}.setup-shell pre{padding:15px 18px;background:#11212a;border:1px solid var(--edge);border-radius:12px;white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.8}.setup-shell code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}.setup-shell table{width:100%;border-collapse:collapse;font-size:14px}.setup-shell th,.setup-shell td{text-align:left;padding:12px 10px;border-bottom:1px solid var(--edge);vertical-align:top;overflow-wrap:anywhere}.setup-shell th{color:var(--sage);width:30%;font-weight:500}.setup-shell .stage{color:var(--sage);font-size:12px;letter-spacing:1px;margin-bottom:6px}.setup-links{display:flex;gap:12px;flex-wrap:wrap;margin:20px 0}.setup-shell .notice{border-left:3px solid var(--amber);padding-left:16px;color:#d7c7a8}.setup-shell footer{font-size:12px;color:var(--muted);line-height:2}.setup-shell details{border-top:1px solid var(--edge);padding:16px 0}.setup-shell summary{cursor:pointer;font-weight:550}.setup-shell section{scroll-margin-top:18px}@media(max-width:700px){.setup-shell h1{font-size:27px}.setup-shell .card{padding:22px 18px}.setup-shell th{width:34%}.setup-shell pre{font-size:12px;padding:13px}.setup-shell table{font-size:12px}}
+  </style>
+</head>
+<body>
+<main class="shell setup-shell">
+  <header style="padding:18px 0 6px">
+    <p class="stage">家庭看板 · 首次接入</p>
+    <h1>把日程和待办连接起来</h1>
+    <p class="muted">管理员注册应用一次，两位成员分别授权自己的账号。之后可使用 Microsoft 或 Google 登录，看板自动同步明确选中的日历和清单。</p>
+    <nav class="setup-links" aria-label="设置步骤">
+      <a class="btn secondary" href="#microsoft">1 · Microsoft</a>
+      <a class="btn secondary" href="#google">2 · Google</a>
+      <a class="btn secondary" href="#server">3 · 服务器配置</a>
+      <a class="btn" href="#connect">4 · 绑定与选择</a>
+    </nav>
+    <p class="notice">外部账号完成授权、选择来源并首次同步成功后，云端数据才会出现在看板。配置密钥请在自己的终端中隐藏输入，不要发到聊天。</p>
+  </header>
+
+  <section id="microsoft" class="card" aria-labelledby="microsoft-title">
+    <p class="stage">01 / MICROSOFT</p>
+    <h2 id="microsoft-title">注册 Microsoft 网页应用</h2>
+    <ol>
+      <li>打开 <a href="https://entra.microsoft.com/" target="_blank" rel="noopener noreferrer">Microsoft Entra 管理中心</a>，进入“应用注册 → 新注册”。使用有权注册应用的目录；如果提示没有目录或权限，先按该页面处理访问权限。</li>
+      <li>按下表填写并注册。</li>
+    </ol>
+    <table aria-label="Microsoft 应用注册字段">
+      <tr><th>名称</th><td>家庭看板</td></tr>
+      <tr><th>账户类型</th><td>任何组织目录中的账户和个人 Microsoft 账户<br><span class="muted">Accounts in any organizational directory and personal Microsoft accounts</span></td></tr>
+      <tr><th>重定向平台</th><td>Web</td></tr>
+      <tr><th>重定向 URI</th><td><code>https://home.caesarcharles.world/auth/microsoft/callback</code></td></tr>
+    </table>
+    <ol start="3">
+      <li>在概述页保存 <strong>Application (client) ID / 应用程序（客户端）ID</strong>。Object ID、Directory ID 不是这里需要的值。</li>
+      <li>进入“API 权限 → 添加权限 → Microsoft Graph → <strong>委托的权限</strong>”，添加或保留以下范围。</li>
+    </ol>
+    <pre><code>User.Read
+Calendars.Read
+Calendars.Read.Shared
+Tasks.ReadWrite
+openid · profile · email · offline_access</code></pre>
+    <ol start="5">
+      <li>进入“证书和密码 → 客户端密码 → 新建客户端密码”，记录到期日，立即保存 <strong>Value / 值</strong>。Secret ID 不能作为 secret；Value 离开页面后不会再显示。</li>
+      <li>保留 Web 授权设置。本版无需启用公共客户端流、设备授权码或隐式授权。</li>
+    </ol>
+    <p class="muted">登录请求基础身份权限，绑定同步时申请日历读取、任务读写与离线访问。工作或学校账号可能需要组织管理员批准。</p>
+    <p class="help">官方说明：<a href="https://learn.microsoft.com/en-us/graph/auth-register-app-v2" target="_blank" rel="noopener noreferrer">应用与凭证注册</a> · <a href="https://learn.microsoft.com/en-us/graph/permissions-reference" target="_blank" rel="noopener noreferrer">Graph 委托权限</a> · <a href="https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow" target="_blank" rel="noopener noreferrer">授权码流程</a></p>
+  </section>
+
+  <section id="google" class="card" aria-labelledby="google-title">
+    <p class="stage">02 / GOOGLE</p>
+    <h2 id="google-title">注册 Google 网页应用</h2>
+    <ol>
+      <li>在 <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer">Google Cloud Console</a> 新建或选择项目，启用 <a href="https://console.cloud.google.com/apis/library/calendar-json.googleapis.com" target="_blank" rel="noopener noreferrer">Google Calendar API</a> 和 <a href="https://console.cloud.google.com/apis/library/tasks.googleapis.com" target="_blank" rel="noopener noreferrer">Google Tasks API</a>。</li>
+      <li>进入 <a href="https://console.cloud.google.com/auth/overview" target="_blank" rel="noopener noreferrer">Google Auth Platform</a>，填写 Branding / 品牌信息与 Audience / 受众。</li>
+    </ol>
+    <table aria-label="Google 品牌与受众字段">
+      <tr><th>应用名称</th><td>家庭看板</td></tr>
+      <tr><th>支持 / 联系邮箱</th><td>你能接收邮件的邮箱</td></tr>
+      <tr><th>应用首页</th><td><code>https://home.caesarcharles.world/</code></td></tr>
+      <tr><th>已获授权的网域</th><td><code>caesarcharles.world</code>，不带协议或 home.</td></tr>
+      <tr><th>用户类型</th><td>External</td></tr>
+      <tr><th>初次发布状态</th><td>Testing</td></tr>
+      <tr><th>测试用户</th><td>添加你和伴侣实际要授权的两个 Google 账号</td></tr>
+    </table>
+    <p class="muted">若控制台要求验证域名所有权，使用你管理的 caesarcharles.world 按提示完成验证。</p>
+    <ol start="3"><li>在 Data Access / 数据访问添加身份范围和下面两个同步范围。</li></ol>
+    <pre><code>openid
+https://www.googleapis.com/auth/userinfo.email
+https://www.googleapis.com/auth/userinfo.profile
+https://www.googleapis.com/auth/calendar.readonly
+https://www.googleapis.com/auth/tasks</code></pre>
+    <ol start="4"><li>进入“Clients → Create client”，应用类型选 <strong>Web application</strong>，名称填“家庭看板服务器”。</li></ol>
+    <table aria-label="Google 客户端字段">
+      <tr><th>授权重定向 URI</th><td><code>https://home.caesarcharles.world/auth/google/callback</code></td></tr>
+      <tr><th>JavaScript 来源</th><td>本版服务器授权可留空；若填写，使用 <code>https://home.caesarcharles.world</code></td></tr>
+    </table>
+    <ol start="5"><li>安全保存创建后的 <strong>Client ID</strong> 和 <strong>Client secret</strong>，下载的 JSON 凭证只保存在私人位置。</li></ol>
+    <p class="notice"><strong>Testing 授权需要留意 7 天期限。</strong> External + Testing 应用申请 Calendar / Tasks 权限时，刷新令牌在 7 天后到期，需要重新授权。先验收两位成员，再按 Audience 流程发布为 In production 并重新连接。仅家庭个人使用可能符合验证例外，以控制台要求为准；发布不保证令牌永久有效。</p>
+    <p class="help">官方说明：<a href="https://developers.google.com/identity/protocols/oauth2/web-server" target="_blank" rel="noopener noreferrer">网页 OAuth</a> · <a href="https://developers.google.com/identity/protocols/oauth2#expiration" target="_blank" rel="noopener noreferrer">刷新令牌到期</a> · <a href="https://developers.google.com/identity/protocols/oauth2/policies#use-separate-projects" target="_blank" rel="noopener noreferrer">个人用途例外</a> · <a href="https://developers.google.com/identity/protocols/oauth2/production-readiness/overview" target="_blank" rel="noopener noreferrer">发布状态</a></p>
+  </section>
+
+  <section id="server" class="card" aria-labelledby="server-title">
+    <p class="stage">03 / 管理员配置</p>
+    <h2 id="server-title">在自己的终端中填写凭证</h2>
+    <p>在电脑终端连接服务器：</p>
+    <pre><code>ssh -t racknerd</code></pre>
+    <p>进入服务器后依次执行；可以先完成 Microsoft，再补 Google。</p>
+    <pre><code>cd /opt/family-dashboard
+python3 deploy/configure-oauth.py --provider microsoft
+python3 deploy/configure-oauth.py --provider google
+python3 deploy/configure-oauth.py --check</code></pre>
+    <p>助手会询问 client ID，并让你两次粘贴 secret 的 Value。<strong>密钥输入不显示字符是正常现象。</strong> 原有家庭密码和另一平台的设置保留；原配置自动备份，配置与备份仅服务器账户可读写。检查命令只报告配置是否填写。</p>
+    <p>让应用读取新配置：</p>
+    <pre><code>docker compose up -d --force-recreate app sync web
+docker compose ps
+curl --fail --silent --show-error https://home.caesarcharles.world/healthz</code></pre>
+    <p class="muted">重建期间会短暂断开，已有数据保留。不要把密钥、.env 文件、完整环境变量或容器配置输出贴到聊天。密钥到期时，在原应用创建新密钥，再运行相同助手更新。</p>
+  </section>
+
+  <section id="connect" class="card" aria-labelledby="connect-title">
+    <p class="stage">04 / 两位成员分别完成</p>
+    <h2 id="connect-title">绑定账号，选择准备共享的内容</h2>
+    <ol>
+      <li>用自己的原家庭密码登录，进入<strong>设置 → 账号与同步</strong>，绑定 Microsoft 或 Google。</li>
+      <li>在服务商页面核对账号和权限，授权后返回看板。</li>
+      <li>选择日历和清单，设置日程归属。<strong>所选来源内容会向伴侣和电视展示</strong>；未选择的来源不会自动导入。</li>
+      <li>选择一份 Microsoft To Do 清单作为家庭共同待办主清单。Google Tasks 是可选附加来源，不会复制成另一份微软任务。同一共享来源避免重复连接。</li>
+      <li>在原应用新建测试日程和任务，检查看板自动出现；在手机看板完成、恢复任务，在原应用核对。再检验修改与删除。</li>
+      <li>退出后使用已绑定平台登录，确认回到正确成员。伴侣用自己的家庭账号重复绑定；未绑定外部账号不会新增成员。</li>
+    </ol>
+    <p>任务约 30 秒、日历约 60 秒由服务器检查，看板约 10 秒刷新。网络或限流可能延长等待，页面显示最近成功时间和异常。当前使用自动轮询，尚未启用第三方变更推送。</p>
+    <p class="muted">日程在原日历修改；看板支持新建共同待办、完成和恢复。任务详情、重复规则、删除在原应用管理。个人财务仍仅本人可见，电视只读；Apple 提醒事项后续接入。</p>
+    <a class="btn" href="/">返回家庭看板</a>
+  </section>
+
+  <section class="card" aria-labelledby="help-title">
+    <h2 id="help-title">遇到提示时</h2>
+    <details><summary>等待管理员配置</summary><p>对应平台的 client ID 与 secret 尚未生效。完成服务器配置并重建容器，再刷新页面。该状态不代表账号已经授权。</p></details>
+    <details><summary>回调地址不匹配</summary><p>出现 redirect_uri_mismatch 或 AADSTS50011 时，核对 Web 类型、HTTPS、home 子域名和本页提供的回调路径，逐字一致且不加结尾斜杠。</p></details>
+    <details><summary>Google 过几天需要重新授权</summary><p>先检查是否仍为 External + Testing。本项目的日历与任务授权受该状态下的 7 天期限影响。发布后也可能因撤销、组织策略等原因需要重新连接。</p></details>
+    <details><summary>工作或学校账号要求管理员批准</summary><p>组织策略可能限制应用访问。由该组织管理员处理授权，不能用家庭看板设置绕过。</p></details>
+    <details><summary>看不到某份日历或清单</summary><p>核对实际绑定的账号、授权范围，以及来源在原服务中是否可访问；账号本人需要明确选择来源。同步报错时不会把旧内容当作空数据清除。</p></details>
+  </section>
+
+  <footer>官方资料核查：2026-09-14。注册页面可能调整布局，请按字段名称查找。真实账号登录、刷新令牌与同步结果需在成员授权后验收。<br><a href="/">返回家庭看板</a></footer>
+</main>
+</body>
+</html>

@@ -1,0 +1,202 @@
+{
+  "schemaVersion": 2,
+  "title": "虚构示例 · 东京京都巴黎三城旅行",
+  "start": "2027-10-01",
+  "end": "2027-10-12",
+  "international": true,
+  "budget": 2000000,
+  "saved": 500000,
+  "paid": 300000,
+  "note": "格式示例，所有金额、班次与住宿均为虚构。请替换日期、目的地及预算并在表单核对，再预览确认。金额单位为人民币分。",
+  "destinations": [
+    {
+      "key": "tokyo",
+      "country": "日本",
+      "city": "东京",
+      "arrival": "2027-10-01",
+      "departure": "2027-10-04",
+      "timeZone": "Asia/Tokyo"
+    },
+    {
+      "key": "kyoto",
+      "country": "日本",
+      "city": "京都",
+      "arrival": "2027-10-04",
+      "departure": "2027-10-07",
+      "timeZone": "Asia/Tokyo"
+    },
+    {
+      "key": "paris",
+      "country": "法国",
+      "city": "巴黎",
+      "arrival": "2027-10-07",
+      "departure": "2027-10-12",
+      "timeZone": "Europe/Paris"
+    }
+  ],
+  "checklist": [
+    {
+      "key": "budget-review",
+      "title": "核对旅行预算与付款节点",
+      "owner": "shared",
+      "dueOffsetDays": -30,
+      "note": "示例：在出发前30天核对预算。"
+    },
+    {
+      "key": "booking-review",
+      "title": "核对往返交通与住宿资料",
+      "owner": "shared",
+      "dueOffsetDays": -14,
+      "note": "示例：填入自己已确认的预订资料。"
+    },
+    {
+      "key": "packing",
+      "title": "一起整理行李清单",
+      "owner": "shared",
+      "dueOffsetDays": -2,
+      "note": ""
+    }
+  ],
+  "shopping": [
+    {
+      "key": "adapter",
+      "title": "转换插头（示例）",
+      "quantity": "1 个",
+      "owner": "shared",
+      "budget": 8000,
+      "note": "8000分 = 80元；先核对已有物品。"
+    },
+    {
+      "key": "organizer",
+      "title": "收纳袋（示例）",
+      "quantity": "1 组",
+      "owner": "shared",
+      "budget": null,
+      "note": "预算尚未确定，null 不代表零元。"
+    }
+  ],
+  "segments": [
+    {
+      "key": "flight-outbound",
+      "kind": "flight",
+      "destinationKey": "tokyo",
+      "title": "上海至东京航班（虚构时刻）",
+      "bookingState": "idea",
+      "datePolicy": "fixed",
+      "location": "PVG → HND",
+      "note": "仅为格式示例，不是实际班次或预订。",
+      "departure": {
+        "airport": "PVG",
+        "city": "上海",
+        "local": "2027-10-01T09:00:00",
+        "timeZone": "Asia/Shanghai"
+      },
+      "arrival": {
+        "airport": "HND",
+        "city": "东京",
+        "local": "2027-10-01T13:00:00",
+        "timeZone": "Asia/Tokyo"
+      }
+    },
+    {
+      "key": "tokyo-stay",
+      "kind": "stay",
+      "destinationKey": "tokyo",
+      "title": "东京住宿（虚构）",
+      "bookingState": "idea",
+      "datePolicy": "shift_with_trip",
+      "propertyName": "示例东京旅馆",
+      "address": "待替换为自己住宿的地址",
+      "timeZone": "Asia/Tokyo",
+      "checkInDate": "2027-10-01",
+      "checkOutDate": "2027-10-04",
+      "checkInTime": "",
+      "checkOutTime": "",
+      "note": "3晚；入住退房时刻未知时留空。"
+    },
+    {
+      "key": "kyoto-day",
+      "kind": "activity",
+      "destinationKey": "kyoto",
+      "title": "京都一日自由安排（虚构）",
+      "bookingState": "idea",
+      "datePolicy": "shift_with_trip",
+      "timeZone": "Asia/Tokyo",
+      "dateRange": {
+        "startDate": "2027-10-05",
+        "endDateExclusive": "2027-10-06"
+      },
+      "location": "京都",
+      "note": "仅知道日期；排除结束日，表示10月5日一天。"
+    },
+    {
+      "key": "flight-between-countries",
+      "kind": "flight",
+      "destinationKey": "paris",
+      "title": "大阪至巴黎航班（虚构时刻）",
+      "bookingState": "idea",
+      "datePolicy": "fixed",
+      "location": "KIX → CDG",
+      "note": "仅验证当地时间与时区格式；每段航程单独列出。",
+      "departure": {
+        "airport": "KIX",
+        "city": "大阪",
+        "local": "2027-10-07T12:00:00",
+        "timeZone": "Asia/Tokyo"
+      },
+      "arrival": {
+        "airport": "CDG",
+        "city": "巴黎",
+        "local": "2027-10-07T19:00:00",
+        "timeZone": "Europe/Paris"
+      }
+    },
+    {
+      "key": "paris-stay",
+      "kind": "stay",
+      "destinationKey": "paris",
+      "title": "巴黎住宿（虚构）",
+      "bookingState": "idea",
+      "datePolicy": "shift_with_trip",
+      "propertyName": "示例巴黎旅馆",
+      "address": "待替换为自己住宿的地址",
+      "timeZone": "Europe/Paris",
+      "checkInDate": "2027-10-07",
+      "checkOutDate": "2027-10-12",
+      "checkInTime": "",
+      "checkOutTime": "",
+      "note": "5晚；退房当天不计住宿。"
+    },
+    {
+      "key": "paris-walk",
+      "kind": "activity",
+      "destinationKey": "paris",
+      "title": "巴黎散步（虚构）",
+      "bookingState": "idea",
+      "datePolicy": "shift_with_trip",
+      "location": "待填写集合地点",
+      "note": "定时活动的起止时刻均使用当地时间与IANA时区。",
+      "start": {
+        "local": "2027-10-09T10:00:00",
+        "timeZone": "Europe/Paris"
+      },
+      "end": {
+        "local": "2027-10-09T11:30:00",
+        "timeZone": "Europe/Paris"
+      }
+    },
+    {
+      "key": "kyoto-legacy-days",
+      "kind": "legacy_day",
+      "destinationKey": "kyoto",
+      "title": "京都日期级停留（虚构）",
+      "bookingState": "idea",
+      "datePolicy": "fixed",
+      "start": "2027-10-04",
+      "end": "2027-10-06",
+      "location": "京都",
+      "note": "示范保留旧日期级分段，end包含当天；这不是酒店入住记录。"
+    }
+  ],
+  "referenceTimezone": "Asia/Shanghai"
+}

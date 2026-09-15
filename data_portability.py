@@ -1,0 +1,204 @@
+"""Member-owned portable data, without credentials or another member's ledger."""
+from datetime import datetime, timezone
+from decimal import Decimal
+from hashlib import sha256
+from io import BytesIO, StringIO
+from itertools import chain
+import csv
+import json
+from threading import BoundedSemaphore
+from zipfile import ZipFile, ZIP_DEFLATED
+
+from flask import g, jsonify, send_file
+from finance_baseline import shared_baselines
+from shopping_settlement import export_owned_settlements
+from household_routines import export_shared_routines
+from spending_observations import export_owned_spending_observations
+
+EXPORT_SLOT = BoundedSemaphore(1)
+MAX_EXPORT_BYTES = 64 * 1024 * 1024
+ENTITY_FIELDS = {'title','owner','done','due','tripId','journeyId','quantity','budget','actual','note',
+                 'photoIds','start','end','allDay','location','source','imported','destination','saved','paid',
+                 'travelTiming','startDate','endDateExclusive','workflowKey'}
+
+
+def cell(value):
+    """CSV is spreadsheet-safe; JSON retains the exact original text."""
+    if value is None:
+        return ''
+    if isinstance(value, (dict, list)):
+        value = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
+    text = str(value)
+    if text.lstrip(' \t\r\n\ufeff').startswith(('=', '+', '-', '@')) or text.startswith(('\t', '\r', '\n')):
+        return "'" + text
+    return text
+
+
+def decimal_amount(value):
+    return '' if value is None else format(Decimal(value) / Decimal(100), '.2f')
+
+
+def register_portability(app, db, Problem, body, require_member, audit, limited):
+    def tables(con):
+        return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+
+    def owned_rows(con, table):
+        # Table names come only from fixed call sites, never from request fields.
+        return [dict(r) for r in con.execute(f'SELECT * FROM {table} WHERE owner=? ORDER BY rowid', (g.actor['id'],))]
+
+    def decoded_rows(con, table):
+        return [{**json.loads(r['data']), 'id': r['id'], 'revision': r['revision']} for r in owned_rows(con, table)]
+
+    @app.get('/api/portability/summary')
+    def export_summary():
+        require_member()
+        con, uid = db(), g.actor['id']
+        counts = {name: con.execute(f'SELECT count(*) FROM {table} WHERE owner=?', (uid,)).fetchone()[0]
+                  for name, table in [('transactions','hub_transactions'),('investments','hub_investments'),
+                                      ('budgets','hub_budgets'),('financeBaselines','finance_baselines'),
+                                      ('assistantPlans','assistant_plans')]}
+        shared = {r[0]: r[1] for r in con.execute('SELECT kind,count(*) FROM entities GROUP BY kind')}
+        return jsonify(personal=counts, shared=shared, format='zip',
+                       note='导出的是当前保存的记录，并非已覆盖全部金融账户。参考图片只含编号和尺寸，不包含图片文件；账号连接需要重新授权。')
+
+    @app.post('/api/portability/export')
+    def export_data():
+        require_member()
+        value = body()
+        if set(value) - {'includeShared'} or type(value.get('includeShared', False)) is not bool:
+            raise Problem('请指定是否附带家庭共同记录')
+        limited('data_export', 6, 3600)
+        if not EXPORT_SLOT.acquire(blocking=False):
+            raise Problem('正在准备另一份数据副本，请稍后重试', 429)
+        try:
+            con, uid = db(), g.actor['id']
+            con.execute('BEGIN')
+            available = tables(con)
+            exported = datetime.now(timezone.utc)
+            snapshot = {'schemaVersion': 1, 'exportedAt': exported.isoformat(),
+                        'household': app.config.get('HOUSEHOLD_INFO') or {'id':'default','name':'我们的家','slug':'home'},
+                        'member': dict(con.execute('SELECT id,username,name FROM users WHERE id=?', (uid,)).fetchone()),
+                        'coverage': {'includesShared': value.get('includeShared',False), 'photos':'metadata_only',
+                                     'externalCredentialsIncluded': False, 'completeFinancialCoverage': False}, 'personal': {}}
+            personal = snapshot['personal']
+            personal['transactions'] = decoded_rows(con, 'hub_transactions')
+            personal['investments'] = decoded_rows(con, 'hub_investments')
+            if 'hub_investment_sources' in available:
+                personal['investmentSources'] = [dict(r) for r in con.execute(
+                    'SELECT source_name AS sourceName,revision,updated_at AS updatedAt '
+                    'FROM hub_investment_sources WHERE owner=? ORDER BY source_name', (uid,))]
+            if 'hub_investment_links' in available:
+                # A deleted holding can retain its link as an import tombstone.
+                # Keep that business history without joining another owner's data.
+                personal['investmentLinks'] = [dict(r) for r in con.execute(
+                    'SELECT source_name AS sourceName,holding_key AS holdingKey,investment_id AS investmentId,created_at AS createdAt '
+                    'FROM hub_investment_links WHERE owner=? ORDER BY source_name,holding_key', (uid,))]
+            if 'hub_investment_import_receipts' in available:
+                personal['investmentImportReceipts'] = []
+                for row in con.execute(
+                        'SELECT id,source_name AS sourceName,source_digest AS sourceDigest,result,confirmed_at AS confirmedAt '
+                        'FROM hub_investment_import_receipts WHERE owner=? ORDER BY confirmed_at,id', (uid,)):
+                    receipt, result = dict(row), json.loads(row['result'])
+                    # Explicit business fields only: a future receipt extension must
+                    # not accidentally export preview or authentication context.
+                    field_types = {'created':int, 'updated':int, 'unchanged':int, 'replayed':bool,
+                                   'receiptId':str, 'confirmedAt':str}
+                    receipt['result'] = {key:result[key] for key,kind in field_types.items()
+                                         if key in result and type(result[key]) is kind}
+                    personal['investmentImportReceipts'].append(receipt)
+            personal['budgets'] = [{k:v for k,v in row.items() if k!='owner'} for row in owned_rows(con, 'hub_budgets')]
+            personal['imports'] = [{k:v for k,v in row.items() if k!='owner'} for row in owned_rows(con, 'hub_imports')]
+            if 'finance_source_receipts' in available:
+                receipt_fields = {'id','candidate_digest','source_digest','expected_revision','expected_source_digest','baseline_revision','status','accepted_at'}
+                personal['financeSourceReceipts'] = [{k:v for k,v in row.items() if k in receipt_fields}
+                                                    for row in owned_rows(con, 'finance_source_receipts')]
+            if 'hub_reconciliations' in available:
+                personal['reconciliations'] = [dict(r) for r in con.execute(
+                    'SELECT id,kind,left_id AS leftId,right_id AS rightId,amount_cents AS amountCents,status,revision,created_at AS createdAt,updated_at AS updatedAt '
+                    'FROM hub_reconciliations WHERE owner=? ORDER BY id', (uid,))]
+            if {'hub_shopping_settlements', 'hub_shopping_settlement_receipts'}.issubset(available):
+                personal['shoppingSettlements'] = export_owned_settlements(con, uid)
+            personal['monthlyFinance'] = [dict(data=json.loads(r['data']), revision=r['revision']) for r in owned_rows(con, 'private_finance')]
+            personal['financeBaselines'] = [{'data':json.loads(r['private_data']), 'revision':r['revision'], 'updatedAt':r['updated_at']} for r in owned_rows(con, 'finance_baselines')]
+            if {'finance_spending_observations', 'finance_spending_receipts'}.issubset(available):
+                personal['spendingObservations'] = export_owned_spending_observations(con, uid)
+            personal['preferences'] = [json.loads(r['data']) for r in owned_rows(con, 'member_preferences')]
+            if 'member_dashboard_layout' in available:
+                personal['dashboardLayout'] = [dict(data=json.loads(r['data']),revision=r['revision']) for r in owned_rows(con, 'member_dashboard_layout')]
+            personal['assistantPlans'] = [{'id':r['id'],'createdAt':r['created_at'],'appliedAt':r['applied_at'],
+                                           'data':json.loads(r['data']),'result':json.loads(r['result']) if r['result'] else None}
+                                          for r in owned_rows(con, 'assistant_plans')]
+            # Connections export useful member-owned labels, never subjects, app
+            # secrets, token ciphertext, OAuth state, PKCE or password hashes.
+            personal['connections'] = []
+            for account in con.execute('SELECT id,provider,name,email FROM cloud_accounts WHERE owner=? ORDER BY id', (uid,)):
+                sources = [dict(r) for r in con.execute('SELECT name,kind,is_primary AS isPrimary FROM cloud_sources WHERE account_id=? ORDER BY id',(account['id'],))]
+                personal['connections'].append({'provider':account['provider'],'name':account['name'],'email':account['email'],'sources':sources})
+            if value.get('includeShared', False):
+                shared = {'people':[dict(r) for r in con.execute('SELECT id,name FROM users ORDER BY id')], 'entities':{},
+                          'financeBaselines':shared_baselines(con)}
+                for r in con.execute('SELECT id,kind,data,revision,updated_at FROM entities ORDER BY kind,id'):
+                    data = json.loads(r['data'])
+                    shared['entities'].setdefault(r['kind'], []).append({**{k:v for k,v in data.items() if k in ENTITY_FIELDS},
+                        'id':r['id'],'revision':r['revision'],'updatedAt':r['updated_at']})
+                finance = con.execute("SELECT data,revision FROM settings WHERE id='finance'").fetchone()
+                shared['finance'] = {'data':json.loads(finance['data']),'revision':finance['revision']}
+                shared['journeys'] = [{'id':r['id'],'tripId':r['trip_id'],'plan':json.loads(r['plan']),'revision':r['revision']}
+                                      for r in con.execute('SELECT id,trip_id,plan,revision FROM journey_workflows ORDER BY id')]
+                shared['photoMetadata'] = [dict(r) for r in con.execute('SELECT id,size,width,height FROM photos WHERE EXISTS (SELECT 1 FROM photo_refs WHERE photo_id=photos.id) ORDER BY id')]
+                if {'household_routines', 'routine_occurrences', 'routine_receipts'}.issubset(available):
+                    shared['routines'] = export_shared_routines(con)
+                snapshot['shared'] = shared
+            personal['photoMetadata'] = [dict(r) for r in con.execute('SELECT id,size,width,height FROM photos WHERE created_by=? ORDER BY id',(uid,))]
+            con.commit()
+            output, digests = BytesIO(), {}
+            total_size = 0
+            with ZipFile(output, 'w', compression=ZIP_DEFLATED, compresslevel=6) as archive:
+                def entry(name, chunks):
+                    nonlocal total_size
+                    digest, size = sha256(), 0
+                    with archive.open(name, 'w') as stream:
+                        for chunk in chunks:
+                            raw = chunk.encode('utf-8') if isinstance(chunk,str) else chunk
+                            size += len(raw)
+                            total_size += len(raw)
+                            if total_size > MAX_EXPORT_BYTES:
+                                raise Problem('当前导出内容超过 64 MB，请联系管理员按家庭备份导出；未生成不完整副本', 413)
+                            digest.update(raw)
+                            stream.write(raw)
+                    digests[name] = {'bytes':size,'sha256':digest.hexdigest()}
+
+                def csv_chunks(columns, rows):
+                    yield '\ufeff'
+                    buffer = StringIO(newline='')
+                    writer = csv.writer(buffer)
+                    for row in chain([columns], rows):
+                        writer.writerow([cell(x) for x in row])
+                        yield buffer.getvalue()
+                        buffer.seek(0)
+                        buffer.truncate(0)
+
+                entry('data.json', json.JSONEncoder(ensure_ascii=False,allow_nan=False,indent=2).iterencode(snapshot))
+                entry('transactions.csv', csv_chunks(['id','date','title','amount','currency','kind','flow','category','source','externalId','visibility','revision'],
+                    ([r.get('id'),r.get('date'),r.get('title'),decimal_amount(r.get('amountCents')),r.get('currency'),r.get('kind'),r.get('flow'),r.get('category'),r.get('source'),r.get('externalId'),r.get('visibility'),r.get('revision')] for r in personal['transactions'])))
+                entry('investments.csv', csv_chunks(['id','institution','name','assetType','currency','cost','value','asOf','revision'],
+                    ([r.get('id'),r.get('institution'),r.get('name'),r.get('assetType'),r.get('currency'),decimal_amount(r.get('costCents')),decimal_amount(r.get('valueCents')),r.get('asOf'),r.get('revision')] for r in personal['investments'])))
+                entry('README.txt', ['家庭中枢 · 个人数据副本\n\n',
+                    'data.json 保留当前成员的数据、原始文字、整数分金额、日期与覆盖说明。transactions.csv 和 investments.csv 便于表格查看；其中 amount/cost/value 为原币金额，不是分。\n',
+                    '交易 CSV 是原始保存记录，不是自动去重后的支出报告；关系与核对结果以 data.json 为准。不同币种和旧日期记录不能直接相加。\n',
+                    '持仓导入的来源、稳定关联和业务回执保存在 data.json；已删除持仓可能仍保留防重复导入的关联。预览暂存和授权上下文不包含在导出中。\n',
+                    '独立消费观察和接受回执保存在 data.json；其报告日期与覆盖范围不改变资产余额日期，不与账单、订单或基线消费重复相加。\n',
+                    'CSV 的公式危险前缀加了单引号，JSON 保留原文。估值未知保持空白，不作为零。\n',
+                    '勾选共同记录时含双方已共享的日程、待办、采购、旅行和资金汇总；不含伴侣私人账本。图片仅含元数据，不含图像。\n',
+                    '不含登录密码、令牌、应用密钥；迁移后须重新绑定第三方。此文件不是可直接覆盖 SQLite 的灾难恢复备份，当前没有一键还原此文件的接口。\n',
+                    '本文件含个人资料和财务内容，请保存在你控制的设备上。\n'])
+                entry('manifest.json', [json.dumps({'schemaVersion':1,'files':dict(digests),'exportedAt':exported.isoformat()},ensure_ascii=False,indent=2)])
+            audit('personal_data_export', 'with_shared' if value.get('includeShared') else 'personal_only')
+            con.commit()
+            output.seek(0)
+            response = send_file(output, mimetype='application/zip', as_attachment=True,
+                                 download_name=f'family-data-{uid}-{exported:%Y%m%dT%H%M%SZ}.zip', etag=False, max_age=0)
+            response.headers['Cache-Control'] = 'private, no-store'
+            return response
+        finally:
+            EXPORT_SLOT.release()
