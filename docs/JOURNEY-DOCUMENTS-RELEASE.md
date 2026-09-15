@@ -4,7 +4,7 @@
 
 ## 1. 固定基线与适用范围
 
-控制器仅接受旧镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`，将每户 42 张业务表迁移为 43 张；平台仍为 2 张表。只新增空 `journey_documents` 表及其实际索引、触发器，旧表、每行每列、schema、SQLite 内部序号和家庭注册信息必须完全保持。
+控制器仅接受旧镜像 `sha256:f1e4cc56979f793f32585f498fa2fca55987356bd68f67e8cc6c14f0b1b6a01d`，将每户 42 张户内表（含 2 张认证表）迁移为 43 张；平台仍为 2 张表。只新增空 `journey_documents` 表及其实际索引、触发器，旧表、每行每列、schema、SQLite 内部序号和家庭注册信息必须完全保持。
 
 服务器原源码须逐文件匹配外部 **222 文件** `BASE-MANIFEST.json`，SHA-256 为 `045ad0ac30e9130fc62c9fa0e12b7f0d2240e21feb5c352226002f4e1062a828`。服务器原 `RELEASE-MANIFEST.json` 仍可能记录旧 **218 文件**，其固定 SHA-256 为 `4713e0a4486c3afa4fc7f73932b038dcda3df1697a408aaaa331735f099736f7`。两份清单承担不同职责；不能先用 222 文件清单覆盖旧清单以制造一致。
 
@@ -30,7 +30,7 @@
 
 ```sh
 # 由已获本次部署授权的维护者填写并再次核对四个实际参数。
-# python /opt/family-dashboard-candidate-journey-documents-<本次标识>/deploy/activate_journey_documents_release.py \
+# python3 /opt/family-dashboard-candidate-journey-documents-<本次标识>/deploy/activate_journey_documents_release.py \
 #   /opt/family-dashboard-candidate-journey-documents-<本次标识> \
 #   sha256:<已验证新镜像64位散列> <源码清单64位散列> <READY64位散列>
 ```
