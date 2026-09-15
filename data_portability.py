@@ -14,6 +14,7 @@ from finance_baseline import shared_baselines
 from shopping_settlement import export_owned_settlements
 from household_routines import export_shared_routines
 from spending_observations import export_owned_spending_observations
+from journey_documents import exported_documents
 
 EXPORT_SLOT = BoundedSemaphore(1)
 MAX_EXPORT_BYTES = 64 * 1024 * 1024
@@ -58,8 +59,11 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                                       ('budgets','hub_budgets'),('financeBaselines','finance_baselines'),
                                       ('assistantPlans','assistant_plans')]}
         shared = {r[0]: r[1] for r in con.execute('SELECT kind,count(*) FROM entities GROUP BY kind')}
+        documents = exported_documents(con, uid, include_shared=True) if 'journey_documents' in tables(con) else {'personal': [], 'shared': []}
+        counts['journeyDocuments'] = len(documents['personal'])
+        shared['journeyDocuments'] = len(documents['shared'])
         return jsonify(personal=counts, shared=shared, format='zip',
-                       note='导出的是当前保存的记录，并非已覆盖全部金融账户。参考图片只含编号和尺寸，不包含图片文件；账号连接需要重新授权。')
+                       note='导出的是当前保存的记录，并非已覆盖全部金融账户。采购图片和旅行资料仅含元数据，不包含文件；旅行文件请在资料夹逐份下载。账号连接需要重新授权。')
 
     @app.post('/api/portability/export')
     def export_data():
@@ -79,8 +83,11 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                         'household': app.config.get('HOUSEHOLD_INFO') or {'id':'default','name':'我们的家','slug':'home'},
                         'member': dict(con.execute('SELECT id,username,name FROM users WHERE id=?', (uid,)).fetchone()),
                         'coverage': {'includesShared': value.get('includeShared',False), 'photos':'metadata_only',
+                                     'journeyDocuments': 'metadata_only',
                                      'externalCredentialsIncluded': False, 'completeFinancialCoverage': False}, 'personal': {}}
             personal = snapshot['personal']
+            documents = exported_documents(con, uid, include_shared=value.get('includeShared', False)) if 'journey_documents' in available else {'personal': [], 'shared': []}
+            personal['journeyDocuments'] = documents['personal']
             personal['transactions'] = decoded_rows(con, 'hub_transactions')
             personal['investments'] = decoded_rows(con, 'hub_investments')
             if 'hub_investment_sources' in available:
@@ -136,7 +143,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                 personal['connections'].append({'provider':account['provider'],'name':account['name'],'email':account['email'],'sources':sources})
             if value.get('includeShared', False):
                 shared = {'people':[dict(r) for r in con.execute('SELECT id,name FROM users ORDER BY id')], 'entities':{},
-                          'financeBaselines':shared_baselines(con)}
+                          'financeBaselines':shared_baselines(con), 'journeyDocuments': documents['shared']}
                 for r in con.execute('SELECT id,kind,data,revision,updated_at FROM entities ORDER BY kind,id'):
                     data = json.loads(r['data'])
                     shared['entities'].setdefault(r['kind'], []).append({**{k:v for k,v in data.items() if k in ENTITY_FIELDS},
@@ -189,7 +196,8 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     '持仓导入的来源、稳定关联和业务回执保存在 data.json；已删除持仓可能仍保留防重复导入的关联。预览暂存和授权上下文不包含在导出中。\n',
                     '独立消费观察和接受回执保存在 data.json；其报告日期与覆盖范围不改变资产余额日期，不与账单、订单或基线消费重复相加。\n',
                     'CSV 的公式危险前缀加了单引号，JSON 保留原文。估值未知保持空白，不作为零。\n',
-                    '勾选共同记录时含双方已共享的日程、待办、采购、旅行和资金汇总；不含伴侣私人账本。图片仅含元数据，不含图像。\n',
+                    '勾选共同记录时含双方已共享的日程、待办、采购、旅行和资金汇总；不含伴侣私人账本。采购图片与旅行资料仅含元数据，不含文件。旅行资料夹可逐份下载文件。\n',
+                    '本人旅行资料只在 personal.journeyDocuments 出现一次，含旅行已删除后保留的本人资料；shared.journeyDocuments 仅含仍关联有效旅行的伙伴共享资料，不含内容、文件网址、请求标识或内容散列。\n',
                     '不含登录密码、令牌、应用密钥；迁移后须重新绑定第三方。此文件不是可直接覆盖 SQLite 的灾难恢复备份，当前没有一键还原此文件的接口。\n',
                     '本文件含个人资料和财务内容，请保存在你控制的设备上。\n'])
                 entry('manifest.json', [json.dumps({'schemaVersion':1,'files':dict(digests),'exportedAt':exported.isoformat()},ensure_ascii=False,indent=2)])
