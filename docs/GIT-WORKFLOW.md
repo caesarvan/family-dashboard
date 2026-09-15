@@ -21,16 +21,21 @@ worktree 建议放在 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/
 
 禁止无授权的强推、`reset --hard`、清理、重写历史或删除分支／worktree；不要使用 `git add .` 或 `git add -A` 将无关内容一并提交。不要对父 `AI` 仓库执行本项目的暂存、重置或清理命令。
 
-### 已保存但尚未审查合并的旅行资料代码
+### 旅行资料的实际协作示例
 
-本项目目前保留以下尚未合入的候选分支：
+本项目按以下职责保留候选分支：
 
 - `codex/journey-documents-api`
 - `codex/journey-documents-portability`
 - `codex/journey-documents-ui`
 - `codex/journey-documents-wiring`
+- `codex/finance-journey-migration`
+- `codex/journey-documents-release`
+- `codex/root-journey-docs`
 
-这些 refs 保存了工作成果，不能据此认定功能已合入 `main`、已上线或已完成独立审查。分支之间存在模块注册、导出、UI 加载等依赖；单个分支的模块依赖可能不完整，不能直接当作完整应用运行。后续须核对每个实际 head、授权文件、依赖顺序及审查结果，再组合验收；不能重复套用旧候选目录或假设四个分支已经相互包含。
+API、导出、UI、接入和迁移检查器已由非作者审查后，经 Git 合入集成分支；具体提交和未完成门槛见 [当前交接](HANDOFF.md#当前候选与文件占用)。UI 审查发现的问题由原作者在自己的分支修复，再由非作者复核。组合浏览器测试在固定集成提交的 detached worktree 执行，验证目录不承担代码修复。
+
+这些 refs 保存了工作成果，不能据此认定功能已合入 `main` 或已上线。分支之间存在模块注册、导出、UI 加载等依赖；单个分支的模块依赖可能不完整，不能直接当作完整应用运行。每轮仍须核对实际 head、授权文件、依赖顺序及审查结果，不能重复套用旧候选目录或假设功能分支已相互包含。
 
 ## 2. 创建任务 worktree
 
