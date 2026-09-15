@@ -4,7 +4,8 @@ window.JourneyUI = (() => {
   let current = null, draft = null, context = {}, preview = null, operationKey = '', requestNumber = 0, resolutions = {}, shiftImpact = null;
   let returnContext = null, draftSequence = 0;
   let execution = null, executionFilter = null;
-  let segmentEditTarget = null;
+  let segmentEditTarget = null, createEntry = null;
+  const draftActors = new WeakMap();
   const identity = actor => actor?.role === 'member' ? `${actor.householdId || 'default'}:${actor.id}` : '';
   const actorSnapshot = () => ({identity: identity(user), csrf});
   const sameActor = actor => actor.identity === identity(user) && actor.csrf === csrf && canEdit();
@@ -308,6 +309,45 @@ window.JourneyUI = (() => {
     return {plan: value, summary: {create: {trips: 1, tasks: value.checklist.length, shopping: value.shopping.length, events: value.segments.length + 1}, update: {}, detach: 0, policyNotice: notice}, previewToken: null};
   }
 
+  async function create() {
+    if (isTV || (!canEdit() && !isDemo)) return false;
+    const dialog = document.getElementById('dialog');
+    const existing = dialog.open && dialog.querySelector('#journey-form,#journey-review-form');
+    if (existing) {
+      const active = () => existing.isConnected && dialog.open;
+      try {
+        if (!isDemo) await verifyActor(draftActors.get(existing), active);
+        if (active()) toast('已有旅行草稿，请先完成或关闭；当前内容已保留。');
+      } catch (problem) {
+        if (active() && problem.contextChanged) shell('请重新进入旅行', '<p class="journey-error error" role="alert">登录成员或家庭已变化，请刷新后重新进入。</p>');
+        else if (active()) toast('暂时无法核对登录状态，当前草稿已保留。', true);
+      }
+      return false;
+    }
+    if (createEntry?.active()) return createEntry.promise;
+    const number = ++requestNumber, actor = {...actorSnapshot(), authVersion:user?.auth_version};
+    const route = location.pathname + location.search + location.hash;
+    draftSequence++;
+    shell('规划下一程', '<p class="journey-loading" id="journey-create-loading">正在准备旅行向导…</p>');
+    const marker = document.getElementById('journey-create-loading');
+    const flow = {active: () => number === requestNumber && marker.isConnected && dialog.open
+      && route === location.pathname + location.search + location.hash && !isTV};
+    createEntry = flow;
+    flow.promise = (async () => {
+      try {
+        if (!isDemo) await verifyActor(actor, flow.active);
+        if (!flow.active()) return false;
+        current = null; context = {}; resolutions = {}; shiftImpact = null; preview = null;
+        operationKey = ''; returnContext = null; segmentEditTarget = null; draft = defaults();
+        wizard(); return true;
+      } catch (problem) {
+        if (flow.active()) shell('暂时无法开始旅行', `<p class="journey-error error" role="alert">${problem.contextChanged?'登录成员或家庭已变化，请刷新后重新进入。':'暂时无法核对登录状态，请重试；没有创建旅行。'}</p>${button('create','重新开始')}`);
+        return false;
+      } finally { if (createEntry === flow) createEntry = null; }
+    })();
+    return flow.promise;
+  }
+
   async function open(id = '', options = {}) {
     returnContext = null;
     if (isTV) { shell('旅行工作台', '<p class="help">请在已登录的手机或电脑管理旅行。</p>'); return; }
@@ -471,6 +511,7 @@ window.JourneyUI = (() => {
       <p class="journey-notice">${esc(notice)}</p><p class="help">${isV2()?'修改旅行总日期不会自动改订航班或酒店。整体迁期时，只有明确允许随旅行迁期且尚未预订的项目可以移动，固定和已订项目保留。':'调整出发日期会移动准备事项截止日和已有分段；返程日期变化后，请核对每一站停留时间。'}</p>
       <div class="journey-error error" role="alert"></div><div class="dialog-footer">${button('list', '返回旅行工作台')}<button class="btn" type="submit">预览准备与日程 →</button></div></form>`);
     const form = document.getElementById('journey-form');
+    draftActors.set(form, {...actorSnapshot(), authVersion:user?.auth_version});
     if(segmentEditTarget&&segmentEditTarget.journeyId===context.journeyId)locateSegment(form,segmentEditTarget.key,true);
     let previousStart = draft.start;
     form.querySelector('#journey-core-fields [name="start"]').addEventListener('change', () => {
@@ -522,6 +563,7 @@ window.JourneyUI = (() => {
       <div class="journey-error error" role="alert"></div><p id="journey-preview-state" class="help" aria-live="polite">已核对：${Object.values(summary.create || {}).reduce((a, b) => a + b, 0)} 项新建，${Object.values(summary.update || {}).reduce((a, b) => a + b, 0)} 项更新。${isDemo ? '演示预览不会保存。' : '请确认后一起创建。'}</p>
       <div class="dialog-footer">${button('back', '返回安排')}${button('repreview', '更新预览')}<button class="btn" type="submit" id="journey-apply" ${isDemo || preview.canApply===false || !preview.previewToken ? 'disabled' : ''}>${context.journeyId ? '确认更新计划' : '确认生成计划'}</button></div></form>`);
     const form = document.getElementById('journey-review-form');
+    draftActors.set(form, {...actorSnapshot(), authVersion:user?.auth_version});
     form.addEventListener('input', dirty);
     form.addEventListener('change', dirty);
     form.addEventListener('submit', async event => {
@@ -868,7 +910,7 @@ window.JourneyUI = (() => {
       if (action === 'list') { await open(); return; }
       if (action === 'detail') { await open(target.dataset.id); return; }
       if (!canEdit() && !isDemo) return;
-      if (action === 'create') { context = {}; resolutions = {}; shiftImpact = null; draft = defaults(); wizard(); }
+      if (action === 'create') { await create(); return; }
       if (action === 'upgrade') createFromTrip(data.trips.find(trip => trip.id === target.dataset.id));
       if (action === 'edit') editCurrent();
       if(action==='enable-details'){
@@ -980,5 +1022,5 @@ window.JourneyUI = (() => {
     refreshShiftOptions();dirty();
   });
 
-  return {open, openDraft, create: () => { if (canEdit() || isDemo) { context = {}; resolutions = {}; shiftImpact = null; draft = defaults(); wizard(); } }, samplePlan, shiftDate, dayDiff};
+  return {open, openDraft, create, samplePlan, shiftDate, dayDiff};
 })();
