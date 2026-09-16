@@ -56,7 +56,7 @@ export default function HomeScreen(props: ScreenProps) {
     </SectionCard>,
     tasks: <SectionCard title="先做这几件" action={<Button compact onPress={() => props.onNavigate('tasks')}>全部待办</Button>}>
       {tasks.length ? tasks.slice(0, 4).map(item => <View key={item.id} style={styles.task}>
-        <Checkbox status="unchecked" accessibilityLabel={`完成待办：${item.title}`} disabled={!!(busy || props.pendingId || item.sync?.readOnly)} onPress={() => void toggle(item)} />
+        <Checkbox.Android status="unchecked" accessibilityLabel={`完成待办：${item.title}`} disabled={!!(busy || props.pendingId || item.sync?.readOnly)} onPress={() => void toggle(item)} />
         <View style={styles.flex}><Text variant="titleSmall">{item.title}</Text><Text variant="bodySmall" style={muted}>{item.due ? `${item.due < today ? '已逾期 · ' : ''}${shortDay(item.due)}` : '未设日期'} · {owner(item.owner)}{item.sync?.readOnly ? ' · 来源只读' : ''}</Text></View>
       </View>) : <EmptyState title="到期待办已处理完" action={<Button onPress={() => props.onEdit('tasks')}>添加待办</Button>} />}
       {tasks.length > 4 && <Text variant="bodySmall" style={muted}>还有 {tasks.length - 4} 项到期或未排期待办</Text>}
