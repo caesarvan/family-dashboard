@@ -266,7 +266,7 @@ async function accountsModal() {
   });
   document.querySelectorAll('[data-account-sync]').forEach(button => button.onclick = async () => {
     button.disabled = true;
-    try { await accountViewCheck(context, button); await write('/accounts/' + encodeURIComponent(button.dataset.accountSync) + '/sync', 'POST'); await accountViewCheck(context, button); toast('已安排后台检查，稍后点击刷新状态查看结果。'); }
+    try { await accountViewCheck(context, button); const result = await write('/accounts/' + encodeURIComponent(button.dataset.accountSync) + '/sync', 'POST'); await accountViewCheck(context, button); toast(result.queued ? '已安排后台检查，稍后点击刷新状态查看结果。' : '当前没有选中的来源，无需检查。'); }
     catch (error) { toast(error.message, true); }
     finally { button.disabled = false; }
   });
@@ -304,9 +304,9 @@ async function accountSourcesModal(account) {
       const primary = form.elements.primary?.value ?? '';
       if (primary !== '' && !form.elements['source-' + primary]?.checked) throw new Error('请先勾选要设为主清单的来源');
       const chosen = sources.flatMap((source, index) => form.elements['source-' + index].checked ? [{remoteId:source.id,kind:source.kind,name:source.name,owner:source.kind === 'tasks' ? 'shared' : form.elements['owner-' + index].value,primary:primary !== '' && Number(primary) === index}] : []);
-      await write('/accounts/' + encodeURIComponent(account.id) + '/sources', 'POST', {sources:chosen});
+      const saved = await write('/accounts/' + encodeURIComponent(account.id) + '/sources', 'POST', {sources:chosen});
       await accountViewCheck(context, form); await refresh(true); await accountViewCheck(context, form);
-      await accountsModal(); toast('共享范围已保存，后台将开始同步。');
+      await accountsModal(); toast(saved.queued ? '共享范围已保存，后台将开始同步。' : '共享范围已保存，当前没有选中的来源。');
     } catch (error) { $('.error', form).textContent = error.message; button.disabled = false; }
   };
 }

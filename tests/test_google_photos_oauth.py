@@ -163,7 +163,7 @@ def test_photo_only_capability_safe_projection_no_sync_discovery_and_restart(con
     engine = app.extensions['cloud_accounts']
     public = c.get('/api/accounts').json['accounts'][0]
     assert public['capabilities'] == {'photos': True, 'sync': False} and public['sources'] == [] and not public['needsReauth']
-    assert set(public) == {'id', 'provider', 'name', 'email', 'needsReauth', 'capabilities', 'sources'}
+    assert set(public) == {'id', 'provider', 'name', 'email', 'needsReauth', 'capabilities', 'sources', 'selectionVersion'}
     assert 'photo-code' not in json.dumps(public) and PICKER not in json.dumps(public)
     assert 'photo-code' not in snapshot(engine, aid)['tokens']
     assert engine.photos_access_token(aid, 'member1') == 'photo-code'

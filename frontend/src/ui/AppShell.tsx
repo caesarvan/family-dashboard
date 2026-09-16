@@ -86,7 +86,7 @@ export default function AppShell(props: AppShellProps) {
               <IconButton icon="account-circle-outline" size={23} onPress={() => setMenu('account')} accessibilityLabel={`${props.name}，账户菜单`} style={styles.iconButton} />
             } contentStyle={styles.menu}>
               <Menu.Item title={props.name || '我的账户'} disabled /><Menu.Item title={props.householdName || '我们的家'} disabled />
-              <Divider /><Menu.Item title="连接与账户" leadingIcon="link-variant" onPress={() => legacy('connections')} />
+              <Divider /><Menu.Item title="连接与账户" leadingIcon="link-variant" onPress={() => navigate('connections')} />
               <Menu.Item title="家庭设置" leadingIcon="cog-outline" onPress={() => legacy('settings')} />
               <Divider /><Menu.Item title="退出登录" leadingIcon="logout" onPress={() => { setMenu(null); void props.onLogout(); }} />
             </Menu>
