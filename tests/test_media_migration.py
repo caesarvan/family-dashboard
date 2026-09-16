@@ -13,6 +13,9 @@ from deploy import check_media_migration as migration
 
 @pytest.fixture(params=['media47','media48'])
 def group(tmp_path,monkeypatch,request):
+    # Historical 44->47/48 fixture: the later inventory registrar is excluded
+    # only here; current 53-table factory/restore tests keep it enabled.
+    monkeypatch.setattr('app.register_inventory',lambda *_args,**_kwargs:None)
     password='synthetic-migration-password'
     monkeypatch.setenv('MEMBER1_PASSWORD',password);monkeypatch.setenv('MEMBER2_PASSWORD',password)
     app=create_app({'TESTING':True,'DATA_DIR':str(tmp_path),'SECRET_KEY':'synthetic-media-migration-secret',
