@@ -61,11 +61,11 @@ def main():
     out = Path(__file__).resolve().parents[1] / 'test-results' / ('expo-accounts-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
     out.mkdir(parents=True)
     shutil.copyfile(__file__, out / 'executed-harness.py')
-    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], blockedAuthorizationNavigations=[], httpErrors=[], screenshots=[],
+    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], providerNavigationsIntercepted204=[], httpErrors=[], screenshots=[],
         eventInjections=['document.hidden/visibilityState plus visibilitychange for background/foreground'],
         head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
         sourceHashesBefore=hashes(), bundleHashesBefore=bundle_hashes(), productionWrites=0, realCloud=False, physicalTelevision=False,
-        scope='Frozen Expo bundle, real Flask/SQLite/member CSRF and HTTP routes. Synthetic provider identity/discovery/snapshot protocol only.')
+        scope='Frozen Expo bundle, real Flask/SQLite/member CSRF and HTTP routes. Synthetic provider identity/discovery/snapshot protocol; provider document navigation receives local 204 before external network.')
     page = None
 
     def passed(message):
@@ -292,10 +292,11 @@ def main():
                 assert partner.request.get(base + source_path).status == 404
                 passed('configured/unconfigured providers are truthful; account cards are owner-only and opening does not discover cloud sources')
 
-                # The real bind API generates the URL and state. Abort the provider
-                # document request before any external network, recording no URL
-                # query or OAuth state. No account connection is inferred from it.
-                def abort_authorization(handler):
+                # The real bind API generates the URL and state. Intercept only
+                # the provider document with 204 before external network. This is
+                # neither a business API response nor successful authorization.
+                # Record no URL query or OAuth state.
+                def intercept_authorization(handler):
                     target = urlsplit(handler.request.url)
                     params = parse_qs(target.query)
                     expected = '/common/oauth2/v2.0/authorize' if target.hostname == 'login.microsoftonline.com' else '/o/oauth2/v2/auth'
@@ -304,29 +305,23 @@ def main():
                     assert params['redirect_uri'] == [base + '/auth/' + provider + '/callback']
                     assert params['response_type'] == ['code'] and params['code_challenge_method'] == ['S256']
                     assert len(params['state'][0]) >= 32 and len(params['code_challenge'][0]) == 43
-                    report['blockedAuthorizationNavigations'].append({'host': target.hostname, 'path': target.path, 'externalNetwork': False})
-                    handler.abort('blockedbyclient')
+                    handler.fulfill(status=204, body='')
+                    report['providerNavigationsIntercepted204'].append({'host': target.hostname, 'path': target.path,
+                        'status': 204, 'externalNetwork': False, 'authorizationCompleted': False})
 
                 for provider, host in [('Microsoft', 'login.microsoftonline.com'), ('Google', 'accounts.google.com')]:
                     if provider == 'Google':
                         application.config.update(GOOGLE_CLIENT_ID='synthetic-google-client', GOOGLE_CLIENT_SECRET='synthetic-google-secret')
                         open_accounts(page)
-                    page.route('https://' + host + '/**', abort_authorization)
-                    # request alone fires before its route callback is handled.
-                    # Wait for the actual abort and a loaded local document before
-                    # unregistering, so no in-flight handler is displaced.
-                    with page.expect_event('framenavigated', predicate=lambda frame: frame == page.main_frame):
-                        with page.expect_event('requestfailed', predicate=lambda request: urlsplit(request.url).hostname == host):
-                            button(page, '连接 ' + provider).click()
-                    # Chromium commits an error document after an aborted main
-                    # navigation. Let it finish before issuing the local return.
-                    page.wait_for_load_state('domcontentloaded')
+                    page.route('https://' + host + '/**', intercept_authorization)
+                    with page.expect_response(lambda response: urlsplit(response.url).hostname == host and response.status == 204):
+                        button(page, '连接 ' + provider).click()
                     open_accounts(page)
-                    page.unroute('https://' + host + '/**', abort_authorization)
+                    page.unroute('https://' + host + '/**', intercept_authorization)
                     assert len(get(owner, '/api/accounts')['accounts']) == 1
                 application.config.update(GOOGLE_CLIENT_ID='', GOOGLE_CLIENT_SECRET='')
                 open_accounts(page)
-                passed('real Microsoft and Google bind buttons generate current-app PKCE authorization URLs; provider navigation blocked before network, no binding or sync success fabricated')
+                passed('real Microsoft and Google bind buttons generate current-app PKCE authorization URLs; provider-only 204 interception prevents cloud access and proves no binding or sync success')
 
                 write(owner, 'POST', '/api/items/tasks', {'title': '合成本地待办保留', 'sourceId': ''}, 201)
                 open_editor(page)
