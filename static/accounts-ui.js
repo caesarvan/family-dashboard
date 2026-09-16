@@ -187,6 +187,7 @@ function showAccountAuthResult() {
     provider_error:'账户授权未完成，请重新尝试；若仍失败，请联系看板维护者查看具体原因。',
   };
   const message = result === 'connected' ? '账户已绑定，请选择要共享的日历和清单。'
+    : result === 'photos-connected' ? 'Google Photos 已连接，请选择要保存的照片。'
     : result === 'signed-in' ? '已使用绑定账户登录。'
     : reasons[query.get('reason')] || '账户授权未完成，请重新尝试。';
   query.delete('auth'); query.delete('reason');
@@ -194,6 +195,7 @@ function showAccountAuthResult() {
   const error = $('#login-form .error');
   if (result === 'error' && error) error.textContent = message;
   else toast(message, result === 'error');
+  if (result === 'photos-connected') { window.ProductShell?.navigate('photos'); return; }
   AccountsReturn.restore(result).then(restored => {
     if (!restored && result === 'connected' && canEdit()) return accountsModal();
   }).catch(error => toast(error.message, true));
@@ -265,7 +267,7 @@ async function accountsModal() {
     finally { button.disabled = false; }
   });
   document.querySelectorAll('[data-account-disconnect]').forEach(button => button.onclick = async () => {
-    if (!confirm('断开这个账户并移除它同步到看板的日程和任务？原应用中的数据会保留。')) return;
+    if (!confirm('断开这个账户并移除它同步到看板的日程、任务和照片副本，同时收回照片的家庭共享与电视展示？原应用和 Google Photos 中的原始数据会保留。')) return;
     button.disabled = true;
     try { await accountViewCheck(context, button); await write('/accounts/' + encodeURIComponent(button.dataset.accountDisconnect), 'DELETE'); await accountViewCheck(context, button); await refresh(true); await accountViewCheck(context, button); await accountsModal(); toast('已断开账户绑定'); }
     catch (error) { toast(error.message, true); button.disabled = false; }

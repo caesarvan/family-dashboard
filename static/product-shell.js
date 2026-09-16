@@ -13,6 +13,7 @@
     shopping:['采购','bag','从想买到买到，每一笔都心中有数。'],
     trips:['旅行','plane','从一个目的地，走到下一段共同的回忆。'],
     map:['足迹地图','map','记下去过的地方，也为下一站留个位置。'],
+    photos:['家庭相册','photos','由你挑选回忆，决定与谁分享。'],
     finance:['家庭财务','wallet','共同资金一起看，个人明细自己管。'],
     assistant:['家庭助理','spark','让安排、清单和计划自然连接。'],
     connections:['连接中心','link','把日历与清单接进来，让更新自然发生。'],
@@ -26,6 +27,7 @@
     bag:'M5 7h14l2 14H3L5 7Zm3 0V5a4 4 0 0 1 8 0v2',
     plane:'m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13',
     map:'m3 6 6-3 6 3 6-3v15l-6 3-6-3-6 3V6Zm6-3v15m6-12v15',
+    photos:'M3 3h18v18H3V3Zm0 13 6-6 6 6 3-3 3 3M16 6h.01',
     wallet:'M3 6h17v15H3V6Zm0 0 15-4v4m-3 6h7v5h-7v-5Z',
     spark:'m12 2 3 7 7 3-7 3-3 7-3-7-7-3 7-3 3-7Z',
     link:'m10 13 4-4m-7 7-1 1a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0m2 11a4 4 0 0 0 6 0l4-4a4 4 0 0 0-6-6l-1 1',
@@ -41,6 +43,7 @@
   let applyingView = false, searchText = '', taskFilter = 'pending', shoppingFilter = 'pending';
   let navExpanded = false, preferencesLoadedAt = 0, spaceName = '我们的家', spaceLoaded = false;
   let mapIdentity = '', mapContainer = null;
+  let mediaContainer = null;
   const mapActor = () => JSON.stringify([user?.role,user?.householdId,user?.id,user?.auth_version,csrf,isTV,isDemo]);
   const glyph = name => `<svg class="ps-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name] || ICONS.home}"/></svg>`;
   const validPreferences = value => ({theme:Object.hasOwn(THEMES,value?.theme)?value.theme:'forest',density:value?.density==='compact'?'compact':'comfortable',homeView:['today','week','around'].includes(value?.homeView)?value.homeView:'today'});
@@ -160,10 +163,10 @@
     return `<button type="button" class="ps-nav-item ${currentRoute===route?'is-active':''}" data-ps-route="${route}" ${currentRoute===route?'aria-current="page"':''}>${glyph(symbol)}<span>${title}</span>${n&&!small?`<b>${n}</b>`:''}</button>`;
   }
   function sidebar() {
-    return `<aside class="ps-sidebar" aria-label="家庭中枢导航"><a href="#home" class="ps-brand" data-ps-route="home"><span class="ps-brand-mark">${glyph('home')}</span><span>家庭中枢<small>EVERYDAY, TOGETHER</small></span></a><button class="ps-space-switch" data-ps-route="household"><span class="ps-space-avatar">${glyph('people')}</span><span>${esc(spaceName)}<small>${isDemo?'演示家庭':esc((data.people || []).map(p=>p.name).join(' · '))}</small></span><b>⌄</b></button><div class="ps-nav-label">生活工作台</div><nav class="ps-nav">${['home','calendar','tasks','shopping','trips','map','finance'].map(r=>navigationItem(r)).join('')}</nav><div class="ps-nav-label">为生活多想一步</div><nav class="ps-nav">${['assistant','connections'].map(r=>navigationItem(r)).join('')}</nav><div class="ps-sidebar-end"><div class="ps-together-note">${glyph('leaf')}<p>让生活轻一点，<br>把时间留给彼此。</p></div>${navigationItem('settings')}<button class="ps-profile" data-ps-route="settings"><span class="ps-avatar">${esc((user?.name || person(focus)).slice(0,1))}</span><span>${esc(user?.name || person(focus))}<small>${isDemo?'演示空间 · 示例数据':'个人与家庭，清晰分开'}</small></span>${glyph('more')}</button></div></aside>`;
+    return `<aside class="ps-sidebar" aria-label="家庭中枢导航"><a href="#home" class="ps-brand" data-ps-route="home"><span class="ps-brand-mark">${glyph('home')}</span><span>家庭中枢<small>EVERYDAY, TOGETHER</small></span></a><button class="ps-space-switch" data-ps-route="household"><span class="ps-space-avatar">${glyph('people')}</span><span>${esc(spaceName)}<small>${isDemo?'演示家庭':esc((data.people || []).map(p=>p.name).join(' · '))}</small></span><b>⌄</b></button><div class="ps-nav-label">生活工作台</div><nav class="ps-nav">${['home','calendar','tasks','shopping','trips','map','photos','finance'].map(r=>navigationItem(r)).join('')}</nav><div class="ps-nav-label">为生活多想一步</div><nav class="ps-nav">${['assistant','connections'].map(r=>navigationItem(r)).join('')}</nav><div class="ps-sidebar-end"><div class="ps-together-note">${glyph('leaf')}<p>让生活轻一点，<br>把时间留给彼此。</p></div>${navigationItem('settings')}<button class="ps-profile" data-ps-route="settings"><span class="ps-avatar">${esc((user?.name || person(focus)).slice(0,1))}</span><span>${esc(user?.name || person(focus))}<small>${isDemo?'演示空间 · 示例数据':'个人与家庭，清晰分开'}</small></span>${glyph('more')}</button></div></aside>`;
   }
   function bottomNavigation() {
-    return `<nav class="ps-bottom-nav" aria-label="手机主要功能">${['home','calendar','tasks','assistant'].map(r=>navigationItem(r,true)).join('')}<button class="ps-nav-item ${navExpanded?'is-active':''}" type="button" data-ps-more aria-expanded="${navExpanded}" aria-controls="ps-more-menu">${glyph('more')}<span>更多</span></button></nav>${navExpanded?`<div class="ps-mobile-menu" id="ps-more-menu"><div class="ps-nav-label">所有功能</div>${['shopping','trips','map','finance','connections','household','settings'].map(r=>navigationItem(r,true)).join('')}</div>`:''}`;
+    return `<nav class="ps-bottom-nav" aria-label="手机主要功能">${['home','calendar','tasks','assistant'].map(r=>navigationItem(r,true)).join('')}<button class="ps-nav-item ${navExpanded?'is-active':''}" type="button" data-ps-more aria-expanded="${navExpanded}" aria-controls="ps-more-menu">${glyph('more')}<span>更多</span></button></nav>${navExpanded?`<div class="ps-mobile-menu" id="ps-more-menu"><div class="ps-nav-label">所有功能</div>${['shopping','trips','map','photos','finance','connections','household','settings'].map(r=>navigationItem(r,true)).join('')}</div>`:''}`;
   }
   function topbar() {
     return `<header class="ps-topbar"><div class="ps-breadcrumb"><span>${esc(spaceName)}</span><i>/</i><strong>${ROUTES[currentRoute][0]}</strong></div><div class="ps-top-actions"><button class="ps-search-trigger" data-ps-search>${glyph('search')}<span>搜索日程、清单与旅行</span><kbd>Ctrl K</kbd></button><button class="ps-round" data-ps-preferences aria-label="主题与布局">${glyph('sun')}</button><button class="ps-round ps-mobile-brand" data-ps-route="household" aria-label="家庭空间">${glyph('home')}</button><button class="ps-avatar" data-ps-route="settings" aria-label="我的设置">${esc((user?.name || person(focus)).slice(0,1))}</button></div></header>`;
@@ -191,7 +194,7 @@
   }
   function tripsWorkspace() {
     const trips=[...(data.trips || [])].sort((a,b)=>a.start.localeCompare(b.start));
-    return `${pageHeading('trips',`<div class="ps-page-controls"><button class="ps-button subtle" data-ps-route="map">${glyph('map')}足迹地图</button><button class="ps-button primary" data-action="add" data-kind="trips">${glyph('spark')}规划一趟旅行</button></div>`)}<div class="ps-trip-grid">${trips.length?trips.map(t=>{const tasks=(data.tasks||[]).filter(i=>i.tripId===t.id), done=tasks.filter(i=>i.done).length;return `<article class="ps-trip-card"><div class="ps-trip-cover">${glyph('plane')}<span>${t.end<dateKey()?'美好回忆':t.start<=dateKey()?'正在旅途':'即将出发'}</span><h2>${esc(t.destination || t.title)}</h2></div><div class="ps-trip-body"><h3>${esc(t.title)}</h3><p>${displayDate(t.start)} — ${displayDate(t.end)}</p><div class="ps-trip-facts"><span>旅行预算<strong>${money(t.budget)}</strong></span><span>准备进度<strong>${done} / ${tasks.length}</strong></span></div><div class="meter"><span style="width:${tasks.length?done/tasks.length*100:0}%"></span></div><div class="ps-trip-actions"><button class="ps-button subtle" data-ps-module="JourneyUI" data-ps-id="${esc(t.id)}">查看行程 ${glyph('arrow')}</button>${canEdit()?`<button class="ps-round" data-action="edit" data-kind="trips" data-id="${esc(t.id)}" aria-label="编辑${esc(t.title)}">${glyph('more')}</button>`:''}</div></div></article>`}).join(''):`<section class="ps-workspace-panel ps-empty-state">${glyph('plane')}<h2>下一站，想去哪里？</h2><p>从目的地和出发日期开始，把行程、采购和准备清单连起来。</p><button class="ps-button primary" data-action="add" data-kind="trips">开始计划 ${glyph('arrow')}</button></section>`}</div>`;
+    return `${pageHeading('trips',`<div class="ps-page-controls"><button class="ps-button subtle" data-ps-route="map">${glyph('map')}足迹地图</button><button class="ps-button subtle" data-ps-route="photos">${glyph('photos')}旅行相册</button><button class="ps-button primary" data-action="add" data-kind="trips">${glyph('spark')}规划一趟旅行</button></div>`)}<div class="ps-trip-grid">${trips.length?trips.map(t=>{const tasks=(data.tasks||[]).filter(i=>i.tripId===t.id), done=tasks.filter(i=>i.done).length;return `<article class="ps-trip-card"><div class="ps-trip-cover">${glyph('plane')}<span>${t.end<dateKey()?'美好回忆':t.start<=dateKey()?'正在旅途':'即将出发'}</span><h2>${esc(t.destination || t.title)}</h2></div><div class="ps-trip-body"><h3>${esc(t.title)}</h3><p>${displayDate(t.start)} — ${displayDate(t.end)}</p><div class="ps-trip-facts"><span>旅行预算<strong>${money(t.budget)}</strong></span><span>准备进度<strong>${done} / ${tasks.length}</strong></span></div><div class="meter"><span style="width:${tasks.length?done/tasks.length*100:0}%"></span></div><div class="ps-trip-actions"><button class="ps-button subtle" data-ps-module="JourneyUI" data-ps-id="${esc(t.id)}">查看行程 ${glyph('arrow')}</button>${canEdit()?`<button class="ps-round" data-action="edit" data-kind="trips" data-id="${esc(t.id)}" aria-label="编辑${esc(t.title)}">${glyph('more')}</button>`:''}</div></div></article>`}).join(''):`<section class="ps-workspace-panel ps-empty-state">${glyph('plane')}<h2>下一站，想去哪里？</h2><p>从目的地和出发日期开始，把行程、采购和准备清单连起来。</p><button class="ps-button primary" data-action="add" data-kind="trips">开始计划 ${glyph('arrow')}</button></section>`}</div>`;
   }
   function financeWorkspace() {
     return `${pageHeading('finance',`<button class="ps-button primary" data-ps-module="FinanceHub">${glyph('wallet')}账单与投资</button>`)}<div class="ps-finance-layout">${financeCard()}<section class="ps-workspace-panel ps-finance-links"><div class="ps-section-head"><h2>财务工作台</h2>${glyph('wallet')}</div><p>让收入、消费、账户与未来的计划，有迹可循。</p>${[
@@ -221,6 +224,7 @@
     if (currentRoute==='tasks'||currentRoute==='shopping') return listWorkspace(currentRoute);
     if (currentRoute==='trips') return tripsWorkspace();
     if (currentRoute==='map') return `${pageHeading('map')}<section id="ps-map-workspace" aria-label="足迹地图">${isDemo?'<p class="help">登录后，可记录自己的到访地点、旅行计划和心愿；演示不会读取或保存真实地点。</p><a class="ps-button primary" href="/">登录并记录地点</a>':'<p class="help">正在打开地图…</p>'}</section>`;
+    if (currentRoute==='photos') return `${pageHeading('photos')}<section id="ps-media-workspace" aria-label="家庭相册">${isDemo?'<p class="help">登录后，可连接 Google Photos 并选择照片；演示不会读取真实相册。</p><a class="ps-button primary" href="/">登录并选择照片</a>':'<p class="help">正在打开相册…</p>'}</section>`;
     if (currentRoute==='finance') return financeWorkspace();
     if (currentRoute==='connections') return connectionsWorkspace();
     if (currentRoute==='assistant') return assistantWorkspace();
@@ -233,10 +237,17 @@
     const identity = mapActor();
     if (identity !== mapIdentity) {
       root.JourneyMap?.notifyIdentityChanged(); mapContainer = null; mapIdentity = identity;
+      root.HouseholdMedia?.notifyIdentityChanged(); mediaContainer = null;
     }
     if (currentRoute !== 'map' || isDemo || isTV) {
       root.JourneyMap?.unmount(); mapContainer = null;
     }
+    if (currentRoute !== 'photos' || isDemo || isTV) {
+      root.HouseholdMedia?.unmount(); mediaContainer = null;
+    }
+    const mediaFocus = mediaContainer?.contains(document.activeElement) ? document.activeElement : null;
+    const mediaSelection = mediaFocus && typeof mediaFocus.selectionStart === 'number'
+      ? [mediaFocus.selectionStart,mediaFocus.selectionEnd] : null;
     const mapFocus = mapContainer?.contains(document.activeElement) ? document.activeElement : null;
     const mapSelection = mapFocus && typeof mapFocus.selectionStart === 'number'
       ? [mapFocus.selectionStart,mapFocus.selectionEnd] : null;
@@ -265,12 +276,27 @@
         void root.JourneyMap.mount(slot, {openJourney:(id,options)=>root.JourneyUI.open(id,options)});
       } else slot.textContent = '地图组件暂未加载，请刷新重试。原旅行记录仍可从旅行页面打开。';
     }
+    if (currentRoute === 'photos' && !isDemo && !isTV) {
+      const slot = document.querySelector('#ps-media-workspace');
+      if (mediaContainer) {
+        slot.replaceWith(mediaContainer);
+        if (mediaFocus?.isConnected) {
+          mediaFocus.focus({preventScroll:true});
+          if (mediaSelection) mediaFocus.setSelectionRange(...mediaSelection);
+        }
+        root.HouseholdMedia?.notifyStateChanged();
+      } else if (root.HouseholdMedia) {
+        mediaContainer = slot;
+        void root.HouseholdMedia.mount(slot,{openJourney:(id,options)=>root.JourneyUI.open(id,options)});
+      } else slot.textContent = '相册组件暂未加载，请刷新重试。';
+    }
     if (!isDemo && user?.role==='member') root.HouseholdRoutines?.notifyStateChanged();
     if (selected) { const input=document.querySelector('[data-ps-list-search]');input?.focus();input?.setSelectionRange(selection,selection); }
   };
   const originalRenderLogin = renderLogin;
   renderLogin = function () {
     root.JourneyMap?.notifyIdentityChanged(); mapContainer = null; mapIdentity = '';
+    root.HouseholdMedia?.notifyIdentityChanged(); mediaContainer = null;
     currentRoute='home'; prefIdentity=''; layoutIdentity='';dashboardLayout=defaultLayout();setTheme(DEFAULTS); originalRenderLogin();
     document.body.classList.add('product-auth');
     const story=document.querySelector('.auth-story');
