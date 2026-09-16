@@ -61,11 +61,11 @@ def main():
     out = Path(__file__).resolve().parents[1] / 'test-results' / ('expo-accounts-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
     out.mkdir(parents=True)
     shutil.copyfile(__file__, out / 'executed-harness.py')
-    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], blockedAuthorizationNavigations=[], httpErrors=[], screenshots=[],
+    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], providerNavigationsIntercepted204=[], httpErrors=[], screenshots=[], dialogVisuals=[],
         eventInjections=['document.hidden/visibilityState plus visibilitychange for background/foreground'],
         head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
         sourceHashesBefore=hashes(), bundleHashesBefore=bundle_hashes(), productionWrites=0, realCloud=False, physicalTelevision=False,
-        scope='Frozen Expo bundle, real Flask/SQLite/member CSRF and HTTP routes. Synthetic provider identity/discovery/snapshot protocol only.')
+        scope='Frozen Expo bundle, real Flask/SQLite/member CSRF and HTTP routes. Synthetic provider identity/discovery/snapshot protocol; provider document navigation receives local 204 before external network.')
     page = None
 
     def passed(message):
@@ -221,6 +221,24 @@ def main():
 
                 def assert_layout(p, width, name):
                     p.evaluate('() => document.fonts.ready')
+                    if name in ('accounts-review', 'accounts-disconnect'):
+                        # Installed Paper Modal animates opacity over 220ms.
+                        # Enabled buttons alone do not prove its surface is opaque.
+                        p.wait_for_function('''() => {
+                          const nodes=[...document.querySelectorAll('[data-testid="modal-surface"]')]
+                            .filter(e=>e.getBoundingClientRect().width>0&&e.getBoundingClientRect().height>0);
+                          return nodes.length===1&&nodes.every(e=>{
+                            for(let node=e;node;node=node.parentElement)if(Number(getComputedStyle(node).opacity)!==1)return false;
+                            return true;
+                          });
+                        }''')
+                        p.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+                        surface = p.get_by_test_id('modal-surface')
+                        expect(surface).to_have_css('opacity', '1')
+                        visual = surface.evaluate('''e => ({opacity:getComputedStyle(e).opacity,
+                          background:getComputedStyle(e).backgroundColor,radius:getComputedStyle(e).borderRadius})''')
+                        assert visual['background'].startswith('rgb(') or visual['background'].endswith(', 1)'), visual
+                        report['dialogVisuals'].append({'screenshot': f'{name}-{width}.png', **visual})
                     metrics = p.evaluate('''() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,
                       clipped:[...document.querySelectorAll('input,button,[role="button"],[role="checkbox"]')].filter(e=>{const r=e.getBoundingClientRect();
                       return r.width>0&&r.height>0&&getComputedStyle(e).visibility!=='hidden'&&r.right>innerWidth+2&&r.left<innerWidth;})
@@ -292,10 +310,11 @@ def main():
                 assert partner.request.get(base + source_path).status == 404
                 passed('configured/unconfigured providers are truthful; account cards are owner-only and opening does not discover cloud sources')
 
-                # The real bind API generates the URL and state. Abort the provider
-                # document request before any external network, recording no URL
-                # query or OAuth state. No account connection is inferred from it.
-                def abort_authorization(handler):
+                # The real bind API generates the URL and state. Intercept only
+                # the provider document with 204 before external network. This is
+                # neither a business API response nor successful authorization.
+                # Record no URL query or OAuth state.
+                def intercept_authorization(handler):
                     target = urlsplit(handler.request.url)
                     params = parse_qs(target.query)
                     expected = '/common/oauth2/v2.0/authorize' if target.hostname == 'login.microsoftonline.com' else '/o/oauth2/v2/auth'
@@ -304,22 +323,23 @@ def main():
                     assert params['redirect_uri'] == [base + '/auth/' + provider + '/callback']
                     assert params['response_type'] == ['code'] and params['code_challenge_method'] == ['S256']
                     assert len(params['state'][0]) >= 32 and len(params['code_challenge'][0]) == 43
-                    report['blockedAuthorizationNavigations'].append({'host': target.hostname, 'path': target.path, 'externalNetwork': False})
-                    handler.abort('blockedbyclient')
+                    handler.fulfill(status=204, body='')
+                    report['providerNavigationsIntercepted204'].append({'host': target.hostname, 'path': target.path,
+                        'status': 204, 'externalNetwork': False, 'authorizationCompleted': False})
 
                 for provider, host in [('Microsoft', 'login.microsoftonline.com'), ('Google', 'accounts.google.com')]:
                     if provider == 'Google':
                         application.config.update(GOOGLE_CLIENT_ID='synthetic-google-client', GOOGLE_CLIENT_SECRET='synthetic-google-secret')
                         open_accounts(page)
-                    page.route('https://' + host + '/**', abort_authorization)
-                    with page.expect_request(re.compile(r'^https://' + re.escape(host) + '/')):
+                    page.route('https://' + host + '/**', intercept_authorization)
+                    with page.expect_response(lambda response: urlsplit(response.url).hostname == host and response.status == 204):
                         button(page, '连接 ' + provider).click()
-                    page.unroute('https://' + host + '/**', abort_authorization)
                     open_accounts(page)
+                    page.unroute('https://' + host + '/**', intercept_authorization)
                     assert len(get(owner, '/api/accounts')['accounts']) == 1
                 application.config.update(GOOGLE_CLIENT_ID='', GOOGLE_CLIENT_SECRET='')
                 open_accounts(page)
-                passed('real Microsoft and Google bind buttons generate current-app PKCE authorization URLs; provider navigation blocked before network, no binding or sync success fabricated')
+                passed('real Microsoft and Google bind buttons generate current-app PKCE authorization URLs; provider-only 204 interception prevents cloud access and proves no binding or sync success')
 
                 write(owner, 'POST', '/api/items/tasks', {'title': '合成本地待办保留', 'sourceId': ''}, 201)
                 open_editor(page)
@@ -477,7 +497,8 @@ def main():
                 open_accounts(page)
                 control['discoveryError'] = provider_error('合成授权需要重新确认', 401, reauth=True)
                 button(page, '选择日历与清单').first.click()
-                expect(page.locator('body')).to_contain_text(re.compile('重新.*授权|重新.*绑定|重新.*连接'))
+                expect(page.get_by_text('需要重新授权', exact=True)).to_be_visible()
+                expect(button(page, '重新授权 Microsoft')).to_be_enabled()
                 assert account(owner)['needsReauth']
                 assert account(owner)['sources'][0]['primary']
                 before_stop_discovery = control['discoveries']
