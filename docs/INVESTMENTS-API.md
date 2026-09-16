@@ -1,6 +1,6 @@
 # 本人持仓与操作结果
 
-本页描述 Expo 持仓界面使用的后端契约。此增量仍在独立开发分支，尚未部署；实际安装状态以 [README](../README.md) 为准。它补充当前持仓、来源映射和可靠的保存结果读取，不建立银行连接、独立资产账户、历史估值或汇率模型。
+本页描述 Expo 持仓界面使用的后端契约。此增量已通过本地组合验证和非作者审查，尚未部署；实际安装状态以 [README](../README.md) 为准。它补充当前持仓、来源映射和可靠的保存结果读取，不建立银行连接、独立资产账户、历史估值或汇率模型。
 
 实现入口为 [finance_hub.py](../finance_hub.py)、[investment_operations.py](../investment_operations.py) 和 [investment_import.py](../investment_import.py)。原文件导入字段与确认语义见 [INVESTMENT-IMPORT](INVESTMENT-IMPORT.md)。
 
