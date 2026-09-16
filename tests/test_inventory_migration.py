@@ -8,6 +8,7 @@ import socket
 import pytest
 
 import app as app_module
+import finance_hub
 from deploy.backup import backup_all
 from deploy import check_inventory_migration as migration
 
@@ -28,6 +29,7 @@ def group(tmp_path, monkeypatch):
     # inventory history or teaching the production helper to remove tables.
     with monkeypatch.context() as fixture:
         fixture.setattr(app_module, 'register_inventory', lambda *args, **kwargs: None)
+        fixture.setattr(finance_hub, 'FINANCE_IMPORT_RECEIPTS_SCHEMA_SQL', '')
         app_module.create_app(config)
     with sqlite3.connect(tmp_path/'platform.sqlite3') as con:
         con.row_factory = sqlite3.Row
@@ -46,14 +48,18 @@ def group(tmp_path, monkeypatch):
     return tmp_path, before, backup_all(tmp_path), migration.schema_definition(), config
 
 
-def test_two_households_migrate_then_factory_restart_preserves_48_tables(group):
+def test_two_households_migrate_then_factory_restart_preserves_48_tables(group, monkeypatch):
     root, before, backup, schema, config = group
     result = migration.migrate(root, before, backup, schema)
     assert result == {'originalTablesPreserved': 48, 'newTables': 5, 'households': 2,
                       'newTablesEmpty': True, 'oldRowsSchemaAndSequencesPreserved': True}
-    app = app_module.create_app(config)
-    platform = app.extensions['household_platform']
-    child = platform.child(next(h for h in platform.households() if h['id'] != 'default'))
+    # This historical restart targets 53 tables, preceding finance receipts.
+    # The current 54-table factory is exercised by its own migration suite.
+    with monkeypatch.context() as historical:
+        historical.setattr(finance_hub, 'FINANCE_IMPORT_RECEIPTS_SCHEMA_SQL', '')
+        app = app_module.create_app(config)
+        platform = app.extensions['household_platform']
+        child = platform.child(next(h for h in platform.households() if h['id'] != 'default'))
     assert 'inventory' in app.extensions and 'inventory' in child.extensions
     assert migration.verify_addition(before, migration.snapshot(root), schema) == result
     for uid in before['households']:

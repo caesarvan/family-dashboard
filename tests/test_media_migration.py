@@ -5,6 +5,7 @@ from pathlib import Path
 import sqlite3
 
 import pytest
+import finance_hub
 
 from app import create_app
 from deploy.backup import backup_all
@@ -18,9 +19,11 @@ def group(tmp_path,monkeypatch,request):
     monkeypatch.setattr('app.register_inventory',lambda *_args,**_kwargs:None)
     password='synthetic-migration-password'
     monkeypatch.setenv('MEMBER1_PASSWORD',password);monkeypatch.setenv('MEMBER2_PASSWORD',password)
-    app=create_app({'TESTING':True,'DATA_DIR':str(tmp_path),'SECRET_KEY':'synthetic-media-migration-secret',
-                    'SESSION_COOKIE_SECURE':False,'GOOGLE_CLIENT_ID':'','GOOGLE_CLIENT_SECRET':'',
-                    'MICROSOFT_CLIENT_ID':'','MICROSOFT_CLIENT_SECRET':'','NVIDIA_API_KEY':'','OPENAI_API_KEY':''})
+    with monkeypatch.context() as historical:
+        historical.setattr(finance_hub, 'FINANCE_IMPORT_RECEIPTS_SCHEMA_SQL', '')
+        app=create_app({'TESTING':True,'DATA_DIR':str(tmp_path),'SECRET_KEY':'synthetic-media-migration-secret',
+                        'SESSION_COOKIE_SECURE':False,'GOOGLE_CLIENT_ID':'','GOOGLE_CLIENT_SECRET':'',
+                        'MICROSOFT_CLIENT_ID':'','MICROSOFT_CLIENT_SECRET':'','NVIDIA_API_KEY':'','OPENAI_API_KEY':''})
     registry=tmp_path/'platform.sqlite3'
     with sqlite3.connect(registry) as con:
         default=con.execute("SELECT * FROM households WHERE id='default'").fetchone()
