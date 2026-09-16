@@ -159,6 +159,46 @@ def main():
                 page.locator('[data-jm=photos]').click();expect(page.locator('.hm-card')).to_have_count(24)
                 page.go_back();expect(page.locator('.jm-place.is-selected')).to_have_attribute('data-id',chosen['id'])
                 passed('browser_back_also_remounts_and_restores_only_query_state')
+                # Explicit ordinary album navigation must leave the focused read-only view.
+                for width in (390,1440):
+                    page.set_viewport_size({'width':width,'height':900})
+                    page.locator('[data-jm=photos]').click();expect(page.locator('[data-hm=return-map]')).to_be_visible()
+                    if width==390:
+                        page.locator('[data-ps-more]').click()
+                        page.locator('#ps-more-menu [data-ps-route=photos]').click()
+                    else:
+                        page.locator('.ps-sidebar [data-ps-route=photos]').click()
+                    expect(page.locator('[data-hm=create]')).to_be_enabled()
+                    expect(page.locator('[data-hm=return-map]')).to_have_count(0)
+                    expect(page.locator('[data-hm-filters] [name=journeyId]')).to_have_value('')
+                    expect(page.locator('[data-hm-filters] [name=journeyId]')).to_be_enabled()
+                    page.locator('.hm-card').first.click();expect(page.locator('[data-hm-editor]')).to_be_visible()
+                    page.go_back();expect(page.locator('.jm-place.is-selected')).to_have_attribute('data-id',chosen['id'])
+                    expect(page.locator('[data-jm-filters] [name=year]')).to_have_value('2026')
+                passed('phone_and_sidebar_ordinary_album_exits_readonly_import_edit_available_back_refetches_map')
+                page.set_viewport_size({'width':390,'height':844})
+                # Hold a real place response while the user begins a different action.
+                navigation=[]
+                def delay_place(route):
+                    navigation.append((route,route.fetch()))
+                pattern='**/api/journey-places/'+chosen['id']
+                page.route(pattern,delay_place)
+                page.locator('[data-jm=photos]').click()
+                for _ in range(100):
+                    if navigation: break
+                    page.wait_for_timeout(50)
+                assert navigation
+                page.locator('[data-jm=new]').click()
+                page.locator('[data-jm-editor] [name=name]').fill('NEW-DRAFT-MUST-SURVIVE')
+                for route,response in navigation:route.fulfill(response=response)
+                page.unroute(pattern,delay_place);page.wait_for_load_state('networkidle')
+                expect(page.locator('[data-jm-editor] [name=name]')).to_have_value('NEW-DRAFT-MUST-SURVIVE')
+                expect(page.locator('#ps-media-workspace')).to_have_count(0)
+                assert urlsplit(page.url).fragment=='map'
+                page.once('dialog',lambda dialog:dialog.accept())
+                page.locator('[data-jm=cancel]').click()
+                expect(page.locator('[data-jm-editor]')).to_have_count(0)
+                passed('late_place_navigation_abandoned_after_new_draft_without_losing_edit')
                 page.locator('[data-jm=photos]').click();expect(page.locator('.hm-card')).to_have_count(24)
                 ctx.set_offline(True);expect(page.locator('#ps-media-workspace img')).to_have_count(0)
                 page.locator('[data-hm=return-map]').click();expect(page.locator('.jm-place')).to_have_count(0)

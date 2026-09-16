@@ -52,8 +52,8 @@
   function openMapPhotos(journeyId, view) {
     if (currentRoute !== 'map' || isTV || isDemo || !canEdit() || mapIdentity !== mapActor()) return;
     if (typeof journeyId !== 'string' || !/^[a-f0-9]{24}$/.test(journeyId)) return;
-    mapPhotoContext = {actor:mapActor(),journeyId,view};
-    navigate('photos');
+    mapPhotoContext = {actor:mapActor(),journeyId,view,travelView:true};
+    navigate('photos',true,true);
   }
   const glyph = name => `<svg class="ps-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name] || ICONS.home}"/></svg>`;
   const validPreferences = value => ({theme:Object.hasOwn(THEMES,value?.theme)?value.theme:'forest',density:value?.density==='compact'?'compact':'comfortable',homeView:['today','week','around'].includes(value?.homeView)?value.homeView:'today'});
@@ -309,7 +309,7 @@
         root.HouseholdMedia?.notifyStateChanged();
       } else if (root.HouseholdMedia) {
         mediaContainer = slot;
-        const context = mapPhotoContext?.actor === identity ? mapPhotoContext : null;
+        const context = mapPhotoContext?.actor === identity && mapPhotoContext.travelView ? mapPhotoContext : null;
         void root.HouseholdMedia.mount(slot,{openJourney:(id,options)=>root.JourneyUI.open(id,options),
           initialJourneyId:context?.journeyId,onIdentityChanged:clearMapPhotoContext,
           returnToMap:context ? () => {
@@ -347,9 +347,15 @@
     document.querySelector('.auth-card')?.insertAdjacentHTML('beforeend',`<div class="ps-auth-spaces"><span class="ps-login-space-name">${esc(spaceName)}</span><button type="button" data-household-open>切换家庭</button><button type="button" data-household-redeem>使用邀请码创建家庭</button></div>`);
     void refreshSpaceName();
   };
-  function navigate(route,remember=true) {
+  function navigate(route,remember=true,fromMap=false) {
     if (!Object.hasOwn(ROUTES,route)||!data||isTV) return;
     if (!['map','photos'].includes(route) || mapPhotoContext?.actor !== mapActor()) clearMapPhotoContext();
+    if (route === 'photos' && !fromMap && mapPhotoContext?.travelView) {
+      // An explicit album entry leaves the read-only trip view. Keep only the
+      // map query/selection return state for browser back, never the old DOM.
+      mapPhotoContext = {...mapPhotoContext,travelView:false};
+      root.HouseholdMedia?.unmount(); mediaContainer = null;
+    }
     currentRoute=route; searchText=''; navExpanded=false;
     if (remember && location.hash!=='#'+route) history.pushState(null,'','#'+route);
     if (document.querySelector('#dialog')?.open) closeModal();

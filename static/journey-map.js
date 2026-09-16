@@ -228,6 +228,7 @@ window.JourneyMap = (() => {
   }
   function edit(f, original = null) {
     if (!discard(f) || (original && !original.canManage)) return;
+    f.navigationIntent++;
     const p = original || {};
     f.editor = {original, requestId:crypto.randomUUID(), dirty:false, busy:false, draft:{
       name:p.name || '', country:p.country || '', city:p.city || '', status:p.status || 'wish',
@@ -322,18 +323,20 @@ window.JourneyMap = (() => {
     if (!target || !f.node.contains(target) || target.disabled) return;
     const action = target.dataset.jm, e = f.editor;
     if (action === 'new') {edit(f); return;}
-    if (action === 'select') {if (!discard(f)) return; f.editor = null; f.selected = target.dataset.id; render(f); return;}
+    if (action === 'select') {if (!discard(f)) return; f.navigationIntent++; f.editor = null; f.selected = target.dataset.id; render(f); return;}
     if (action === 'edit') {edit(f,f.items.find(p => p.id === f.selected)); return;}
     if (action === 'journey') {const p = f.items.find(item => item.id === f.selected); if (p?.journey && typeof f.options.openJourney === 'function') await job(f,async flow => {if (await flow.check()) await f.options.openJourney(p.journey.id,{placeId:p.id});}, error => {f.error=error.message;render(f);}); return;}
     if (action === 'photos') {
       const selected = f.selected;
       if (f.busy || !selected || typeof f.options.openPhotos !== 'function') return;
+      const intent = ++f.navigationIntent;
+      const wanted = () => f.navigationIntent === intent && f.selected === selected && !f.editor;
       await job(f,async flow => {
         const {place} = await api('/journey-places/' + encodeURIComponent(selected));
-        if (!await flow.check()) return;
+        if (!wanted() || !await flow.check() || !wanted()) return;
         if (!place?.journey?.id) {await load(f,true); return;}
         f.options.openPhotos(place.journey.id,viewState(f));
-      },error => {f.items = []; f.total = 0; f.hasMore = false; f.selected = null; f.error = error.message; render(f);});
+      },error => {if (!wanted()) return; f.items = []; f.total = 0; f.hasMore = false; f.selected = null; f.error = error.message; render(f);});
       return;
     }
     if (action === 'refresh' || action === 'reset' || action === 'next' || action === 'previous') {
@@ -360,7 +363,7 @@ window.JourneyMap = (() => {
     unmount();
     if (!(node instanceof HTMLElement)) return null;
     if (!permitted()) {node.textContent = isTV ? '地点仅可由登录的家庭成员在手机或电脑查看，电视没有访问权限。' : '请登录家庭成员后查看地图；演示空间不保存地点。'; return null;}
-    const f = {node,options,actor:actor(),route:location.href,serial:++serial,epoch:0,dead:false,items:[],people:[],journeys:[],filters:{scope:'visible'},offset:0,total:0,hasMore:false,selected:null,editor:null,landPath:''};
+    const f = {node,options,actor:actor(),route:location.href,serial:++serial,epoch:0,navigationIntent:0,dead:false,items:[],people:[],journeys:[],filters:{scope:'visible'},offset:0,total:0,hasMore:false,selected:null,editor:null,landPath:''};
     Object.assign(f,viewState(options.initialView));
     current = f;
     f.dialog = node.closest('dialog'); f.close = () => {if (current === f) unmount();}; f.dialog?.addEventListener('close',f.close);
