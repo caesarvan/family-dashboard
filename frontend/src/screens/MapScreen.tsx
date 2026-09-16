@@ -19,6 +19,7 @@ type Choice = { title: string; options: { value: string; label: string }[]; sele
 const message = (error: unknown) => error instanceof Error ? error.message : '暂时无法完成操作，请稍后再试。';
 const scopeLabels: Record<string, string> = { visible: '全部可见', mine: '仅我的', shared: '已共享' };
 const disclosureLabels = { hidden: '隐藏坐标', coarse: '大致位置（约 0.1°）', exact: '精确坐标' };
+const browserOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false;
 
 function VisitConfirmation({ checked, disabled, onPress }: { checked: boolean; disabled: boolean; onPress: () => void }) {
   const theme = useTheme();
@@ -45,6 +46,7 @@ function MapWorkspace(props: Props & { identityKey: string }) {
   const latest = useRef(household); latest.current = household;
   const initial = useRef(safeMapView(props.initialView));
   const alive = useRef(false), active = useRef(false), focused = useRef(false), working = useRef(false), generation = useRef(0);
+  const appActive = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
   const fence = useRef(new PlaceFence(() => request<PlaceSession>('/me'), props.identityKey));
   const [visible, setVisible] = useState(false), [denied, setDenied] = useState(false), [busy, setBusy] = useState(false);
   const [error, setError] = useState(''), [notice, setNotice] = useState('');
@@ -54,7 +56,7 @@ function MapWorkspace(props: Props & { identityKey: string }) {
   const [draft, setDraft] = useState<PlaceDraft | null>(null), [pending, setPending] = useState<Intent | null>(null), [picking, setPicking] = useState(false);
   const [choice, setChoice] = useState<Choice | null>(null), [decision, setDecision] = useState<'discard' | 'delete' | null>(null);
   const state = useRef({ filters, page, selected, place, draft, pending }); state.current = { filters, page, selected, place, draft, pending };
-  const current = () => alive.current && active.current && latest.current.identityKey === props.identityKey && (typeof document === 'undefined' || !document.hidden);
+  const current = () => alive.current && active.current && appActive.current && browserOnline() && latest.current.identityKey === props.identityKey && (typeof document === 'undefined' || !document.hidden);
   const locked = busy || !!pending || !household.online;
   const navigationLocked = locked || !!draft;
 
@@ -113,7 +115,7 @@ function MapWorkspace(props: Props & { identityKey: string }) {
     // Never adopt a newer revision while checking a preserved draft.
   }
   function enter() {
-    if (!alive.current || active.current || !focused.current || !latest.current.online || typeof document !== 'undefined' && document.hidden) return;
+    if (!alive.current || active.current || !focused.current || !appActive.current || !browserOnline() || !latest.current.online || typeof document !== 'undefined' && document.hidden) return;
     active.current = true; working.current = true; setBusy(true); setDenied(false);
     fence.current = new PlaceFence(() => request<PlaceSession>('/me'), props.identityKey);
     const ticket = generation.current;
@@ -130,9 +132,16 @@ function MapWorkspace(props: Props & { identityKey: string }) {
   useFocusEffect(useCallback(() => { focused.current = true; enter(); return () => { focused.current = false; conceal(true); }; }, [props.identityKey]));
   useEffect(() => {
     const visibility = () => { if (document.hidden) conceal(); else enter(); };
+    const offline = () => { conceal(); setError('网络已断开，地点已隐藏。重新联网后会重新读取。'); };
+    const online = () => enter();
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visibility);
-    const subscription = AppState.addEventListener('change', value => { if (value === 'active') enter(); else conceal(); });
-    return () => { if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', visibility); subscription.remove(); };
+    if (typeof window !== 'undefined') { window.addEventListener('offline', offline); window.addEventListener('online', online); }
+    const subscription = AppState.addEventListener('change', value => { appActive.current = value === 'active'; if (appActive.current) enter(); else conceal(); });
+    return () => {
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', visibility);
+      if (typeof window !== 'undefined') { window.removeEventListener('offline', offline); window.removeEventListener('online', online); }
+      subscription.remove();
+    };
   }, [props.identityKey]);
   useEffect(() => { if (!household.online) conceal(); else enter(); }, [household.online]);
   useEffect(() => {
