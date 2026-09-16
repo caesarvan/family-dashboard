@@ -291,12 +291,12 @@ function MapWorkspace(props: Props & { identityKey: string }) {
       </View></SectionCard> : null}
       <SectionCard title="世界概览" style={styles.bottom}><WorldMap places={page.items} selected={selected} disabled={navigationLocked} onSelect={id => void openPlace(id)} onPick={() => {}} /><Text variant="bodySmall" style={styles.top}>共 {page.total} 个地点 · 本页 {page.items.length} 个 · {page.items.filter(row => !row.coordinates).length} 个无可显示坐标</Text></SectionCard>
       <View style={[styles.panels, wide && styles.panelsWide]}>
-        <SectionCard title="地点" style={[styles.panel, wide && styles.listPanel]}>
+        <SectionCard title="地点" style={[styles.panel, wide && styles.widePanel, wide && styles.listPanel]}>
           {page.items.length ? page.items.map(row => <List.Item key={row.id} title={row.name} titleNumberOfLines={2} description={`${placeLabels[row.status]} · ${[row.country, row.city].filter(Boolean).join(' / ') || '未填城市'} · ${row.visibility === 'private' ? '仅本人' : '共享'}`} descriptionNumberOfLines={2} accessible accessibilityRole="button" accessibilityLabel={`打开地点：${row.name}`} onPress={() => void openPlace(row.id)} disabled={navigationLocked}
             left={iconProps => <List.Icon {...iconProps} icon={row.status === 'visited' ? 'map-marker-check-outline' : row.status === 'planned' ? 'calendar-outline' : 'heart-outline'} />} style={row.id === selected ? { backgroundColor: theme.colors.surface, borderRadius: 16 } : undefined} />) : <EmptyState title="这里还没有地点" description="添加一个想去的地方，或调整筛选。" />}
           <View style={[styles.actions, styles.top]}><Button disabled={navigationLocked || page.offset === 0} onPress={() => void runRead(() => refreshView(filters, Math.max(0, page.offset - 24), undefined))}>上一页</Button><Text>第 {Math.floor(page.offset / 24) + 1} 页</Text><Button disabled={navigationLocked || !page.hasMore} onPress={() => void runRead(() => refreshView(filters, page.offset + 24, undefined))}>下一页</Button></View>
         </SectionCard>
-        <SectionCard title={place?.name || '地点详情'} style={styles.panel}>
+        <SectionCard title={place?.name || '地点详情'} style={[styles.panel, wide && styles.widePanel]}>
           {place ? <View style={styles.form}>
             <Text variant="labelLarge">{placeLabels[place.status]} · {place.visibility === 'private' ? '仅本人可见' : '家庭共享'}</Text>
             <Text>{[place.country, place.city].filter(Boolean).join(' / ') || '尚未填写国家和城市'}</Text>
@@ -324,6 +324,6 @@ const styles = StyleSheet.create({
   loading: { alignItems: 'center', gap: 16, padding: 28 }, flex: { flex: 1, minWidth: 0 }, row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
   form: { gap: 16 }, fields: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, field: { flexGrow: 1, flexBasis: 140, minWidth: 0 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }, bottom: { marginBottom: 20 }, top: { marginTop: 14 }, notice: { marginBottom: 14 },
-  panels: { gap: 20 }, panelsWide: { flexDirection: 'row', alignItems: 'flex-start' }, panel: { flexGrow: 1, flexBasis: 0, minWidth: 0 }, listPanel: { maxWidth: '48%' },
+  panels: { gap: 20 }, panelsWide: { flexDirection: 'row', alignItems: 'flex-start' }, panel: { minWidth: 0 }, widePanel: { flexGrow: 1, flexBasis: 0 }, listPanel: { maxWidth: '48%' },
   confirmation: { padding: 14, borderWidth: 1, borderRadius: 12 }, dialog: { maxWidth: 560, width: '92%', alignSelf: 'center' }, option: { marginVertical: 4 },
 });
