@@ -80,8 +80,10 @@ def test_export_rechecks_revoked_session_in_snapshot_transaction(app):
     assert response.status_code == 401 and 'NO-STALE-EXPORT' not in response.get_data(as_text=True)
 
 
-def test_map_entry_scripts_are_local_and_loaded_before_navigation(app):
-    page = app.test_client().get('/').get_data(as_text=True)
+def test_classic_map_entry_scripts_are_local_and_loaded_before_navigation(app):
+    response = app.test_client().get('/classic')
+    assert response.status_code == 200
+    page = response.get_data(as_text=True)
     assert '/static/journey-map.css' in page
     assert page.index('/static/journey-map.js') < page.index('/static/product-shell.js')
     assert 'maps.googleapis.com' not in page
