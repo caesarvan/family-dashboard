@@ -18,7 +18,7 @@
 
 新镜像 Linux 11 模块收集 330 项，329 通过，唯一跳过为 `tests.test_frontend_runtime.test_windows_junction_rejected`（`Windows junction semantics`），零失败／错误，JUnit 350.537 秒；运行文件在测试前后核对保持。Linux 不执行需要 Node／TypeScript 的两组桥接测试，这些检查按下方 Windows 实际记录单列；各组有重叠，不相加为一次完整测试。
 
-实际停写并完整备份 1 户两库；55→55 不执行迁移，`schemaChange=false`。新 app healthy 后的全部 55 表行、schema、序列和注册库与停写快照相等，随后才启动 worker／web；原配置保持。生产持仓操作回执当时为 0 行，允许非空及保全已有回执由合成双户测试验证，不能表述为生产已验证非空回执。`before.json`／`after-app.json` 同 SHA256 `3c314d127120f3e53312da1ec927020fc445279f28c778537c53046947273e4a`；五份 proof 原件均与激活报告绑定匹配，分别记录备份、备份核验、停写前快照、新 app 启动后快照及保全结论。
+实际停写并完整备份 1 户两库；55→55 不执行迁移，`schemaChange=false`。新 app healthy 后的全部 55 表行、schema、序列和注册库与停写快照相等，随后才启动 worker／web；原配置保持。生产持仓操作回执当时为 0 行，允许非空及保全已有回执由合成双户测试验证，不能表述为生产已验证非空回执。`before.json`／`after-app.json` 同 SHA256 `3c314d127120f3e53312da1ec927020fc445279f28c778537c53046947273e4a`；五份 proof 原件均与激活报告绑定匹配，分别记录备份、备份核验、停写后的安装前快照、新 app 启动后快照及保全结论。
 
 正常 TLS 读回核对 516 源／113 运行文件、75 项 HTTPS 静态资源；24 项内部生成路径及 1 项退役资源拒绝访问，22 个匿名 API 均返回 401；四服务 running、零重启，app healthy，配置保持。新备份 invocation `5c4f380aa6a14f29893c0892ec9f45ae` 成功且 timer active，其 `manifest-20260916T233942616081Z.json` SHA256 为 `edee484ee0486297f42e308cfb00da48b974a950aef6bf934f7960154b29f9b8`，完整 1 户两库备份的散列、55 表及注册结构可读性核验通过。这是逐库在线备份，`liveGroupSnapshotRechecked=false`，不等同跨库全局事务或再次读取 live 全组快照。
 
