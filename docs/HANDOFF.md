@@ -1,15 +1,15 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-17 04:26:46（北京时间），04:41:46 正常 TLS 读回通过。** main `a2081051657647564345a54b61662682ff4dd663`／integration `2d08258fc67388e4de237747eb35db3fe3b0d8cf` 同树 `9508cddb1b4cdde1caf70c268673110a0bd50194`。Expo 财务与 53→54 回执迁移已发布；身份与证据见 [VALIDATION](VALIDATION.md)。此处为发布后本地文档，不改变已安装包或构建来源。
+> **线上版本：2026-09-17 06:15:34（北京时间），06:16:14 正常 TLS 读回通过。** main `f2146f293541d0428b19546cb3539073d8a47321`／source `1bb434210f728af351fd9cd4b655b36b95cb1093` 同树 `d58f28cbefb096d15f5279c89ce2d66cd480d1b6`。Expo 持仓与 54→55 操作回执迁移已发布；完整身份见 [VALIDATION](VALIDATION.md#expo-holdings-release)。此处为发布后本地文档，不改变已安装包或构建来源。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。此前 23:02 三模块与 21:59 首期身份分别保留于 [EXPO-NEXT-RELEASE](EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](EXPO-RELEASE.md)，历次证据见 [VALIDATION](VALIDATION.md)。
 
 <a id="expo-holdings-candidate"></a>
-## 本地已验候选：Expo 我的持仓
+## 当前线上交接：Expo 我的持仓
 
-集成源码 `753c7a3bf9f9c6f0a774d28557cce5de61b7dc95`，文件树 `b19d4e05cf91a1acd3e8ee0bda101dfc9c69ee64`，已完成独立分支、非作者审查及本地组合验证，**尚未部署**。线上仍为顶部 54 表版本；本节不代表已执行 Linux 验证或生产 54→55 迁移。实际构建和测试原件见 [候选验收](VALIDATION.md#expo-holdings-candidate)。
+发布目录 `/opt/family-dashboard-releases/expo-holdings-55-20260916T221433950876Z`，manifest `3ce6cae326bb426703ab316c693a4e06c80c7fcae0abf853a9f8a9b31b7b43fc`，app／sync／media 镜像 `sha256:3b831aaf898dacebcf3bb733ada13271e1be7707bb41ecfb14d85cb9d6ebf133`。实际 1 户两库备份后只新增空 `hub_investment_operations`，原 54 表及注册库的行、schema、序列保持，新 app 启动再次核对完整 55 表组。私有原件在 `expo-holdings-tools-20260917-r2/server-evidence/`；早期 `753c7a3` 的构建与浏览器证据单独保留，见 [验证记录](VALIDATION.md#expo-holdings-release)。
 
-候选从「更多 → 我的持仓」或「家庭资金 → 我的持仓」进入 `/app/investments`，支持完整本人列表、名称／机构／币种筛选、原币成本与已知部分浮盈亏、详情来源、手工增改删和文件更新。估值未知与零分开；历史回执成功后再次读取当前持仓，不恢复随后删除的记录。使用流程见 [Expo 持仓](EXPO-INVESTMENTS.md)，不要将此候选写成完整资产账户或收益历史系统。
+从「更多 → 我的持仓」或「家庭资金 → 我的持仓」进入 `/app/investments`，支持完整本人列表、名称／机构／币种筛选、原币成本与已知部分浮盈亏、详情来源、手工增改删和文件更新。估值未知与零分开；历史回执成功后再次读取当前持仓，不恢复随后删除的记录。使用流程见 [Expo 持仓](EXPO-INVESTMENTS.md)，这不是完整资产账户或收益历史系统。
 
 | 接手范围 | 实现入口与契约 |
 | --- | --- |
@@ -18,11 +18,13 @@
 | 后端及私人导出 | `finance_hub.py`、`investment_operations.py`、`investment_import.py`、`data_portability.py`；[持仓 API](INVESTMENTS-API.md)、[整理表契约](INVESTMENT-IMPORT.md) |
 | 接线、发布及恢复 | `HouseholdApp`／RouteName／财务和更多入口；Docker COPY、发布白名单纳入新模块；[55 表模型](DATA-MODEL.md#investment-operations55) 与 `deploy/check_investment_operation_migration.py` |
 
-Windows 17 模块共 424 项、Node 29 项（主页面 helper 10、导入 helper 19）、完整 TypeScript 检查和 23 文件导出通过。真实临时 Flask／SQLite／Edge 7 场景通过；先前单独执行的 53 项迁移／导出回归已包含于 424 项，不能相加。来源、回执和版本校验的问题均在独立分支修订后重新审查。本人真实财务文件、新云操作、实体电视、原生安装包和完整资产／负债／估值历史／FX 仍未验收或未实现。
+最终 Windows 18 模块 446 项通过；新镜像 Linux 实际 445 通过、1 个精确 Windows junction 跳过、零失败／错误。业务运行字节及 145 个前端构建输入、23 个导出文件与 `753c7a3` 的已验版本一致，沿用其完整 typecheck、Node 29 项与真实临时 Flask／SQLite／Edge 7 场景，不宣称再次运行浏览器。12 张截图已全部人工查看，内部滚动区的完整导入预览仍未获截图覆盖。原 424 项和先前 53 项专项、两次 445 项均与最终测试重叠，不相加；两次发布前本地拒绝及修订见 [验证记录](VALIDATION.md#expo-holdings-release)。本人真实文件、新云操作、实体电视、原生安装及完整资产／负债／估值历史／FX 仍未验收或未实现。
 
-下一位 agent 继续从集成人分配的独立分支和 worktree 开始。新镜像验证、54→55 的停写全户备份与精确增表、正式激活及 TLS 读回均待本轮发布流程执行；不可重放已经结束的 53→54 发布脚本。当前候选模块已经合入集成源码，不要再次复制或重放功能分支。
+最终读回核对 503 源文件、113 运行文件、75 个 HTTPS 静态资源，24 个生成路径及 1 个退役资源拒绝，22 个匿名 API 均 401；四服务运行、零重启、app healthy、配置保持。新 backup service invocation 成功且 timer active，完整 1 户两库备份的散列及 55 表／注册结构可读性核验通过。`liveGroupSnapshotRechecked=false`：逐库在线备份不是多库全局事务，也不代表重新核对 live 全组快照。
 
-## 当前线上交接：Expo 财务
+下一位 agent 继续从集成人分配的独立分支和 worktree 开始；发布需重新绑定当前 55 表及实际镜像／清单，不可重放本次 54→55 或更早迁移。已合入模块不重复复制或应用，发布／完整恢复边界见 [持仓发布](HOLDINGS-RELEASE.md)。
+
+## 此前线上交接：Expo 财务
 
 各作者在独立分支实现主页面、导入面板、持久回执、迁移、测试和文档，经非作者审查与组合验证后合入 main。实际发布目录 `/opt/family-dashboard-releases/expo-finance-54-20260916T202549009688Z`，manifest `f5a49949e6d868533392f64fa46c4042a85df635b2f8123b3f05076a7d619976`，app／sync／media 镜像 `sha256:4433d1d5c97ec4ed4a1336c2402b0fae121a04e092050ff9eb2821ac61fa4798`。激活报告 `completed=true`，最终独立 r3 读回通过，源码、运行文件、归档和构建身份保持。
 
@@ -36,7 +38,7 @@ Windows 17 模块共 424 项、Node 29 项（主页面 helper 10、导入 helper
 
 04:41:46 正常 TLS 读回核对 486 源／112 运行／75 静态资源，24 个内部生成路径和 1 个退役资源拒绝，19 个匿名 API 均 401；四服务 running／restarts 0，app healthy，配置保持。新一次备份 service success／timer active，核验该次完整 1 户两库备份的散列、54 表及两张注册表可读性；这是逐库在线备份，`liveGroupSnapshotRechecked=false`，不能表述为重新读取了 live 全组快照或跨库全局原子备份。原件在私有 `expo-finance-package-20260917-r2/post-readback-r3.json`，SHA256 `02a9104725599554a103acce5ff653867212f763d5133b3905bae7c296339332`。首次只读 WAL 检查失败和 r3 独立操作修订保留于 [VALIDATION](VALIDATION.md)；没有再次部署或迁移。
 
-以下发布段落保留各次当时的源码、表数和验收状态，当前身份以上方财务版本为准。
+以下发布段落保留各次当时的源码、表数和验收状态，当前身份以上方持仓版本为准。
 
 ## 此前线上交接：Expo 账户与同步
 
@@ -291,7 +293,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | 本人数据副本 | `data_portability.py`、`static/data-portability.js` | [导出契约](PORTABILITY.md)；仅本人私密与显式勾选的共同记录。排除令牌、会话/设备认证表和暂存预览；不是数据库恢复包 |
 | 部署与备份 | `Dockerfile`、`compose.yaml`、`deploy/` | [部署指导](DEPLOYMENT.md)、[运维说明](OPERATIONS.md)；源码白名单、现有配置、全部家庭、停止写入、成组备份及相配恢复 |
 
-路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)：当前 149 个方法／路径模板，含三个 Expo／classic GET 和本人导入回执 GET；[机器索引](contract-inventory.json) 由实际应用生成。当前 54 张户内表与 2 张平台表，新增财务回执表。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
+路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)：当前 152 个方法／路径模板，新增三个持仓 GET；[机器索引](contract-inventory.json) 由实际应用的隔离新库生成。当前 55 张户内表与 2 张平台表，新增手工持仓操作回执表；完整字段见 [持仓 API](INVESTMENTS-API.md)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
 
 ## 例行计划公共接缝
 
@@ -355,7 +357,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 5. 明确接口/迁移/隐私变化后再编码。公共 API、数据模型、用户步骤、错误行为和相应测试一起交付；金额是整数分、不同币种分别计算，日期语义按旅行契约。
 6. 由集成人检查合并结果，完成对应组合测试、冻结、打包及发布。源码打包只收白名单，不生成凭据，也不是内容脱敏器；不能把私人文件临时放到 `docs/tests/static/deploy`。
 
-部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已是财务回执 54 表，历史 42→43、43→43、43→44、44→48、48→53 及本次 53→54 工具均不能重放；不能只改表数或照搬 DEPLOYMENT 的历史算法。下一次更新须绑定实际 54 表基线，完整恢复边界见 [回执迁移与完整恢复](FINANCE-RECEIPTS-RELEASE.md)。
+部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已是持仓操作回执 55 表，本次 54→55 及更早固定迁移工具均不能重放；不能只改表数或照搬 DEPLOYMENT 的历史算法。下一次更新须绑定实际 55 表基线，完整恢复边界见 [持仓发布](HOLDINGS-RELEASE.md)。
 
 更新保留 `.env` 和主密钥，先关闭 web 并停止备份定时器，再停止 media／sync／app，核对注册目录、全部家庭与完整备份组后执行受审迁移。app 启动读回通过才开放 media／sync／web；本次控制器任何失败均停止并保全现场，不自动恢复数据库。需要恢复时另行确定相配源码、密钥、注册目录与家庭映射，不能让旧镜像盲接未知库；已有业务写入时不能用旧快照覆盖。**恢复后先使目标家庭旧成员登录失效并重新核对或撤回旧电视许可，再开放入口及 worker**。具体步骤见 [部署与恢复](DEPLOYMENT.md#6-备份恢复与回滚)、[运维](OPERATIONS.md) 和 [会话恢复要求](MEMBER-SESSIONS.md#恢复后使旧成员登录失效)。上一财务版本的 165／119 项离线激活／控制器恢复、79 项文档零结构检查均不是生产恢复演练。
 

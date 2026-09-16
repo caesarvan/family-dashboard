@@ -1,14 +1,18 @@
 # 部署、更新与恢复交接
 
-> **线上版本：2026-09-16 16:33:32（北京时间），镜像 `sha256:9cd092392b27d6e2342ab1890ff3514149416281fe130df62976b8b1488acac8`。** 旅行地图已完成 43→44 迁移发布；295 源文件、52 Markdown、47 静态资源、112 个方法／路径模板、44 张户内表及 2 张平台表。安装源码对应 main `6f3d978`／integration `cd857f5` 的同一文件树；本次发布后的交接文档尚未同步服务器。NVIDIA 已于同日 16:58 完成配置与真实模型草稿验证；真实用户全流程和电视验收仍分别记录。
+> **当前线上：2026-09-17 06:15:34（北京时间）持仓版，06:16:14 正常 TLS 读回通过。** main `f2146f2`／source `1bb4342`，503 源文件、113 运行文件、152 个方法／路径模板、55 张户内表与两张平台注册表。完整身份和实际验证见 [发布记录](VALIDATION.md#expo-holdings-release)，当次操作见 [持仓 54→55 发布](HOLDINGS-RELEASE.md)。
 
-## 当前地点版：已完成 43→44
+本轮实际 1 户两库备份后只新增空操作回执表，原 54 表及注册库保持至新 app 启动核对；原配置保持，四服务运行且 app healthy。后续更新必须重新绑定实际 55 表、镜像和清单；已完成的 54→55 及下方旧 44／43 表固定操作都不能重放。完整恢复需使用与当前 55 表匹配的整组备份，并以 `check_investment_operation_migration.py` 的 `snapshot-current`／`check-restored` 核对；本轮只完成合成恢复测试，没有执行生产覆盖恢复。下方历史命令保留用于追溯，不能只改表数当作新发布流程。
 
-2026-09-16 16:33:32按 [地点发布流程](JOURNEY-PLACES-RELEASE.md) 上线，实际记录见 [VALIDATION](VALIDATION.md)。当前44户内表+2平台表；manifest `1a5990e0b7e500ed44986b979e413a8ba26c92bd6cf4c7757be429bed17e51d8`；发布目录 `/opt/family-dashboard-releases/journey-places-20260916T083232752975Z`。43→44不可重复执行，旧43→43 SOURCE不适用后续44表更新。
+> **历史地点版本：2026-09-16 16:33:32（北京时间），镜像 `sha256:9cd092392b27d6e2342ab1890ff3514149416281fe130df62976b8b1488acac8`。** 当时旅行地图完成 43→44 迁移发布；295 源文件、52 Markdown、47 静态资源、112 个方法／路径模板、44 张户内表及 2 张平台表。安装源码对应 main `6f3d978`／integration `cd857f5` 的同一文件树；该次发布后的交接文档当时尚未同步服务器。NVIDIA 于同日 16:58 完成配置与真实模型草稿验证；真实用户全流程和电视验收分别记录。
+
+## 历史地点版：已完成 43→44
+
+2026-09-16 16:33:32按 [地点发布流程](JOURNEY-PLACES-RELEASE.md) 上线，实际记录见 [VALIDATION](VALIDATION.md)。当时44户内表+2平台表；manifest `1a5990e0b7e500ed44986b979e413a8ba26c92bd6cf4c7757be429bed17e51d8`；发布目录 `/opt/family-dashboard-releases/journey-places-20260916T083232752975Z`。43→44不可重复执行，旧43→43 SOURCE不适用后续44表更新。
 
 候选源码须允许校验UID10001读取：本次根root:10001 0750、manifest 0640，其余源文件及祖先可读。仅调整非秘密源码路径，READY/evidence/原配置/备份保持私有，不递归放宽权限。原0700预检拒绝记录保留。停写、组备份、精确DDL和数据读回仍由固定controller执行。
 
-当前源码初始化44+2表，完整新机安装仍待单独验收。恢复算法保持，实际演练须显式选 `--profile journey_places44`，见 [恢复指导](RECOVERY-REHEARSAL.md)。NVIDIA 配置已于同日 16:58 独立启用：只新增 `ASSISTANT_PROVIDER`、`NVIDIA_MODEL`、`NVIDIA_API_KEY`，原镜像 no-build 有序重建 app/sync/web。旧 `.env` 原样 0600 备份位于 `/opt/family-dashboard/.env.assistant-backup-20260916T085405063887Z-04bea8ef39f84e6cb395db494622a4f0`；其他配置 record 原字节不变。仅配置回退须先核对现环境未被后续变更，再恢复配对备份并重建服务，不恢复数据库；此回退未实际执行。下方旧版本操作仅作历史追溯。
+该历史源码初始化44+2表，完整新机安装当时仍待单独验收。该版本恢复演练显式选 `--profile journey_places44`，见 [恢复指导](RECOVERY-REHEARSAL.md)，不用于当前55表。NVIDIA 配置于同日 16:58 独立启用：只新增 `ASSISTANT_PROVIDER`、`NVIDIA_MODEL`、`NVIDIA_API_KEY`，原镜像 no-build 有序重建 app/sync/web。旧 `.env` 原样 0600 备份位于 `/opt/family-dashboard/.env.assistant-backup-20260916T085405063887Z-04bea8ef39f84e6cb395db494622a4f0`；其他配置 record 原字节不变。仅配置回退须先核对现环境未被后续变更，再恢复配对备份并重建服务，不恢复数据库；此回退未实际执行。下方旧版本操作仅作历史追溯。
 
 ## 历史 13:24 的 43→43 SOURCE 更新
 
