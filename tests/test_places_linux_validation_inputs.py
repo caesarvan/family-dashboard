@@ -205,7 +205,9 @@ def test_explicit_synthetic_configuration_selects_each_provider():
     for key in ('ASSISTANT_PROVIDER','NVIDIA_API_KEY','NVIDIA_MODEL','OPENAI_API_KEY','OPENAI_MODEL',
                 'MICROSOFT_CLIENT_ID','MICROSOFT_CLIENT_SECRET','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET'):
         environment[key] = 'local' if key=='ASSISTANT_PROVIDER' else ''
-    environment.update(PYTHONPATH=str(root),PYTHONDONTWRITEBYTECODE='1',PYTEST_DISABLE_PLUGIN_AUTOLOAD='1')
+    pytest_root = Path(pytest.__file__).resolve().parent.parent
+    environment.update(PYTHONPATH=os.pathsep.join((str(root),str(pytest_root))),
+                       PYTHONDONTWRITEBYTECODE='1',PYTEST_DISABLE_PLUGIN_AUTOLOAD='1')
     config = {'mode':'tests','runtime':M.runtime(M.tree(root)),
               'support':{'tests/test_synthetic_provider.py':M.sha(script)},'scripts':['tests/test_synthetic_provider.py']}
     result = LOCAL_PYTHON([sys.executable,'-B','-X','utf8','-c',program,json.dumps(config)],cwd=root,
