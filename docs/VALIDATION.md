@@ -1,5 +1,41 @@
 # 验证记录
 
+## Expo 足迹地图与旅行相册发布：2026-09-17 01:47:27
+
+实际安装 main `7ec8c305bbf0ab0e85aaf62d70e7c571881a964f`／integration `9c63f9da262d8c690a3554931f78c3b6824d971e` 同树 `adf7dfa10bbac51ceff95edbfbf9aff3adc3a032`，01:47:27 激活、01:47:42 正常 TLS 读回通过。实际浏览器使用 r3 导出：来源 `0c533e789eb3d2b74704a9e155bcabb02f4a3e63`，tree `836e801c36d04ed742d71a47af094f8c807508da`，构建证据 SHA256 `c3b7d7e3d02dee9671ab068c9268cd649bbd6b9043f3d4b16d2bc09588e4b7c8`。
+
+后续测试入口维护提交 `a053865` 合入 integration `9c63f9da262d8c690a3554931f78c3b6824d971e`／tree `adf7dfa10bbac51ceff95edbfbf9aff3adc3a032`，并实际重新构建 r4，证据 SHA256 `1315e96ea0355f3a892ee3d375bef341d1993379ea7110534bdfa332d87d8794`。r4 的全部 133 个构建输入和 23 个导出文件 SHA 与 r3 完全相同，因此继承下方浏览器证据；没有声称浏览器对 r4 再次执行。应用代码未因测试入口维护而改变。
+
+真实临时 Flask／SQLite／Edge **16 项检查通过，已包含 320／390／1040／1440 四宽**：私有地点保存、键盘明确到访、后台慢请求时保留输入、真实 409 重核、创建提交后丢响应用原 requestId 恢复、删除墓碑及应用重启、共享隐藏／粗化投影、离线隐藏、全部筛选与第二页往返、只读相册 24+2 分页与详情、旅行读取中返回及过期响应丢弃、照片与地点分别撤权、双家庭隔离、切成员清理及电视拒绝。源码与 bundle 前后保持，没有页面异常或外站请求。
+
+最终原件 `expo-map-browser/test-results/expo-map-20260916T171820315770Z/result.json` SHA256 `07a883e8a1bdb639745c013077ea0b248028e34b06bf4fcb589e7487df902ce3`；执行 harness SHA256 `ddf6653a970cefc72f20d5f428debc4af1f6a0e3752c1dc3b4b786e97d9ed4ce`，保存 16 张截图。使用合成地点／照片，真实 Cookie、CSRF、SQLite、净化加密和媒体接口；后台采用页面可见性事件注入，网络场景延迟或丢弃真实业务响应，不替换业务 API。0 次生产写入，没有真实 Google 或实体电视验收。
+
+非作者实际查看全部 16 张最终截图，确认窄屏卡片可操作、桌面列表／详情并排、单行名称输入高度正常及四宽无横向裁切；同目录 `acceptance-review.json` SHA256 `0b2f560830cbf2cef683959a157fa78240a27fb64691696e52f020489f39fb2b`。最后一次 r3 重跑覆盖字段高度修订，前一 r2 通过记录不与最终 16 项相加。合成缩略图为单色夹具，本地回环 HTTPS 接受临时测试证书；不等同于生产域名、真实照片或完整应用验收。
+
+root 另执行 `node --test tests/test_expo_trip_photos.mjs tests/test_expo_photos.mjs`，记录 **18 passed**；对应辅助模块到最终来源保持。审查记录 `expo-map-reviews-20260917/root-helper-gallery-review.json` SHA256 `3aef96952698330d7c7ee9b49859f1e52a917e1bd689c960640b54ea60565817`，未另保存原始 TAP 日志。此项、实际浏览器与后续镜像 Linux 分开记录，不相加为一次全套。
+
+第二轮实际新镜像 `sha256:87c442df6f8a03a6ee74846338621dba849ac09f2907506d182a53aea0b3abc4` 内 `test_journey_places.py`、`test_journey_map_integration.py`、`test_household_media.py` 三模块 **142 passed，0 failure／error／skip／deselected**，运行文件前后核验通过。原件 `expo-map-package-20260917-r2/validation.json` SHA256 `8c38cfc1433f3d7bea657a086cbe35c00fe06a6f4de13cdba0cdbaca0db73d38` 绑定实际日志、JUnit 和运行文件证据；此执行不操作生产数据。
+
+首轮真实浏览器仅完成 1 项检查后失败：390px 下地图后的地点列表／详情卡片因纵向布局使用 `flexBasis: 0` 而塌陷，按钮虽在可访问树中但不能正常点击。原件 `expo-map-browser/test-results/expo-map-20260916T170638632218Z/result.json` SHA256 `4f38c3399da3c98e6a50c452e8ff93c25badb60968380d23679304a19fc73741` 保留。修订恢复窄屏自然高度，并改善世界轮廓对比度、立即离线隐藏和旅行读取期间的返回操作；重新构建后的结果另行记录，不把初轮诊断计作验收通过。
+
+两次中间执行各完成 8 项后因 harness 的重复标题定位及重复处理已完成路由失败。原件 `expo-map-20260916T171053890972Z/result.json`（`4702581756fb2f55bf06e96e6bee3ec7533bca90d62f25d8e8d3972251ce54d4`）与 `expo-map-20260916T171213524544Z/result.json`（`1a724309622e010d78af5480e40520545dda482c6ad5233ac785d409a53c3c05`）同在上述 test-results 下保留；只修测试定位／响应释放方式后完整重跑，没有放宽业务断言，也不将部分结果与最终 16 项相加。
+
+第一次新镜像 Linux 执行 **141 passed／1 failed，169.57s**，发布停在 stage／activate 之前。`test_journey_map_integration.py` 的经典页脚本检查仍请求根路径 `/`，而当前根路径按 Expo 契约重定向 `/app`，因此旧测试未读取到经典页。修订仅把该测试入口明确为 `/classic`，没有据此修改应用跳转行为；独立审查后另建 r2 候选完整重跑，不把第一次 141 项部分通过与第二次通过相加。失败原件 `expo-map-package-20260917/validation.json` SHA256 `01158d9315cc7856da71ccab79b8a52164732842960452debe740b6936498e78` 保留。
+
+实际 1 户两库完整备份，53 张户内表的行／schema／序列及平台注册库在新 app 启动时保持，原 `.env` 保全。发布后核对 464 源／112 运行／75 HTTPS 静态文件，24 个内部生成路径及 1 个退役资源拒绝，12 个匿名接口均 401；四服务 running／restart 0、app healthy，备份 service success／timer active。数据相等限于启动核对时点，恢复服务后允许正常业务变化；没有数据库迁移。
+
+最终私有原件 `expo-map-package-20260917-r2/`：
+
+| 原件 | SHA256 |
+|---|---|
+| `build.json` | `ae1021a4618707fd65105fbd42d1ff8adefd3d6ff39ffd6f269c95f89b223976` |
+| `validation.json` | `8c38cfc1433f3d7bea657a086cbe35c00fe06a6f4de13cdba0cdbaca0db73d38` |
+| `ready.json` | `69a5f8b9b526a1f31ed7762e01125c663b47a577a529e4083516f2476ec88660` |
+| `activation.json` | `8eccdddb4ff6e5117b94935eb0f64906237b0adc2bb000fbfa5a407dbba081ab` |
+| `post-readback.json` | `5192c7d5a3b845d9507cc83c0f5d3c9c70679ccdc6ed43c9fddfece92edbbcd9` |
+
+两库备份 manifest SHA256 `362a4d491027843b1cc184f6202c52d0248b5de5e62bd7608432c030fc4e7d50`。统一索引 `expo-map-reviews-20260917/published-proof-index.json` SHA256 `ce22ab5300943b1fb53669c6b8b40802faac7a699d45d892ded4b6875ec3b713`；独立五报告审查 SHA256 `66e6f6e121a8add0af39c716012561bb585303fa9d488510195a64040d668e09`。镜像、manifest 与发布目录见 [Expo 地图](EXPO-MAP.md)。本人已登录的生产地图操作、真实云操作、原生安装包与实体电视均未在本轮验收；Windows 公共域名此前的过滤限制不由服务器 TLS 读回解除。后续发布须重新绑定当前基线，不能重放这次操作。
+
 ## Expo 家庭物品与库存搜索发布：2026-09-17 00:40:16
 
 安装 main `2925be09d09a4b6e1eab2d6633c1cf5bdebfc8ad`／integration `c1ca0e14acc44d61afe08641fd237e19705dd750` 同树 `3d28f16a7036f84bc2bfbe326a5eb0e34eee3c43`。r2 构建证据 SHA256 `a53d6e55125e095c5f29e5e020e315c88037abfa99b727daf863dc5e1d2ef178`，23 个导出文件；实际 00:40:16 激活、00:40:31 正常 TLS 读回通过。

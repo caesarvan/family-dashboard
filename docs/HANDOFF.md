@@ -1,10 +1,22 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-17 00:40:16（北京时间）。** main `2925be09d09a4b6e1eab2d6633c1cf5bdebfc8ad`／integration `c1ca0e14acc44d61afe08641fd237e19705dd750` 同树 `3d28f16a7036f84bc2bfbe326a5eb0e34eee3c43`。Expo 家庭物品、采购查库存与助理本地库存搜索已上线，00:40:31 正常 TLS 读回通过；完整身份见 [家庭物品交付](INVENTORY-DELIVERY.md)。此处为发布后本地文档，不改变已安装包。
+> **线上版本：2026-09-17 01:47:27（北京时间）。** main `7ec8c305bbf0ab0e85aaf62d70e7c571881a964f`／integration `9c63f9da262d8c690a3554931f78c3b6824d971e` 同树 `adf7dfa10bbac51ceff95edbfbf9aff3adc3a032`。Expo 足迹地图与旅行相册往返已上线，01:47:42 正常 TLS 读回通过；完整身份见 [Expo 地图](EXPO-MAP.md)。此处为发布后本地文档，不改变已安装包或构建来源。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。此前 23:02 三模块与 21:59 首期身份分别保留于 [EXPO-NEXT-RELEASE](EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](EXPO-RELEASE.md)，历次证据见 [VALIDATION](VALIDATION.md)。
 
-## 当前交接：Expo 家庭物品与库存搜索
+## 当前交接：Expo 足迹地图与旅行相册
+
+实际 r4 构建来源为顶部 integration；全部 133 个构建输入和 23 个导出文件 SHA 与已通过最终浏览器的 r3 相同，仅随后修订了经典页测试入口。浏览器执行来源与最终安装来源分开记录，未声称对 r4 再跑浏览器。细节见 [VALIDATION](VALIDATION.md)。
+
+`/app/map` 提供世界概览、每页 24 个地点、筛选、私有／共享坐标、明确到访和增删改；从地点打开旅行计划或只读相册仍在本路由内。返回只保留当前完整会话的筛选、页码和 ID，再读取最新权限；普通相册继续承担导入与编辑。模块与接口见 [Expo 地图](EXPO-MAP.md)。所有读取和写入仍沿用原成员／家庭、CSRF、revision 和幂等规则，没有数据库迁移、外部地图请求、新依赖或重新授权。
+
+真实临时浏览器 16 项（包含四宽）、18 项 Node 照片辅助测试与新镜像 Linux 142 项分别通过。初轮卡片布局、两次 harness 及第一次 Linux 141／1 失败保留于 [VALIDATION](VALIDATION.md)。实际 1 户两库完整备份，53 张户内表的行／schema／序列及平台注册库在新 app 启动时保持，原配置保全；随后核对 464 源／112 运行／75 HTTPS 静态资源、24 个内部资源和 1 个退役 JS 拒绝、12 个匿名 API 401。四服务 running／restart 0、app healthy，备份 service success／timer active；数据相等限于启动核对时点。
+
+发布目录 `/opt/family-dashboard-releases/expo-map-53-20260916T174642437456Z`，manifest `d21b3840cb284b2ea680018d4895fa3767a079008e0fdca8035e4965e7bfead8`，app／sync／media 镜像 `sha256:87c442df6f8a03a6ee74846338621dba849ac09f2907506d182a53aea0b3abc4`。最终私有包与五份发布报告在 `expo-map-package-20260917-r2/`；`expo-map-package-20260917/` 保留第一次 Linux 失败且未激活的候选。固定操作绑定旧 manifest／镜像，不能重放；后续须重新核对实际 53 表基线。本人新入口、真实云及实体电视仍未在本轮验收。
+
+详细财务、账户连接、家庭／成员、设备与布局、照片旅行推荐和复杂旅行操作仍有经典入口。地图与库存主入口已经实现 Expo 页面；视频、iCloud／NAS、路线、精选回顾、通用角色与多家庭成员关系、原生安装包及 A／B／C／D 完整场景仍未整体完成。后续按 [Git 工作流](GIT-WORKFLOW.md) 分支隔离、非作者审查、组合验证与发布；当前 53 表不能重放旧迁移或旧固定基线发布操作。
+
+## 此前线上交接：Expo 家庭物品与库存搜索
 
 `/app/inventory` 提供物品、批次、实物变化、历史纠正、共享与归档；更多菜单、采购查看家中物品和助理命中均进入原生页面。复用原库存 API 和 53+2 表，写入使用当前版本与明确确认，未知结果保留原 requestId 核对回执。助理库存搜索仅查当前权限内本地数据，不调用模型；详情重新读取，不能直接用搜索快照写入。契约见 [Expo 家庭物品](EXPO-INVENTORY.md)、[库存搜索](ASSISTANT-INVENTORY-SEARCH.md)。
 
