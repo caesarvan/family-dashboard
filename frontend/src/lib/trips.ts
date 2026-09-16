@@ -60,7 +60,7 @@ export function newDraft(people:Person[],day:string):Draft {
 // must enter through editDraft/upgradeDraft and their fresh revision checks.
 export function initialPlanningDraft(input:unknown,people:Person[]):Draft {
   const record=(value:unknown):Record<string,unknown>=>{if(!value||typeof value!=='object'||Array.isArray(value))throw new Error('旅行草案格式不正确，请返回助理重新整理');return value as Record<string,unknown>;};
-  const text=(value:unknown,max:number)=>{if(typeof value!=='string'||value.length>max)throw new Error('旅行草案字段不正确，请返回助理重新整理');return value;};
+  const text=(value:unknown,max:number)=>{if(typeof value!=='string'||Array.from(value).length>max)throw new Error('旅行草案字段不正确，请返回助理重新整理');return value;};
   const cents=(value:unknown)=>{if(!Number.isSafeInteger(value)||Number(value)<0||Number(value)>100000000000)throw new Error('旅行草案金额不正确');return value as number;};
   const rows=(value:unknown,max:number)=>{if(!Array.isArray(value)||value.length>max)throw new Error('旅行草案清单不正确');return value.map(record);};
   const keys=(value:Record<string,unknown>[]):(Record<string,unknown>&{key:string})[]=>{const seen=new Set<string>();return value.map(row=>{const key=text(row.key,64);if(!/^[A-Za-z0-9_-]{1,64}$/.test(key)||seen.has(key))throw new Error('旅行草案项目编号不正确');seen.add(key);return {...row,key};});};

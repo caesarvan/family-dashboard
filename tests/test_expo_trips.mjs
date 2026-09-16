@@ -69,6 +69,8 @@ test('initial draft projects only plan fields, is independent and cannot forward
   assert.equal(Object.hasOwn(draft.plan,'actions'),false);assert.equal(Object.hasOwn(draft.plan.shopping[0],'id'),false);assert.equal(Object.hasOwn(draft.plan,'referenceTimezone'),false);
   assert.equal(payload.plan.shopping[0].budget,100);assert.equal(payload.plan.checklist[0].key,'prepare');assert.equal(payload.plan.segments[0].key,'paris-stop');
   seed.plan.checklist[0].title='changed after handoff';assert.equal(draft.plan.checklist[0].title,'原准备');
+  const unicode=briefDraft();unicode.plan.title='😀'.repeat(100);unicode.plan.note='😀'.repeat(2000);assert.equal(initialPlanningDraft(unicode,people).plan.title,unicode.plan.title);
+  unicode.plan.title+='😀';assert.throws(()=>initialPlanningDraft(unicode,people),/字段/);
 });
 test('initial draft rejects malformed member, amount and repeated row keys before rendering',()=>{
   for(const modify of [draft=>{draft.plan.memberIds=['stranger'];},draft=>{draft.plan.shopping[0].budget=true;},draft=>{draft.plan.destinations=null;},draft=>{draft.plan.checklist.push(structuredClone(draft.plan.checklist[0]));}]){
