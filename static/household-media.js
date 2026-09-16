@@ -279,7 +279,7 @@ window.HouseholdMedia = (() => {
       <h3>按照片时间推荐</h3><p class="hm-muted">照片时间仅作线索，请核对行程。确认只关联这张照片，不改变共享、到访或电视许可。</p>
       ${editor.suggestionMessage ? `<p class="hm-warning" role="status">${escape(editor.suggestionMessage)}</p>` : ''}
       ${reason ? `<p role="status">${escape(reason)}</p>` : ''}
-      ${dirty ? '<p class="hm-warning">有未保存的照片编辑，请先保存或重新读取，再确认推荐。</p>' : ''}
+      ${dirty ? '<p class="hm-warning">有未保存的照片编辑，请先保存，再确认推荐。</p>' : ''}
       ${(value?.suggestions || []).map(row => `<article class="hm-journey-option"><h4>${escape(row.title)}</h4><p>${escape(row.start)} — ${escape(row.end)}</p><p class="hm-muted">照片日期 ${escape(row.sourceDate)} · 按旅行时区 ${escape(row.referenceTimezone)}${row.referenceTimezoneSource === 'legacy_default' ? '（旧旅行使用默认时区）' : ''}</p>${button('confirm-journey',row.alreadyLinked ? '已关联这次旅行' : '确认关联这次旅行',`data-journey="${escape(row.journeyId)}" ${busy} ${dirty || row.alreadyLinked ? 'disabled' : ''}`)}</article>`).join('')}
       ${value?.hasMore ? '<p class="hm-muted">仅显示前 20 条推荐，还有其他匹配旅行。可在下方手动关联中核对。</p>' : ''}
       ${button('journey-suggestions',value || editor.suggestionMessage ? '重新读取照片和推荐' : '查看推荐',busy)}</section>`);
