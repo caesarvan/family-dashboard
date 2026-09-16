@@ -400,7 +400,7 @@ def test_partial_install_keeps_original_archive_without_starting_app(f,monkeypat
             writes.append(path)
             if len(writes)==2:raise OSError('synthetic full disk')
         return original(path,value,owner)
-    monkeypatch.setattr(C,'put',fail)
+    monkeypatch.setattr(C.core,'put',fail)
     with pytest.raises(RuntimeError,match='release_failed_at_install-source'):f.activate()
     assert not any(x[:3]==['docker','compose','up'] for x in f.runner.calls)
     with tarfile.open(Path(f.report()['releaseDirectory'])/'source-before.tar.gz') as archive:

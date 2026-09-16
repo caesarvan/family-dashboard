@@ -23,6 +23,10 @@ import subprocess
 import sys
 import uuid
 
+if __package__ in (None, ''):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from deploy import release_core as core
+
 LABEL = 'org.family-dashboard.static-rehearsal'
 IMAGE = re.compile(r'sha256:[a-f0-9]{64}\Z')
 RUN = re.compile(r'[a-f0-9]{32}\Z')
@@ -79,8 +83,8 @@ def frozen_source(root, manifest_sha):
     return raw, values
 
 
-def load_controller(candidate):
-    path = candidate / CONTROLLER
+def load_controller(candidate, policy=core.STATIC):
+    path = candidate / policy.entry
     spec = importlib.util.spec_from_file_location('synthetic_static_controller', path)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
@@ -155,7 +159,7 @@ print(json.dumps({'passed':True,'households':2,'householdTables':43,'platformTab
 '''
 
 
-def fixture_ready(candidate, base_hashes, hashes, parent, image, proof_raw, env_raw):
+def fixture_ready(candidate, base_hashes, hashes, parent, image, proof_raw, env_raw, *, policy=core.STATIC):
     """Synthetic controller inputs, explicitly not proof of a passed rehearsal."""
     evidence = candidate / 'evidence'; evidence.mkdir(mode=0o700)
     records = {'build-original.json': proof_raw, 'fixture-input.json': encoded({
@@ -183,22 +187,52 @@ def fixture_ready(candidate, base_hashes, hashes, parent, image, proof_raw, env_
         'releaseSafety': {**common, 'realDocker': True, 'image': image, 'manifestSha256': manifest_sha,
                           'households': 2, 'checks': 1, 'originalTablesPreserved': 43, 'newTables': 0, 'productionWrites': 0, 'allPassed': True},
         'gitReview': review}
+    if policy is core.SOURCE:
+        changes = core.runtime_changes(base_hashes, hashes)
+        python = sorted(x['path'] for x in changes if x['kind'] == 'rootPython')
+        build = envelopes.pop('staticBuild'); envelopes.pop('backendReuse')
+        base_sha = sha(encoded({'files': base_hashes}))
+        build.update(mode=policy.mode, baseManifestSha256=base_sha,
+                     parentRuntimeHashes={**core.backend_hashes(base_hashes), **core.static_hashes(base_hashes)},
+                     candidateRuntimeHashes={**backend, **static}, approvedRuntimeChanges=changes,
+                     parentBackendVerified=True, childBackendVerified=True, staticVerified=True, bytecodeExcluded=True)
+        envelopes['sourceBuild'] = build
+        # These marked fixture runs only drive the actual controller. No test
+        # claim from them is copied into this rehearsal's acceptance report.
+        script = 'tests/test_source_release.py'
+        xml = b'<testsuite><testcase classname="tests.test_source_release" name="synthetic_driver"/></testsuite>'
+        log = b'Synthetic controller driver only; no pytest run.\n'
+        for name, raw in [('fixture.xml', xml), ('fixture.log', log)]:
+            (evidence / name).write_bytes(raw)
+        dependencies = {**backend, script: hashes[script]}
+        runs = [{'platform': p, 'scripts': [script], 'coveredChanges': python,
+                 'tests': 1, 'passed': 1, 'skipped': 0, 'failures': 0, 'errors': 0, 'exitCode': 0,
+                 'dependencyHashesBefore': dependencies, 'dependencyHashesAfter': dependencies,
+                 'image': image, 'junit': {'path': 'evidence/fixture.xml', 'sha256': sha(xml)},
+                 'log': {'path': 'evidence/fixture.log', 'sha256': sha(log)}} for p in ('windows', 'linux')]
+        envelopes['backendValidation'] = {**common, 'coverageMode': 'affected-source-tests',
+            'changedPython': python, 'compatibility': dict(core.COMPATIBILITY), 'runs': runs, 'historicalReuse': []}
+        review.update(approvedRuntimeChanges=changes, compatibility=dict(core.COMPATIBILITY))
     references = {}
     for name, value in envelopes.items():
         raw = encoded(value); (evidence / (name + '.json')).write_bytes(raw)
         references[name] = {'path': 'evidence/' + name + '.json', 'sha256': sha(raw)}
     base_raw = encoded({'files': base_hashes}); (candidate / 'BASE-MANIFEST.json').write_bytes(base_raw)
     ready = {'version': 1, 'verified': True, 'synthetic': True, 'isAcceptanceEvidence': False,
-             'mode': 'static-only', 'image': image, 'previousImage': parent, 'manifestSha256': manifest_sha,
+             'mode': policy.mode, 'image': image, 'previousImage': parent, 'manifestSha256': manifest_sha,
              'sourceHashes': hashes, 'baseHashes': base_hashes, 'baseManifestSha256': sha(base_raw),
              'oldManifestSha256': sha(base_raw), 'environmentSha256': sha(env_raw),
              'changedFiles': sorted(n for n, h in hashes.items() if base_hashes.get(n) != h),
              'schema': {'from': 43, 'to': 43, 'newTables': []}, 'evidence': references, 'gitReview': review}
+    if policy is core.SOURCE: ready['approvedRuntimeChanges'] = changes
     raw = encoded(ready); (candidate / 'READY.json').write_bytes(raw)
     return manifest_sha, sha(raw)
 
 
 class Rehearsal:
+    # The original CLI/class are permanently static. SourceRehearsal is a
+    # separate reviewed entry class; READY never selects this attribute.
+    policy = core.STATIC
     def __init__(self, source, manifest_sha, parent, image, build_proof, proof_sha, nginx_image, output, *, runner=None):
         self.source, self.output, self.proof = Path(source), Path(output), Path(build_proof)
         need(all(isinstance(i, str) and IMAGE.fullmatch(i) for i in (parent, image, nginx_image)) and parent != image, 'immutable_images')
@@ -213,11 +247,11 @@ class Rehearsal:
         self.volume = self.project + '_household-data'; self.tag = self.project + '-app'
         self.resources = {}; self.runner = runner or self.process
         self.host_environment = dict(os.environ)
-        self.root = self.output / 'app'; self.candidate = self.output / ('family-dashboard-candidate-static-' + self.run_id)
+        self.root = self.output / 'app'; self.candidate = self.output / ('family-dashboard-candidate-' + self.policy.prefix + '-' + self.run_id)
         self.releases = self.output / 'releases'; self.proof_dir = self.output / 'proof'
         self.created = False; self.counter = 0; self.tag_created = False; self.container_ids = set()
         self.report = {'runId': self.run_id, 'startedAt': datetime.now(timezone.utc).isoformat(),
-                       'scope': 'synthetic static deployment, not restore or production', 'passed': False,
+                       'scope': 'synthetic ' + self.policy.mode + ' deployment, not restore or production', 'passed': False,
                        'parentImage': parent, 'image': image, 'nginxImage': nginx_image,
                        'productionWrites': 0, 'restorePerformed': False, 'checks': [], 'resources': []}
 
@@ -308,14 +342,14 @@ class Rehearsal:
             need('--name' in args and '--rm' in args and '--network' in args and args[args.index('--network') + 1] == 'none'
                  and '--read-only' in args and '--user' in args and args[args.index('--user') + 1] == '10001:10001', 'unsafe_controller_helper')
             name = args[args.index('--name') + 1]
-            need(re.fullmatch(r'family-dashboard-static-check-[a-z0-9]+-[0-9]+', name), 'controller_helper_name')
+            need(re.fullmatch(r'family-dashboard-' + self.policy.prefix + r'-check-[a-z0-9]+-[0-9]+', name), 'controller_helper_name')
             self.track_new('container', name)
             for i, arg in enumerate(args):
                 if arg == '--mount':
                     mount = args[i + 1]
                     allowed = ('type=volume,src=' + self.volume + ',dst=/data',
                                'type=bind,src=' + str(self.candidate) + ',dst=/release-source,readonly')
-                    valid_input = mount.startswith('type=bind,src=' + str(self.releases) + '/static-') and mount.endswith('/verification,dst=/release-check,readonly') and '..' not in mount
+                    valid_input = mount.startswith('type=bind,src=' + str(self.releases) + '/' + self.policy.prefix + '-') and mount.endswith('/verification,dst=/release-check,readonly') and '..' not in mount
                     need(mount in allowed or valid_input, 'foreign_mount')
             args = args[:2] + ['--label', LABEL + '=' + self.run_id] + args[2:]
         # The audited controller has no arbitrary host shell, pull, rm or prune.
@@ -338,6 +372,7 @@ class Rehearsal:
         need(values.get(SELF) == plain(Path(__file__)), 'harness_source_changed')
         need(all(n in values for n in (CONTROLLER, FIXTURE, 'deploy/check_static_release.py', 'deploy/backup.py', 'compose.yaml', 'Dockerfile', 'deploy/nginx.conf')), 'missing_dependency')
         proof_raw = plain(self.proof); need(sha(proof_raw) == self.proof_sha, 'proof_sha')
+        core.bind_modules(values, [core.CORE] + ([core.SOURCE_ENTRY] if self.policy is core.SOURCE else []))
         proof = json.loads(proof_raw); hashes = {n: sha(v) for n, v in values.items()}
         backend = {n: h for n, h in hashes.items() if n == 'requirements.txt' or '/' not in n and n.endswith('.py')}
         static = {n: h for n, h in hashes.items() if n.startswith('static/')}
@@ -347,12 +382,26 @@ class Rehearsal:
              and all(proof.get(k) is True for k in ('parentLayersPreserved', 'configurationUnchanged',
                      'parentBackendVerified', 'childBackendVerified', 'staticVerified'))
              and proof.get('pipExecuted') is False and proof.get('productionOperations') is False, 'invalid_build_proof')
+        if self.policy is core.SOURCE:
+            self.base_manifest, self.base_values = frozen_source(self.base_source, self.base_manifest_sha)
+            core.source_files(self.base_source, {n: sha(v) for n, v in self.base_values.items()})
+            old_hashes = {n: sha(v) for n, v in self.base_values.items()}
+            need(plain(self.source / 'BASE-MANIFEST.json') == self.base_manifest, 'rehearsal_base_binding')
+            core.validate_changes(old_hashes, hashes, sorted(n for n in hashes if old_hashes.get(n) != hashes[n]), policy=self.policy)
+            need(proof.get('mode') == self.policy.mode and proof.get('baseManifestSha256') == self.base_manifest_sha
+                 and proof.get('parentRuntimeHashes') == {**core.backend_hashes(old_hashes), **core.static_hashes(old_hashes)}
+                 and proof.get('candidateRuntimeHashes') == {**backend, **static}
+                 and proof.get('bytecodeExcluded') is True
+                 and self.base_values.get(FIXTURE) == values[FIXTURE], 'source_rehearsal_proof')
+            parent_backend = core.backend_hashes(old_hashes)
+        else:
+            parent_backend = backend
         self.output.mkdir(mode=0o700); self.created = True
         for image in (self.parent, self.image, self.nginx):
             info = json.loads(self.call(['image', 'inspect', image])); need(len(info) == 1 and info[0]['Id'] == image and info[0]['Os'] == 'linux', 'local_image')
         # This is a new run-specific tag, never the production app tag.
         need(self.tag not in self.call(['image', 'ls', '--filter', 'reference=' + self.tag, '--format', '{{.Repository}}']).splitlines(), 'existing_tag')
-        parent_static = json.loads(self.ephemeral(self.parent, ['python', '-c', PARENT_FILES, json.dumps(backend)]))
+        parent_static = json.loads(self.ephemeral(self.parent, ['python', '-c', PARENT_FILES, json.dumps(parent_backend)]))
         old_static = {relative(n): base64.b64decode(v, validate=True) for n, v in parent_static.items()}
         need(old_static and all(n.startswith('static/') for n in old_static) and set(old_static) <= set(static), 'parent_static_inventory')
         self.proof_dir.mkdir(mode=0o700)
@@ -360,7 +409,11 @@ class Rehearsal:
         config = encoded(compose_config(self.project, self.run_id, self.nginx, self.proof_dir, self.root / 'tests'))
         nginx = b'server { listen 8080; location / { return 200 "Synthetic static rehearsal\\n"; } }\n'
         new_values = {**values, 'compose.yaml': config, 'deploy/nginx.conf': nginx}
-        old_values = {n: v for n, v in new_values.items() if not n.startswith('static/')}; old_values.update(old_static)
+        if self.policy is core.SOURCE:
+            need(old_static == {n: v for n, v in self.base_values.items() if n.startswith('static/')}, 'parent_base_static')
+            old_values = {**self.base_values, 'compose.yaml': config, 'deploy/nginx.conf': nginx}
+        else:
+            old_values = {n: v for n, v in new_values.items() if not n.startswith('static/')}; old_values.update(old_static)
         for directory, content in ((self.root, old_values), (self.candidate, new_values)):
             directory.mkdir(mode=0o755)
             for name, raw in content.items():
@@ -379,8 +432,8 @@ class Rehearsal:
         env_raw = ''.join(k + '=' + v + '\n' for k, v in env.items()).encode()
         (self.root / '.env').write_bytes(env_raw); (self.root / '.env').chmod(0o600)
         candidate_hashes = {n: sha(v) for n, v in new_values.items()}; base_hashes = {n: sha(v) for n, v in old_values.items()}
-        self.manifest, self.ready_sha = fixture_ready(self.candidate, base_hashes, candidate_hashes, self.parent, self.image, proof_raw, env_raw)
-        self.controller = load_controller(self.candidate)
+        self.manifest, self.ready_sha = fixture_ready(self.candidate, base_hashes, candidate_hashes, self.parent, self.image, proof_raw, env_raw, policy=self.policy)
+        self.controller = load_controller(self.candidate, self.policy)
         self.controller.evidence(self.candidate, json.loads(plain(self.candidate / 'READY.json')), candidate_hashes, self.image)
         self.controller.validate_changes(base_hashes, candidate_hashes, sorted(n for n in candidate_hashes if base_hashes.get(n) != candidate_hashes[n]))
         self.report.update(source=str(self.source), buildProof=str(self.proof),
@@ -390,6 +443,10 @@ class Rehearsal:
                            sourceAdaptations={n: {'originalSha256': hashes[n], 'syntheticSha256': candidate_hashes[n]}
                                               for n in candidate_hashes if hashes[n] != candidate_hashes[n]})
         self.original_values, self.original_manifest = values, manifest_raw
+        if self.policy is core.SOURCE:
+            self.report.update(baseSource=str(self.base_source), baseManifestSha256=self.base_manifest_sha,
+                baseSourceHashes=old_hashes, baseSourceAdaptations={n: {'originalSha256': old_hashes[n], 'syntheticSha256': base_hashes[n]}
+                    for n in old_hashes if old_hashes[n] != base_hashes[n]})
 
     def compose(self, *args, timeout=180):
         return self.runner([*self.compose_prefix(), *args], cwd=self.root, timeout=timeout, env=dict(self.host_environment))
@@ -453,6 +510,10 @@ class Rehearsal:
         self.report['dataVerification'] = verified
         raw, values = frozen_source(self.source, self.manifest_sha)
         self.check('input_source_unchanged', raw == self.original_manifest and values == self.original_values and sha(plain(self.proof)) == self.proof_sha)
+        if self.policy is core.SOURCE:
+            raw, values = frozen_source(self.base_source, self.base_manifest_sha)
+            self.check('base_source_unchanged', raw == self.base_manifest and values == self.base_values
+                       and plain(self.source / 'BASE-MANIFEST.json') == raw)
         self.report['passed'] = True
         self.report['phase'] = 'complete'
 
@@ -483,7 +544,7 @@ class Rehearsal:
             if self.created:self.cleanup()
         self.report['completedAt'] = datetime.now(timezone.utc).isoformat()
         if self.created:
-            path = self.output / 'static-rehearsal.json'
+            path = self.output / (self.policy.prefix + '-rehearsal.json')
             with path.open('xb') as f:f.write(encoded(self.report))
             path.chmod(0o600)
         return self.report
