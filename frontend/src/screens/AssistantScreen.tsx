@@ -59,7 +59,7 @@ function AssistantWorkspace(props: ScreenProps) {
   return <View style={styles.page}>
     <PageHeader title="家庭助理" description="把想法整理成清单，核对后再保存。" />
     <SectionCard title="今天想处理什么？">
-      <TextInput mode="outlined" multiline label="告诉助理你的需求" accessibilityLabel="告诉助理你的需求" value={prompt}
+      <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} multiline label="告诉助理你的需求" accessibilityLabel="告诉助理你的需求" value={prompt}
         onChangeText={setPrompt} disabled={editingLocked} maxLength={2000} style={styles.input}
         placeholder="待办：明天预约保洁；确认酒店" />
       <View style={styles.choices}>{['待办：明天预约保洁；确认酒店', '采购：收纳袋；转换插头', '看看这周安排'].map(text =>
