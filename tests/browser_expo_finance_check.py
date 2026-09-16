@@ -409,6 +409,9 @@ class Run:
             assert self.snapshot() == before, 'Import preview wrote to business or audit tables'
             for width in (320, 390, 1040, 1440):
                 self.screenshot(page, 'import-preview', width)
+            page.set_viewport_size({'width': 390, 'height': 844})
+            button(page, '确认导入 · 仅本人').scroll_into_view_if_needed()
+            self.screenshot(page, 'import-confirm-visible', 390)
             # Picking another file invalidates the old signed preview immediately.
             page.evaluate('''() => {
               const original = File.prototype.arrayBuffer;
