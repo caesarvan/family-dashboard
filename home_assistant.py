@@ -374,17 +374,28 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
             pass
         return context
 
-    def search_records(query, limit=20, offset=0):
+    def search_records(query, limit=20, offset=0, *, context=None):
         if not isinstance(query, str) or not 1 <= len(query.strip()) <= 100:
             raise Problem('搜索词须为 1～100 字')
         query = query.strip()
         term = query.casefold()
         matches = []
-        with authorized() as con:
+        context = context if context is not None else capture_context()
+        with authorized(context) as con:
             owner = g.actor['id']
             for item in records():
                 if item['kind'] in {'tasks', 'shopping', 'events', 'trips'} and term in (item.get('title', '') + ' ' + item.get('location', '')).casefold():
                     matches.append({k: item.get(k) for k in ('id', 'kind', 'title', 'start', 'due', 'owner')})
+            from inventory_core import project_item
+            rows = con.execute("SELECT id,title,variant,location FROM inventory_items WHERE deleted_at IS NULL AND (owner=? OR visibility='shared') ORDER BY id", (owner,))
+            for row in rows:
+                if term in (' '.join(row[key] for key in ('title', 'variant', 'location'))).casefold():
+                    # Reuse domain ACL and quantity definitions. Never infer stock
+                    # from payments, orders or the client's search text.
+                    projected = project_item(con, owner, row['id'])
+                    matches.append({'kind': 'inventory', **{key: projected[key] for key in
+                                    ('id', 'title', 'variant', 'location', 'unit', 'visibility', 'revision',
+                                     'onHandQty', 'inTransitQty', 'plannedQty')}})
             library = app.extensions.get('household_media')
             if library is not None:
                 from household_media import ITEM_VIEW
@@ -512,7 +523,7 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
         prompt = prompt.strip()
         found = re.match(r'^(?:搜索|查找|找一下)\s*[：:]?\s*(.*)$', prompt, re.S)
         if found:
-            result = search_records(found[1])
+            result = search_records(found[1], context=context_snapshot)
             return jsonify(id=None, summary=f"找到 {result['total']} 条当前可见记录。搜索仅在本地进行。",
                            actions=[], mode='local', matches=result.pop('matches'), search=result)
         with authorized(context_snapshot):
