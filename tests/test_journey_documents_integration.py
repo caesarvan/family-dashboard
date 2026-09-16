@@ -291,7 +291,11 @@ def serve(app):
 
 
 def test_documented_two_household_restore_fixture_over_real_loopback(tmp_path, monkeypatch, record_testsuite_property):
-    """Exercise the actual seed/verify fixture; Docker execution is a separate gate."""
+    """Synthetic historical 43-table schema; current 44-table recovery has its own test."""
+    # Keep the historical gate exact. Disable only places registration for both
+    # original and restored factories (including child households in this scope).
+    import app as application
+    monkeypatch.setattr(application, 'register_journey_places', lambda *_args, **_kwargs: None)
     run_id = uuid.uuid4().hex
     source, target, proof = [tmp_path / name for name in ('source', 'restored', 'proof')]
     for path in (source, target, proof):
@@ -306,7 +310,7 @@ def test_documented_two_household_restore_fixture_over_real_loopback(tmp_path, m
     original = create_app(config)
     with serve(original) as base:
         seeded = recovery.Audit('seed')
-        counts = recovery.seed(SimpleNamespace(base_url=base), seeded, source, proof / 'expected.json', run_id)
+        counts = recovery.seed(SimpleNamespace(base_url=base, profile='legacy43'), seeded, source, proof / 'expected.json', run_id)
     assert counts['journeyDocuments'] == 8 and counts['journeys'] == 2
     result = backup_module().backup_all(source)
     assert result['databases'] == 3
@@ -333,7 +337,7 @@ def test_documented_two_household_restore_fixture_over_real_loopback(tmp_path, m
     restored = create_app({**config, 'DATA_DIR': str(target)})
     with serve(restored) as base:
         verified = recovery.Audit('verify')
-        counts = recovery.verify(SimpleNamespace(base_url=base), verified, target, proof / 'expected.json', run_id)
+        counts = recovery.verify(SimpleNamespace(base_url=base, profile='legacy43'), verified, target, proof / 'expected.json', run_id)
     assert counts['journeyDocuments'] == 8 and counts['householdTablesEach'] == 43
     assert seeded.external == verified.external == []
     assert all(item['passed'] for item in seeded.checks + verified.checks)
