@@ -230,7 +230,22 @@ window.InventoryUI = (() => {
     f.visibility=()=>{if (document.hidden) clearTimeout(f.timer);else if (alive(f)) schedule(f);};
     f.observer=new MutationObserver(()=>{if (current===f&&!node.isConnected) unmount();});f.observer.observe(document.body,{childList:true,subtree:true});
     for (const kind of ['click','input','change','submit']) node.addEventListener(kind,f[kind]);document.addEventListener('visibilitychange',f.visibility);
-    render(f);await refresh(f);
+    render(f);f.initialRead=refresh(f);await f.initialRead;
   }
-  return {mount,unmount,notifyIdentityChanged,notifyStateChanged:()=>{if (current) alive(current);}};
+  async function openItem(itemId) {
+    const f=current;
+    if (!/^[a-f0-9]{24}$/.test(itemId) || !f || !alive(f)) return false;
+    await f.initialRead;
+    if (!alive(f)) return false;
+    if (f.busy || f.pending) {
+      f.notice='请先完成当前读取，或核对保留的库存操作，再打开另一件物品。';message(f);return false;
+    }
+    if (f.form && !confirm('要放弃尚未保存的库存草稿，打开这件物品吗？')) return false;
+    await job(f,async check=>{
+      f.form=null;f.item=null;f.acquisition=null;f.batches=pageData();f.movements=pageData();render(f);
+      await details(f,check,itemId);
+    });
+    return alive(f) && f.item?.id===itemId;
+  }
+  return {mount,openItem,unmount,notifyIdentityChanged,notifyStateChanged:()=>{if (current) alive(current);}};
 })();
