@@ -15,7 +15,7 @@ type Data = { overview: Overview; ledger: Ledger; shared: Totals[]; finance: Sha
 type Query = { month: string; q: string; page: number; snapshot?: string };
 type Edit = { original: Transaction; category: string; flow: Flow; shared: boolean; conflict: boolean };
 type BudgetDraft = { month: string; currency: string; category: string; amount: string; revision: number; conflict?: boolean };
-type ImportedResult = { imported: number; duplicates: number; conflicts: number; confirmedAt: string; resultMonths: { month: string; recordCount: number }[]; requestId?: string; batchId?: string };
+type ImportedResult = { imported: number; duplicates: number; conflicts: number; confirmedAt: string; resultMonths: { month: string; recordCount: number }[]; requestId?: string; batchId?: string | null };
 type Pending = { kind: 'transaction'; id: string; payload: ReturnType<typeof transactionPatch> }
   | { kind: 'budget'; payload: ReturnType<typeof budgetPayload> }
   | { kind: 'finance'; payload: ReturnType<typeof sharedSnapshotPayload> }
