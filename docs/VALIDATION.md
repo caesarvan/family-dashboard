@@ -1,8 +1,35 @@
 # 验证记录
 
-> **当前版本：2026-09-15 22:32:04（北京时间），镜像 `sha256:14c7db7ba55cb4bbbed919b0b14d4bb1b1670eeb07d9a6f90e05799220590dfb`。** 新建旅行入口与原预览／确认向导统一，静态更新已发布；248 源文件、42 份 Markdown、44 静态资源，106 个方法／路径模板、43 张户内表及 2 张平台表。原后端与依赖保持，本轮证据与历史批次分别记录如下。
+> **当前版本：2026-09-16 11:39:20（北京时间），镜像 `sha256:f82bc0fc147038ca3cdba546756192259a6f28c68c21621f75494ab9dc262ee6`。** 待办起步、XLSX 声明兼容、淘宝多商品订单与明细已通过 SOURCE 43→43 更新发布；255 源文件、43 Markdown、44 静态资源，106 方法／路径模板、43 张户内表及 2 张平台表。生产源码固定于 main `54c0854`／integration `ecc3edc` 同树；本次后续文档修订尚未同步服务器。本轮与历史证据分别记录如下。
 
-## 源码发布工具与组合验证（尚未部署）
+## 2026-09-16 11:39:20（北京时间）SOURCE 43→43 发布
+
+已审 integration `ecc3edce9f714edbd830fcde796e2bb903878b06` 合入 main `54c08547e965ba9dd2bea1c8e8e8f34c1b0dabbe`，同树 `08c13778d26ab8cb7a68bcbb9f22ed72f9434ec3`。本次实际安装 **255 源文件、43 Markdown、44 静态资源、106 方法／路径模板、43 张户内表及 2 张平台表**；发布 manifest SHA `169c962136464f1ba8cbd134665e80e820a21664a0b812b1bf3628ddcba98b5d`。控制器以 `source-update` 完成发布，`publishedAt=2026-09-16T03:39:20.854732+00:00`，目录 `/opt/family-dashboard-releases/source-20260916T033817065173Z`。
+
+| 证据 | 实际范围 |
+|---|---|
+| BASE 与构建 | 248 文件 BASE 逐字绑定 `daf5ab4`，manifest SHA `3db7f24ee5566b1535abbfaacad0daae0d07fcacee6eafe060edda073b4179ae`。从不可变父镜像 `14c7db7b…` 构建子镜像 `sha256:f82bc0fc147038ca3cdba546756192259a6f28c68c21621f75494ab9dc262ee6`，11:00:39（北京时间）完成；父层加一层，完整镜像配置、requirements 保持，无 pip，无生产操作 |
+| 运行差异 | 仅两项既有根 Python 与五项静态文件；父／子各 70 项运行文件核验，子镜像 26 项 Python／requirements 与 44 项 static 匹配候选，字节码检查通过。没有 schema、数据迁移、依赖或配置变化 |
+| Windows 受影响后端 | 13 个模块 406 passed，0 skipped / failed / error；保留原 JUnit、日志、前后依赖和原整段报告状态，与历史作者测试不重复相加 |
+| 新镜像 Linux | 13 个受影响后端模块 406 passed，五个工具模块 269 passed，各 0 skipped / failed / error；分别保留 JUnit、日志、镜像运行字节证明，执行前后依赖相同。测试网络为 none、未挂生产数据，清理通过 |
+| 浏览器 | `e0769e3` 时实际补测 187 项功能；历史 17+35+13=65 项在应用、实际脚本与辅助依赖相同后复用，共 252 项功能，工作台 59 项路由另列。89 份原始引用保留，0 页面错误／外站／服务商请求；不是当前候选上的一次全套重跑 |
+| 真实 SOURCE Docker 演练 | 11:10:25（北京时间）完成；两户、每户 43 表、平台 2 表、8 份资料、3 库完整备份。实际控制器完成 43→43 升级，安装前／启动后／HTTP 后原行、schema、序号和认证保持，44 静态 SHA 与 8 匿名 401 通过；无恢复、无生产写入。13 项受管资源清理通过，保护调用者镜像而明确保留一个标签 |
+| 实际生产 | 1 户及平台注册库，2 库完整组备份 `groupVerified=true`；安装前／启动后／HTTP 后三次核对全部 43 表的行、schema、索引／trigger、序号及平台注册数据保持。原 `.env` 和完整解析配置保持，`bytecodeExcluded=true`，未执行恢复 |
+| 发布后读回 | 44 静态资源 200 且 SHA 匹配、8 匿名接口 401；app/sync/web 新容器均运行，app 健康。随后独立只读核对全部 255 源文件、manifest `169c9621…`、原环境 SHA `0c92e0ae…` 及 app/sync 镜像 `f82bc0fc…`，无覆盖配置或宿主 Compose 变量 |
+
+首次 Linux 尝试在 11:03:22（北京时间）因测试支持目录挂载带入三份宿主 `deploy/__pycache__` 文件，被严格字节码门禁拒绝，**0 项用例执行，原报告保持失败**；源码散列未变。随后只在测试支持副本中按 manifest 精确复制 185 项文件，不挂载或改写镜像运行 Python/static，不放宽门禁；新输出 `linux-source-fixture-retry1` 于 11:19:02 完成上述 406／269 项。旧 1495 项后端和历史静态工具 187 项不充作新镜像受影响范围。
+
+本机私有证据目录 `source-order-group-20260916T025846126274Z-0fe612be` 保留 `source.json`、`main-merge.json`、实际 `build.json`（SHA `336f39037522e8eeb99732320d95ba5907516c95ec6b8ff4dfa7d7a2d1270847`）、`root-build-verification.json`、`linux-source-fixture-retry1-receipt.json`、原失败与诊断、`root-source-rehearsal-verification.json` 及其控制器／seed／数据核验原件。浏览器原报告 `source-release-browser-verification-e0769e3.json` SHA 为 `2c27bd9944b83fb6d4fd061e424f1edeee5e97e1a72670e551fb68d25aedd966`。这些原件不改写为新的执行时间、源码或结果，也不随通用源码包分发。
+
+实际生产原件 `production-deployment.json` SHA `0b2c92c96affb470f508801255a573dae7eaf51545a0772b27ef2a22e86994dd`；发布后只读原件 `static-production-base-20260916T033958860318Z.json` SHA `c83ce86730488437930ea0731e66ba7d4b615d64604c5465482450d3e1967c20`。数据相等结论覆盖停写至 HTTP 核对窗口，开放 sync/web 后允许正常业务变化；未用旧库覆盖新写入。本次文档变更只在独立本地分支交接，不能据此改变服务器精确源码身份。
+
+root 独立核验原件 `root-production-verification.json` SHA `33155938c17f340ce8c1c111fa22815b31a9d5aff6343651fc5557a2f9e12484`；服务器发起并正常验证 TLS 的 `production-https-readback.json`（SHA `5f32a5a1a198633bb4f5e65401572d17b6f0b9cc8b7eda60f29050d18438c953`）确认域名 healthz 200、匿名 `/api/state` 401、`task-publish.js` 200 且候选 SHA 匹配，未登录或调用提供者；不代表用户手机浏览器或实体电视验收。
+
+真实新增云写、银行／电商连接、私人真实账单确认、用户端公网浏览器、实体设备、可选模型和生产覆盖恢复仍未由此次发布完成验收。
+
+## 前阶段：源码发布工具与组合验证
+
+以下保留工具合入时的本地审查范围；后续新镜像与真实演练结果见上节。
 
 工具作者固定提交 `4c05e5019aeb182f5ae23d183ec525dffc72ac60`，base 为 `9239754`；10 个授权文件、253 源文件。作者 Windows 269 项通过，包括保留的 187 项静态工具与 82 项新增源码模式用例。finance_hub 核对原 JUnit／日志／源码散列、原测试函数与断言 AST，并独立运行新增 82 项和真实临时 SQLite 24 项，共 106 passed。两组计数有重叠，不相加。
 
@@ -10,11 +37,11 @@
 
 root 通过 Git 合入 integration `e0769e3cb9d341c73e5b21c1043eb943ddbf0be3`，再次执行五个工具模块，**269 passed，0 failed / error / skipped**。255 个源文件前后散列相同，原始报告为 `source-tools-combination-20260915T164219409390Z/verification.json`（SHA `d67c9fe7e1d3f7bae6492e2783cf9e2d4fc1096f4cc6acf5705d4e6322d93c6a`）。这次使用命令替身与临时 SQLite，不代表真实 Docker 演练。
 
-在冻结的 `e0769e3` detached worktree 已实际补跑八组浏览器：文件 5、选表 11、投资 15、对账 6、异步保护 57、待办起步 32、采购核对 61，共 **187 项功能**；另有 **59 项工作台路由**。每组 255 源文件前后相同，0 页面错误、外网或服务商请求。新报告 SHA `2c27bd9944b83fb6d4fd061e424f1edeee5e97e1a72670e551fb68d25aedd966` 绑定 89 个原始引用；旧 65 项按相同运行依赖单独复用，总计 252 功能与 59 路由，仍是分段证据。下方 406 后端也保留其原固定运行范围。新不可变镜像 Linux 测试、双户 43→43 源码升级演练及生产准入尚未完成。工具审查通过不是部署批准，流程见 [SOURCE-RELEASE](SOURCE-RELEASE.md)。
+在冻结的 `e0769e3` detached worktree 已实际补跑八组浏览器：文件 5、选表 11、投资 15、对账 6、异步保护 57、待办起步 32、采购核对 61，共 **187 项功能**；另有 **59 项工作台路由**。每组 255 源文件前后相同，0 页面错误、外网或服务商请求。新报告 SHA `2c27bd9944b83fb6d4fd061e424f1edeee5e97e1a72670e551fb68d25aedd966` 绑定 89 个原始引用；旧 65 项按相同运行依赖单独复用，总计 252 功能与 59 路由，仍是分段证据。下方 406 后端也保留其原固定运行范围。当时新不可变镜像 Linux 测试、双户 43→43 源码升级演练及生产准入尚未完成；后续结果见本文本次 SOURCE 发布记录。工具审查通过不是部署批准，流程见 [SOURCE-RELEASE](SOURCE-RELEASE.md)。
 
 发布前只读核对发现：线上 `RELEASE-MANIFEST.json` SHA 为 `3db7f24ee5566b1535abbfaacad0daae0d07fcacee6eafe060edda073b4179ae`，248 源文件逐字等于已审 Git `daf5ab4e7adbddb994ca5c1fd745180d5d912c63`。与原运行发布 TAR 的 `7150c5c9…` manifest 相比仅八份后来已发布文档不同，Python/static/配置保持。后续构建／演练必须冻结当前 BASE，而不能重用早期 TAR 当作完整现状；此次核对无生产写入。
 
-## 淘宝订单分组与商品明细候选（尚未部署）
+## 前阶段：淘宝订单分组与商品明细候选
 
 共同 base 为 `9239754`；后端 `df9ef6b` 与界面 `4186bbe` 分别在独立分支／worktree 提交。root 在两个固定提交的 detached worktree 完成非作者审查，再合入 integration `b0acd800`。没有新 API、表、依赖或配置变化；43 张户内表和 2 张平台表的结构保持。
 
@@ -33,9 +60,9 @@ root 通过 Git 合入 integration `e0769e3cb9d341c73e5b21c1043eb943ddbf0be3`，
 
 最终有效范围为 **406 项后端、65 项浏览器（17 + 35 + 13）**，属于保留原失败并精确重跑后的分段证据，**不是一次全量绿测**。源码共 251 文件、42 份 Markdown、44 静态资源；与首轮组合相比只改变一份测试。根文档随后独立提交审查，运行字节保持；main 合入仍须最终组合非作者审查。作者 221／115 项、上阶段 399／32 项不重复相加。
 
-当前生产仍以 22:32 的发布记录为准。本轮没有确认真实订单、执行新镜像、云写、生产更新或恢复；静态发布工具不能承接这两个 Python 后端变化。无 schema 变化的通用更新工具在独立分支开发，单独审查与演练。
+这一开发阶段的生产仍为 22:32 版本，当时没有确认真实订单、执行新镜像、云写、生产更新或恢复；静态发布工具不能承接这两个 Python 后端变化。后续 SOURCE 工具审查、镜像验证与实际发布见本文最上方记录。
 
-## 前阶段：待办起步与 XLSX 声明兼容（尚未部署）
+## 前阶段：待办起步与 XLSX 声明兼容
 
 共同 base 为 `daf5ab4`。以下本地验证与前次线上发布分别记录；历史 1495 项后端或 187 项静态工具结果不能直接作为已改变 reader 的本轮通过证明。
 
