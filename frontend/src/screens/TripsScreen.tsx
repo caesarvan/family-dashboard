@@ -9,7 +9,7 @@ import {copy, editDraft, eventDates, memberKey, newDraft, newKey, previewPayload
 import {EmptyState, PageHeader, SectionCard} from '../ui/components';
 import {money} from './ListScreen';
 
-type Props=ScreenProps & {tripRequest?:{key:number;id?:string}};
+type Props=ScreenProps & {tripRequest?:{key:number;id?:string}; onReturnMap?:()=>void};
 type Pending={previewToken:string;idempotencyKey:string};
 export default function TripsScreen(props:Props) {
   const {mutate,refresh,online}=useHousehold(), theme=useTheme();
@@ -120,6 +120,7 @@ export default function TripsScreen(props:Props) {
   if(props.user.role!=='member')return <Text>旅行编辑仅供已登录家庭成员使用。</Text>;
   const active=detail?.trip||legacy;
   return <View style={styles.page}>
+    {!!props.onReturnMap&&!draft&&<Button icon="arrow-left" disabled={!!busy} onPress={props.onReturnMap}>返回足迹地图</Button>}
     <PageHeader title={draft?(draft.journeyId?'编辑旅行':draft.tripId?'完善旅行计划':'计划旅行'):detail||legacy?'旅行详情':'旅行'} description={draft?'先安排日期与目的地，再按需补充细节。':undefined} action={!draft&&!detail&&!legacy?<Button mode="contained" icon="plus" disabled={!!busy||!online} onPress={startNew}>计划旅行</Button>:undefined}/>
     {!!notice&&<Text accessibilityLiveRegion="polite">{notice}</Text>}
     {!!error&&<HelperText type="error" accessibilityRole="alert">{error}</HelperText>}
@@ -156,7 +157,7 @@ export default function TripsScreen(props:Props) {
         <SectionCard title={`采购 · ${detail.progress.purchased}/${detail.progress.purchaseCount}`}>{detail.shopping.length?group(detail.shopping,'shopping'):<Text>这趟旅行尚未安排采购。</Text>}<Text variant="bodySmall">计划采购 {money(detail.budget.purchaseBudget)}{detail.budget.unknownPurchaseBudgets?`，另有 ${detail.budget.unknownPurchaseBudgets} 件未填预算`:''} · 已买实付 {money(detail.budget.purchaseActual)}{detail.budget.unknownPurchaseActuals?`，另有 ${detail.budget.unknownPurchaseActuals} 件未填实付`:''}</Text><Text variant="bodySmall">{detail.budget.note}</Text></SectionCard>
         <SectionCard title="本地行程">{detail.events.map(event=><View style={styles.event} key={event.id}><Text variant="titleMedium">{event.title}</Text><Text>{eventDates(event)}</Text>{!!event.location&&<Text>{event.location}</Text>}{!!event.note&&<Text variant="bodySmall">{event.note}</Text>}<Divider/></View>)}<Text variant="bodySmall">这里显示看板本地安排，云日历发布状态请在经典旅行中核对。</Text></SectionCard>
       </>:<SectionCard title="完善行程"><Text>这是一条基础旅行记录。编辑后可预览生成本地行程与准备清单，原旅行和已有本地准备记录会保留。</Text></SectionCard>}
-      <Button icon="open-in-app" onPress={()=>props.onLegacy('trips')}>高级分段、资料与云同步（经典旅行）</Button><Button onPress={()=>props.onLegacy('map')}>足迹地图（经典页面）</Button>
+      <Button icon="open-in-app" onPress={()=>props.onLegacy('trips')}>高级分段、资料与云同步（经典旅行）</Button>{!props.onReturnMap&&<Button icon="map-outline" onPress={()=>props.onNavigate('map')}>足迹地图</Button>}
     </>:<>
       <Searchbar placeholder="搜索旅行或目的地" value={query} onChangeText={setQuery}/>
       {journeys===null?<EmptyState title={reading?'正在读取旅行':'旅行暂时无法读取'} action={!reading?<Button onPress={()=>void load()}>重试</Button>:undefined}/>:props.state.trips.filter(trip=>[trip.title,trip.destination||''].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).sort((a,b)=>a.start.localeCompare(b.start)).map(trip=><SectionCard key={trip.id} title={trip.title} action={<Button disabled={reading} onPress={()=>void openTrip(trip.id)}>查看</Button>}><Text>{trip.destination}</Text><Text>{trip.start} — {trip.end}</Text><Text variant="bodySmall">预算 {money(trip.budget)} · 已付 {money(trip.paid)}</Text></SectionCard>)}
