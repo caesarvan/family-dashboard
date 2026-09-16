@@ -2,7 +2,7 @@ import { openLocal } from '../lib/navigation';
 import React, { useEffect, useState } from 'react';
 import { View } from 'react-native';
 import { ActivityIndicator, Button, Snackbar, Text } from 'react-native-paper';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigationContainerRef, useRouter } from 'expo-router';
 import { useHousehold } from '../lib/household';
 import { Entity, ItemKind, RouteName, ScreenProps } from '../lib/types';
 import AppShell from '../ui/AppShell';
@@ -24,13 +24,22 @@ const titles:Record<RouteName,string>={home:'首页',calendar:'日程',tasks:'�
 const legacyRoutes=new Set(['home','calendar','tasks','shopping','trips','map','photos','finance','assistant','connections','household','settings','inventory']);
 export default function HouseholdApp({screen='home'}:{screen?:string}) {
   const route=Object.hasOwn(titles,screen)?screen as RouteName:'home', router=useRouter();
+  const navigation=useNavigationContainerRef();
   const params=useLocalSearchParams<{ request?: string; item?: string; auth?: string; reason?: string }>();
   const [authResult,setAuthResult]=useState<SyncAuthResult|undefined>(()=>route==='connections'?readSyncAuthResult(params.auth,params.reason):undefined);
   useEffect(()=>{
     if(route!=='connections'){setAuthResult(undefined);return;}
     const result=readSyncAuthResult(params.auth,params.reason);
-    if(result){setAuthResult(result);router.setParams({auth:undefined,reason:undefined});}
-  },[route,params.auth,params.reason,router]);
+    if(!result)return;
+    setAuthResult(result);
+    // Initial route effects run before the root navigation container is ready.
+    // Subscribe before checking so the one-time ready event cannot be missed.
+    let consumed=false;
+    const consume=()=>{if(!consumed&&navigation.isReady()){consumed=true;router.setParams({auth:undefined,reason:undefined});}};
+    const unsubscribe=navigation.addListener('ready',consume);
+    consume();
+    return unsubscribe;
+  },[route,params.auth,params.reason,router,navigation]);
   const household=useHousehold(); const {user,state,loading,online,error,refresh,preferences,notice,setNotice}=household;
   const [editor,setEditor]=useState<{kind:ItemKind;item?:Entity;key:number}|null>(null);
   const [pendingId,setPendingId]=useState('');
