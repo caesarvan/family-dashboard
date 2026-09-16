@@ -6,6 +6,14 @@
 
 ## 已发布：完整账本与金额校验
 
+### 新一轮本地候选：NVIDIA 与并发编排
+
+发布后文档、设计参考及扩展计划已通过独立审查后合入本地 main `e42c535`；这不改变上方服务器安装身份。其上 NVIDIA 产品适配 `52be16e803758797eabe545c0500094cd005ee09` 和开发编排 `96d8a82f64b6b9a05e5270953b2214935d55b41d` 分别经非作者审查，无冲突合入 integration `ff590965c8feb544930e12a0cd7a477ffd17b872`。本段文档在以该集成提交为明确依赖的 `codex/root-nvidia-handoff` 独立工作树编辑，再交非作者审查；不在 integration 直接编辑。
+
+产品适配只修改既有 `home_assistant.py`、`app.py` 的 AI 配置读取、`household_spaces.py` 的子户配置白名单和一处前端服务名称告知，另加专用测试及 [说明](ASSISTANT-PROVIDER.md)。开发编排只增加 `tools/inference_orchestrator/` 四文件、合成测试及 [指导](INFERENCE-ORCHESTRATION.md)，不操作工作树、应用补丁或自行审查晋级。两个分支没有新应用路由、schema 或依赖；配置秘密仍只在服务端。
+
+root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项检查；编排独立 27 项合成测试与 24 次真实需求请求分列，原件/限制见 [VALIDATION](VALIDATION.md)。源码已合入候选不代表生产已配置 NVIDIA。现有 SOURCE 策略尚未准许根 DESIGN.md 和开发工具路径变化；后续发布须先独立处理发布清单，并针对实际环境配置、镜像与数据版本验收。地图资产 `0585547` 已独立审查，地图 API/UI 尚在各自分支，不混入本次 NVIDIA 组合。
+
 开发共同 base 为 `fa72df437af8e97315e04d019a2f110b6cf69938`。发布前服务器的 255 文件 BASE 逐字对应 `54c0854`；本次实际安装同树 integration `82f4401`／main `79faaf3` 的 258 文件，不能把开发基线当作服务器安装状态。
 
 | 分支 | 独立 worktree | 允许范围 |
