@@ -10,6 +10,8 @@
 
 **财务使用从核对开始。** 导入账单后先看新增、重复、冲突和错误，再明确保存到本人账本；导入不会自动修改公共荷包余额。搜索或翻页打开交易详情，可查看首次来源、选择关联候选、预览金额后确认，关系可明确撤销。共同资金和个人消费分开，个人账户与消费明细仅本人可见。实际操作步骤见 [Expo 财务](docs/EXPO-FINANCE.md)。
 
+**本地已验候选：Expo「我的持仓」，尚未部署。** 候选 `/app/investments` 支持本人完整持仓与分币种汇总、手工增改删、CSV／TXT／XLSX 整理表预览确认、稳定来源关联、版本冲突核对及保存结果读回。Windows 424 项、Node 29 项、真实临时浏览器 7 场景通过；这不改变上方线上 54 表版本，Linux 和正式发布尚未执行。使用与开发入口见 [Expo 持仓](docs/EXPO-INVESTMENTS.md)、[持仓 API](docs/INVESTMENTS-API.md)、[候选验收记录](docs/VALIDATION.md#expo-holdings-candidate)。完整资产账户、负债管理、估值历史和汇率功能仍待实现。
+
 面向两位家庭成员的日程、待办、采购、旅行、财务与助理工作台。手机和电脑负责维护，50／75 英寸电视负责常亮展示；两个住处的屏幕可各自设置侧重、布局和主题。目前支持邀请建立独立家庭，每户两位成员。
 
 本 README 汇总**软件方案、已开发功能、代码地图、接口入口、开发环境、部署指导与联合开发方式**。字段级接口、完整安装命令、用户操作和验收记录分别放在 `docs/`，通过下方导航进入。
@@ -31,6 +33,7 @@ JPEG 补丁后本人已实际选择 5 张、全部出现预览并明确保存，
 | 了解产品及全部已开发部分 | 本文「已开发范围与边界」「软件架构」「代码地图」 |
 | 开发一个模块 | [项目规则](AGENTS.md) → [交接与候选状态](docs/HANDOFF.md) → [Git 分支协作](docs/GIT-WORKFLOW.md) → 对应接口文档 |
 | 对接或修改 API | [基础 API](docs/API.md)、[平台 API](docs/PLATFORM-API.md)、[财务 API](docs/FINANCE-API.md)、[完整路由索引](docs/PLATFORM-ROUTES.md) |
+| 查看或继续开发持仓候选 | [使用与组件说明](docs/EXPO-INVESTMENTS.md)、[持仓及操作回执 API](docs/INVESTMENTS-API.md)、[整理表契约](docs/INVESTMENT-IMPORT.md)、[候选交接](docs/HANDOFF.md#expo-holdings-candidate) |
 | 安装、更新、备份或排障 | [部署指导](docs/DEPLOYMENT.md)、[运维手册](docs/OPERATIONS.md)、[恢复演练](docs/RECOVERY-REHEARSAL.md) |
 | 开发新版 React Native 界面 | [前端开发与构建](frontend/README.md)、[同源托管与安全边界](docs/EXPO-WEB.md)、[官网风格](docs/EXPO-SITE-STYLE.md)、[财务](docs/EXPO-FINANCE.md)、[账户与同步](docs/EXPO-ACCOUNTS.md)、[地图与旅行相册](docs/EXPO-MAP.md)、[三模块发布记录](docs/EXPO-NEXT-RELEASE.md) |
 | 把项目交给其他 agent | 源码 ZIP 供阅读；Git bundle 保留 main、候选分支和完整提交历史。恢复命令见 [Git 指导](docs/GIT-WORKFLOW.md) |

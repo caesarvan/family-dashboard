@@ -4,7 +4,25 @@
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。此前 23:02 三模块与 21:59 首期身份分别保留于 [EXPO-NEXT-RELEASE](EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](EXPO-RELEASE.md)，历次证据见 [VALIDATION](VALIDATION.md)。
 
-## 当前交接：Expo 财务
+<a id="expo-holdings-candidate"></a>
+## 本地已验候选：Expo 我的持仓
+
+集成源码 `753c7a3bf9f9c6f0a774d28557cce5de61b7dc95`，文件树 `b19d4e05cf91a1acd3e8ee0bda101dfc9c69ee64`，已完成独立分支、非作者审查及本地组合验证，**尚未部署**。线上仍为顶部 54 表版本；本节不代表已执行 Linux 验证或生产 54→55 迁移。实际构建和测试原件见 [候选验收](VALIDATION.md#expo-holdings-candidate)。
+
+候选从「更多 → 我的持仓」或「家庭资金 → 我的持仓」进入 `/app/investments`，支持完整本人列表、名称／机构／币种筛选、原币成本与已知部分浮盈亏、详情来源、手工增改删和文件更新。估值未知与零分开；历史回执成功后再次读取当前持仓，不恢复随后删除的记录。使用流程见 [Expo 持仓](EXPO-INVESTMENTS.md)，不要将此候选写成完整资产账户或收益历史系统。
+
+| 接手范围 | 实现入口与契约 |
+| --- | --- |
+| 主页面、精确金额和手工操作 | `frontend/src/screens/InvestmentsScreen.tsx`、`frontend/src/lib/investments.ts`；默认 ScreenProps 组件，金额逐项验证后以 BigInt 分币种汇总 |
+| 文件导入 | `InvestmentImportPanel.tsx`、`lib/investmentImport.ts`；父 Portal 保持挂载，面板独立验证身份、隐藏后台／离线内容；用户点击「查看持仓」才通知父页面读取当前列表 |
+| 后端及私人导出 | `finance_hub.py`、`investment_operations.py`、`investment_import.py`、`data_portability.py`；[持仓 API](INVESTMENTS-API.md)、[整理表契约](INVESTMENT-IMPORT.md) |
+| 接线、发布及恢复 | `HouseholdApp`／RouteName／财务和更多入口；Docker COPY、发布白名单纳入新模块；[55 表模型](DATA-MODEL.md#investment-operations55) 与 `deploy/check_investment_operation_migration.py` |
+
+Windows 17 模块共 424 项、Node 29 项（主页面 helper 10、导入 helper 19）、完整 TypeScript 检查和 23 文件导出通过。真实临时 Flask／SQLite／Edge 7 场景通过；先前单独执行的 53 项迁移／导出回归已包含于 424 项，不能相加。来源、回执和版本校验的问题均在独立分支修订后重新审查。本人真实财务文件、新云操作、实体电视、原生安装包和完整资产／负债／估值历史／FX 仍未验收或未实现。
+
+下一位 agent 继续从集成人分配的独立分支和 worktree 开始。新镜像验证、54→55 的停写全户备份与精确增表、正式激活及 TLS 读回均待本轮发布流程执行；不可重放已经结束的 53→54 发布脚本。当前候选模块已经合入集成源码，不要再次复制或重放功能分支。
+
+## 当前线上交接：Expo 财务
 
 各作者在独立分支实现主页面、导入面板、持久回执、迁移、测试和文档，经非作者审查与组合验证后合入 main。实际发布目录 `/opt/family-dashboard-releases/expo-finance-54-20260916T202549009688Z`，manifest `f5a49949e6d868533392f64fa46c4042a85df635b2f8123b3f05076a7d619976`，app／sync／media 镜像 `sha256:4433d1d5c97ec4ed4a1336c2402b0fae121a04e092050ff9eb2821ac61fa4798`。激活报告 `completed=true`，最终独立 r3 读回通过，源码、运行文件、归档和构建身份保持。
 

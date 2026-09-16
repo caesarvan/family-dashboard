@@ -1,8 +1,27 @@
 # 数据模型、同步一致性与隐私边界
 
-## Expo 财务候选：账单导入回执
+> 当前线上为 2026-09-17 04:26:46 财务版，54 张户内表与 2 张平台注册表；下述持仓 55 表属于已验证、尚未部署的集成候选。安装身份见 [HANDOFF](HANDOFF.md)。
 
-本轮源码新增 `hub_import_receipts`，临时新库实测为 **54 张户内表、2 张平台表、149 个 Flask 方法／路径模板**，另有家庭入口 WSGI 路由。此处是候选源码结构，实际安装版本仍以 [交接说明](HANDOFF.md) 为准；下面历次版本数字保留历史含义。
+<a id="investment-operations55"></a>
+## Expo 持仓候选：手工操作回执
+
+候选 `753c7a3` 在每户原 54 表之上只新增 `hub_investment_operations`；平台仍为两表。DDL 唯一来源为 [investment_operations.py](../investment_operations.py) 的 `INVESTMENT_OPERATIONS_SCHEMA_SQL`，由 `finance_hub` 在既有持仓表初始化后注册，随后注册文件导入。新表不改写旧持仓、来源关联或账单导入回执。
+
+| 列 | 类型与约束／含义 |
+| --- | --- |
+| `owner` | TEXT NOT NULL，外键 `users(id)`；与 request_id 组成主键 |
+| `request_id` | TEXT NOT NULL；新版请求校验为 32 位小写十六进制，三类手工操作共用本人编号空间 |
+| `kind`、`record_id` | 各为 TEXT NOT NULL；记录 create／update／delete 及目标持仓 |
+| `payload_digest` | TEXT NOT NULL；规范化操作、目标、版本和内容摘要 |
+| `result`、`completed_at` | 各为 TEXT NOT NULL；业务结果 JSON 和提交时间，不保存文件或凭据 |
+
+七列组成一张表；实际写入、审计和回执在同一事务完成。读取回执不等于读取当前持仓，删除后的历史创建／更新回放不重建记录。私人 ZIP 的 `personal.investmentOperations` 只投影本人允许的业务字段，排除 payload_digest 和未知扩展字段；共享和电视响应不包含它。
+
+[迁移检查器](../deploy/check_investment_operation_migration.py) 核对停写的原 54 表组与备份，只允许新增空表，并完整比较原表行、schema、序列及注册库；逐库 DDL 原子，跨库中断保留现场并拒绝盲目重跑。已填充回执的 55 表组支持完整恢复核对。两户合成迁移／恢复测试已通过，生产迁移尚未执行。字段、容量与重试约束见 [持仓 API](INVESTMENTS-API.md)，证据见 [候选验收](VALIDATION.md#expo-holdings-candidate)。
+
+## 已发布 Expo 财务：账单导入回执
+
+2026-09-17 财务版新增 `hub_import_receipts`，当轮临时新库实测为 **54 张户内表、2 张平台表、149 个 Flask 方法／路径模板**，另有家庭入口 WSGI 路由，随后按 [交接说明](HANDOFF.md) 发布。该数字不包含上方尚未部署的持仓候选；下面历次版本数字保留历史含义。
 
 `hub_import_receipts` 以 `(owner, request_id)` 为主键，包含业务输入摘要、原预览令牌摘要、确认结果 JSON 和创建时间。令牌原文与文件字节不写入回执。新增确认使用成员身份与事务校验，只有真实提交结果才形成回执；同一请求必须保持原输入和原令牌。`GET /api/finance-hub/imports/results/<request_id>` 仅本人读取，404 不能证明尚在处理的请求不会提交。
 
