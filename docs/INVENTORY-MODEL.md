@@ -93,7 +93,7 @@ fulfillmentState 根据receivedQty 为 unreceived/partial/received。只有 orde
 
 ## B/C 的回执接缝
 
-```python
+```text
 apply_with_receipt(con, actor, request_id, operation, payload, action,
                    *, item_id, item_revision,
                    acquisition_id=None, acquisition_revision=None)

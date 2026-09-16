@@ -11,8 +11,8 @@ from deploy.backup import backup_all
 from deploy import check_media_migration as migration
 
 
-@pytest.fixture
-def group(tmp_path,monkeypatch):
+@pytest.fixture(params=['media47','media48'])
+def group(tmp_path,monkeypatch,request):
     password='synthetic-migration-password'
     monkeypatch.setenv('MEMBER1_PASSWORD',password);monkeypatch.setenv('MEMBER2_PASSWORD',password)
     app=create_app({'TESTING':True,'DATA_DIR':str(tmp_path),'SECRET_KEY':'synthetic-media-migration-secret',
@@ -39,16 +39,16 @@ def group(tmp_path,monkeypatch):
                 con.execute('DROP TABLE IF EXISTS '+table)
             con.execute("INSERT INTO audit(actor,action,target,stamp) VALUES('member1','synthetic_old_row','keep','2026-09-16')")
     before=migration.snapshot(tmp_path);migration.verify_baseline(before)
-    return tmp_path,before,backup_all(tmp_path),migration.schema_definition(profile='media47')
+    return tmp_path,before,backup_all(tmp_path),migration.schema_definition(profile=request.param)
 
 
 def test_real_two_household_addition_preserves_all_old_rows_and_trigger_parent(group):
     root,before,backup,schema=group
     result=migration.migrate(root,before,backup,schema)
-    assert result['households']==2 and result['originalTablesPreserved']==44 and result['newTables']==3
+    assert result['households']==2 and result['originalTablesPreserved']==44 and result['newTables']==len(schema['tables'])
     after=migration.snapshot(root)
     for value in after['households'].values():
-        assert len([n for n in value['tables'] if not n.startswith('sqlite_')])==47
+        assert len([n for n in value['tables'] if not n.startswith('sqlite_')])==44+len(schema['tables'])
         assert any(r[:3]==['trigger','media_account_removed','cloud_accounts'] for r in value['schema'])
     assert migration.verify_addition(before,after,schema)==result
     with pytest.raises(RuntimeError,match='database_changed_after_snapshot'):

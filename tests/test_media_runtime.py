@@ -66,7 +66,7 @@ def share_and_grant(app,client,headers,photo):
     return tv,device_id,cookie
 
 
-def test_factory_registers_exact_three_media_tables_and_real_vertical(configured):
+def test_factory_registers_exact_four_media_tables_and_real_vertical(configured):
     app,remote,_=configured
     client,headers,aid=bind_photos(app,remote)
     assert {'household_media','current_tv_device'} <= app.extensions.keys()
@@ -74,8 +74,8 @@ def test_factory_registers_exact_three_media_tables_and_real_vertical(configured
     assert client.get(photo['previewUrl']).status_code==200
     with app.extensions['member_sessions'].db() as con:
         tables={r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        assert len(tables)==47
-        assert {name for name in tables if name.startswith('media_')}=={'media_imports','media_items','media_tv_grants'}
+        assert len(tables)==48
+        assert {name for name in tables if name.startswith('media_')}=={'media_imports','media_items','media_tv_grants','media_playback'}
 
 
 def test_real_household_invite_child_four_members_and_namespace_isolation(configured):
@@ -102,7 +102,7 @@ def test_real_household_invite_child_four_members_and_namespace_isolation(config
         member2,_=login(application,2)
         assert member2.get('/api/media/items?scope=visible').json['total']==0
     with child.extensions['member_sessions'].db() as con:
-        assert con.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone()[0]==47
+        assert con.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone()[0]==48
     seen=[]
     class OnlyRecord:
         def __init__(self,engine): self.engine=engine
@@ -310,7 +310,7 @@ def test_factory_routes_keep_member_tv_csrf_and_photo_only_capability(configured
 
 def test_runtime_packaging_uses_same_image_volume_and_allowlist(tmp_path):
     root=Path(__file__).resolve().parents[1]
-    required={'google_photos_picker.py','media_crypto.py','media_images.py','household_media.py','media_import_worker.py'}
+    required={'google_photos_picker.py','media_crypto.py','media_images.py','household_media.py','media_import_worker.py','media_playback.py'}
     assert required<=set(FILES)
     docker=(root/'Dockerfile').read_text()
     for name in required: assert name in docker

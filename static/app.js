@@ -81,7 +81,7 @@ async function boot(){
   if(isDemo){user={id:'member1',role:'demo'};data=demoData();renderBoard();return}
   try{
     const me=await api('/me');
-    if(JSON.stringify([user?.role,user?.householdId,user?.id,user?.auth_version,csrf])!==JSON.stringify([me.user?.role,me.user?.householdId,me.user?.id,me.user?.auth_version,me.csrf||''])){window.JourneyMap?.notifyIdentityChanged();window.HouseholdMedia?.notifyIdentityChanged();}
+    if(JSON.stringify([user?.role,user?.householdId,user?.id,user?.auth_version,csrf])!==JSON.stringify([me.user?.role,me.user?.householdId,me.user?.id,me.user?.auth_version,me.csrf||''])){window.JourneyMap?.notifyIdentityChanged();window.HouseholdMedia?.notifyIdentityChanged();window.MediaTV?.notifyIdentityChanged();}
     user=me.user;csrf=me.csrf||'';
     if(!user){if(isTV){await startPair()}else renderLogin();showAccountAuthResult();return}
     if(user.role==='tv'){isTV=true;focus=user.focus||'member1'}else if(!localStorage.getItem('household_focus'))focus=user.id;

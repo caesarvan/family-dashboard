@@ -6,7 +6,7 @@
 
 `app.create_app()` 在账户、成员、旅行初始化后调用 `register_media_library`。默认家庭和 `HouseholdPlatform.child()` 构造的家庭都获得 `extensions['household_media']`。现有 child 配置已经传递 Google CLIENT_ID/SECRET，数据目录和派生 SECRET_KEY 仍各户独立，因此 `household_spaces.py` 无需额外修改。配置对象传入、真实邀请/兑换创建子家庭、四成员/两家庭隔离均在本候选测试。
 
-新 `app.extensions['current_tv_device'](con,cookie=None)` 在调用者读事务中核对实际 `household_tv` cookie secret hash、approved和expiry。请求入口和 `/api/state` 使用它；媒体引擎已有自己的等价新事务 `_tv`，preview解密后再次复核，不能用缓存g.actor代替。成员cookie不能替代媒体TV接口的设备cookie。CSRF/Origin/成员只写与家庭路由规则保留。
+新 resolver 保存在 `app.extensions['current_tv_device']`，调用签名为 `current_tv_device(con,cookie=None)`，在调用者读事务中核对实际 `household_tv` cookie secret hash、approved和expiry。请求入口和 `/api/state` 使用它；媒体引擎已有自己的等价新事务 `_tv`，preview解密后再次复核，不能用缓存g.actor代替。成员cookie不能替代媒体TV接口的设备cookie。CSRF/Origin/成员只写与家庭路由规则保留。
 
 ## 账户事务钩子
 
