@@ -1,11 +1,27 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-17 06:15:34（北京时间），06:16:14 正常 TLS 读回通过。** main `f2146f293541d0428b19546cb3539073d8a47321`／source `1bb434210f728af351fd9cd4b655b36b95cb1093` 同树 `d58f28cbefb096d15f5279c89ce2d66cd480d1b6`。Expo 持仓与 54→55 操作回执迁移已发布；完整身份见 [VALIDATION](VALIDATION.md#expo-holdings-release)。此处为发布后本地文档，不改变已安装包或构建来源。
+> **线上版本：2026-09-17 07:38:17（北京时间），07:39:46 正常 TLS 读回通过。** Expo 助理与旅行协作已发布，55→55 无 schema 迁移。完整运行包身份、Linux 结果和备份／TLS 原件见 [旅行协作验收](EXPO-TRAVEL-ACCEPTANCE.md#expo-travel-release)。本页为发布后本地文档，不改变已安装包或构建来源。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。此前 23:02 三模块与 21:59 首期身份分别保留于 [EXPO-NEXT-RELEASE](EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](EXPO-RELEASE.md)，历次证据见 [VALIDATION](VALIDATION.md)。
 
+<a id="expo-travel-release"></a>
+## 当前线上交接：Expo 助理与旅行协作
+
+本轮在独立分支完成简报面板、旅行编辑桥接、成员与负责人选择、采购预算以及保存事务内会话复核，经非作者审查后组合验证。已安装 main `6b2bb55758fce0df02f51252d5eac2441b7c9869`／source `e0c1c6b03e14424bc170d1aa7d7c28529b381801`，与 r4 构建及最终浏览器受验运行输入分别核对；后续文档提交不是运行源码。新镜像 Linux 329 通过、唯一 Windows junction 跳过；本地 196 个不同用例由首次 195 通过和一项补跑组成，另有 117 项基线、31 项 Node 及 7 浏览器场景，不相加为一次全套。原件与剩余范围见 [旅行协作验收](EXPO-TRAVEL-ACCEPTANCE.md)。
+
+| 接手范围 | 实现入口与契约 |
+| --- | --- |
+| 助理入口与简报 | `frontend/src/screens/AssistantScreen.tsx`、`JourneyBriefPanel.tsx`、`frontend/src/lib/journeyBrief.ts`；[组件参数与操作](EXPO-JOURNEY-BRIEF.md) |
+| 旅行编辑与保存 | `TripsScreen.tsx`、`frontend/src/lib/trips.ts`；新建 `Draft` 只在内存传递，丢弃第一次预览令牌，编辑后另行预览与明确保存 |
+| 成员选择与事务授权 | `frontend/src/ui/SelectionRow.tsx`；受控选择值同步视觉与 ARIA；`journey_workflows.py` 在同一写事务内重新检查会话 |
+| 发布与恢复 | [55→55 发布适配器](TRAVEL-RELEASE.md)；无 schema 迁移，完整保全原 55 表与注册库，允许现有持仓操作回执非空；不能重放旧 54→55 |
+
+新增字段继续遵守整数分、未知预算与零分开、成员白名单及负责人约束。模型仅处理用户本次原文；后台／离线隐藏，身份改变清除内存，迟到响应不能覆盖新草稿。原保存结果未知时保留原预览及操作标识安全重试，不当作只读查询或生成新操作替代。完整地图／云日历场景、真实模型质量、本人资料和实体设备仍须另验。
+
+实际 1 户两库在停写期间完整备份，原 55 表的行、schema、序列及注册库在新 app 启动后保持；通过后启动 worker／web。发布后新一次逐库在线备份成功且 timer active，未重新核对 live 全组快照。首次读回封装命令缺少必需的审查 SHA 参数，在 argparse 阶段退出 2；补齐已审 SHA 后成功，失败原件保留。下一位 agent 从集成人新分配的独立分支开始，重新绑定当前实际身份，不能重放旧迁移或本次固定发布命令。
+
 <a id="expo-holdings-candidate"></a>
-## 当前线上交接：Expo 我的持仓
+## 此前线上交接：Expo 我的持仓（06:15）
 
 发布目录 `/opt/family-dashboard-releases/expo-holdings-55-20260916T221433950876Z`，manifest `3ce6cae326bb426703ab316c693a4e06c80c7fcae0abf853a9f8a9b31b7b43fc`，app／sync／media 镜像 `sha256:3b831aaf898dacebcf3bb733ada13271e1be7707bb41ecfb14d85cb9d6ebf133`。实际 1 户两库备份后只新增空 `hub_investment_operations`，原 54 表及注册库的行、schema、序列保持，新 app 启动再次核对完整 55 表组。私有原件在 `expo-holdings-tools-20260917-r2/server-evidence/`；早期 `753c7a3` 的构建与浏览器证据单独保留，见 [验证记录](VALIDATION.md#expo-holdings-release)。
 
@@ -38,7 +54,7 @@
 
 04:41:46 正常 TLS 读回核对 486 源／112 运行／75 静态资源，24 个内部生成路径和 1 个退役资源拒绝，19 个匿名 API 均 401；四服务 running／restarts 0，app healthy，配置保持。新一次备份 service success／timer active，核验该次完整 1 户两库备份的散列、54 表及两张注册表可读性；这是逐库在线备份，`liveGroupSnapshotRechecked=false`，不能表述为重新读取了 live 全组快照或跨库全局原子备份。原件在私有 `expo-finance-package-20260917-r2/post-readback-r3.json`，SHA256 `02a9104725599554a103acce5ff653867212f763d5133b3905bae7c296339332`。首次只读 WAL 检查失败和 r3 独立操作修订保留于 [VALIDATION](VALIDATION.md)；没有再次部署或迁移。
 
-以下发布段落保留各次当时的源码、表数和验收状态，当前身份以上方持仓版本为准。
+以下发布段落保留各次当时的源码、表数和验收状态，当前身份以上方旅行协作版本为准。
 
 ## 此前线上交接：Expo 账户与同步
 
