@@ -17,6 +17,7 @@ from flask import Response, g, jsonify, request
 from cloud_accounts import photos_allowed
 from media_crypto import MediaCipher, MediaCryptoError
 from media_images import Preview
+from journey_time import TimeIssue, date_only, zone
 
 
 CONSENT_VERSION = 'media-v1'
@@ -225,6 +226,17 @@ def _timestamp(value):
     return result
 
 
+def _source_time(value):
+    """Picker creation instant, not local import time; keep its original precision."""
+    if type(value) is not str or not re.fullmatch(
+            r'\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)', value):
+        return None
+    try:
+        return datetime.fromisoformat(value.replace('Z', '+00:00'))
+    except ValueError:
+        return None
+
+
 def _duration(value):
     if type(value) is not str or not re.fullmatch(r'\d+(?:\.\d{1,9})?s', value):
         raise MediaError('bad_response')
@@ -244,6 +256,8 @@ def manifest_map(value):
             raise MediaError('bad_response')
         _text(item['id'], 1024)
         if set(item) != {'id', 'createTime', 'type', 'mediaFile'} or item['type'] not in ('PHOTO', 'VIDEO'):
+            raise MediaError('bad_response')
+        if _source_time(item['createTime']) is None:
             raise MediaError('bad_response')
         file = item['mediaFile']
         if type(file) is not dict or set(file) != {'mimeType', 'filename', 'mediaFileMetadata'}:
@@ -661,6 +675,7 @@ class MediaLibrary:
                 preview_key = secrets.token_hex(12)
                 metadata = {'accountId':row['account_id'],'sourceKey':slot['sourceKey'],'previewKey':preview_key,
                     'mediaId':media['id'],'displayFilename':media['mediaFile']['filename'],'caption':'',
+                    'sourceCreatedAt':media['createTime'],
                     'width':preview.width,'height':preview.height,'contentType':'image/jpeg',
                     'sha256':hashlib.sha256(preview.data).hexdigest(),'bytes':len(preview.data)}
                 con.execute('''INSERT INTO media_items(id,owner,account_id,import_id,source_key,state,metadata_cipher,preview_cipher,preview_key,created_at,updated_at)
@@ -743,8 +758,57 @@ class MediaLibrary:
                       journey={'id':journey['id'],'tripId':journey['trip_id'],'title':json.loads(journey['data']).get('title','')} if journey else None,
                       createdAt=_iso(row['created_at']),canManage=row['owner']==owner)
         if row['owner']==owner:
-            result.update(accountId=row['account_id'],displayFilename=meta['displayFilename'],source='google-photos')
+            source_time = meta.get('sourceCreatedAt')
+            known = _source_time(source_time) is not None
+            result.update(accountId=row['account_id'],displayFilename=meta['displayFilename'],source='google-photos',
+                          sourceCreatedAt=source_time if known else None,sourceTimeState='known' if known else 'unknown')
         return result
+
+    def journey_suggestions(self, uid):
+        """Read a current owner-only date match, never infer a visit or grant access."""
+        with self.transaction() as con:
+            owner = self._member(con)
+            row = con.execute('SELECT '+ITEM_VIEW+' FROM media_items WHERE id=? AND owner=?',(_id(uid),owner)).fetchone()
+            if not row:
+                raise MediaError('not_found')
+            if row['state']=='deleted':
+                raise MediaError('gone')
+            if row['state']!='ready' or row['confirmed_at'] is None:
+                raise MediaError('not_ready')
+            source = self._metadata(row).get('sourceCreatedAt')
+            instant = _source_time(source)
+            result = dict(photoId=row['id'],photoRevision=row['revision'],
+                sourceTimeState='known' if instant else 'unknown',sourceCreatedAt=source if instant else None,
+                currentJourneyId=row['journey_id'],suggestions=[],limit=20,hasMore=False)
+            if instant is None:
+                result['reason'] = dict(code='source_time_unknown',message='这张照片没有已记录的来源创建时间，无法按日期建议旅行。请手动核对关联。')
+                return result
+            rows = con.execute("""SELECT j.id,j.revision AS journey_revision,j.plan,
+                e.revision AS trip_revision,e.data FROM journey_workflows j
+                JOIN entities e ON e.id=j.trip_id AND e.kind='trips'
+                ORDER BY json_extract(e.data,'$.start') DESC,j.id""")
+            for journey in rows:
+                plan, trip = json.loads(journey['plan']), json.loads(journey['data'])
+                legacy = plan.get('schemaVersion',1)==1
+                try:
+                    tz = zone('Asia/Shanghai' if legacy else plan.get('referenceTimezone'),'referenceTimezone')
+                    source_date = instant.astimezone(tz).date().isoformat()
+                    start, end = date_only(trip.get('start'),'start'),date_only(trip.get('end'),'end')
+                except (TimeIssue, ValueError, OverflowError):
+                    continue
+                if not start <= source_date <= end:
+                    continue
+                if len(result['suggestions'])==result['limit']:
+                    result['hasMore'] = True
+                    break
+                result['suggestions'].append(dict(journeyId=journey['id'],journeyRevision=journey['journey_revision'],
+                    tripRevision=journey['trip_revision'],title=trip.get('title',''),start=start,end=end,
+                    referenceTimezone=tz.key,referenceTimezoneSource='legacy_default' if legacy else 'plan',
+                    sourceDate=source_date,alreadyLinked=row['journey_id']==journey['id'],
+                    reason=dict(code='date_overlap',message='来源创建时间在该参考时区的日期落在旅行起止日期内；这不证明拍摄地点或实际到访。')))
+            result['reason'] = (dict(code='date_overlap',message='请核对来源日期和旅行，再明确确认关联。') if result['suggestions']
+                else dict(code='no_matching_journeys',message='来源日期未与当前旅行日期匹配，可手动核对关联。'))
+            return result
 
     def import_detail(self, uid):
         with self.transaction() as con:
@@ -829,10 +893,18 @@ class MediaLibrary:
             return {'cancelled':True,'cleanupPending':bool(row['session_cipher']),'replayed':False}
 
     def patch_item(self, uid, value):
-        _fields(value,{'revision','caption','journeyId','visibility'},{'revision'})
+        expected = {'expectedJourneyRevision','expectedTripRevision'}
+        _fields(value,{'revision','caption','journeyId','visibility'}|expected,{'revision'})
         revision=_revision(value['revision'])
         if len(value)==1:
             raise MediaError('invalid_input')
+        suggested = bool(expected & value.keys())
+        if suggested:
+            # The explicit suggestion confirmation changes only this association.
+            _fields(value,{'revision','journeyId'}|expected,{'revision','journeyId'}|expected)
+            _id(value['journeyId'])
+            for name in expected:
+                _revision(value[name])
         with self.transaction(True) as con:
             owner=self._member(con)
             row=self._item(con,uid,owner,manage=True)
@@ -844,8 +916,13 @@ class MediaLibrary:
             if visibility=='shared' and not self._authority(con,row['account_id'],owner):
                 raise MediaError('reauth')
             journey=value.get('journeyId',row['journey_id'])
-            if journey is not None and not con.execute("SELECT 1 FROM journey_workflows j JOIN entities e ON e.id=j.trip_id AND e.kind='trips' WHERE j.id=?",(_id(journey),)).fetchone():
-                raise MediaError('not_found')
+            if journey is not None:
+                linked = con.execute("""SELECT j.revision AS journey_revision,e.revision AS trip_revision
+                    FROM journey_workflows j JOIN entities e ON e.id=j.trip_id AND e.kind='trips' WHERE j.id=?""",(_id(journey),)).fetchone()
+                if not linked:
+                    raise MediaError('conflict' if suggested else 'not_found')
+                if suggested and (linked['journey_revision'],linked['trip_revision']) != (value['expectedJourneyRevision'],value['expectedTripRevision']):
+                    raise MediaError('conflict')
             meta=self._metadata(row)
             if 'caption' in value:
                 meta['caption']=_text(value['caption'],500)
@@ -1050,6 +1127,13 @@ def register_media_library(app, db, Problem, body, require_member, audit):
     def media_preview(uid):
         require_member()
         return engine.preview(uid)
+
+    @app.get('/api/media/items/<uid>/journey-suggestions')
+    def media_journey_suggestions(uid):
+        require_member()
+        if request.args:
+            raise MediaError('invalid_input')
+        return jsonify(engine.journey_suggestions(uid))
 
     @app.route('/api/media/items/<uid>/tv-grants',methods=['GET','PUT'])
     def media_tv_grants(uid):
