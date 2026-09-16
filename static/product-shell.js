@@ -45,8 +45,16 @@
   let navExpanded = false, preferencesLoadedAt = 0, spaceName = '我们的家', spaceLoaded = false;
   let mapIdentity = '', mapContainer = null;
   let mediaContainer = null;
+  let mapPhotoContext = null;
   let inventoryContainer = null;
   const mapActor = () => JSON.stringify([user?.role,user?.householdId,user?.id,user?.auth_version,csrf,isTV,isDemo]);
+  const clearMapPhotoContext = () => {mapPhotoContext = null;};
+  function openMapPhotos(journeyId, view) {
+    if (currentRoute !== 'map' || isTV || isDemo || !canEdit() || mapIdentity !== mapActor()) return;
+    if (typeof journeyId !== 'string' || !/^[a-f0-9]{24}$/.test(journeyId)) return;
+    mapPhotoContext = {actor:mapActor(),journeyId,view};
+    navigate('photos');
+  }
   const glyph = name => `<svg class="ps-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name] || ICONS.home}"/></svg>`;
   const validPreferences = value => ({theme:Object.hasOwn(THEMES,value?.theme)?value.theme:'forest',density:value?.density==='compact'?'compact':'comfortable',homeView:['today','week','around'].includes(value?.homeView)?value.homeView:'today'});
   const storageKey = () => 'household_preferences_' + (isDemo?'demo':user?.id || 'guest');
@@ -239,6 +247,7 @@
     if (!data) return;
     const identity = mapActor();
     if (identity !== mapIdentity) {
+      clearMapPhotoContext();
       root.JourneyMap?.notifyIdentityChanged(); mapContainer = null; mapIdentity = identity;
       root.HouseholdMedia?.notifyIdentityChanged(); mediaContainer = null;
       root.InventoryUI?.notifyIdentityChanged(); inventoryContainer = null;
@@ -283,7 +292,10 @@
         root.JourneyMap?.notifyStateChanged();
       } else if (root.JourneyMap) {
         mapContainer = slot;
-        void root.JourneyMap.mount(slot, {openJourney:(id,options)=>root.JourneyUI.open(id,options)});
+        const initialView = mapPhotoContext?.actor === identity ? mapPhotoContext.view : undefined;
+        clearMapPhotoContext();
+        void root.JourneyMap.mount(slot, {openJourney:(id,options)=>root.JourneyUI.open(id,options),
+          openPhotos:openMapPhotos,initialView,onIdentityChanged:clearMapPhotoContext});
       } else slot.textContent = '地图组件暂未加载，请刷新重试。原旅行记录仍可从旅行页面打开。';
     }
     if (currentRoute === 'photos' && !isDemo && !isTV) {
@@ -297,7 +309,12 @@
         root.HouseholdMedia?.notifyStateChanged();
       } else if (root.HouseholdMedia) {
         mediaContainer = slot;
-        void root.HouseholdMedia.mount(slot,{openJourney:(id,options)=>root.JourneyUI.open(id,options)});
+        const context = mapPhotoContext?.actor === identity ? mapPhotoContext : null;
+        void root.HouseholdMedia.mount(slot,{openJourney:(id,options)=>root.JourneyUI.open(id,options),
+          initialJourneyId:context?.journeyId,onIdentityChanged:clearMapPhotoContext,
+          returnToMap:context ? () => {
+            if (mapPhotoContext === context && context.actor === mapActor() && currentRoute === 'photos') navigate('map');
+          } : undefined});
       } else slot.textContent = '相册组件暂未加载，请刷新重试。';
     }
     if (currentRoute === 'inventory' && !isDemo && !isTV) {
@@ -319,6 +336,7 @@
   };
   const originalRenderLogin = renderLogin;
   renderLogin = function () {
+    clearMapPhotoContext();
     root.JourneyMap?.notifyIdentityChanged(); mapContainer = null; mapIdentity = '';
     root.HouseholdMedia?.notifyIdentityChanged(); mediaContainer = null;
     root.InventoryUI?.notifyIdentityChanged(); inventoryContainer = null;
@@ -331,6 +349,7 @@
   };
   function navigate(route,remember=true) {
     if (!Object.hasOwn(ROUTES,route)||!data||isTV) return;
+    if (!['map','photos'].includes(route) || mapPhotoContext?.actor !== mapActor()) clearMapPhotoContext();
     currentRoute=route; searchText=''; navExpanded=false;
     if (remember && location.hash!=='#'+route) history.pushState(null,'','#'+route);
     if (document.querySelector('#dialog')?.open) closeModal();

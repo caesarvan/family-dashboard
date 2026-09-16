@@ -13,6 +13,15 @@ window.JourneyMap = (() => {
   const point = c => c && Number.isFinite(c.latitude) && Number.isFinite(c.longitude) && Math.abs(c.latitude) <= 90 && Math.abs(c.longitude) <= 180;
   const xy = c => [(c.longitude + 180) / 360 * 1000, (90 - c.latitude) / 180 * 500];
   const coordinates = c => point(c) ? `${c.latitude.toFixed(6)}, ${c.longitude.toFixed(6)}` : '不显示坐标';
+  // Navigation keeps only query values and IDs, never place DTOs or coordinates.
+  function viewState(value = {}) {
+    const filters = {scope:'visible'};
+    for (const key of ['scope','status','year','owner','journeyId']) {
+      if (typeof value.filters?.[key] === 'string' && value.filters[key].length <= 100) filters[key] = value.filters[key];
+    }
+    return {filters,offset:Number.isInteger(value.offset) && value.offset >= 0 && value.offset <= 3000 ? value.offset : 0,
+      selected:typeof value.selected === 'string' && /^[a-f0-9]{24}$/.test(value.selected) ? value.selected : null};
+  }
 
   function unmount(message = '') {
     const f = current;
@@ -23,6 +32,7 @@ window.JourneyMap = (() => {
     f.node.removeEventListener('change', f.change); f.node.removeEventListener('submit', f.submit);
     f.node.removeEventListener('keydown', f.keydown);
     f.dialog?.removeEventListener('close',f.close);
+    window.removeEventListener('offline',f.offline); window.removeEventListener('online',f.online);
     f.node.replaceChildren();
     if (message) {const p = document.createElement('p'); p.setAttribute('role','alert'); p.textContent = message; f.node.append(p);}
     if (f.editor) {
@@ -33,7 +43,7 @@ window.JourneyMap = (() => {
     }
     f.items = []; f.people = []; f.journeys = []; f.editor = null; f.selected = null; f.filters = {};
   }
-  const notifyIdentityChanged = () => unmount('登录成员或家庭已变化，地点已收起。请重新进入地图。');
+  const notifyIdentityChanged = () => {current?.options.onIdentityChanged?.(); unmount('登录成员或家庭已变化，地点已收起。请重新进入地图。');};
   function local(f) {
     if (!connected(f)) return false;
     if (!permitted() || !same(f.actor, user, csrf)) {notifyIdentityChanged(); return false;}
@@ -44,6 +54,7 @@ window.JourneyMap = (() => {
   }
   async function verify(f, epoch) {
     if (!local(f) || epoch !== f.epoch) return false;
+    if (!navigator.onLine) throw new Error('网络已断开，请恢复连接后重新读取。');
     const me = await api('/me');
     if (!local(f) || epoch !== f.epoch) return false;
     if (!same(f.actor, me.user, me.csrf)) {notifyIdentityChanged(); return false;}
@@ -122,7 +133,7 @@ window.JourneyMap = (() => {
       <dl><dt>日期</dt><dd>${escape(p.startDate || '未排期')}${p.endDate ? ' — '+escape(p.endDate) : ''}</dd><dt>记录成员</dt><dd>${escape(f.people.find(v => v.id === p.owner)?.name || '家庭成员')}</dd><dt>可见范围</dt><dd>${p.visibility === 'private' ? '仅自己' : '家庭共享'}</dd><dt>${precision}</dt><dd>${escape(coordinates(p.coordinates))}</dd></dl>
       ${p.canManage ? `<p class="jm-help">其他成员看到：${escape(coordinates(p.sharedCoordinates))}${p.sharedCoordinatePrecision === 'approximate' ? '（约略网格）' : ''}${p.visibility === 'private' ? '；目前仅自己可见。' : '。'}</p>` : '<p class="jm-help">这是家庭成员共享的地点，仅记录者可以修改或删除。</p>'}
       ${p.status === 'visited' ? `<p class="jm-help">到访已由成员明确确认${p.visitedConfirmedAt ? ' · '+escape(p.visitedConfirmedAt.slice(0,10)) : ''}。</p>` : ''}
-      <div class="jm-actions">${p.canManage ? button('edit','编辑地点') : ''}${p.journey ? button('journey','打开关联旅行') : ''}</div></section>`;
+      <div class="jm-actions">${p.canManage ? button('edit','编辑地点') : ''}${p.journey ? button('journey','打开关联旅行') : ''}${p.journey && typeof f.options.openPhotos === 'function' ? button('photos','查看这次旅行的照片') : ''}</div></section>`;
   }
 
   const input = (label, name, value, attrs = '') => `<label>${label}<input name="${name}" value="${escape(value)}" ${attrs}></label>`;
@@ -314,6 +325,17 @@ window.JourneyMap = (() => {
     if (action === 'select') {if (!discard(f)) return; f.editor = null; f.selected = target.dataset.id; render(f); return;}
     if (action === 'edit') {edit(f,f.items.find(p => p.id === f.selected)); return;}
     if (action === 'journey') {const p = f.items.find(item => item.id === f.selected); if (p?.journey && typeof f.options.openJourney === 'function') await job(f,async flow => {if (await flow.check()) await f.options.openJourney(p.journey.id,{placeId:p.id});}, error => {f.error=error.message;render(f);}); return;}
+    if (action === 'photos') {
+      const selected = f.selected;
+      if (f.busy || !selected || typeof f.options.openPhotos !== 'function') return;
+      await job(f,async flow => {
+        const {place} = await api('/journey-places/' + encodeURIComponent(selected));
+        if (!await flow.check()) return;
+        if (!place?.journey?.id) {await load(f,true); return;}
+        f.options.openPhotos(place.journey.id,viewState(f));
+      },error => {f.items = []; f.total = 0; f.hasMore = false; f.selected = null; f.error = error.message; render(f);});
+      return;
+    }
     if (action === 'refresh' || action === 'reset' || action === 'next' || action === 'previous') {
       if (f.busy || e?.busy) return;
       if (action === 'reset') {f.filters = {scope:'visible'}; f.offset = 0;}
@@ -339,6 +361,7 @@ window.JourneyMap = (() => {
     if (!(node instanceof HTMLElement)) return null;
     if (!permitted()) {node.textContent = isTV ? '地点仅可由登录的家庭成员在手机或电脑查看，电视没有访问权限。' : '请登录家庭成员后查看地图；演示空间不保存地点。'; return null;}
     const f = {node,options,actor:actor(),route:location.href,serial:++serial,epoch:0,dead:false,items:[],people:[],journeys:[],filters:{scope:'visible'},offset:0,total:0,hasMore:false,selected:null,editor:null,landPath:''};
+    Object.assign(f,viewState(options.initialView));
     current = f;
     f.dialog = node.closest('dialog'); f.close = () => {if (current === f) unmount();}; f.dialog?.addEventListener('close',f.close);
     f.click = event => {void click(f,event);};
@@ -380,6 +403,9 @@ window.JourneyMap = (() => {
     f.observer = new MutationObserver(() => {if (current === f && !node.isConnected) unmount();});
     f.observer.observe(document.body,{childList:true,subtree:true});
     f.resize = new ResizeObserver(() => {if (current === f) resizeMarkers(f);}); f.resize.observe(node);
+    f.offline = () => {if (!local(f) || f.editor) return; f.epoch++; f.busy = false; f.items = []; f.total = 0; f.hasMore = false; f.people = []; f.journeys = []; f.error = '网络已断开，地点已收起。恢复连接后重新读取。'; render(f);};
+    f.online = () => {if (local(f) && !f.editor) void load(f,true);};
+    window.addEventListener('offline',f.offline); window.addEventListener('online',f.online);
     void load(f,true);
     return {refresh:() => load(f,true),unmount:() => {if (current === f) unmount();}};
   }
