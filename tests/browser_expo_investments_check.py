@@ -27,6 +27,10 @@ COLUMNS = ['holdingKey', 'name', 'institution', 'assetType', 'currency', 'quanti
 
 
 class Run(FinanceRun):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.report['fixtureHarnessSha256'] = sha(self.root / 'tests/browser_expo_finance_check.py')
+
     def clear_finance(self):
         super().clear_finance()
         assert self.database.resolve().is_relative_to(self.folder.resolve())
@@ -169,10 +173,35 @@ class Run(FinanceRun):
             assert 'PRIVATE_MARKER_甲' not in page.locator('body').inner_text()
             self.passed('Private holdings hide offline and in background and do not cross a real member login change')
 
+    def unknown_import(self, browser):
+        with self.flow(browser) as (ctx, page):
+            content = csv_bytes([['lost-1', '合成导入响应丢失', '合成机构', '基金', 'USD', '', '50.01', '',
+                                  '2026-09-17', '', '']], COLUMNS)
+            self.open_holdings(page)
+            self.open_import(page, content)
+            captured = []
+            def lose_reply(route):
+                captured.append(route.request.post_data_json)
+                reply = route.fetch()
+                assert reply.status == 200 and reply.json()['created'] == 1
+                route.abort('failed')
+            page.route(self.base + BASE + '/imports/confirm', lose_reply)
+            button(page, '确认导入持仓 · 仅本人').click()
+            expect(button(page, '核对持仓保存结果')).to_be_enabled()
+            page.unroute(self.base + BASE + '/imports/confirm', lose_reply)
+            assert len(captured) == 1 and len(self.holdings(ctx)) == 1
+            button(page, '核对持仓保存结果').click()
+            expect(page.get_by_test_id('investment-import-receipt')).to_be_visible()
+            button(page, '查看持仓').click()
+            expect(button(page, '查看持仓 合成导入响应丢失')).to_be_visible()
+            assert len(self.holdings(ctx)) == 1
+            self.passed('Lost real import success is recovered by source/digest receipt; no repeated holding write')
+
     def run_scenarios(self, browser):
         self.manual_crud(browser)
         self.unknown_create(browser)
         self.import_roundtrip(browser)
+        self.unknown_import(browser)
         self.private_visibility(browser)
 
 def main():
@@ -203,7 +232,7 @@ def main():
         eventInjections=['document.hidden/visibilityState plus visibilitychange for background/foreground'],
         head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
         sourceHashesBefore=hashes(), bundleHashesBefore=bundle_hashes(), productionWrites=0, realCloud=False, physicalTelevision=False,
-        scope='Frozen Expo bundle, real local Flask/SQLite, real member/household/TV sessions and CSRF; synthetic financial files only.')
+        scope='Frozen Expo bundle, real local Flask/SQLite, real member sessions and CSRF; synthetic holding files only. Household/TV isolation is validated separately in backend tests.')
     original_connect = socket.socket.connect
 
     def local_connect(sock, address):
