@@ -54,6 +54,30 @@ def test_embedded_programs_are_valid_python():
     # this check only catches embedded-program syntax before a Docker invocation.
 
 
+def test_map_static_additions_are_accepted_with_the_one_new_python_module():
+    base = {'app.py':'a'*64, 'requirements.txt':'b'*64, 'static/app.js':'c'*64}
+    candidate = {**base, 'app.py':'d'*64, 'journey_places.py':'e'*64,
+                 'static/journey-map.js':'f'*64, 'static/journey-map.css':'1'*64,
+                 'static/journey-map-land.geojson':'2'*64}
+    M.validate_runtime_delta(base,candidate)
+
+
+@pytest.mark.parametrize('change,label', [
+    ('remove_static','runtime_removal'), ('remove_python','runtime_removal'),
+    ('extra_python','runtime_delta'), ('missing_places','runtime_delta'),
+    ('changed_requirements','runtime_dependencies'),
+])
+def test_static_additions_do_not_relax_other_runtime_boundaries(change,label):
+    base = {'app.py':'a'*64, 'requirements.txt':'b'*64, 'static/app.js':'c'*64}
+    candidate = {**base,'journey_places.py':'d'*64,'static/journey-map.js':'e'*64}
+    if change=='remove_static': del candidate['static/app.js']
+    elif change=='remove_python': del candidate['app.py']
+    elif change=='extra_python': candidate['other.py']='f'*64
+    elif change=='missing_places': del candidate['journey_places.py']
+    else: candidate['requirements.txt']='0'*64
+    with pytest.raises(RuntimeError,match=label): M.validate_runtime_delta(base,candidate)
+
+
 def test_unlisted_cache_directory_symlink_is_rejected_without_following(tmp_path):
     root=tmp_path/'source';root.mkdir()
     outside=tmp_path/'external-cache';outside.mkdir()
