@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Button, Dialog, Divider, Menu, Portal, SegmentedButtons, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Dialog, Divider, Portal, SegmentedButtons, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import { PhotoReadDiscarded, PhotoReadFence, type PhotoSession } from '../lib/photos';
@@ -180,9 +180,12 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
   }
   const disabled = busy || !!pending || !!receipt;
   const dropdown = (id: string, label: string, items: { key: string; title: string }[], change: (value: string) => void) =>
-    <Menu visible={menu === id} onDismiss={() => setMenu('')} anchor={<Button mode="outlined" disabled={disabled} onPress={() => setMenu(id)} contentStyle={styles.buttonContent}>{label}</Button>}>
-      <ScrollView style={{ maxHeight: Math.min(340, height * .5), maxWidth: 280 }}>{items.map(item => <TouchableRipple key={item.key} accessibilityRole="menuitem" accessibilityLabel={item.title} onPress={() => { setMenu(''); change(item.key); }} style={{ paddingHorizontal: 16, paddingVertical: 12, minHeight: 44 }}><Text>{item.title}</Text></TouchableRipple>)}</ScrollView>
-    </Menu>;
+    <><Button mode="outlined" disabled={disabled} onPress={() => setMenu(id)} contentStyle={styles.buttonContent}>{label}</Button>
+      <Portal><Dialog visible={visible && menu === id} onDismiss={() => setMenu('')} style={{ maxWidth: 560, width: '92%', maxHeight: height - 40, alignSelf: 'center', borderRadius: 24, backgroundColor: theme.colors.surface }}>
+        <Dialog.Title>{{ source: '选择文件来源', encoding: '选择文件编码', sheet: '选择工作表', amount: '选择金额列' }[id] || '请选择'}</Dialog.Title>
+        <Dialog.ScrollArea style={{ paddingHorizontal: 0, flexShrink: 1 }}><ScrollView style={{ maxHeight: Math.min(420, height * .6) }}>{items.map(item => <TouchableRipple key={item.key} accessibilityRole="menuitem" accessibilityLabel={item.title} disabled={disabled} onPress={() => { if (!current() || disabled) return; setMenu(''); change(item.key); }} style={{ paddingHorizontal: 24, paddingVertical: 16, minHeight: 48 }}><Text>{item.title}</Text></TouchableRipple>)}</ScrollView></Dialog.ScrollArea>
+        <Dialog.Actions><Button onPress={() => setMenu('')}>取消</Button></Dialog.Actions>
+      </Dialog></Portal></>;
   const back = () => { if (file || pendingRef.current) setLeaving(true); else onClose(); };
   if (!visible) return <SectionCard title="导入账单"><Text>{error || (!connected() || !household.online ? '连接恢复后会重新核对身份，文件内容暂不显示。' : '正在核对登录状态…')}</Text>
     <Button onPress={() => void resume()}>重新核对身份</Button><Button onPress={onClose}>返回账本</Button></SectionCard>;
