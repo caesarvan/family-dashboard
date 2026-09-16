@@ -39,6 +39,25 @@ services:
     depends_on:
       app:
         condition: service_healthy
+  media:
+    image: family-dashboard-app
+    command: [python, -B, media_import_worker.py]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DATA_DIR: /data
+    volumes:
+      - household-data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 384m
+    stop_grace_period: 360s
+    depends_on:
+      app:
+        condition: service_healthy
   web:
     image: nginx:stable-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c
     restart: unless-stopped

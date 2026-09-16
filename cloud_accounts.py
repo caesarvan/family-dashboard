@@ -375,6 +375,38 @@ class CloudAccounts:
                 raise ProviderError('账号不存在或不属于当前成员', 404)
             return dict(row)
 
+    def media_account_transition(self, con, before, *, tokens=None, identity=None, reauth=False):
+        """Media withdrawal shares the account writer's existing transaction.
+
+        A normal refresh retains omitted scope on the same grant. An explicit
+        new grant without Picker permission is different from a transient API
+        failure. This hook never performs network I/O or commits caller work.
+        """
+        media = self.app.extensions.get('household_media')
+        if media is None or before is None:
+            return
+        if not con.in_transaction:
+            raise RuntimeError('Account media transition requires a transaction')
+        reason = None
+        if identity is not None and any(before[key] != identity.get(key) for key in ('owner','provider','client_id','subject')):
+            reason = 'identity_changed'
+        elif tokens is not None:
+            previous_scope = None
+            readable = True
+            try:
+                previous_scope = self.decrypt(before['tokens']).get('scope')
+            except ProviderError:
+                readable = False
+            if not readable:
+                reason = 'reauth'
+            elif photos_allowed(before['provider'], previous_scope) and not photos_allowed(before['provider'], tokens.get('scope')):
+                reason = 'scope_revoked' if isinstance(tokens.get('scope'), str) else 'reauth'
+        if reason is None and reauth:
+            reason = 'reauth'
+        if reason:
+            media.on_account_authority_changed(con, before['id'], reason)
+            con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
+
     def active_provider(self, account):
         client_id, secret = self.credentials(account['provider'])
         if not secret or client_id != account['client_id']:
@@ -389,6 +421,11 @@ class CloudAccounts:
                                                            'client_id': client_id, 'client_secret': secret})
             tokens.update(fresh)
             with self.db() as con:
+                con.execute('BEGIN IMMEDIATE')
+                current = con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account['id'],)).fetchone()
+                if not current or any(current[k] != account[k] for k in ('owner','provider','client_id','subject','tokens','needs_reauth')):
+                    raise ProviderError('账户授权已变更，请重试', 409)
+                self.media_account_transition(con, current, tokens=tokens)
                 con.execute('UPDATE cloud_accounts SET tokens=? WHERE id=?', (self.encrypt(tokens), account['id']))
         return self.provider(account['provider'], tokens['access_token'])
 
@@ -435,6 +472,7 @@ class CloudAccounts:
                     raise ProviderError('账户授权已变更，请重试', 409)
                 if fresh is not None:
                     tokens.update(fresh)
+                    self.media_account_transition(con, current, tokens=tokens)
                     con.execute('UPDATE cloud_accounts SET tokens=? WHERE id=? AND owner=?',
                                 (self.encrypt(tokens), account_id, owner))
             # Persist an explicitly reduced grant before rejecting use, so the
@@ -470,12 +508,16 @@ class CloudAccounts:
             for a in con.execute('SELECT * FROM cloud_accounts WHERE owner=? ORDER BY provider,name', (owner,)):
                 unreadable = False
                 try:
-                    photos = photos_allowed(a['provider'], self.decrypt(a['tokens']).get('scope'))
+                    tokens = self.decrypt(a['tokens'])
+                    photos = photos_allowed(a['provider'], tokens.get('scope'))
+                    # Legacy grants without a recorded scope retain discovery;
+                    # explicit photo-only grants never masquerade as sync.
+                    sync = 'scope' not in tokens or not missing_sync_permissions(a['provider'], tokens.get('scope'))
                 except ProviderError:
-                    photos, unreadable = False, True
+                    photos, sync, unreadable = False, False, True
                 result.append({'id': a['id'], 'provider': a['provider'], 'name': a['name'], 'email': a['email'],
                                'needsReauth': bool(unreadable or a['needs_reauth'] or self.credentials(a['provider'])[0] != a['client_id']),
-                               'capabilities': {'photos': photos},
+                               'capabilities': {'photos': photos, 'sync': sync},
                                'sources': [self.source_json(s) for s in con.execute('SELECT * FROM cloud_sources WHERE account_id=?', (a['id'],))]})
             return result
 
@@ -567,11 +609,22 @@ class CloudAccounts:
                             con.execute('UPDATE entities SET data=?,revision=revision+1,updated_at=? WHERE id=?', (json.dumps(value), stamp(), entity['id']))
                 con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
 
-    def disconnect(self, account_id, owner):
+    def disconnect(self, account_id, owner, auth_context=None):
         self.account(account_id, owner)
         with self.lock(account_id):
             self.account(account_id, owner)
             with self.db() as con:
+                con.execute('BEGIN IMMEDIATE')
+                if auth_context is not None:
+                    current = self.app.extensions['member_sessions'].validate_context(con, auth_context, member=True)
+                    if current['owner'] != owner:
+                        raise ProviderError('登录状态已变化，请重新登录', 401)
+                account = con.execute('SELECT * FROM cloud_accounts WHERE id=? AND owner=?', (account_id, owner)).fetchone()
+                if not account:
+                    raise ProviderError('账号不存在或不属于当前成员', 404)
+                media = self.app.extensions.get('household_media')
+                if media is not None:
+                    media.on_account_removed(con, account_id)
                 for s in con.execute('SELECT id FROM cloud_sources WHERE account_id=?', (account_id,)).fetchall():
                     self.remove_source(con, s['id'])
                 con.execute('DELETE FROM cloud_accounts WHERE id=?', (account_id,))
@@ -648,7 +701,10 @@ class CloudAccounts:
         # Only local, sanitized error messages enter the shared state.
         message = '授权已失效，请账号拥有者重新绑定' if error.reauth else '同步暂时失败，保留上次内容并自动重试'
         with self.db() as con:
+            con.execute('BEGIN IMMEDIATE')
             if error.reauth:
+                account = con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account_id,)).fetchone()
+                self.media_account_transition(con, account, reauth=True)
                 con.execute('UPDATE cloud_accounts SET needs_reauth=1 WHERE id=?', (account_id,))
             rows = con.execute('SELECT * FROM cloud_sources WHERE account_id=?', (account_id,)).fetchall()
             changed = False
@@ -908,6 +964,8 @@ def register_accounts(app, db, Problem, body, require_member, limited):
                 if state['mode'].startswith('bind_write:') and not calendar_write_allowed(provider, tokens.get('scope')):
                     return fail('insufficient_permissions', missing=['calendar_write'])
                 stage = 'account_save'
+                engine.media_account_transition(con, existing, tokens=tokens,
+                    identity={'owner':state['owner'],'provider':provider,'client_id':client_id,'subject':subject})
                 con.execute('''INSERT INTO cloud_accounts(id,owner,provider,client_id,subject,name,email,tokens)
                     VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
                     name=excluded.name,email=excluded.email,tokens=excluded.tokens,needs_reauth=0''',
@@ -954,7 +1012,9 @@ def register_accounts(app, db, Problem, body, require_member, limited):
 
     @app.delete('/api/accounts/<account_id>')
     def disconnect(account_id):
-        engine.disconnect(account_id, g.actor['id'])
+        require_member()
+        context, _ = members.capture(claim=False, member=True)
+        engine.disconnect(account_id, g.actor['id'], auth_context=context)
         return jsonify(ok=True)
 
     return engine

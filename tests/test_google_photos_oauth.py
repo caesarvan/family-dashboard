@@ -162,7 +162,7 @@ def test_photo_only_capability_safe_projection_no_sync_discovery_and_restart(con
     c, h, aid = bind_photos(app, remote)
     engine = app.extensions['cloud_accounts']
     public = c.get('/api/accounts').json['accounts'][0]
-    assert public['capabilities'] == {'photos': True} and public['sources'] == [] and not public['needsReauth']
+    assert public['capabilities'] == {'photos': True, 'sync': False} and public['sources'] == [] and not public['needsReauth']
     assert set(public) == {'id', 'provider', 'name', 'email', 'needsReauth', 'capabilities', 'sources'}
     assert 'photo-code' not in json.dumps(public) and PICKER not in json.dumps(public)
     assert 'photo-code' not in snapshot(engine, aid)['tokens']
@@ -192,7 +192,7 @@ def test_upgrade_same_account_preserves_every_source_and_old_refresh(configured)
         con.execute("UPDATE cloud_sources SET error='synthetic-old-error',failures=2,next_attempt=12345")
         sources = [dict(r) for r in con.execute('SELECT * FROM cloud_sources ORDER BY id')]
     old = engine.decrypt(snapshot(engine, aid)['tokens'])
-    assert c.get('/api/accounts').json['accounts'][0]['capabilities'] == {'photos': False}
+    assert c.get('/api/accounts').json['accounts'][0]['capabilities'] == {'photos': False, 'sync': True}
     response_tokens(app, remote, COMBINED, refresh_token=None)
     code = identity(remote, subject='person-1-google')
     p = photos_begin(c, h, aid)
@@ -351,7 +351,7 @@ def test_explicit_refresh_downgrade_is_saved_but_not_used(configured, scope):
         engine.photos_access_token(aid, 'member1')
     assert error.value.status == 403
     assert engine.decrypt(snapshot(engine, aid)['tokens'])['scope'] == scope
-    assert c.get('/api/accounts').json['accounts'][0]['capabilities'] == {'photos': False}
+    assert c.get('/api/accounts').json['accounts'][0]['capabilities'] == {'photos': False, 'sync': scope == SYNC}
 
 
 @pytest.mark.parametrize('change', ['delete', 'owner', 'subject', 'client', 'tokens', 'reauth', 'config'])

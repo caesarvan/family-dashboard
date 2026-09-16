@@ -5,6 +5,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && useradd -u 10001 -m dashboard && mkdir /data && chown dashboard:dashboard /data
 COPY app.py member_sessions.py tv_display.py sync_health.py ./
 COPY cloud_accounts.py cloud_providers.py sync_worker.py ./
+COPY google_photos_picker.py media_crypto.py media_images.py household_media.py media_import_worker.py ./
 COPY shopping_media.py shopping_settlement.py finance_baseline.py spending_observations.py ./
 COPY finance_source_bridge.py journey_time.py ./
 COPY household_spaces.py journey_workflows.py finance_hub.py home_assistant.py ./
