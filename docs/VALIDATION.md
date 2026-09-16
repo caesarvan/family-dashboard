@@ -1,6 +1,37 @@
 # 验证记录
 
-> **线上版本：2026-09-16 18:05:30（北京时间），镜像 `sha256:87c1513e52c4188a27e324e8e02fb674e32c3fa8ce91015ba703fe14e5a02b39`。** 相册与电视照片轮播已完成 44→48 迁移发布；340 源文件、130 个方法／路径模板、48 张户内表及 2 张平台表。安装源码对应 main `2c2332d`／integration `8607b14` 的同一文件树；本次交接文档更新仅在本地，不改服务器安装清单。本人 Google Photos 全流程与实体电视仍待验收。
+> **线上版本：2026-09-16 19:16:22（北京时间），镜像 `sha256:6688c51fed543794a393bf397b49ccb0c36dee8c24e19efbdb0a3715c2ebd86c`。** JPEG 主图兼容补丁已上线；346 源文件、71 Markdown、51 静态资源、130 个方法／路径模板、48 张户内表及 2 张平台表，无数据迁移。安装源码对应 main `f603151`／integration `e2087e0` 同树；本次文档仅本地交接，不改已发布 manifest。发布后本人重试并经服务器读回确认：本批 5 张均出现预览并成功保存，0 失败。原失败的具体原因仍未确定，实体电视及长期行为另验。
+
+## JPEG 主图兼容发布：2026-09-16 19:16:22
+
+main `f603151`／integration `e2087e0` 同树 `dc8e805e22914b701c2e2e0b6d888bd047d66f36`，manifest `a48831b101ab78f5b4cc61ea29e8b1cb5204af70a13885886fcda47cd36635eb`。补丁只净化完整首张 JPEG 及其方向／色彩标志，不放宽体积、像素、完整解码或 PNG／WebP 动图限制；详见 [兼容说明](MEDIA-JPEG-COMPAT.md)。各次验证分列，不相加为一次全套。
+
+| 范围 | 实际结果与边界 |
+|---|---|
+| Windows 作者 | 图片 139 passed，另 worker／结果 60 passed |
+| 非作者独立 | 图片 186 passed（包含 47 项独立反例），另 worker／结果 60 passed；真实 worker／SQLite／成员确认桥接另 1 passed。所有图片与 Google 传输均为合成 |
+| 实际 Linux | 新不可变镜像四模块一轮 **199 passed / 36.50s** |
+| 生产与读回 | 实际 1 户两库完整备份，无迁移；原 48+2 表全部行、schema、序列及配置保持。19:17:28 全 346 源／84 运行／51 HTTPS 静态文件匹配，71 Markdown；四服务重启计数 0、app healthy、六个匿名接口 401、备份 service 成功且 timer active |
+
+私有原件在 `photos-jpeg-20260916/` 的 `build.json`、`validation.json`、`activation.json`、`post-readback.json`；目录 `/opt/family-dashboard-releases/photos-jpeg-20260916T111536Z-20260916`。完整备份 manifest SHA256 `58a97281b62a4af864149803a9190183c3fb83a020109430ba95385f5647ce0b`。Linux 计数来自实际执行日志，`validation.json` 只绑定退出状态与镜像／运行字节，不从该 JSON 补造用例数。
+
+18:57 诊断补丁后的本人重试确实得到十选五和五项 `invalid_image`（见下一节），但没有原图级根因证明。发布后本人重试明确反馈“出现预览，并成功保存”；服务器只读确认最新记录为 confirmed／resultsState=known，selected=5、ready=5、failed=0、skipped=0、pending=0、saved=5、unselected=0，五项均 successful。本批真实 Google 授权选片→处理→明确保存已 5／5 成功，补丁对这次重试有效；不以此推定原失败的逐项 MPO／尾部／EXIF 原因，也不扩展到实体电视或长期配额验收。该反馈晚于 19:17 读回，原 `post-readback.json` 中当时的未验收标识原样保留，不反写原件。 后续独立原件 `photos-jpeg-20260916/real-import-acceptance.json`（SHA256 `c8c7548e3be056e63768e85472822a8f6ffd21c83a5f7343ddf77e02cf39ff0f`）记录本批成功，不断言它与此前每个 source ID 的逐项映射。
+
+## 相册结果诊断发布：2026-09-16 18:57:14
+
+main `d9c51b9`／integration `2aac0007` 同树 `db0949c2d1b55bb53351d4c352740edc9ac34a7c`，安装 manifest `76b8bc77ba786be3069ca477facd7ecb7d9b6d2d61a10c8df0388994a886b45d`。补丁保留逐项白名单原因、确认后的统计和准确勾选保存数，旧记录明确未知；不修改解码器、配额、依赖或 schema。以下各轮分别记录，不相加为一次全套测试。
+
+| 范围 | 实际结果与边界 |
+|---|---|
+| Windows 后端 | 三个受影响模块 105 passed；非作者另有 4 项真实 SQLite／worker 合成边界检查通过 |
+| 界面 | 非作者 Edge 新结果 10 组、既有相册 15 组分别通过；明确合成 HTTP DTO，非真实 Google |
+| 最终组合 | Edge 10 组及真实后端→UI 桥接 1 pytest／4 组通过；含十选三可用、仅勾两张保存、一个未勾选和旧回执未知；Google 输入为合成 |
+| 实际 Linux | 新不可变镜像三个受影响模块 **105 passed / 93.97s**，不与 Windows 或浏览器计数混合 |
+| 生产与读回 | 实际 1 户两库完整备份，无迁移；原 48+2 表全部行、schema、序列及配置保持。18:58:16 全 344 源／84 运行／51 HTTPS 静态文件匹配，70 Markdown；四服务重启计数 0、app healthy、六个匿名接口 401、备份 service 成功且 timer active |
+
+私有原件为 `photos-results-20260916/` 下的 `build.json`、`validation.json`、`activation.json`、`post-readback.json`；发布目录 `/opt/family-dashboard-releases/photos-results-20260916T105630Z-20260916`。完整备份 manifest SHA256 `caa4bded81a99574df0750fca1fdf9801808f13bd6187e5103a4adddf602c0a0`。
+
+本人已完成 Google 授权与真实选片：历史 10 张普通照片只保存 3 张，其余 7 项原因没有保留，不能以合成格式调查替代真实原因。补丁不补写历史。后续本人重试的真实记录为 selected=10、ready=5、failed=5、skipped=0、pending=0、saved=5、unselected=0；第 1／7／8／9／10 项固定错误均为 `invalid_image`，已确认保存。诊断展示与保存数已验证，但具体解码原因仍未知，不能据此宣称完整兼容、长期配额／网络行为和实体电视验收完成。
 
 ## 实际媒体发布：2026-09-16 18:05:30
 
@@ -17,7 +48,7 @@
 
 私有原件分别位于 `media-release-25c9f20/linux-tests-retry2.json`（exit 1 原轮）、`media-release-f9f7301/recovery.json`（exit 0 恢复）与 `media-release-36bd770/` 下的 `validation.json`、`activation.json`、`post-readback.json`。后面三份 SHA256 依次为 `c54602f0fe54d95237452ee0fab83bfce764085e894b575e6ac69d9e2af1dd84`、`518c8b7d1c44579c116c6e5d194d426971d93f5570aa8879bf193b592dcb4051`、`256f68ec4937c777a87cc18ee78ffcbbfb0202acc948ed7a735b67eb9f03f4b9`。`validation.json` 记录 exit 0 与运行字节保持，不含逐项计数；单项 1 passed／1.48s 来自实际 Linux 日志。测试阶段 Git HEAD 与最终安装身份分别保留；恢复阶段只新增测试和说明，原 338 文件字节保持、运行镜像不变。不得改写失败原件或把多轮结果拼成一次全套。
 
-本人 Google Photos 授权、照片导入和实体电视尚待用户实际反馈；目前没有据此认定真实 Google 配额／网络行为已验证。视频、iCloud／NAS、自动旅行关联和回忆精选尚未实现。库存的独立候选测试也不计入本次媒体发布。
+该 18:05 发布时本人 Google Photos 授权、照片导入和实体电视尚待反馈；后续真实授权与十选三情况见顶部，不据此认定真实 Google 配额／网络行为已完整验证。视频、iCloud／NAS、自动旅行关联和回忆精选尚未实现。库存的独立候选测试也不计入本次媒体发布。
 
 ## 实际地点发布：2026-09-16 16:33:32
 
