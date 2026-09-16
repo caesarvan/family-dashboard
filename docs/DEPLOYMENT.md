@@ -1,10 +1,10 @@
 # 部署、更新与恢复交接
 
-> **当前版本：2026-09-16 11:39:20（北京时间），镜像 `sha256:f82bc0fc147038ca3cdba546756192259a6f28c68c21621f75494ab9dc262ee6`。** 待办起步、XLSX 声明兼容、淘宝多商品订单与明细已通过 SOURCE 43→43 更新发布；255 源文件、43 Markdown、44 静态资源，106 方法／路径模板、43 张户内表及 2 张平台表。发布源码为同树 main `54c0854`／integration `ecc3edc`；本次后续文档修订尚未同步服务器。实际原件与真实接入边界见 [VALIDATION](VALIDATION.md)。
+> **线上版本：2026-09-16 13:24:33（北京时间），镜像 `sha256:ea399441e6696bc29214842ab8c47e3db943714c1ae72a05ca1266bdc4a1b739`。** 完整账本分页、搜索和导入金额校验已通过 SOURCE 43→43 更新发布；258 源文件、43 Markdown、44 静态资源、107 方法／路径模板、43 张户内表及 2 张平台表。实际安装为同树 main `79faaf3`／integration `82f4401`；本次发布后的七份文档及文档检查器修订仅在本地交接，尚未同步服务器。 原件见 [VALIDATION](VALIDATION.md)。
 
 ## 当前 43→43 SOURCE 更新
 
-本次通过 [SOURCE-RELEASE](SOURCE-RELEASE.md) 的固定 `source-update` 入口更新两项既有根 Python 与五项静态文件。实际发布源码树为 `08c13778d26ab8cb7a68bcbb9f22ed72f9434ec3`，manifest `169c9621…`；更新前 248 文件 BASE 来自 `daf5ab4`，原 manifest `3db7f24e…` 保留。镜像 `f82bc0fc…` 已完成不可变父层与配置保持、Linux 受影响后端 406 项、工具 269 项及真实两户 SOURCE 演练；随后实际生产单户的 2 库完整备份、三阶段 43+2 全数据保持与读回通过，未执行恢复。新三服务运行且 app 健康，发布后另核验全部 255 源文件、原 `.env` 和镜像。精确计数和原失败见 [VALIDATION](VALIDATION.md)。
+本次通过 [SOURCE-RELEASE](SOURCE-RELEASE.md) 的 `source-update` 入口更新一项既有根 Python 和三项静态文件。安装 Git 树 `e627bb843bcf84024b097eaa5e486d98d437c17f`，manifest `7089ca8899929ec8eee8b705547943c697b21c684014855f92b7f5ca4fa8fb42`；BASE 为 Git `54c0854` 的 255 文件，原 manifest `169c9621…` 保留。镜像 `sha256:ea399441e6696bc29214842ab8c47e3db943714c1ae72a05ca1266bdc4a1b739` 通过 Linux 后端 435 项、工具 275 项和真实双户演练后，完成实际单户／2 库备份、三阶段 43+2 全数据比较及读回。原配置保持，未初始化 schema 或恢复数据库；新三服务运行且 app 健康，随后独立核验全部 258 源文件与 HTTPS。原件与范围见 [VALIDATION](VALIDATION.md)。
 
 SOURCE 与 static-only 共用原事务核心和锁；SOURCE 只接受逐文件审查的既有根 Python／静态变化，requirements、Dockerfile、Compose、Nginx 与运行配置保持。仍须冻结当前 BASE、完整原始证据和经独立审查的 READY，再由获授权维护者执行；停写、全组备份、43+2 全部数据比较与 HTTP 读回均不能省略。禁止重放一次性 42→43 或下方历史 42→42 算法。
 
