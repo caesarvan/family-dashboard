@@ -184,6 +184,8 @@ def main():
                 assert ctx.request.patch(base+'/api/journey-places/'+saved['id'], headers=auth(ctx), data={'revision':current['revision'],'name':'并发服务器名称','confirmVisited':True}).status == 200
                 form.locator('[name=confirmVisited]').check()
                 form.locator('[type=submit]').click()
+                expect(page.locator('[data-jm=retry-pending]')).to_be_enabled()
+                page.locator('[data-jm=retry-pending]').click()
                 expect(page.locator('[data-jm=keep-draft]')).to_be_visible()
                 expect(form.locator('[name=name]')).to_have_value('保留的并发草稿')
                 page.locator('[data-jm=keep-draft]').click()
