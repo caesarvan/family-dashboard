@@ -28,6 +28,8 @@ def factory(monkeypatch):
     original = app_module.create_app
     def create(config):
         app = original(config)
+        if 'inventory' in app.extensions:
+            return app
         def db():
             if 'inventory_test_db' not in g:
                 g.inventory_test_db = connection(app)
