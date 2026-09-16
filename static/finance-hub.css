@@ -19,3 +19,17 @@
 @media(max-width:640px){.fh-order-items{padding:10px}.fh-order-items dl>div{grid-template-columns:minmax(0,1fr);gap:1px}.fh-transaction:has(.fh-order-items){flex-wrap:wrap;align-items:flex-start}.fh-transaction:has(.fh-order-items) .fh-transaction-main{flex-basis:100%}.fh-transaction:has(.fh-order-items) .fh-transaction-value{width:100%;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end}.fh-preview-scroll:has(.fh-order-items) .fh-table{table-layout:fixed}.fh-preview-scroll:has(.fh-order-items) .fh-table th:first-child{width:45%}.fh-preview-scroll:has(.fh-order-items) .fh-table td{padding:10px 5px;overflow-wrap:anywhere}}
 
 .fh-order-items-row>td{padding:0 10px 12px}.fh-order-items-row .fh-order-items{margin:0}.fh-table .fh-order-items-row>td:first-child{max-width:none}
+
+/* Full personal ledger navigation; totals remain monthly. */
+#fh-ledger-panel{display:grid;gap:14px;min-width:0}
+#fh-ledger-search{display:flex;gap:12px;align-items:end;flex-wrap:wrap}
+#fh-ledger-search .field{flex:1 1 260px;margin:0;min-width:0}
+#fh-ledger-search input{width:100%;min-width:0}
+#fh-ledger-search .fh-actions{flex-wrap:wrap;gap:8px}
+.fh-ledger-status{margin:0;font-size:13px;line-height:1.6;color:var(--fh-muted);overflow-wrap:anywhere}
+.fh-ledger-pages{display:flex;gap:16px;align-items:center;justify-content:center;padding:16px 0}
+.fh-ledger-pages span{font-variant-numeric:tabular-nums;white-space:nowrap}
+#fh-ledger-panel .error:empty{display:none}
+@media(max-width:640px){#fh-ledger-search{align-items:stretch;flex-direction:column}#fh-ledger-search .field{flex-basis:auto}#fh-ledger-search .fh-actions .btn{flex:1 1 auto;white-space:normal}.fh-ledger-pages{gap:12px}.fh-ledger-pages .btn{flex:1;white-space:normal}}
+
+.fh-ledger-help{font-size:13px;color:var(--fh-muted);line-height:1.6}.fh-ledger-help summary{cursor:pointer;color:var(--accent)}.fh-ledger-help summary:focus-visible{outline:2px solid var(--accent);outline-offset:4px}
