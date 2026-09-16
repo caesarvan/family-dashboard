@@ -87,6 +87,10 @@ def register_frontend_runtime(app, static_root):
         # These callbacks continue the existing source-selection/import flow.
         # Forward only the known status fields, never provider codes or tokens.
         auth = request.args.get('auth')
+        if auth == 'photos-connected' and index_file() is not None:
+            response = redirect('/app/photos', code=302)
+            response.headers['Cache-Control'] = 'no-store'
+            return response
         if auth in {'connected', 'photos-connected', 'error'}:
             query = {'auth': auth}
             if auth == 'error':

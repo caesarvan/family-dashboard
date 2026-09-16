@@ -13,7 +13,7 @@ export type SectionCardProps = {
 export function SectionCard({ title, action, children, style }: SectionCardProps) {
   const theme = useTheme();
   return (
-    <Card mode="outlined" style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outlineVariant }, style]}>
+    <Card mode="outlined" style={[styles.card, { backgroundColor: theme.colors.surface, borderColor: theme.colors.outline }, style]}>
       <Card.Content style={styles.cardContent}>
         <View style={styles.sectionHeading}>
           <Text variant="titleMedium" accessibilityRole="header" style={styles.sectionTitle}>{title}</Text>
@@ -56,7 +56,7 @@ export function PageHeader({ title, description, action }: PageHeaderProps) {
 
 const styles = StyleSheet.create({
   card: { borderRadius: 12, overflow: 'hidden' },
-  cardContent: { paddingHorizontal: 20, paddingVertical: 18 },
+  cardContent: { paddingHorizontal: 24, paddingVertical: 24 },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 },
   sectionTitle: { flex: 1, minWidth: 0 },
   sectionAction: { flexShrink: 1, maxWidth: '50%' },

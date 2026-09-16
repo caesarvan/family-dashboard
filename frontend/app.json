@@ -12,7 +12,8 @@
     ],
     "web": {
       "output": "single",
-      "bundler": "metro"
+      "bundler": "metro",
+      "lang": "zh-CN"
     },
     "plugins": [
       "expo-router"
