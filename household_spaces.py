@@ -103,7 +103,7 @@ class HouseholdPlatform:
             config = {k: self.app.config[k] for k in (
                 'TESTING', 'SESSION_COOKIE_SECURE', 'PERMANENT_SESSION_LIFETIME', 'PUBLIC_ORIGIN', 'MICROSOFT_CLIENT_ID',
                 'MICROSOFT_CLIENT_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET',
-                'OPENAI_API_KEY', 'OPENAI_MODEL') if k in self.app.config}
+                'OPENAI_API_KEY', 'OPENAI_MODEL', 'ASSISTANT_PROVIDER', 'NVIDIA_API_KEY', 'NVIDIA_MODEL') if k in self.app.config}
             config.update(DATA_DIR=str(self.root / 'spaces' / uid), _HOUSEHOLD_CHILD=True,
                           HOUSEHOLD_INFO=dict(household), HOUSEHOLD_PLATFORM=self,
                           SECRET_KEY=hmac.new(self.app.secret_key.encode(), ('household|' + uid).encode(), hashlib.sha256).hexdigest())
