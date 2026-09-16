@@ -1,9 +1,55 @@
 # 验证记录
 
-<a id="expo-holdings-candidate"></a>
-## Expo 我的持仓：本地已验候选，尚未部署
+<a id="expo-holdings-release"></a>
+## Expo 我的持仓发布：2026-09-17 06:15:34
 
-2026-09-17，独立作者分支经非作者审查后组合验证。受验 source 为 `753c7a3bf9f9c6f0a774d28557cce5de61b7dc95`，tree 为 `b19d4e05cf91a1acd3e8ee0bda101dfc9c69ee64`。下方 04:26:46 财务版仍是实际线上 54 表版本；本候选未执行 Linux／新镜像验证、生产 54→55 迁移或部署，不填写预测通过数或上线身份。
+北京时间 06:15:34 实际激活，06:16:14 正常 TLS 读回通过。本人持仓的查看、筛选、手工维护和整理表预览确认已迁入 `/app/investments`，生产为 55 张户内表与两张平台注册表。源码、发布工具及生成后的操作经非作者审查，实际报告和迁移原件再次独立核对；此处发布后文档不改变安装包或构建。
+
+### 安装身份与实际验证
+
+| 项目 | 核验结果 |
+| --- | --- |
+| main／source | `f2146f293541d0428b19546cb3539073d8a47321`／`1bb434210f728af351fd9cd4b655b36b95cb1093` |
+| 相同文件树 | `d58f28cbefb096d15f5279c89ce2d66cd480d1b6` |
+| 发布目录 | `/opt/family-dashboard-releases/expo-holdings-55-20260916T221433950876Z` |
+| 镜像 | `sha256:3b831aaf898dacebcf3bb733ada13271e1be7707bb41ecfb14d85cb9d6ebf133`；核验旧镜像后追加两层，未安装新依赖 |
+| manifest SHA256 | `3ce6cae326bb426703ab316c693a4e06c80c7fcae0abf853a9f8a9b31b7b43fc` |
+| archive SHA256 | `a4f956af3b964fb9ea1296d06376ccd85b4186974aa6228b2ab4f8e56d625c08` |
+| 操作绑定 SHA256 | `f413898e34981cfb2b2f27d406929c63592ab70fe4ebb69cec06e5228f558cdd` |
+| Windows 最终组合 | 18 模块，446 passed／0 skipped／0 failed／0 errors；JUnit 105.330 秒（命令计时 105.89 秒） |
+| 新镜像 Linux | 446 用例，445 passed／1 skipped／0 failed／0 errors，JUnit 198.009 秒；唯一跳过为 `tests.test_frontend_runtime::test_windows_junction_rejected`，原因精确为 `Windows junction semantics`，没有 deselect |
+| 前端沿用范围 | 业务运行字节、145 个前端构建输入、23 个导出与已验 `753c7a3` 一致；构建 evidence SHA256 `d1502cfd7b49a1914ab1d5fa3887606c1abdc7185cf9e84905b28a4b9527f484`。沿用完整 typecheck、Node 29 和真实本地浏览器 7 场景，未再跑浏览器；Node 与 typecheck 依据当时实际终端结果，无单独保存的 TAP／tsc 日志，build.log 仅记录 export |
+| 视觉检查 | 四宽 12 张既有截图均已人工查看；可见区域无阻断裁切。导入面板内部 ScrollView 的完整前后值及确认按钮未被截图覆盖，不宣称完整预览视觉验收 |
+| 最终读回 | 503 源文件、113 运行文件、75 HTTPS 静态资源；24 个生成路径与 1 个退役资源拒绝，22 个匿名 API 均 401；四服务 running／restarts 0、app healthy、envPreserved true |
+
+实际 1 户两库完整备份后，54→55 仅新增空 `hub_investment_operations`。`migrationResult` 与 `migrationCheck` 均确认原 54 表的行、schema、序列及注册库保全；after-migration 与 after-app 原件 SHA 相同，完整 55 表组保持至新 app 启动核对。随后才启动 workers、web 和备份 timer。`activation.json` 的 `productionWrites:0` 继承自 READY 准备阶段，是遗留字段；本次 `completed=true`／`schemaChange=true` 且实际写入新表，不能据前者声称发布没有生产写入。原报告保持原样。
+
+发布后新 backup service invocation `f486c9e453944ad49cdd4bf52dd36faf` 成功、timer active；核验其新增 `manifest-20260916T221611402562Z.json`（SHA256 `ee0da89202748ff24afc76f99c19cf85046745a5f74973c84d7c9099dee5c25c`），完整 1 户两库映射、散列及 55 表／注册结构可读性通过。`immutable=1` 只用于无侧车的关闭备份文件；`liveGroupSnapshotRechecked=false`，逐库在线备份不是跨库全局事务，也不是重新核对 live 全组快照。本轮没有执行生产覆盖恢复。
+
+### 原件与发布前拒绝
+
+发布原件在私有 `family-dashboard-access/expo-holdings-tools-20260917-r2/server-evidence/`；七份 `migration-proof/` 的实际散列均与 activation 绑定一致，原件不入 Git。
+
+| 原件 | SHA256 |
+| --- | --- |
+| `activation.json` | `5d66137b72d9c231f17b5a779eb889c17296366732c177292b0f51ba6b8a3fb1` |
+| `post-readback.json` | `7d8f678b4ee576c52eabf79cd7bceaefa4db94b0f486a27bd5450e34ae87096d` |
+| `validation/results.xml` | `269782541914a232bb94fbb2ef10cbcf3df69139ff4f99569640c433eb0ae1e0` |
+| 私有 `worktrees/integration/test-results/holdings-final-446.xml` | `712ff05cfd2c90f905d720e5006017372656a90cce9d99c5d1e746db855c7fff` |
+
+两次发布前拒绝均保留原件，没有在被拒候选上尝试生产操作：
+
+1. `84ad` 阶段虽有 445 项通过，root 审查发现生成 activate 的保全断言仍使用旧计数 53，拒绝推进。`13dd596` 修为 54，并用实际生成代码的 AST 验证正确结果通过、53／55／错误家庭数与保全标志均拒绝；修正后另跑 445 项。不能把原 445 项通过当成该发布遗漏已覆盖。
+2. 本地 packager 对实际旧归档的 CRLF COPY 行与新 Git blob 的 LF 行核对时拒绝；没有上传、绑定或生产操作。`f58a8f0` 精确允许指定单行增加模块及该行换行变化，拒绝全文件规范化；22 项 guard 和实际 archive↔Git 字节校验通过后，最终重跑 446 项。实际生成算子检查报告 SHA256 为 `72d3226f0707af1687034115bad61aaf3ce14133f8751fc2307e438d9fe3c658`。
+
+早期 424、53 项专项、两次 445 与最终 446 存在重叠，不能相加；原浏览器／构建仍绑定下节 `753c7a3`，不冒充最终源码重跑。本人真实持仓文件、新云操作、原生安装及实体电视尚未验收；完整资产账户、负债编辑、估值历史、FX 和收益归因仍未实现，本次增量不代表完整产品目标完成。使用与后续部署边界见 [Expo 持仓](EXPO-INVESTMENTS.md)、[持仓发布](HOLDINGS-RELEASE.md)。
+
+<a id="expo-holdings-candidate"></a>
+## Expo 我的持仓：历史本地候选记录
+
+下节保留 `753c7a3` 候选阶段当时的测试、原件和未部署状态；之后的正式发布及新增截图检查以上节为准，不改写原测试覆盖。
+
+2026-09-17，独立作者分支经非作者审查后组合验证。受验 source 为 `753c7a3bf9f9c6f0a774d28557cce5de61b7dc95`，tree 为 `b19d4e05cf91a1acd3e8ee0bda101dfc9c69ee64`。当时下方 04:26:46 财务版仍是实际线上 54 表版本；本候选尚未执行 Linux／新镜像验证、生产 54→55 迁移或部署，不填写预测通过数或上线身份。
 
 ### 实际执行与覆盖
 

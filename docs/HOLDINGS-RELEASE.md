@@ -1,6 +1,10 @@
-# Expo 持仓：54→55 发布操作准备
+# Expo 持仓：54→55 发布与后续交接
 
-本页对应 [holdings_release/prepare.py](../deploy/holdings_release/prepare.py)。这是发布操作生成器，**尚未构建、迁移或部署**。它复用已审查的财务发布代码，仅生成本地新目录；最终版本、构建、组合测试及非作者审查未冻结时，生成的服务器入口必须拒绝执行。
+本轮已于 2026-09-17 06:15:34（北京时间）激活，06:16:14 正常 TLS 读回通过。发布 main `f2146f2`／source `1bb4342`，生产为 55 张户内表与两张平台注册表；完整镜像、清单和原件见 [发布记录](VALIDATION.md#expo-holdings-release)。本页固定旧 54 表身份的工具和示例保留当次过程，**不能再次用于当前生产**，下一轮须重新绑定真实基线并独立审查。
+
+本页对应 [holdings_release/prepare.py](../deploy/holdings_release/prepare.py)。生成器复用已审查的财务发布代码，仅生成本地新目录；最终版本、构建、组合测试及非作者审查未冻结时，生成的服务器入口拒绝执行。实际发布使用 `expo-holdings-tools-20260917-r2`；第一次旧计数断言遗漏及第二次 Docker COPY 换行契约拒绝均在本地修订后才继续，没有在被拒候选上上传、绑定或尝试生产操作。
+
+实际 1 户两库备份后，仅新增空 `hub_investment_operations`，原 54 表及注册库的行、schema、序列保全，新 app 启动核对完整 55 表组保持。发布后新 backup invocation 成功并核验完整组的关闭备份文件；逐库在线备份不代表跨库全局事务或再次核对 live 全组快照。恢复仍沿用 [完整恢复步骤](DEPLOYMENT.md#6-备份恢复与回滚)，再用 `check_investment_operation_migration.py` 的 `snapshot-current`／`check-restored` 核对含已有回执的 55 表组；本轮没有执行生产覆盖恢复。
 
 ## 复用范围
 

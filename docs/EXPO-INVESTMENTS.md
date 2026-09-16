@@ -1,6 +1,6 @@
 # Expo 我的持仓
 
-本地已验集成候选 `753c7a3bf9f9c6f0a774d28557cce5de61b7dc95`，尚未部署。当前线上仍为 2026-09-17 04:26:46 财务版、54 张户内表。这里描述候选功能；源码交接见 [HANDOFF](HANDOFF.md#expo-holdings-candidate)，构建和实际测试证据见 [VALIDATION](VALIDATION.md#expo-holdings-candidate)。
+已于 2026-09-17 06:15:34（北京时间）发布，06:16:14 正常 TLS 读回通过；当前为 55 张户内表。安装 main `f2146f2`／source `1bb4342`；前端沿用同字节 `753c7a3` 构建。源码交接见 [HANDOFF](HANDOFF.md#expo-holdings-candidate)，完整身份与实际证据见 [VALIDATION](VALIDATION.md#expo-holdings-release)。
 
 ## 使用流程
 
@@ -25,14 +25,14 @@
 
 新增 `investment_operations.py` 与 `hub_investment_operations` 持久表，记录手工新增、修改、删除的幂等业务结果。`owner + request_id` 全操作唯一，摘要包含操作种类、目标、版本和规范化负载；业务变更、审计及回执在同一事务提交。同标识不同意图拒绝，删除后回执仍可读取。私人导出包含本人操作业务白名单，排除摘要及未知扩展字段；共享导出不包含这些明细。
 
-候选增加三条 GET：`/api/finance-hub/investments`、`/api/finance-hub/investments/operations/<request_id>`、`/api/finance-hub/investments/imports/receipts`。既有导入 confirm 保持原六字段响应；GET 回执附来源名称与摘要。旧手工调用可不传 requestId，新界面始终传入。
+本轮增加三条 GET：`/api/finance-hub/investments`、`/api/finance-hub/investments/operations/<rid>`、`/api/finance-hub/investments/imports/receipts`。既有导入 confirm 保持原六字段响应；GET 回执附来源名称与摘要。旧手工调用可不传 requestId，新界面始终传入。
 
 ## 迁移、构建与验收
 
-当前生产基线为 54 张家庭表和两张平台注册表。本候选需经过独立审查的 54→55 迁移，新增空操作回执表；使用 `deploy/check_investment_operation_migration.py` 的 `snapshot`、`validate-backup`、`migrate`、`check`、`snapshot-current`、`check-restored`。执行前停止全部写入并完成全户备份；逐库 DDL 原子，跨库中断不能盲目重跑。原 54 表的行、schema、序列及注册库必须保持。
+实际 1 户两库备份后完成 54→55，只新增空操作回执表，原 54 表的行、schema、序列及注册库保全，新 app 启动时完整 55 表组保持。当前生产为 55 张家庭表和两张平台注册表，不能重放本次迁移。`deploy/check_investment_operation_migration.py` 提供当次停写迁移检查及含已有回执的 `snapshot-current`／`check-restored`；逐库 DDL 原子，跨库中断不能盲目重跑。
 
-新表加入现有完整数据库备份，无新增服务、付费依赖或配置。`Dockerfile` 和 `deploy/prepare_release.py` 纳入新增模块；Expo 使用现有锁文件构建。生产发布需重新绑定当前镜像和清单、验证新镜像及全部数据保留，再部署和读回。不得复用此前固定 53→54 发布操作。完整恢复沿用 [部署恢复步骤](DEPLOYMENT.md)，候选检查器可核对已填充回执的整个 55 表组。
+新表加入现有完整数据库备份，无新增服务、付费依赖或配置。`Dockerfile` 和 `deploy/prepare_release.py` 纳入新增模块；Expo 使用现有锁文件构建。后续发布需重新绑定当前 55 表、镜像和清单；本次操作和恢复边界见 [持仓发布](HOLDINGS-RELEASE.md)、[部署恢复步骤](DEPLOYMENT.md)。
 
-候选已完成 Windows 424 项、Node 29 项、完整 TypeScript 检查、23 文件导出和真实本地浏览器 7 场景；覆盖手工增改删／重启、未知结果恢复、文件预览与重复回执、XLSX、版本冲突及成员切换。跨家庭／电视隔离、两户迁移和完整恢复由后端合成测试验证，不冒充浏览器或生产验收。12 张截图含四种宽度，已人工查看 7 张；导入面板滚动区域中的完整前后值及确认按钮仍未获得截图视觉覆盖。Linux、新镜像和生产发布尚未执行，详见 [候选验收记录](VALIDATION.md#expo-holdings-candidate)。
+最终 Windows 446 项通过，新镜像 Linux 445 通过、1 个精确 Windows junction 跳过、零失败／错误。沿用相同前端的完整 TypeScript 检查、Node 29 项、23 文件导出和真实本地浏览器 7 场景；原 424 项候选证据单独保留，不累加。跨家庭／电视隔离、两户迁移和完整恢复由后端合成测试验证，不冒充浏览器或生产恢复。12 张四宽截图已全部人工查看；导入面板内部滚动区的完整前后值及确认按钮仍未获得截图视觉覆盖，详见 [验收记录](VALIDATION.md#expo-holdings-release)。
 
 本轮没有实现完整资产账户实体、负债编辑、估值时间序列、账户交易流水、汇率来源或收益归因。资产基线和来源报告继续从高级财务读取；真实银行接入、本人实际持仓文件、原生安装包和实体电视均不能由合成测试代替验收。
