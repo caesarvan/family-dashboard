@@ -1,10 +1,21 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-16 16:33:32（北京时间），镜像 `sha256:9cd092392b27d6e2342ab1890ff3514149416281fe130df62976b8b1488acac8`。** 旅行地图已完成 43→44 迁移发布；295 源文件、52 Markdown、47 静态资源、112 个方法／路径模板、44 张户内表及 2 张平台表。安装源码对应 main `6f3d978`／integration `cd857f5` 的同一文件树；本次发布后的交接文档尚未同步服务器。NVIDIA 已于同日 16:58 完成配置与真实模型草稿验证；真实用户全流程和电视验收仍分别记录。
+> **线上版本：2026-09-16 18:05:30（北京时间），镜像 `sha256:87c1513e52c4188a27e324e8e02fb674e32c3fa8ce91015ba703fe14e5a02b39`。** 相册与电视照片轮播已完成 44→48 迁移发布；340 源文件、130 个方法／路径模板、48 张户内表及 2 张平台表。安装源码对应 main `2c2332d`／integration `8607b14` 的同一文件树；本次交接文档更新仅在本地，不改服务器安装清单。本人 Google Photos 全流程与实体电视仍待验收。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
-## 当前接手基线：地点 44 表已上线
+## 当前接手基线：相册 48 表已上线
+
+本次 main `2c2332d8820e7a7f43d8c2e9fb63a885c03293ef`、integration `8607b14500b21158f74e6c0876b6778ced34169e` 与候选 `36bd770ecb014fde32004747cb95fdd2d4c06ab0` 同树 `421ed257d55ca6a83659de0465b9094cc3e8103e`。安装目录 `/opt/family-dashboard-releases/media-20260916T100305Z-36bd770`，manifest `7b9c7dcb4f734a619b6acef1f92c83cb57f1cd522fc6f54ca1b773bb605d0b32`。实际 1 户从 44 表增至 48 表，平台 2 表保持；两库组备份完成，旧行、schema 和序列保持，新四表在迁移核对时为空。
+
+`app`／`sync`／`media` 使用同一新镜像，`web` 保持原镜像；四服务运行、重启计数 0，公开 HTTPS health 为 200。原 AI／Google／Microsoft 配置与密钥保持。完整使用、模块和当前恢复边界见 [媒体交付](MEDIA-DELIVERY.md)，分段测试、失败修订及发布证据见 [VALIDATION](VALIDATION.md)。不要在当前 48 表上重放历史 43→43、43→44 或本轮 44→48 迁移。
+
+库存仍在独立候选：核心、API、界面和真实临时 Flask／SQLite／Edge 闭环已验证，正式工厂、导航、五表迁移与发布另行推进，不属于本次媒体镜像。未经本人完成实际 Photos 授权与选片，不能把合成 Google 传输测试写成真实账号验收；实体电视、视频、iCloud／NAS 和更多成员角色的状态分别见 [媒体交付](MEDIA-DELIVERY.md)。后续仍按独立分支／worktree→非作者审查→integration→组合验证→main，生产另行验收。
+
+<a id="当前接手基线地点-44-表已上线"></a>
+## 历史接手基线：地点 44 表（16:33）
+
+本节保留地点发布当时的状态，不能代替顶部媒体 48 表基线。
 
 2026-09-16 16:33:32 发布 main `6f3d97855613e9b8ff78df5850652180e083ea76` 与 integration `cd857f525e5bf9127b1338e17a1a003e58f4916e` 的同树 `5581c3fb16852afaf0455bff991c8560dbcdbf19`。安装 manifest `1a5990e0b7e500ed44986b979e413a8ba26c92bd6cf4c7757be429bed17e51d8`，目录 `/opt/family-dashboard-releases/journey-places-20260916T083232752975Z`。精确 READY 经非作者核对后才执行，实际证据见 [VALIDATION](VALIDATION.md)。
 
@@ -181,7 +192,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | 本人数据副本 | `data_portability.py`、`static/data-portability.js` | [导出契约](PORTABILITY.md)；仅本人私密与显式勾选的共同记录。排除令牌、会话/设备认证表和暂存预览；不是数据库恢复包 |
 | 部署与备份 | `Dockerfile`、`compose.yaml`、`deploy/` | [部署指导](DEPLOYMENT.md)、[运维说明](OPERATIONS.md)；源码白名单、现有配置、全部家庭、停止写入、成组备份及相配恢复 |
 
-当前路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md) 和 [contract-inventory.json](contract-inventory.json)，结构为 106 个方法/路径模板、43 张户内表与 2 张平台表，须与最终源码实例化一致。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
+当前路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md) 和 [contract-inventory.json](contract-inventory.json)，结构为 130 个方法/路径模板、48 张户内表与 2 张平台表，须与最终源码实例化一致。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
 
 ## 例行计划公共接缝
 
@@ -189,7 +200,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 
 `data_portability.py` 只在 `includeShared=true` 时加入 `shared.routines`。`home_assistant.py` 调用只读 `brief(con)`；`static/home-assistant.js` 按存在的数据显示例行计划待处理组。`static/product-shell.js` 提供三个入口并在共享状态刷新时通知例行模块；通知不发送请求、不重置草稿。新模块在 `product-shell.js` 之前加载。公开接口为 `HouseholdRoutines.open({planId?})`、`refresh()` 和 `notifyStateChanged()`。返回桥支持原待办／采购编辑器与 TaskPublish 初始选择页；保留未保存字段、图片和写中保护，显式返回重新核对原计划，不接管助理外层的关闭返回处理。Docker COPY 和 `deploy/prepare_release.py` 白名单都包含新后端。
 
-当前完整结构为 106 路由／43 户内表／2 平台表；例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
+当前完整结构为 130 路由／48 户内表／2 平台表；资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
 
 ## 已开发与待真实验证
 
@@ -245,7 +256,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 5. 明确接口/迁移/隐私变化后再编码。公共 API、数据模型、用户步骤、错误行为和相应测试一起交付；金额是整数分、不同币种分别计算，日期语义按旅行契约。
 6. 由集成人检查合并结果，完成对应组合测试、冻结、打包及发布。源码打包只收白名单，不生成凭据，也不是内容脱敏器；不能把私人文件临时放到 `docs/tests/static/deploy`。
 
-部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。本次已经完成 [一次性 42→43](JOURNEY-DOCUMENTS-RELEASE.md)；当前 43 表不能重跑该控制器，也不能使用 DEPLOYMENT 第 5.2 节历史 42→42 算法。后续 43→43 指导尚待单独实现验证，禁止仅改表数；旧 37→40、40→42 继续保留历史范围。
+部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已是媒体 48 表，历史 42→43、43→43、43→44 以及本轮一次性 44→48 工具均不能重放；不能只改表数或照搬 DEPLOYMENT 的历史算法。下一次更新须绑定实际 48 表基线，恢复边界见 [媒体交付](MEDIA-DELIVERY.md)。
 
 更新保留 `.env` 和主密钥，先关闭 web，再停止 sync/app，核对注册目录、全部家庭与完整备份组后串行初始化。app 启动读回通过才开放 sync/web；本次控制器任何失败均停止并保全现场，不自动恢复数据库。需要恢复时另行确定相配源码、密钥、注册目录与家庭映射，不能让旧镜像盲接未知库；已有业务写入时不能用旧快照覆盖。**恢复后先使目标家庭旧成员登录失效，再启动 app/web 核对，最后才恢复 sync**。具体步骤见 [部署与恢复](DEPLOYMENT.md#6-备份恢复与回滚)、[运维](OPERATIONS.md) 和 [会话恢复要求](MEMBER-SESSIONS.md#恢复后使旧成员登录失效)。上一财务版本的 165／119 项离线激活／控制器恢复、79 项文档零结构检查均不是生产恢复演练。
 
