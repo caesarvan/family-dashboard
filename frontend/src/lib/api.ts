@@ -13,7 +13,7 @@ export async function request<T>(path: string, options: RequestInit = {}, csrf =
   } catch { throw new ApiError('连接中断，请检查网络'); }
   let value: any;
   try { value = await response.json(); }
-  catch { throw new ApiError('服务暂时不可用，请稍后重试', response.status); }
+  catch { throw new ApiError('暂时无法确认服务返回的结果，请刷新核对', response.ok ? 0 : response.status); }
   if (!response.ok) throw new ApiError(value.error || '暂时无法完成操作', response.status, value.code || '');
   return value as T;
 }
