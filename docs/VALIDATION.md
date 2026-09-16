@@ -1,5 +1,72 @@
 # 验证记录
 
+## Expo 账户与同步发布：2026-09-17 03:01:51
+
+本轮按用户再次指定的当前 [Expo 官网](https://expo.dev/) 风格，将账户主入口迁入 `/app/connections`，包括两家授权、来源搜索／分页、共享范围预览、主清单、逐来源状态、失效同步单独停止及断开确认。前端、后端、浏览器和接线分别使用独立分支，由非作者审查后组合；发布工具放在独立私有目录，并经非作者审查。
+
+实际安装 main `a6099c9c2e7d8e8c64aa7a8f911b00107945a6ab`／integration `549e23d842fab92569394cc2ba55efac219bf79f` 同树 `87f47c3414f7b663f64bdf3613d2e636d055edd9`。实际最终浏览器执行的是 r2 应用来源 `0965b6b0488952cf43e8332005c5f1f1bf92d537`／tree `c732048758827225a6f0846bb2ed46ac4c962c97`、构建证据 `dc21fc7842b07649801e0c1441bd00cee911c37e96e3a1e9ce4543df4a828bc7`。随后只有 harness 修订进入源码；实际重新构建 r3，证据 SHA256 `e7d76d4fc0ebb8571a5dce1ab0a88483f548d0d71a2f5165f6ea670fac69879f`。独立检查 r3 的全部 **136 个输入与 23 个导出文件**均与 r2 相同，因此沿用该实际浏览器验证，不宣称 r3 又执行了浏览器。
+
+真实临时 Flask／SQLite／Edge **18 项检查通过，已包括 320／390／1040／1440 四宽**：安全回调消费、配置与连接真实分层、本人账号列表、两家绑定按钮、键盘与明确共享选择、只读任务拒绝、主清单、真实 worker 成功／失败／恢复、15秒轮询保留输入、真实409核对、来源取消及丢提交响应只读确认、后台／离线隐藏、失效账户不发现云来源即可停止同步、未发现旧来源保留、重新授权提示、断开丢响应恢复、成员切换与同成员ID跨户迟到响应、第二家庭及配对电视拒绝。
+
+最终原件在私有 `expo-account-browser/test-results/expo-accounts-20260916T183546659269Z/`：`result.json` SHA256 `3c174d1de32787db6e072dbf93cac7faef3f52389e133c75300f56ec2912d2b3`，执行 harness SHA256 `647c1fc36db4a69c5138833d774679f4c217e46722fa4604cb519f6c339275dd`；没有 failure 键，0 pageErrors／externalRequests，源码与 bundle 前后保持。记录18张截图，作者查看全部；8个保存／断开对话框在动画完成后 opacity 为1、浅灰背景 `rgb(248,248,250)`、圆角24px。另有首页390／1440截图，root核对首页手机与桌面及账户示例。`acceptance-review.json` SHA256 `d4c80e11e1143b45e2f49dbdccba9d0c8e0e4e9c9392dd180ff58327f4d52797`。最终 harness 之后另有一行异常路径 `passed=False` 报告守护修订，未再重跑业务；最终有效原件本身不存在异常键，不受此报告守护影响。
+
+两家授权按钮确实通过应用生成 PKCE 授权地址，但供应商文档导航在浏览器被明确拦截为 HTTP204，未连接真实云、未完成本人授权。其余业务响应来自实际临时 API，丢响应场景先获取真实已提交响应再丢弃；后台场景注入 document.hidden／visibilitychange。虚构账户、临时回环HTTPS证书、SQLite和会话校验不是本人公网浏览器、真实云授权／长期同步、原生安装包或实体电视验收。
+
+Windows 在 integration `0bb7af6` 对七个模块执行 **242 passed／0 failure／error／skip，152.44s**：`test_account_source_version.py`、`test_cloud_accounts.py`、`test_cloud_review.py`、`test_google_photos_oauth.py`、`test_sync_health.py`、`test_member_sessions.py`、`test_expo_account_navigation.py`。原件 `integration/test-results/expo-accounts-combined.xml` SHA256 `687dc4959c43f06eabb80df46bcf5f9d692e96ef6027d9e7163c9f951947fe25`；从该来源到最终 integration 的相关 Python 与这七份测试字节相同。Node 与最终镜像 Linux 的结果分别记录，不相加为一次全套。
+
+Node 在来源 `50d110b05a79777cc01bb2d92b61e838d41e0225` 执行 `node --test tests/test_expo_accounts.mjs tests/test_expo_photos.mjs tests/test_expo_auth_navigation.mjs`，终端实际报告 **28 passed／0 skipped**，没有另外保存 TAP 原件；三份测试与相关 helper 到最终来源无变化。`npm run typecheck` 在独立 builder 来源 `50d110b` 与导航修复后 `0965b6b0488952cf43e8332005c5f1f1bf92d537` 均通过。r3 实际重新构建且逐文件与 r2 相同，但没有声称 r3 又单独执行 typecheck。
+
+### 本轮失败与修订原件
+
+下列目录均在私有 `expo-account-browser/test-results/`，各自保留原 `result.json`；部分检查不计入最终18项，也不合并成额外通过数量。
+
+| 目录 | 原件 SHA256 | 结果与修订 |
+| --- | --- | --- |
+| `expo-accounts-20260916T182143166048Z` | `912354d17ba93748fa506bef92f17aaece6a48bb74dacdda1a563699a8fe63c5` | 产品失败，0项；r1 `50d110b` 在导航根挂载前尝试消费授权回调，出现白屏和 Router 错误。等待根就绪订阅的实际修复后，重新构建 r2 |
+| `expo-accounts-20260916T182531060320Z` | `6ba8feeb47e0bd2f96ac561863615eb1eb4a3eb75491128761ecf61b183dbe99` | harness生命周期失败，2项；unroute与尚在处理的供应商文档abort竞争 |
+| `expo-accounts-20260916T182746833492Z` | `773494b5c524ffab053feef2a183987668e1bf0dafbd9156663f561d0a0a6d87` | harness生命周期失败，2项；Chromium被中止文档的错误导航与返回竞争，改为仅供应商文档HTTP204阻止外网访问 |
+| `expo-accounts-20260916T183008941257Z` | `86fe1d8e78a24454cb81cde3e64007d500ee441da835731aafddf2756e3106de` | harness等待定位失败，8项；通用页脚先于重新授权状态出现，改为等待准确状态和可用恢复动作 |
+| `expo-accounts-20260916T183155170060Z` | `7eabf89e585bcbb1111933e54a4cf72963cd86b913bb2ee67f1a8b22b28aad22` | 18项交互通过，但确认窗截图拍在入场动画中，不作为最终视觉验收；显式等待不透明对话框后完整复跑 |
+
+### 第一次 Linux 镜像验收未通过
+
+私有 `expo-accounts-package-20260917/` 保留第一次真实容器验证：242 项中 **169 passed、73 setup errors、0 assertion failures／skip／deselect**，199.19s。检查原 XML，错误由54个 SQLite `database or disk is full` 和19个 `No space left on device` 构成；隔离测试的128MiB `/tmp` 耗尽，宿主仍有可用空间。加载来源与运行文件哈希在测试前后均一致。runner 在 validate 阶段停止，没有 stage、激活或生产数据／配置变更；这些部分通过项不作为完整通过。
+
+失败报告 `validation.json` SHA256 `27fe3101126407d402b602ede2ed056d50c2442ea7a358d722d4e18942473f4a`；原日志 `validation-failed-original.log` SHA256 `b106e4f0b50572f9dab4dc90904d06e10152d0e36ab5bdeb7af4e0a76f257bff`；XML `validation-failed-results.xml` SHA256 `f54f2c67429d05bf62b68ae0c6e59cb523d495cc8eeeae679b158ea14339543e`；运行来源原件 `validation-failed-runtime.json` SHA256 `53303ab67efc357f694af492c352657a85aea6f18834dd4181e38a149db4078c`。后续另建 `expo-accounts-package-20260917-r2/` 与对应私有操作目录，保留相同源码包、manifest 与构建证据，只将隔离验证 `/tmp` 上限改为256MiB、内存上限改为512MiB，经非作者审查后完整重跑，不修改应用、数据或测试选择。
+
+### 最终 Linux 验收与生产发布
+
+`expo-accounts-package-20260917-r2/` 在同一实际镜像完整执行上述七模块，**242 passed／0 failure／error／skip／deselect，269.12s**；原日志与XML均已读回，XML计时269.089s。容器使用 `--network none`，没有生产数据卷，运行代码和测试支持文件在执行前后逐SHA保持；测试代码从独立只读支持目录加载，业务导入仍来自受验 `/app`。这是第二次完整执行的结果，不与第一次169项或Windows结果相加。原件 `validation/validation.log` SHA256 `97d3e0255c4593ac5e53a27c3db13a896c5684cafbae1bdea04b6449742a1988`，`validation/results.xml` SHA256 `8d8e76d765708e9bab8658c611e87368d475b89a6b81392aa38579d78e8bd9ee`，`validation/runtime.json` SHA256 `b8c6d1bac6f808b174eb1e71433cb5df5f0baee90e10d462e79189e7838a6218`。
+
+北京时间 **2026-09-17 03:01:51** 激活、**03:02:05** 正常TLS读回通过，runner exit0。固定实际版本如下；这些发布后文档没有重写已安装manifest或构建证据。
+
+| 项目 | 固定身份 |
+| --- | --- |
+| main／integration | `a6099c9c2e7d8e8c64aa7a8f911b00107945a6ab`／`549e23d842fab92569394cc2ba55efac219bf79f` |
+| 共同 tree | `87f47c3414f7b663f64bdf3613d2e636d055edd9` |
+| manifest SHA256 | `11da3a4bd52d4233629b7df26884831ff19c314ea2a1f3f9c8da7310b967d718` |
+| 源码包 SHA256 | `e0b3490e2662f5259c84331ab1c7e88e2df81d27ad644ee3abdffc6229a18c59` |
+| 实际 app／sync／media 镜像 | `sha256:7f2b301ccf9577c1ec8c61fd52dd152484809cbf1e8e612d81dd5d39887e8dcf` |
+| 继承的固定父镜像 | `sha256:87c442df6f8a03a6ee74846338621dba849ac09f2907506d182a53aea0b3abc4` |
+| 旧 manifest SHA256 | `d21b3840cb284b2ea680018d4895fa3767a079008e0fdca8035e4965e7bfead8` |
+| 生产发布目录 | `/opt/family-dashboard-releases/expo-accounts-53-20260916T190101969525Z` |
+
+实际1户、2个数据库完整备份，53张户内表及平台注册库的行／schema／序列在新app启动时与停写快照相同：`before.json` 与 `after-app.json` 均为 `5994e24c6a0ff2d00188479142f4e2aacfb7126179c6a949136bd37336520ce9`。原配置、依赖、Dockerfile、Compose和Nginx保持，无迁移；旧源码、环境、镜像和完整备份组另行保留。数据相等仅说明启动核对时点，不把后续worker正常更新当作数据不变。
+
+正常TLS核对 **474源／112运行／75公开静态文件**；`/app/connections` 等Expo入口与经典入口通过，24个内部生成文件及1个退役JS拒绝，包含 `/api/accounts` 的 **13个匿名API均401**。app／sync／media／web均running、restart0，app healthy；备份service success、timer active。公网认证账户交互、本人真实云与实体电视仍未在本轮验收，原生安装包没有交付。
+
+五份报告及完整发布索引位于私有 `expo-accounts-package-20260917-r2/`，索引 `publication-index.json` SHA256 `910243343fc3d4b5be8ec67fb074fb5011147ef369dd10fa37fb2bce2466e99c`：
+
+| 报告 | SHA256 |
+| --- | --- |
+| `build.json` | `de3c92454bdea30aeaaa39bd9ccd87cef06fcb8e09ffa6abf57f2692398408bd` |
+| `validation.json` | `634d18187dab86179dbc66ffb846ed0caa553bda98fe839ec3d935578fcc41e2` |
+| `ready.json` | `033f9ebd8eff56c3ff22d5f11e4acd54c267c9ebb592565f8bed6a33287229b5` |
+| `activation.json` | `9c242cc1ac4dd714e3b361521dd2a2f81cf9f7feefad6d8f9bea346fbd6a53ea` |
+| `post-readback.json` | `d148b0abdc95dc3478909ef6054678b5cd40bf5f3508037428128ad4a0033826` |
+
+操作绑定当时旧manifest与镜像，成功后不可重放；下一次部署应重新核对当前53表基线。
+
 ## Expo 足迹地图与旅行相册发布：2026-09-17 01:47:27
 
 实际安装 main `7ec8c305bbf0ab0e85aaf62d70e7c571881a964f`／integration `9c63f9da262d8c690a3554931f78c3b6824d971e` 同树 `adf7dfa10bbac51ceff95edbfbf9aff3adc3a032`，01:47:27 激活、01:47:42 正常 TLS 读回通过。实际浏览器使用 r3 导出：来源 `0c533e789eb3d2b74704a9e155bcabb02f4a3e63`，tree `836e801c36d04ed742d71a47af094f8c807508da`，构建证据 SHA256 `c3b7d7e3d02dee9671ab068c9268cd649bbd6b9043f3d4b16d2bc09588e4b7c8`。
