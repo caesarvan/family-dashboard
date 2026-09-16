@@ -178,7 +178,7 @@ def main():
                     if kind == 'receive':
                         button(p, '收货').click()
                     else:
-                        button(p, '更多实物操作').click()
+                        p.get_by_text('更多实物操作', exact=True).click()
                         button(p, {'consume': '记录使用', 'return': '记录退回', 'dispose': '记录报损'}[kind]).click()
                     fill(p, '本次数量', qty)
                     fill(p, '操作原因', '合成已核对实物动作')
@@ -213,6 +213,7 @@ def main():
                 fill(page, '计量单位', '节')
                 fill(page, '规格', 'AA 可充电型')
                 fill(page, '存放位置', '合成家庭玄关收纳柜第二层靠左备用品抽屉')
+                page.get_by_text('补货提醒', exact=True).click()
                 fill(page, '补货提醒数量', 3)
                 expect(page.get_by_role('radio', name='仅本人可见', exact=True)).to_be_checked()
                 button(page, '保存物品').click()
@@ -330,12 +331,12 @@ def main():
                 fill(page, '告诉助理你的需求', '搜索：可充电电池')
                 button(page, '整理并预览').click()
                 expect(button(page, '查看物品 ' + title)).to_be_enabled()
-                expect(page.get_by_text('现有 7 节', exact=False)).to_be_visible()
+                expect(page.get_by_text('现有 7 节', exact=False).filter(visible=True)).to_be_visible()
                 with page.expect_response(lambda response: '/api/inventory/items/' + uid in response.url and '/acquisitions' not in response.url and response.request.method == 'GET') as detail:
                     button(page, '查看物品 ' + title).click()
                 assert detail.value.status == 200
                 expect(button(page, '编辑物品')).to_be_enabled()
-                expect(page.get_by_text(title, exact=True)).to_be_visible()
+                expect(page.get_by_text(title, exact=True).filter(visible=True)).to_be_visible()
                 passed('local assistant inventory search shows current quantity and opens matching detail through a fresh authorized GET')
 
                 before_restart = get(owner, '/api/inventory/items/' + uid)['item']
@@ -398,8 +399,8 @@ def main():
                         expect(button(page, '新增物品')).to_be_enabled()
                     else:
                         button(page, '返回更多功能').click()
-                        expect(page.get_by_text('家庭物品', exact=True)).to_be_visible()
-                        page.get_by_text('家庭物品', exact=True).click()
+                        expect(page.get_by_text('家庭物品', exact=True).filter(visible=True)).to_be_visible()
+                        page.get_by_text('家庭物品', exact=True).filter(visible=True).click()
                         expect(button(page, '新增物品')).to_be_enabled()
                     passed(f'{width}px list/detail/batch fit viewport and the navigation menu opens native inventory')
                 assert not report['pageErrors'] and not report['externalRequests']
