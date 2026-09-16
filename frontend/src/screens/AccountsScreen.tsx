@@ -48,7 +48,7 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
   const generation = useRef(0), reading = useRef(false), writing = useRef(false);
   const fence = useRef(new PhotoReadFence(() => request<PhotoSession>('/me'), props.user, props.identityKey));
   const [visible, setVisible] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [notice, setNotice] = useState(() => syncAuthMessage(props.authResult));
+  const [notice, setNotice] = useState(() => props.authResult ? syncAuthMessage(props.authResult) : '');
   const [list, setList] = useState<AccountList | null>(null);
   const [draft, setDraftState] = useState<SelectionDraft | null>(null), draftRef = useRef<SelectionDraft | null>(null);
   const [conflict, setConflictState] = useState<CloudAccount | null>(null), conflictRef = useRef<CloudAccount | null>(null);
@@ -281,7 +281,7 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
           </View>}
           <View style={styles.buttons}><Button icon="arrow-left" disabled={locked} onPress={() => setDiscard(true)}>返回账户</Button>
             <Button icon="refresh" disabled={locked} onPress={() => void discover(editingAccount, true)}>重新读取来源</Button></View>
-          <TextInput mode="outlined" label="搜索日历或清单" value={query} maxLength={200} disabled={!!pending || !current()} onChangeText={text => { setQuery(text); setOffset(0); }} outlineStyle={styles.inputOutline} style={styles.input} />
+          <TextInput mode="outlined" label="搜索日历或清单" accessibilityLabel="搜索日历或清单" value={query} maxLength={200} disabled={!!pending || !current()} onChangeText={text => { setQuery(text); setOffset(0); }} outlineStyle={styles.inputOutline} style={styles.input} />
           <Text variant="bodySmall">已选择 {chosenCount} / 12 个来源 · 搜索结果 {filtered.length} 个</Text>
           {pageRows.map(row => <View key={sourceKey(row)} style={styles.sourceOption}>
             <Check label={(row.kind === 'calendar' ? '选择日历：' : '选择清单：') + row.name} checked={row.selected}
