@@ -1,7 +1,8 @@
 """Portable synthetic migration tests: no Git, historical checkout or private paths.
 
-The old fixture uses this source factory with only document registration disabled.
-This tests the isolated structural transition, not an actual historical release.
+The old fixture disables document and later place registration. Warm enables
+documents but keeps places disabled. This tests the historical 42 -> 43 shape,
+not an actual historical release or the current 44-table application.
 """
 from contextlib import closing
 import hashlib
@@ -36,8 +37,9 @@ from contextlib import closing
 from pathlib import Path
 sys.path.insert(0, sys.argv[1])
 import app as app_module
-# Exactly one new registrar is disabled. All 42 old tables use the real factory.
+# Keep this historical fixture at 42 tables as newer modules are introduced.
 app_module.register_journey_documents = lambda *args, **kwargs: None
+app_module.register_journey_places = lambda *args, **kwargs: None
 application = app_module.create_app({'TESTING':True})
 platform = application.extensions['household_platform']
 client = application.test_client()
@@ -69,6 +71,10 @@ import runpy
 from pathlib import Path
 source = Path(sys.argv.pop(1))
 sys.path.insert(0, str(source))
+import app as app_module
+# The frozen legacy checker calls create_app. Reproduce its historical factory
+# shape in this test only; production must use the new explicit places checker.
+app_module.register_journey_places = lambda *args, **kwargs: None
 sys.argv[0] = str(source/'deploy/check_journey_documents_migration.py')
 runpy.run_path(sys.argv[0], run_name='__main__')
 '''
