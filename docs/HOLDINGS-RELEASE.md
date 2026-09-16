@@ -28,7 +28,7 @@
 ## 精确变化
 
 1. 原 53→54 更换为 54→55，绑定 [check_investment_operation_migration.py](../deploy/check_investment_operation_migration.py) 的单表 DDL 和源文件散列。保留停写、全部家庭及平台注册库完整备份、原始数据/schema/序列比较、逐户原子迁移和新 app 启动后再次全组比较。
-2. Dockerfile 只允许在既有 `COPY calendar_publish.py financial_files.py investment_import.py ./` 中增加 `investment_operations.py`。父镜像、安装依赖、USER、其余行均须字节不变；实际镜像继续从核验的旧镜像追加限定的 Expo 清理和完整运行文件 COPY，不执行 pip。
+2. Dockerfile 只允许在既有 `COPY calendar_publish.py financial_files.py investment_import.py ./` 中增加 `investment_operations.py`，并将这一行已确认的旧 CRLF 换为新 LF。父镜像、安装依赖、USER、其余所有行及换行字节均须不变，禁止全文件规范化；实际镜像继续从核验的旧镜像追加限定的 Expo 清理和完整运行文件 COPY，不执行 pip。
 3. Linux 测试始终导入 `/app` 的真实镜像模块。两个嵌套迁移 helper（旧 54 与新 55）先核对 `/test-support` 来源和运行模块散列，然后仅将各自 ROOT 指向已核验的 `/app`；测试前后完整检查模块、源文件、schema 与所有运行散列。测试不改 helper 断言，不跳过迁移验证。
 4. 新增 `/app/investments` 入口核对，以及三个持仓 GET 的匿名 401 检查。
 5. post_readback 整体继承 r3：明确启动一次新 backup service invocation，通过本次 journal 回执和新增 manifest 唯一匹配，检查完整注册表映射及所有关闭的备份数据库。`immutable=1` 仅用于备份目录的无侧车关闭快照；**不用于 live WAL**。报告仍明确 `liveGroupSnapshotRechecked:false`，逐库在线备份不宣称跨库全局事务。
@@ -86,9 +86,11 @@ message=Windows junction semantics
 python -B -X utf8 -m pytest tests/test_holdings_release.py -q
 python -B -X utf8 -m tests.test_holdings_release `
   --source-root C:/PRIVATE/family-dashboard-access `
+  --git-repo C:/PRIVATE/family-dashboard `
+  --git-revision <实际已审提交的40位Git哈希> `
   --report test-results/holdings-local-operator-guards.json
 ```
 
-第一条为 21 项可独立运行的合成 guard 测试，无私人原件依赖、无额外平台跳过。第二条另行使用实际固定原件，在临时目录生成九份真实脚本，逐一调用五个服务器入口，确认缺绑定时均在外部操作前拒绝，并验证未冻结模板拒绝伪造绑定；所有 subprocess 和网络调用均被硬阻止。它还用合成 XML 核对实际 JUnit 解析器的精确跳过、唯一用例和计数规则，并验证实际 r3 函数拒绝旧 invocation、非新增 manifest 和失败的备份服务。两者分开报告，不把合成 guard 或入口拒绝当成实际 build、Linux、迁移、备份或生产部署成功。
+第一条为 22 项可独立运行的合成 guard 测试，无私人原件依赖、无额外平台跳过，其中混合换行样本验证只允许指定 COPY 行变化，拒绝全文件规范化。第二条读取固定 SHA 的旧源码归档 Dockerfile，并通过唯一只读 `git show <完整提交>:Dockerfile` 读取最终 Git blob；两份实际字节必须符合已审 SHA，并通过生成后的 Docker 契约。在临时目录生成九份真实脚本后，逐一调用五个服务器入口，确认缺绑定时均在外部操作前拒绝，并验证未冻结模板拒绝伪造绑定；生成脚本运行期间所有 subprocess 和网络调用均被硬阻止。它还用合成 XML 核对实际 JUnit 解析器的精确跳过、唯一用例和计数规则，并验证实际 r3 函数拒绝旧 invocation、非新增 manifest 和失败的备份服务。两者分开报告，不把合成 guard 或入口拒绝当成实际 build、Linux、迁移、备份或生产部署成功。
 
 迁移结果检查直接从实际生成的 `activate.py` 提取并执行 `need(migration_result == {...})` 的 AST：保全 54 张旧表、只新增一张、两户且全部保全标志正确时通过；旧计数 53、新总数 55、错误家庭数及任一保全标志错误均拒绝。另对九份生成码及可解析的内嵌 Python 字符串递归检查，拒绝遗留的旧计数 53；注释与文本替换本身不算迁移结果验证。
