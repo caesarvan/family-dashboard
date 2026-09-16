@@ -2,7 +2,8 @@ import { ApiError } from './api';
 import type { Member } from './types';
 
 export type Action = { kind: 'tasks' | 'shopping'; data: { title: string; owner: string; due?: string; quantity?: string } };
-export type Match = { id: string; kind: 'tasks' | 'shopping' | 'events' | 'trips' | 'media' | 'places'; title: string; due?: string; start?: string };
+export type Match = { id: string; kind: 'tasks' | 'shopping' | 'events' | 'trips' | 'media' | 'places' | 'inventory'; title: string; due?: string; start?: string;
+  unit?: string; location?: string; onHandQty?: number; inTransitQty?: number; plannedQty?: number };
 export type Search = { query: string; matches: Match[]; total: number; limit: number; offset: number; nextOffset: number | null };
 export type Plan = { id: string | null; mode: 'local' | 'model'; summary: string; actions: Action[]; matches: Match[]; search?: Omit<Search, 'matches'> };
 export type Receipt = { ok: true; destination: 'household'; created: { id: string; kind: 'tasks' | 'shopping'; title: string }[] };

@@ -363,6 +363,11 @@
     renderBoard();
     window.scrollTo({top:0,behavior:'instant'});
   }
+  async function openInventory(itemId) {
+    if (!/^[a-f0-9]{24}$/.test(itemId) || !data || isTV || isDemo || !canEdit() || !root.InventoryUI?.openItem) return false;
+    navigate('inventory');
+    return await root.InventoryUI.openItem(itemId);
+  }
   function openPreferences() {
     if (isTV) return;
     openModal('让这里更像你们的家',`<form id="ps-preferences-form"><p class="help">选择喜欢的氛围与信息密度。${isDemo?'演示设置仅保存在本机。':'保存后会同步到你的手机与电脑。电视使用各自的显示设置。'}</p><div class="ps-preference-label">空间主题</div><div class="ps-theme-grid">${Object.entries(THEMES).map(([value,label])=>`<label class="ps-theme-choice"><input type="radio" name="theme" value="${value}" ${prefs.theme===value?'checked':''}><span class="ps-theme-preview ${value}"><i></i><i></i><i></i></span><strong>${label}</strong><small>${{forest:'沉静、温暖，适合每个夜晚',light:'轻盈、明亮，让思绪舒展',ocean:'清透、平静，像靠近海边'}[value]}</small></label>`).join('')}</div><div class="fields"><label class="field"><span>信息密度</span><select name="density"><option value="comfortable" ${prefs.density==='comfortable'?'selected':''}>舒适 · 留一些呼吸空间</option><option value="compact" ${prefs.density==='compact'?'selected':''}>紧凑 · 一眼看到更多</option></select></label><label class="field"><span>默认日程范围</span><select name="homeView">${[['today','今日'],['week','本周'],['around','前后 3 天']].map(([value,label])=>`<option value="${value}" ${prefs.homeView===value?'selected':''}>${label}</option>`).join('')}</select></label></div><div class="error" role="alert"></div><div class="dialog-footer"><button type="button" class="ps-button subtle" data-action="close">取消</button><button type="submit" class="ps-button primary">${isDemo?'应用演示外观':'保存并同步'}</button></div></form>`,true);
@@ -526,5 +531,5 @@
   window.addEventListener('popstate',()=>{if(data&&!isTV)navigate(routeFromLocation(),false);});
   setInterval(()=>{if(!document.hidden&&user&&!isTV&&!isDemo){void refreshPreferences();void refreshLayout().catch(()=>{});}},60000);
   setTheme(DEFAULTS);
-  root.ProductShell={navigate,openTasks,openPreferences,openLayout,openSearch,refreshPreferences,refreshLayout,getLayout:()=>normalizedLayout(dashboardLayout),refresh(){renderBoard();},getPreferences:()=>({...prefs}),getRoute:()=>currentRoute};
+  root.ProductShell={navigate,openInventory,openTasks,openPreferences,openLayout,openSearch,refreshPreferences,refreshLayout,getLayout:()=>normalizedLayout(dashboardLayout),refresh(){renderBoard();},getPreferences:()=>({...prefs}),getRoute:()=>currentRoute};
 })(window);

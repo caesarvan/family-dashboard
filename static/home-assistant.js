@@ -116,7 +116,7 @@ window.HomeAssistant = (() => {
     if (!draft) return '';
     const created = state.applied?.created || [];
     return `<section class="assistant-answer"><span class="pill">${draft.search ? '本地搜索 · 只读结果' : (draft.mode === 'model' ? 'AI 建议' : '本地规划') + ' · ' + (state.applied ? '已提交' : '待确认')}</span><p class="assistant-summary">${esc(draft.summary)}</p>
-      ${draft.matches.map(item => allowedKinds.has(item.kind) || sourceKinds.has(item.kind) ? `<div class="assistant-search-record">${action(sourceKinds.has(item.kind) ? 'source' : 'visit', esc(item.title), targetAttrs(item.kind, item.id))}<small>${esc(item.kind === 'media' ? '照片说明' : item.kind === 'places' ? '地图地点' : item.start || item.due || '')}${item.journey ? ' · ' + esc(item.journey.title) : ''}</small></div>` : '').join('')}
+      ${draft.matches.map(item => allowedKinds.has(item.kind) || sourceKinds.has(item.kind) || item.kind === 'inventory' ? `<div class="assistant-search-record">${action(item.kind === 'inventory' ? 'inventory' : sourceKinds.has(item.kind) ? 'source' : 'visit', esc(item.title), targetAttrs(item.kind, item.id))}<small>${esc(item.kind === 'inventory' ? '家庭物品' + (item.variant ? ' · ' + item.variant : '') : item.kind === 'media' ? '照片说明' : item.kind === 'places' ? '地图地点' : item.start || item.due || '')}${item.journey ? ' · ' + esc(item.journey.title) : ''}</small></div>` : '').join('')}
       ${draft.search ? `<p class="help">本地搜索 · 当前可见 ${draft.search.total} 条 · 第 ${Math.floor(draft.search.offset / draft.search.limit) + 1} 页。不会把搜索词或结果发送给模型。</p>${draft.search.offset ? action('search-page', '上一页', `data-offset="${Math.max(0,draft.search.offset-draft.search.limit)}"`) : ''}${draft.search.nextOffset != null ? action('search-page', '下一页', `data-offset="${draft.search.nextOffset}"`) : ''}` : ''}
       ${sourceMarkup()}
       ${draft.actions.length ? `<h3>${state.applied ? '本次创建结果' : '准备创建'}</h3>${draft.actions.map((item, index) => `<label class="assistant-action"><input type="checkbox" data-plan-index="${index}" ${state.selected.includes(index) ? 'checked' : ''} ${state.applied ? 'disabled' : ''}><span><strong>${esc(item.data.title)}</strong><small>${item.kind === 'tasks' ? '待办' : '采购'} · ${esc(person(item.data.owner))}${item.data.due ? ' · ' + esc(item.data.due) : ''}</small></span></label>`).join('')}
@@ -138,6 +138,15 @@ window.HomeAssistant = (() => {
       await verify(current);
       current.draft = {...current.draft, matches:result.matches, search:result}; render();
     } catch (error) { if (state === current) { current.draft = null; render(); } throw error; }
+  }
+  async function visitInventory(id) {
+    const current = state;
+    if (!/^[a-f0-9]{24}$/.test(id) || !current.draft?.matches.some(item => item.kind === 'inventory' && item.id === id)) return;
+    await verify(current);
+    if (!window.ProductShell?.openInventory) throw new Error('家庭物品组件暂未加载，请刷新重试');
+    // Pass an identifier only. The destination reads current ACL and details.
+    clearSource(); current.draft = null;
+    await window.ProductShell.openInventory(id);
   }
   async function visitSource(kind, id) {
     const current = state;
@@ -451,6 +460,7 @@ window.HomeAssistant = (() => {
         if (target) { if (target.tagName === 'DETAILS') target.open = true; target.scrollIntoView({block: 'start'}); target.focus({preventScroll: true}); }
       }
       else if (name === 'visit' && allowedKinds.has(button.dataset.kind)) await visit(button.dataset.kind, button.dataset.id);
+      else if (name === 'inventory') await visitInventory(button.dataset.id);
       else if (name === 'source') await visitSource(button.dataset.kind, button.dataset.id);
       else if (name === 'search-page') await searchPage(Number(button.dataset.offset));
       else if (name === 'source-close') { clearSource(); render(); }

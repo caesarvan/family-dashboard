@@ -70,7 +70,7 @@ export default function AppShell(props: AppShellProps) {
                 accessibilityLabel="更多功能" accessibilityState={{ expanded: menu === 'more' }} style={styles.navButton}
                 contentStyle={styles.reverse} labelStyle={styles.navLabel} onPress={() => setMenu('more')}>更多</Button>}>
               <Menu.Item title="家庭资金" leadingIcon="wallet-outline" onPress={() => navigate('finance')} />
-              <Menu.Item title="家庭物品" leadingIcon="package-variant-closed" onPress={() => legacy('inventory')} />
+              <Menu.Item title="家庭物品" leadingIcon="package-variant-closed" onPress={() => navigate('inventory')} />
               <Menu.Item title="足迹地图" leadingIcon="map-outline" onPress={() => legacy('map')} />
               <Divider /><Menu.Item title="全部工具与设置" leadingIcon="view-grid-outline" onPress={() => navigate('more')} />
             </Menu>
@@ -93,9 +93,9 @@ export default function AppShell(props: AppShellProps) {
           </View>
         </View>
       </Surface>
-      <Banner visible={props.offline} actions={[{ label: '重新读取', onPress: props.onRefresh, disabled: props.refreshing }]}>
+      {props.offline ? <Banner visible actions={[{ label: '重新读取', onPress: props.onRefresh, disabled: props.refreshing }]}>
         连接暂时不可用。请刷新后核对最新内容。
-      </Banner>
+      </Banner> : null}
       <ScrollView ref={scroll} style={styles.contentScroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={[styles.content, { paddingHorizontal: wide ? 24 : 16, paddingTop: wide ? 32 : 20 }]}>{props.children}</View>
       </ScrollView>
