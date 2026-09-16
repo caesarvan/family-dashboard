@@ -68,9 +68,9 @@ window.DataPortability = (() => {
   function render(flow, summary) {
     if (!active(flow)) return;
     flow.node.innerHTML='<p>下载一份属于你的数据副本，可在电脑上查看和留存。</p>'+
-      '<div class="info-box">'+(Number(summary.personal.transactions)||0)+' 条账单与订单 · '+(Number(summary.personal.investments)||0)+' 项投资 · '+(Number(summary.personal.budgets)||0)+' 项预算</div>'+
-      '<p class="help">包含本人财务基线、偏好和助理草案；不含伴侣的私人财务与账号凭据。参考图片仅保留编号和尺寸。</p>'+
-      '<form id="portability-form"><label class="label-check"><input type="checkbox" name="includeShared">附带双方已共享的日程、待办、采购、旅行和共同资金记录</label>'+
+      '<div class="info-box">'+(Number(summary.personal.transactions)||0)+' 条账单与订单 · '+(Number(summary.personal.investments)||0)+' 项投资 · '+(Number(summary.personal.budgets)||0)+' 项预算 · '+(Number(summary.personal.inventoryItems)||0)+' 件本人物品</div>'+
+      '<p class="help">包含本人财务基线、偏好、助理草案和物品记录；物品来源关联与操作摘要仅限本人。不含伴侣的私人财务与账号凭据。参考图片仅保留编号和尺寸。</p>'+
+      '<form id="portability-form"><label class="label-check"><input type="checkbox" name="includeShared">附带双方已共享的日程、待办、采购、旅行、物品和共同资金记录</label>'+
       '<p class="help">ZIP 内含 JSON 完整文字与 CSV 表格。它是当前保存记录的副本，不能证明所有账户都已覆盖，也不会在下载后删除记录。</p>'+
       '<p class="error" role="alert"></p><button type="submit" class="btn">下载数据副本</button><p id="portability-status" role="status" aria-live="polite"></p></form>';
     flow.node.querySelector('#portability-form').onsubmit=event=>{event.preventDefault();void download(flow,event.currentTarget);};

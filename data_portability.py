@@ -17,12 +17,21 @@ from spending_observations import export_owned_spending_observations
 from journey_documents import exported_documents
 from journey_places import coordinate_projection
 from household_media import ITEM_VIEW, MediaError
+from inventory_core import export_inventory, InventoryError
 
 EXPORT_SLOT = BoundedSemaphore(1)
 MAX_EXPORT_BYTES = 64 * 1024 * 1024
 ENTITY_FIELDS = {'title','owner','done','due','tripId','journeyId','quantity','budget','actual','note',
                  'photoIds','start','end','allDay','location','source','imported','destination','saved','paid',
                  'travelTiming','startDate','endDateExclusive','workflowKey'}
+INVENTORY_ITEM_FIELDS = {'id','owner','visibility','title','variant','unit','location','revision',
+                         'onHandQty','inTransitQty','plannedQty','reorderPoint','belowThreshold','createdAt','updatedAt'}
+INVENTORY_ACQUISITION_FIELDS = {'id','itemId','shoppingId','kind','orderedQty','orderState','orderedOn',
+    'expectedOn','warrantyUntil','afterSalesState','note','revision','createdAt','updatedAt',
+    'onHandQty','receivedQty','returnedQty','remainingExpectedQty','fulfillmentState'}
+INVENTORY_MOVEMENT_FIELDS = {'id','acquisitionId','actor','kind','deltaQty','occurredOn','reason','reversesId','createdAt'}
+INVENTORY_SOURCE_FIELDS = {'id','acquisitionId','orderId','settlementId','status','revision'}
+INVENTORY_OPERATION_FIELDS = {'id','operation','itemId','acquisitionId','createdAt'}
 
 
 def cell(value):
@@ -94,6 +103,25 @@ def validate_media_snapshot(con, engine, owner, exported):
             raise MediaError('conflict')
 
 
+def exported_inventory(con, owner, include_shared=False):
+    """Core ACL projection plus a stable ZIP allowlist, never raw source/receipt rows."""
+    if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='inventory_items'").fetchone():
+        return {'personal':[], 'shared':[], 'sources':[], 'operations':[]}
+    value = export_inventory(con,owner,include_shared)
+    def fields(row, allowed):
+        return {key:item for key,item in row.items() if key in allowed}
+    result = {'personal':[], 'shared':[]}
+    for scope in result:
+        for row in value[scope]:
+            item = fields(row,INVENTORY_ITEM_FIELDS)
+            item['acquisitions'] = [fields(lot,INVENTORY_ACQUISITION_FIELDS) for lot in row['acquisitions']]
+            item['movements'] = [fields(event,INVENTORY_MOVEMENT_FIELDS) for event in row['movements']]
+            result[scope].append(item)
+    result['sources'] = [fields(row,INVENTORY_SOURCE_FIELDS) for row in value['sources']]
+    result['operations'] = [fields(row,INVENTORY_OPERATION_FIELDS) for row in value['operations']]
+    return result
+
+
 def register_portability(app, db, Problem, body, require_member, audit, limited):
     def tables(con):
         return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -109,6 +137,11 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
     def export_summary():
         require_member()
         con, uid = db(), g.actor['id']
+        con.execute('BEGIN')
+        current = app.extensions['member_sessions'].current(con)
+        if (current['owner'] != uid or current['auth_version'] != g.actor.get('auth_version')
+                or g.actor.get('householdId') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+            raise Problem('登录或家庭已变化，请重新打开',401)
         counts = {name: con.execute(f'SELECT count(*) FROM {table} WHERE owner=?', (uid,)).fetchone()[0]
                   for name, table in [('transactions','hub_transactions'),('investments','hub_investments'),
                                       ('budgets','hub_budgets'),('financeBaselines','finance_baselines'),
@@ -123,6 +156,11 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
         media = exported_household_media(con,app.extensions.get('household_media'),uid,include_shared=True)
         counts['householdMedia'] = len(media['personal'])
         shared['householdMedia'] = len(media['shared'])
+        counts['inventoryItems'] = shared['inventoryItems'] = 0
+        if 'inventory_items' in tables(con):
+            counts['inventoryItems'] = con.execute('SELECT count(*) FROM inventory_items WHERE owner=? AND deleted_at IS NULL',(uid,)).fetchone()[0]
+            shared['inventoryItems'] = con.execute("SELECT count(*) FROM inventory_items WHERE owner!=? AND visibility='shared' AND deleted_at IS NULL",(uid,)).fetchone()[0]
+        con.commit()
         return jsonify(personal=counts, shared=shared, format='zip',
                        note='导出的是当前保存的记录，并非已覆盖全部金融账户。家庭相册、采购图片和旅行资料仅含说明与元数据，不包含图片或文件；照片原图仍在来源平台，旅行文件可在资料夹逐份下载。账号连接需要重新授权。')
 
@@ -150,6 +188,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                         'coverage': {'includesShared': value.get('includeShared',False), 'photos':'metadata_only',
                                      'journeyDocuments': 'metadata_only',
                                      'householdMedia': 'saved_metadata_only',
+                                     'inventory': 'manual_records',
                                      'externalCredentialsIncluded': False, 'completeFinancialCoverage': False}, 'personal': {}}
             personal = snapshot['personal']
             documents = exported_documents(con, uid, include_shared=value.get('includeShared', False)) if 'journey_documents' in available else {'personal': [], 'shared': []}
@@ -159,6 +198,9 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
             media_engine = app.extensions.get('household_media')
             media = exported_household_media(con,media_engine,uid,include_shared=value.get('includeShared',False))
             personal['householdMedia'] = media['personal']
+            inventory = exported_inventory(con,uid,include_shared=value.get('includeShared',False))
+            personal['inventory'] = {'items':inventory['personal'], 'sources':inventory['sources'],
+                                     'operations':inventory['operations']}
             personal['transactions'] = decoded_rows(con, 'hub_transactions')
             personal['investments'] = decoded_rows(con, 'hub_investments')
             if 'hub_investment_sources' in available:
@@ -229,6 +271,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                 snapshot['shared'] = shared
                 shared['journeyPlaces'] = places['shared']
                 shared['householdMedia'] = media['shared']
+                shared['inventory'] = {'items':inventory['shared']}
             personal['photoMetadata'] = [dict(r) for r in con.execute('SELECT id,size,width,height FROM photos WHERE created_by=? ORDER BY id',(uid,))]
             con.commit()
             output, digests = BytesIO(), {}
@@ -273,6 +316,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     '本人旅行资料只在 personal.journeyDocuments 出现一次，含旅行已删除后保留的本人资料；shared.journeyDocuments 仅含仍关联有效旅行的伙伴共享资料，不含内容、文件网址、请求标识或内容散列。\n',
                     'personal.journeyPlaces 含本人未删除地点及精确坐标；shared.journeyPlaces 仅含伙伴明确共享地点，坐标按其隐藏、粗化或精确设置导出。地点创建回执与已删除记录不在本副本内，整库备份另行保留。\n',
                     'personal.householdMedia 仅含本人已确认保存照片的说明、尺寸、来源文件名与旅行关联；shared.householdMedia 仅含仍获授权的伙伴共享照片说明，不包含原始文件名。没有照片文件、下载网址、选片清单、令牌、TV许可或后台任务。加密预览和后台记录仅在服务器整库备份中保留。\n',
+                    'personal.inventory 包含本人物品及批次、实物流水；sources 和 operations 只含本人且在本次可见范围内的最小来源关联与操作摘要。shared.inventory 仅含伙伴当前共享物品及其批次、实物流水，不含伙伴的金融来源或操作回执。归档记录、请求标识、载荷散列、原回执内容不在此副本内；整库备份另行保留。数量不代表付款、退款或估值。\n',
                     '不含登录密码、令牌、应用密钥；迁移后须重新绑定第三方。此文件不是可直接覆盖 SQLite 的灾难恢复备份，当前没有一键还原此文件的接口。\n',
                     '本文件含个人资料和财务内容，请保存在你控制的设备上。\n'])
                 entry('manifest.json', [json.dumps({'schemaVersion':1,'files':dict(digests),'exportedAt':exported.isoformat()},ensure_ascii=False,indent=2)])
@@ -284,6 +328,11 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                 validate_media_snapshot(con,media_engine,uid,media)
             except MediaError:
                 raise Problem('照片或共享范围已变化，请重新导出以获取最新内容',409) from None
+            try:
+                if exported_inventory(con,uid,include_shared=value.get('includeShared',False)) != inventory:
+                    raise InventoryError('conflict')
+            except InventoryError:
+                raise Problem('物品或共享范围已变化，请重新导出以获取最新内容',409) from None
             audit('personal_data_export', 'with_shared' if value.get('includeShared') else 'personal_only')
             con.commit()
             output.seek(0)
