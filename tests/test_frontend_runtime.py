@@ -49,6 +49,24 @@ def test_only_completed_export_switches_home_and_classic_remains(export):
     assert client.get('/app/tasks').status_code == 404
 
 
+@pytest.mark.parametrize('auth', ['connected', 'photos-connected', 'error'])
+def test_existing_oauth_result_flow_is_preserved(export, auth):
+    from urllib.parse import parse_qs, urlsplit
+    client, _, _ = export
+    response = client.get('/', query_string={'auth': auth, 'reason': 'denied',
+                                            'code': 'do-not-forward', 'next': '//external.invalid'})
+    target = urlsplit(response.location)
+    assert response.status_code == 302 and target.path == '/classic' and not target.netloc
+    assert parse_qs(target.query) == ({'auth': [auth], 'reason': ['denied']} if auth == 'error' else {'auth': [auth]})
+    assert response.headers['Cache-Control'] == 'no-store'
+
+
+def test_account_sign_in_and_unknown_queries_open_expo(export):
+    client, _, _ = export
+    for value in ['signed-in', '//external.invalid', 'unknown']:
+        assert client.get('/', query_string={'auth': value}).location == '/app'
+
+
 @pytest.mark.parametrize('name,mimetype,content', [
     ('_expo/static/js/web/entry-123.js', 'text/javascript', b'window.synthetic = true;'),
     ('assets/font.woff2', 'font/woff2', b'synthetic-font'),

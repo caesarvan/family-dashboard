@@ -1,7 +1,8 @@
 """Serve an immutable Expo Web export without changing API authentication."""
 from pathlib import Path
+from urllib.parse import urlencode
 
-from flask import abort, redirect, send_file, send_from_directory
+from flask import abort, redirect, request, send_file, send_from_directory
 
 
 PUBLIC_TYPES = {
@@ -83,6 +84,16 @@ def register_frontend_runtime(app, static_root):
         return serve(path, 'text/html')
 
     def home_frontend():
+        # These callbacks continue the existing source-selection/import flow.
+        # Forward only the known status fields, never provider codes or tokens.
+        auth = request.args.get('auth')
+        if auth in {'connected', 'photos-connected', 'error'}:
+            query = {'auth': auth}
+            if auth == 'error':
+                query['reason'] = request.args.get('reason', '')[:80]
+            response = redirect('/classic?' + urlencode(query), code=302)
+            response.headers['Cache-Control'] = 'no-store'
+            return response
         # A checkout without a build keeps the working classic entry. Invalid
         # linked exports fail closed rather than redirecting to outside files.
         if index_file() is not None:
