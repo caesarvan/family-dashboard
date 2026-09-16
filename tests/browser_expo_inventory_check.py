@@ -62,6 +62,7 @@ def main():
     out.mkdir(parents=True)
     shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], httpErrors=[], screenshots=[],
+                  eventInjections=['document.hidden/visibilityState and visibilitychange for background/foreground; real business API unchanged'],
                   head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path),
                   harnessSha256=sha(out / 'executed-harness.py'), sourceHashesBefore=hashes(), bundleHashesBefore=bundle_hashes(),
                   scope='Real frozen Expo bundle, factory, member cookies, CSRF, household routing and SQLite; synthetic input only. One committed response deliberately dropped.', productionWrites=0)
@@ -161,6 +162,15 @@ def main():
 
                 def fill(p, name, value):
                     p.get_by_role('textbox', name=name, exact=True).fill(str(value))
+
+                def visibility(p, hidden):
+                    p.evaluate('''hidden => {
+                      if(hidden) {
+                        Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});
+                        Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'hidden'});
+                      } else { delete document.hidden; delete document.visibilityState; }
+                      document.dispatchEvent(new Event('visibilitychange'));
+                    }''', hidden)
 
                 def open_inventory(p):
                     p.goto(base + '/app/inventory')
@@ -277,7 +287,14 @@ def main():
                 passed('use and return reduce stock; explicit historical reversal preserves original event and restores one unit')
 
                 dropped = {}
+                submitted_movements = []
                 pattern = '**/api/inventory/acquisitions/*/movements'
+
+                def movement_request(request):
+                    if request.method == 'POST' and urlsplit(request.url).path == movement_path:
+                        submitted_movements.append(request.post_data_json['requestId'])
+
+                page.on('request', movement_request)
 
                 def drop_response(handler):
                     if handler.request.method != 'POST' or dropped:
@@ -293,9 +310,16 @@ def main():
                 move(page, 'receive', 3, saved=False)
                 expect(button(page, '核对并重试本次操作')).to_be_enabled()
                 assert dropped and get(owner, movement_path)['total'] == 6
+                visibility(page, True)
+                expect(page.get_by_role('textbox', name='本次数量', exact=True)).not_to_be_visible()
+                visibility(page, False)
+                expect(button(page, '核对并重试本次操作')).to_be_enabled()
+                expect(page.get_by_role('textbox', name='本次数量', exact=True)).to_have_value('3')
+                assert submitted_movements == [dropped['requestId']], 'Foreground must not automatically resend unknown write'
                 button(page, '核对并重试本次操作').click()
                 expect(button(page, '收货')).to_be_enabled()
                 page.unroute(pattern, drop_response)
+                assert submitted_movements == [dropped['requestId']], 'Existing receipt recovery must not submit another movement'
                 assert get(owner, movement_path)['total'] == 6
                 receipt = get(owner, '/api/inventory/operations/' + dropped['requestId'])
                 assert receipt['operation']['replayed'] and receipt['item']['onHandQty'] == 7
@@ -304,13 +328,18 @@ def main():
                     assert con.execute('SELECT count(*) FROM inventory_movements WHERE request_id=?', (dropped['requestId'],)).fetchone()[0] == 1
                     assert con.execute('SELECT count(*) FROM inventory_operations WHERE request_id=?', (dropped['requestId'],)).fetchone()[0] == 1
                 report['droppedResponse'] = {'status': dropped['status'], 'requestId': dropped['requestId'], 'realServerCommit': True}
-                passed('actual committed response loss recovers original receipt without duplicate stock or SQL movements')
+                passed('actual committed response loss survives injected background; explicit original receipt recovery creates no duplicate HTTP write or SQL movement')
 
                 open_inventory(page)
                 open_item(page, title)
                 button(page, '编辑物品').click()
                 draft_location = '冲突后保留的合成位置草稿'
                 fill(page, '存放位置', draft_location)
+                visibility(page, True)
+                expect(page.get_by_role('textbox', name='存放位置', exact=True)).not_to_be_visible()
+                visibility(page, False)
+                expect(button(page, '保存物品')).to_be_enabled()
+                expect(page.get_by_role('textbox', name='存放位置', exact=True)).to_have_value(draft_location)
                 snapshot = get(owner, '/api/inventory/items/' + uid)['item']
                 write(owner, 'PATCH', '/api/inventory/items/' + uid, {'requestId': secrets.token_hex(16), 'revision': snapshot['revision'], 'patch': {'location': '另一设备已保存位置'}})
                 with page.expect_response(lambda response: urlsplit(response.url).path == '/api/inventory/items/' + uid and response.request.method == 'PATCH') as conflict:
@@ -325,7 +354,7 @@ def main():
                 button(page, '保存物品').click()
                 expect(button(page, '编辑物品')).to_be_enabled()
                 assert get(owner, '/api/inventory/items/' + uid)['item']['location'] == draft_location
-                passed('real revision conflict retains draft and requires explicit current-state review before resubmission')
+                passed('injected background preserves unsaved draft; real revision conflict requires explicit current-state review before resubmission')
 
                 page.goto(base + '/app/assistant')
                 fill(page, '告诉助理你的需求', '搜索：可充电电池')
