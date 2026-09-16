@@ -55,7 +55,7 @@ export function PageHeader({ title, description, action }: PageHeaderProps) {
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: 12, borderWidth: 1, overflow: 'hidden' },
+  card: { borderRadius: 12, overflow: 'hidden' },
   cardContent: { paddingHorizontal: 20, paddingVertical: 18 },
   sectionHeading: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 12, marginBottom: 14 },
   sectionTitle: { flex: 1, minWidth: 0 },
