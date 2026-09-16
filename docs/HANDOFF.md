@@ -1,22 +1,20 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-16 23:02:11（北京时间）。** main `5c59ffb7fd535828222c05938d54fbe75f6ce87a`／integration `95c73ed11e3df9442bd125f4b6e6309d40f33fbb` 同树 `a405fd56c4e710f7273964b82a12461622432165`。Expo 统一白黑设计，旅行、助理、相册主流程已上线；23:02:30 发布后读回通过。完整身份见 [本轮交付](EXPO-NEXT-RELEASE.md)，此前 21:59 首期记录见 [EXPO-RELEASE](EXPO-RELEASE.md)。本文只更新交接，不改变已安装源码包。
+> **线上版本：2026-09-16 23:48:34（北京时间）。** main `d94f7ce746bfbc45de328c516ac9c24d640f2d40`／integration `5ebfd2d6db408128f8137de288f300900794b1bb` 同树 `f57a232684180d72a0254d04bdbf3f1d15ae6f89`。Expo 官网风格已上线，23:48:49 发布后正常 TLS 读回通过；完整身份见 [官网风格交付](EXPO-SITE-STYLE.md)。本次交接文档不改变已安装源码包。
 
-> 本轮镜像 `sha256:c922946015345343810baae3ac16727b51602cca4c8ff4ab06f691b1ac1ff310`，444 源／112 运行／23 导出文件，75 项公开静态资源；53 张户内表及 2 张平台表保持。此前本人 Photos 5／5 预览与保存成功；原生安装包、新版本人体验、真实 Google 操作与实体电视未在本轮验收。
+先读 [README](../README.md)，再按下方模块地图阅读接口和源码。此前 23:02 三模块与 21:59 首期身份分别保留于 [EXPO-NEXT-RELEASE](EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](EXPO-RELEASE.md)，历次证据见 [VALIDATION](VALIDATION.md)。
 
-先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
+## 当前交接：Expo 官网风格与简化导航
 
-## 当前交接：统一 Expo 与旅行、助理、相册
+网页采用白底、黑色胶囊、浅灰大圆角区块；桌面 1040px 起使用顶部横向导航，窄屏保留五项底导航，登录页去除天空渐变。首页优先呈现日程和家庭资金；三处 Paper Menu 局部关闭动画，修复初次打开不完整显示。当前 [expo.dev 实页参考](EXPO-SITE-STYLE.md) 优先于较早生成的 `expo/DESIGN.md` 视觉描述；实际仍使用 Expo／React Native Web／Paper，按 [前端 README](../frontend/README.md) 的锁文件构建和 [同源托管契约](EXPO-WEB.md) 交付。
 
-新版登录、首页、日程、待办、采购、旅行、助理和相册使用 Expo Router／React Native Paper，复用现有 Cookie、CSRF、成员／家庭授权、revision 和图片接口；没有数据库迁移。旅行预览后保存、助理勾选后确认、照片双同意导入与逐台 TV 许可均使用真实 API。详细财务、地图与相册返回、家庭物品、照片旅行推荐、复杂旅行编辑及账户／设备／首页布局管理仍从 `/classic` 进入；资金概览保留在新版。电视继续独立 `/tv`。
+登录、首页、日程、待办、采购、旅行、助理和相册复用原 API、Cookie、CSRF、成员／家庭权限和 revision，不改变业务数据。详细财务、地图与相册返回、家庭物品、照片旅行推荐、复杂旅行编辑及账户／设备／首页布局管理仍从 `/classic` 进入；电视继续独立只读 `/tv`。
 
-从 [前端 README](../frontend/README.md) 按锁文件安装、类型检查和构建，再读 [同源托管契约](EXPO-WEB.md) 与 [首页／日程](EXPO-HOME-CALENDAR.md)。实际执行过 `npx getdesign@latest add expo`，设计依据为 [expo/DESIGN.md](../expo/DESIGN.md)。产物须与固定输入、锁文件和 SHA 清单共同审查，不能把开发服务器或未经验证的 `dist` 当成线上包。
+本次安装镜像 `sha256:befe93434119bf8bb5a58423895174ed7093b9a1b8ae8f1e41be06f2ab87c0bc`，447 源／112 运行／23 导出文件，75 项公开静态资源。最终真实 Flask／SQLite／Edge 四宽导航及菜单验收通过，独立查看 19 张图；同镜像 Linux 63 项通过。实际 1 户两库完整备份后发布，53 表行／schema／序列及平台注册库在新 app 启动时保持，配置保全；随后核对全部源／运行／HTTPS 资源、24 个内部生成路径及 1 个退役资源 404、十个匿名 API 401。四服务 running／restart 0、app healthy，备份 service success／timer active。
 
-安装包包含 444 源文件和 23 个导出文件，112 个运行文件；实际入口 `entry-88801b3aec5aad3ae711a561d7a55e91.js`。真实 Flask／SQLite／Edge r2 14 组、r3 6 组增量及独立视觉分别通过；新镜像内 Linux 63 项检查通过，计数和原件见 [VALIDATION](VALIDATION.md)。实际 1 户两库完整备份后发布，全部 53 表行／schema／序列及平台注册库在新 app 启动时保持，原配置保全。随后核对全部源／运行／75 项正常 TLS 资源，24 个内部生成路径及 20 个退役资源为 404，十个匿名 API 均 401；四服务运行、重启 0、app healthy，备份 service success／timer active。
+发布目录 `/opt/family-dashboard-releases/expo-site-53-20260916T154748616831Z`，manifest `b598f920c49a07b9b9bebbbaa32f53e62b6e2110f33a4cf75c061962900cdf04`。私有包与证据位于 `expo-site-package-20260916/`；该轮操作脚本绑定发布前 manifest／镜像，不能在当前版本重放。后续更新须重新绑定当前 53 表基线，不重放旧迁移。
 
-发布目录 `/opt/family-dashboard-releases/expo-next-53-20260916T150125849654Z`，manifest `42a9c32b105384d682f0e41e0040d682b35491fdf6ce294b4ef644fe3ae13e69`。本次私有操作脚本仅适用其固定旧 manifest／镜像，不能在当前版本重放；包、构建和生产原件位于 `expo-next-package-20260916/`。旧首期和 43／44／48 表迁移工具均不是当前部署入口。
-
-当前 Windows 网络的线上浏览器限制仍为 `Website Filtered`，未取得该网络下的线上登录验收；服务器正常 TLS 读回与本地真实浏览器分列记录。未修改 DNS／代理／安全配置，详情见 [VALIDATION](VALIDATION.md)。
+本轮浏览器使用合成家庭数据，没有重跑全部云端和复杂业务矩阵；此前本人 Photos 5／5 成功事实保留，原生安装包、本人最终体验和实体电视仍另验。Windows 公共域名访问仍受 `Website Filtered` 限制，未改变 DNS／代理／安全配置；服务器正常 TLS 读回与本地真实浏览器验证分别记录。
 
 ## 此前线上交接：地图相册与照片旅行建议
 
@@ -212,7 +210,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | 家庭例行计划 | `household_routines.py`、`static/household-routines.js/.css` | [例行计划契约](ROUTINES.md)；固定起始日、单个自动当前项、十分钟签名预览、原子回执、缺失与容量提示、只读助理及共享导出 |
 | 基础应用与共享数据 | `app.py`、`frontend/src/lib/`、`static/app.js` | [基础 API](API.md)；身份、CSRF/同源、共享实体 revision。Expo 与 classic 共用服务器授权，不在前端复制权限规则 |
 | 家庭隔离与登录会话 | `household_spaces.py`、`member_sessions.py`、对应 UI | [平台架构](PLATFORM.md)、[成员会话](MEMBER-SESSIONS.md)；每户独立 DB/密钥、两成员、邀请、撤销和认证代次。缺库不得初始化空身份 |
-| Expo 成员工作台 | `frontend/src/app/`、`frontend/src/ui/`、`frontend/src/screens/`、`frontend_runtime.py` | [前端开发](../frontend/README.md)、[托管](EXPO-WEB.md)、[交付](EXPO-RELEASE.md)；Paper 控件、手机／电脑导航、真实 Cookie/CSRF、失败保留草稿和不明回执 |
+| Expo 成员工作台 | `frontend/src/app/`、`frontend/src/ui/`、`frontend/src/screens/`、`frontend_runtime.py` | [前端开发](../frontend/README.md)、[托管](EXPO-WEB.md)、[官网风格](EXPO-SITE-STYLE.md)、[首期交付](EXPO-RELEASE.md)；Paper 控件、手机／电脑导航、真实 Cookie/CSRF、失败保留草稿和不明回执 |
 | classic 高级工作台 | `static/product-shell.js/.css`、`dashboard_preferences.py` | [工作台界面](WORKSPACE-UI.md)；高级模块、搜索、密度、卡片顺序／隐藏暂保留。成员偏好与电视布局分别保存 |
 | 电视配对与显示 | `tv_display.py`、`static/tv-display.js/.css`；`app.py` 设备接口 | [电视显示设置](TV-DISPLAY.md)；整设备 revision，`layout` 四字段整体替换，隐藏只影响显示。`deviceForm()` 转入 `TVDisplay.openDevice(id)`，TV 重绘后调用 `applyBoard()` |
 | 日程、采购与图片 | `static/calendar-ui.js`、`static/shopping-ui.js`、`shopping_media.py` | [基础 API](API.md)、[使用手册](USER-GUIDE.md)；时区/日界、共享权限、图片引用及草稿，TV 保留分页与长内容滚动 |

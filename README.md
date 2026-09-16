@@ -1,8 +1,8 @@
 # 家庭中枢 · Family Dashboard
 
-> **线上版本：2026-09-16 23:02:11（北京时间）。** React Native／Expo Router／React Native Paper 网页按 [设计规范](expo/DESIGN.md) 统一为白底、黑色主按钮与细边框。登录、首页、日程、待办、采购，以及旅行计划、家庭助理和相册的主流程均可在新版完成；手机底导航、电脑侧栏，长标题与地点完整换行。详细范围、classic 保留入口和固定身份见 [本轮交付](docs/EXPO-NEXT-RELEASE.md)。
+> **线上版本：2026-09-16 23:48:34（北京时间）。** React Native／Expo Router／React Native Paper 网页已按 [Expo 官网当前风格](docs/EXPO-SITE-STYLE.md) 更新：白底、黑色胶囊按钮、浅灰大圆角区块，登录页去除天空渐变。电脑采用顶部横向导航，窄屏保留五项底导航；首页优先呈现日程与家庭资金，旅行、助理、相册继续使用真实 API。
 
-> 此次为 53→53 无迁移发布。实际 1 户两库完整备份，23:02:30 正常 TLS 读回确认 444 源／112 运行／75 公开静态文件、四服务和备份正常，原配置保持。此前本人 Photos 5／5 保存成功；本期未重做真实 Google、本人最终体验或实体电视验收，也未交付原生 APK。本文为发布后本地交接，不改写已安装 manifest；21:59 首期身份保留于 [首期 Expo 发布](docs/EXPO-RELEASE.md)。
+> 此次为 53→53 无迁移发布。实际 1 户两库完整备份，23:48:49 正常 TLS 读回核对 447 源／112 运行／75 公开静态文件，四服务和备份正常，原配置保持。固定身份与验收见 [官网风格交付](docs/EXPO-SITE-STYLE.md)、[验证记录](docs/VALIDATION.md)。此前本人 Photos 5／5 保存成功；本期未重做真实 Google、本人最终体验或实体电视验收，也未交付原生安装包。本文为发布后本地交接，不改写已安装 manifest；23:02 三模块与 21:59 首期记录分别保留于 [EXPO-NEXT-RELEASE](docs/EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](docs/EXPO-RELEASE.md)。
 
 当前 Windows 网络访问线上站点显示 `Website Filtered`，尚未完成该网络下的线上登录操作；服务器正常 TLS 读回与本地真实浏览器验证分别通过，详见 [验证边界](docs/VALIDATION.md)。
 
@@ -14,7 +14,7 @@
 
 **此前媒体功能：地图 → 旅行相册 → 返回；本人照片 → 查看推荐 → 明确关联旅行。** 先核对照片时间对应的旅行日期和时区，再确认关联；旧照片来源时间未知时手动关联。版本冲突须重新读取并再次确认，网络结果不明先读回，不自动重写。关联不会自动共享、许可电视或标记到访。该轮 20:39:27 读回和全部历史证据保留于 [验证记录](docs/VALIDATION.md)。
 
-家庭物品支持手工登记下单、分批收货、使用／报损／退回、纠正原流水、私有或明确共享及本人导出；电脑侧栏或手机“更多 → 家庭物品”进入。助理本地搜索新增已保存照片的说明／关联旅行标题和地点文字，不调用模型、不自动确认到访；尚未搜索库存。不自动向商家下单、记财务账或写云端。使用见 [家庭物品交付](docs/INVENTORY-DELIVERY.md) 与 [助理搜索](docs/ASSISTANT-SEARCH.md)。
+家庭物品支持手工登记下单、分批收货、使用／报损／退回、纠正原流水、私有或明确共享及本人导出；从新版“更多 → 家庭物品”进入经典页。助理本地搜索新增已保存照片的说明／关联旅行标题和地点文字，不调用模型、不自动确认到访；尚未搜索库存。不自动向商家下单、记财务账或写云端。使用见 [家庭物品交付](docs/INVENTORY-DELIVERY.md) 与 [助理搜索](docs/ASSISTANT-SEARCH.md)。
 
 JPEG 补丁后本人已实际选择 5 张、全部出现预览并明确保存，服务器读回为 5 成功、0 失败。本轮未重新执行真实 Google 或实体电视验收；库存 AI 搜索另在候选分支，尚未上线。旧十选三其余七项未知、十选五的五项 `invalid_image` 与原失败根因未确定继续保留，见 [媒体交付](docs/MEDIA-DELIVERY.md)。实体电视和长期云行为仍另验。
 
@@ -24,7 +24,7 @@ JPEG 补丁后本人已实际选择 5 张、全部出现预览并明确保存，
 | 开发一个模块 | [项目规则](AGENTS.md) → [交接与候选状态](docs/HANDOFF.md) → [Git 分支协作](docs/GIT-WORKFLOW.md) → 对应接口文档 |
 | 对接或修改 API | [基础 API](docs/API.md)、[平台 API](docs/PLATFORM-API.md)、[财务 API](docs/FINANCE-API.md)、[完整路由索引](docs/PLATFORM-ROUTES.md) |
 | 安装、更新、备份或排障 | [部署指导](docs/DEPLOYMENT.md)、[运维手册](docs/OPERATIONS.md)、[恢复演练](docs/RECOVERY-REHEARSAL.md) |
-| 开发新版 React Native 界面 | [前端开发与构建](frontend/README.md)、[同源托管与安全边界](docs/EXPO-WEB.md)、[本轮交付](docs/EXPO-NEXT-RELEASE.md)、[首期发布](docs/EXPO-RELEASE.md) |
+| 开发新版 React Native 界面 | [前端开发与构建](frontend/README.md)、[同源托管与安全边界](docs/EXPO-WEB.md)、[官网风格](docs/EXPO-SITE-STYLE.md)、[三模块发布记录](docs/EXPO-NEXT-RELEASE.md)、[首期发布](docs/EXPO-RELEASE.md) |
 | 把项目交给其他 agent | 源码 ZIP 供阅读；Git bundle 保留 main、候选分支和完整提交历史。恢复命令见 [Git 指导](docs/GIT-WORKFLOW.md) |
 
 <a id="最新发布旅行地图"></a>
@@ -118,7 +118,7 @@ NVIDIA 已于 16:58 通过独立配置步骤启用，模型为 `us/azure/openai/
 
 | 模块 | 已实现 | 当前边界 |
 |---|---|---|
-| 工作台 | 桌面侧栏、手机底导航、今日/日程/待办/采购/家庭物品/旅行/相册/财务/助理/连接/设置入口，页面搜索、刷新与前后导航 | 搜索不包含私有财务；电视保持独立布局 |
+| 工作台 | Expo 桌面横向顶部导航、窄屏五项底导航；日常主流程在新版操作，高级模块由更多／账户菜单进入 classic | 经典页保留侧栏与页面搜索；搜索不包含私有财务，电视保持独立布局 |
 | 主题与偏好 | Expo 使用统一白黑设计；classic 与电视保留三主题、密度和独立布局偏好，日程默认视图仍保存 | 首页卡片排序／隐藏／恢复默认暂由 classic 管理；尚无拖动或自定义背景，隐藏卡片不改变 API 可见范围 |
 | 家庭与身份 | 邀请创建独立家庭、成员密码登录、资料维护、Microsoft / Google 绑定身份登录、显式切换家庭 | 默认最多 30 户、每户两人；无公开匿名注册、收费或更多成员角色 |
 | 登录设备 | 查看本人有效浏览器登录；确认退出指定或其他全部会话；当前浏览器可从设置退出 | 最近使用约每 5 分钟更新；名称仅概括浏览器和系统，不证明物理设备或实时在线；云账号绑定与 TV 配对保持 |
@@ -158,7 +158,7 @@ NVIDIA 已于 16:58 通过独立配置步骤启用，模型为 `us/azure/openai/
 
 ## 软件架构
 
-Expo 以 [expo/DESIGN.md](expo/DESIGN.md) 为准：纯白背景、黑色主按钮、近黑／冷灰文字、8px 控件和 12px 卡片；登录介绍区使用淡天空蓝，业务区保持简洁，中文使用系统字体回退。经典页与电视保留 [原电视设计](docs/approved-tv-prototype.png) 及各自主题偏好。桌面使用侧栏，手机使用底部导航，电视维持独立只读布局；分别见 [Expo 接缝](docs/EXPO-NAVIGATION.md) 与 [经典工作台](docs/WORKSPACE-UI.md)。
+Expo 按用户最新要求参考 [expo.dev](https://expo.dev/) 当前界面：白底、近黑文字、黑色胶囊按钮和浅灰大圆角区块，登录页去除天空渐变；中文使用系统字体回退。实页依据与尺寸见 [官网风格](docs/EXPO-SITE-STYLE.md)，优先于较早生成的 `expo/DESIGN.md` 描述。宽度达到 1040px 时采用顶部横向导航，窄屏保留五项底导航；经典页和电视保留 [原电视设计](docs/approved-tv-prototype.png) 及各自主题偏好，电视仍独立只读。入口契约见 [Expo 接缝](docs/EXPO-NAVIGATION.md) 与 [经典工作台](docs/WORKSPACE-UI.md)。
 
 ```mermaid
 flowchart LR
