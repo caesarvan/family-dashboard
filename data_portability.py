@@ -16,6 +16,7 @@ from household_routines import export_shared_routines
 from spending_observations import export_owned_spending_observations
 from journey_documents import exported_documents
 from journey_places import coordinate_projection
+from household_media import ITEM_VIEW, MediaError
 
 EXPORT_SLOT = BoundedSemaphore(1)
 MAX_EXPORT_BYTES = 64 * 1024 * 1024
@@ -65,6 +66,34 @@ def exported_places(con, owner, include_shared=False):
     return result
 
 
+def exported_household_media(con, engine, owner, include_shared=False):
+    """Export only saved photo descriptions; never ciphertext, grants or URLs."""
+    result = {'personal': [], 'shared': []}
+    if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='media_items'").fetchone():
+        return result
+    if engine is None:
+        raise RuntimeError('Media library must be registered before exporting photo records')
+    fields = {'id','revision','caption','width','height','contentType','visibility','journey','createdAt'}
+    rows = con.execute('SELECT '+ITEM_VIEW+" FROM media_items WHERE state='ready' AND (owner=? OR (? AND visibility='shared')) ORDER BY id",
+                       (owner, bool(include_shared))).fetchall()
+    for row in rows:
+        own = row['owner'] == owner
+        if not own and not engine._authority(con,row['account_id'],row['owner']):
+            continue
+        item = engine._item_dto(con,row,owner)
+        allowed = fields | ({'source','displayFilename'} if own else set())
+        result['personal' if own else 'shared'].append({k:v for k,v in item.items() if k in allowed})
+    return result
+
+
+def validate_media_snapshot(con, engine, owner, exported):
+    """A ZIP built from an earlier snapshot cannot retain revoked photo shares."""
+    for item in chain(exported['personal'],exported['shared']):
+        row = engine._item(con,item['id'],owner)
+        if row['revision'] != item['revision']:
+            raise MediaError('conflict')
+
+
 def register_portability(app, db, Problem, body, require_member, audit, limited):
     def tables(con):
         return {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
@@ -91,8 +120,11 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
         places = exported_places(con, uid, include_shared=True)
         counts['journeyPlaces'] = len(places['personal'])
         shared['journeyPlaces'] = len(places['shared'])
+        media = exported_household_media(con,app.extensions.get('household_media'),uid,include_shared=True)
+        counts['householdMedia'] = len(media['personal'])
+        shared['householdMedia'] = len(media['shared'])
         return jsonify(personal=counts, shared=shared, format='zip',
-                       note='导出的是当前保存的记录，并非已覆盖全部金融账户。采购图片和旅行资料仅含元数据，不包含文件；旅行文件请在资料夹逐份下载。账号连接需要重新授权。')
+                       note='导出的是当前保存的记录，并非已覆盖全部金融账户。家庭相册、采购图片和旅行资料仅含说明与元数据，不包含图片或文件；照片原图仍在来源平台，旅行文件可在资料夹逐份下载。账号连接需要重新授权。')
 
     @app.post('/api/portability/export')
     def export_data():
@@ -117,12 +149,16 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                         'member': dict(con.execute('SELECT id,username,name FROM users WHERE id=?', (uid,)).fetchone()),
                         'coverage': {'includesShared': value.get('includeShared',False), 'photos':'metadata_only',
                                      'journeyDocuments': 'metadata_only',
+                                     'householdMedia': 'saved_metadata_only',
                                      'externalCredentialsIncluded': False, 'completeFinancialCoverage': False}, 'personal': {}}
             personal = snapshot['personal']
             documents = exported_documents(con, uid, include_shared=value.get('includeShared', False)) if 'journey_documents' in available else {'personal': [], 'shared': []}
             personal['journeyDocuments'] = documents['personal']
             places = exported_places(con, uid, include_shared=value.get('includeShared', False))
             personal['journeyPlaces'] = places['personal']
+            media_engine = app.extensions.get('household_media')
+            media = exported_household_media(con,media_engine,uid,include_shared=value.get('includeShared',False))
+            personal['householdMedia'] = media['personal']
             personal['transactions'] = decoded_rows(con, 'hub_transactions')
             personal['investments'] = decoded_rows(con, 'hub_investments')
             if 'hub_investment_sources' in available:
@@ -192,6 +228,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     shared['routines'] = export_shared_routines(con)
                 snapshot['shared'] = shared
                 shared['journeyPlaces'] = places['shared']
+                shared['householdMedia'] = media['shared']
             personal['photoMetadata'] = [dict(r) for r in con.execute('SELECT id,size,width,height FROM photos WHERE created_by=? ORDER BY id',(uid,))]
             con.commit()
             output, digests = BytesIO(), {}
@@ -235,9 +272,18 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     '勾选共同记录时含双方已共享的日程、待办、采购、旅行和资金汇总；不含伴侣私人账本。采购图片与旅行资料仅含元数据，不含文件。旅行资料夹可逐份下载文件。\n',
                     '本人旅行资料只在 personal.journeyDocuments 出现一次，含旅行已删除后保留的本人资料；shared.journeyDocuments 仅含仍关联有效旅行的伙伴共享资料，不含内容、文件网址、请求标识或内容散列。\n',
                     'personal.journeyPlaces 含本人未删除地点及精确坐标；shared.journeyPlaces 仅含伙伴明确共享地点，坐标按其隐藏、粗化或精确设置导出。地点创建回执与已删除记录不在本副本内，整库备份另行保留。\n',
+                    'personal.householdMedia 仅含本人已确认保存照片的说明、尺寸、来源文件名与旅行关联；shared.householdMedia 仅含仍获授权的伙伴共享照片说明，不包含原始文件名。没有照片文件、下载网址、选片清单、令牌、TV许可或后台任务。加密预览和后台记录仅在服务器整库备份中保留。\n',
                     '不含登录密码、令牌、应用密钥；迁移后须重新绑定第三方。此文件不是可直接覆盖 SQLite 的灾难恢复备份，当前没有一键还原此文件的接口。\n',
                     '本文件含个人资料和财务内容，请保存在你控制的设备上。\n'])
                 entry('manifest.json', [json.dumps({'schemaVersion':1,'files':dict(digests),'exportedAt':exported.isoformat()},ensure_ascii=False,indent=2)])
+            con.execute('BEGIN IMMEDIATE')
+            latest = app.extensions['member_sessions'].current(con)
+            if (latest['owner'],latest['auth_version']) != (uid,current['auth_version']):
+                raise Problem('登录状态已变化，请重新登录后导出',401)
+            try:
+                validate_media_snapshot(con,media_engine,uid,media)
+            except MediaError:
+                raise Problem('照片或共享范围已变化，请重新导出以获取最新内容',409) from None
             audit('personal_data_export', 'with_shared' if value.get('includeShared') else 'personal_only')
             con.commit()
             output.seek(0)
