@@ -453,6 +453,13 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                 for account_id in sorted(account_ids):
                     locks.enter_context(engine.lock(account_id))
             con.execute('BEGIN IMMEDIATE')
+            # Cookie authentication may have been revoked while waiting for
+            # account locks. Check it under the same lock as writes and replay.
+            member = app.extensions['member_sessions'].current(con)
+            if (member['owner'] != g.actor['id']
+                    or member['auth_version'] != g.actor['auth_version']
+                    or g.actor.get('householdId', 'default') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+                raise Problem('登录状态已变化，请重新登录', 401)
             if accounts() != account_ids:
                 raise Problem('云日历绑定已变化，请重新预览', 409)
             previous = con.execute('SELECT * FROM journey_actions WHERE actor=? AND action_key=?', (g.actor['id'], key)).fetchone()
