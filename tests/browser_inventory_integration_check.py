@@ -116,7 +116,11 @@ def main():
                 def open_inventory(page):
                     page.goto(base+('/' if args.require_shell else '/__inventory_fixture'))
                     if args.require_shell:
-                        expect(page.locator('.ps-sidebar [data-ps-route=inventory]')).to_be_visible();page.locator('.ps-sidebar [data-ps-route=inventory]').click()
+                        if page.viewport_size['width']<=760:
+                            more=page.locator('[data-ps-more]');expect(more).to_be_visible();more.click()
+                            entry=page.locator('#ps-more-menu [data-ps-route=inventory]')
+                        else:entry=page.locator('.ps-sidebar [data-ps-route=inventory]')
+                        expect(entry).to_be_visible();entry.click()
                     expect(page.locator('[data-iv=new-item]')).to_be_enabled()
                 def choose_item(page,item_id):
                     page.locator(f'[data-iv=select-item][data-id="{item_id}"]').click();expect(page.locator('[data-iv=new-batch]')).to_be_enabled()

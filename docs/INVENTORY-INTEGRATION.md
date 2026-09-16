@@ -18,6 +18,8 @@ python -B -X utf8 tests/browser_inventory_integration_check.py --require-factory
 
 正式 shell 的 `inventory` 路由合入后用完整界面执行；此模式同时强制真实工厂，并且不增加测试 HTML 路由：
 
+手机视口通过实际“更多”菜单进入家庭物品，桌面通过侧栏进入；两者都要求入口可见，不使用强制点击。初版 strict 在手机误用隐藏侧栏而于业务检查前失败，该原件保留，不能计为 strict 通过。
+
 ```powershell
 python -B -X utf8 tests/browser_inventory_integration_check.py --require-shell
 ```
