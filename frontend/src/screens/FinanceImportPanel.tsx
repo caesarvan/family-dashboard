@@ -179,7 +179,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
     } catch (error) { failed(error); }
   }
   const disabled = busy || !!pending || !!receipt;
-  const dropdown = (id: string, label: string, items: { key: string; title: string }[], change: (value: string) => void) =>
+  const dropdown = (id: 'source' | 'encoding' | 'sheet' | 'amount', label: string, items: { key: string; title: string }[], change: (value: string) => void) =>
     <><Button mode="outlined" disabled={disabled} onPress={() => setMenu(id)} contentStyle={styles.buttonContent}>{label}</Button>
       <Portal><Dialog visible={visible && menu === id} onDismiss={() => setMenu('')} style={{ maxWidth: 560, width: '92%', maxHeight: height - 40, alignSelf: 'center', borderRadius: 24, backgroundColor: theme.colors.surface }}>
         <Dialog.Title>{{ source: '选择文件来源', encoding: '选择文件编码', sheet: '选择工作表', amount: '选择金额列' }[id] || '请选择'}</Dialog.Title>
