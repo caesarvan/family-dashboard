@@ -875,7 +875,11 @@ class Run:
             assert self.total(data)['categories'] == {'购物': 8000, '原退款分类': -6000}
             self.passed('Real budget409 preserves draft until latest version is read; stale relationship preview cannot commit, fresh partial20 allocation leaves refund60 unallocated without inferring full refund')
 
-            self.transaction(page, '合成部分退款') if not page.get_by_role('heading', name='交易详情', exact=True).is_visible() else None
+            current = self.find(self.overview(ctx), '合成部分退款')
+            context = self.get(ctx, BASE + '/reconciliation?transactionId=' + current['id'])
+            for relation in context['relations']:
+                if relation['status'] == 'active':
+                    self.write(ctx, 'POST', BASE + '/reconciliation/' + relation['id'] + '/revoke', {'revision': relation['revision']})
             current = self.find(self.overview(ctx), '合成部分退款')
             self.write(ctx, 'DELETE', BASE + '/transactions/' + current['id'], {'revision': current['revision']})
             button(page, '刷新账本').click()
