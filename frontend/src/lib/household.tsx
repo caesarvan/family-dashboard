@@ -116,7 +116,7 @@ function useHouseholdState() {
     } finally { authTransition.current=false; }
     await refresh();
   };
-  return { user: session.user, state, preferences, layout, focus, setFocus, loading, refreshing, online, error, notice, setNotice, refresh, login, logout, mutate, savePreferences };
+  return { user: session.user, identityKey: signature(session), state, preferences, layout, focus, setFocus, loading, refreshing, online, error, notice, setNotice, refresh, login, logout, mutate, savePreferences };
 }
 
 const Context = createContext<ReturnType<typeof useHouseholdState> | null>(null);

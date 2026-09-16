@@ -15,6 +15,8 @@
 
 只公开 index 和允许的公共静态类型，拒绝 JSON、map、Python、隐藏文件、任意其他 HTML、路径穿越、反斜线、Windows 驱动路径及任何 symlink／junction。旧 `/static/experience/...` 别名也拒绝，防止绕开新入口检查。所有新页面及资产设置 `Cache-Control: no-store`，由正常发布包提供不可变字节；资产类型不匹配时不返回 HTML。静态目录属受控部署内容，不能接受用户写入；路径检查不承诺对同时恶意替换目录的写入者提供文件系统沙箱。
 
+Google Photos 授权成功的 `/?auth=photos-connected` 在有 Expo 导出时固定跳到 `/app/photos`，无导出则保留经典相册；日历/清单账号的 `connected` 和授权错误仍进入经典页续接。不会转发 provider code、token 或任意 next。
+
 Nginx 原配置仍全部反代 Flask。`/api`、`/auth`、`/space/<slug>` 使用原服务器；不得给 SPA fallback 吞掉这些路径。现 CSP 仅允许同源 JS／连接／字体，style 允许内联；实际构建须确认没有内联 JS、eval 或外站依赖，不因模板需要放开策略。Expo 页面不应同时加载旧 `app.js`／`product-shell.js` 以免双重登录、轮询和 DOM 渲染。
 
 启动顺序：`GET /api/me` → 未登录时 JSON `POST /api/login` → 再 `GET /api/me` → `GET /api/state`。所有 fetch 使用同源 Cookie；写请求携带新 `X-CSRF-Token`。新本地待办显式 `sourceId:""`，避免省略时写共同云清单；编辑／删除携带单条 revision，409 重读后明确确认，网络未知不自动创建重复记录。详细字段见 [基础 API](API.md)。家庭切换继续顶层导航 `/space/<slug>`，清客户端身份缓存后重新登录；该接口原有 303 返回 `/`，会由新入口继续接入。

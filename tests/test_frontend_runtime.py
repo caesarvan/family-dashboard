@@ -49,7 +49,7 @@ def test_only_completed_export_switches_home_and_classic_remains(export):
     assert client.get('/app/tasks').status_code == 404
 
 
-@pytest.mark.parametrize('auth', ['connected', 'photos-connected', 'error'])
+@pytest.mark.parametrize('auth', ['connected', 'error'])
 def test_existing_oauth_result_flow_is_preserved(export, auth):
     from urllib.parse import parse_qs, urlsplit
     client, _, _ = export
@@ -59,6 +59,15 @@ def test_existing_oauth_result_flow_is_preserved(export, auth):
     assert response.status_code == 302 and target.path == '/classic' and not target.netloc
     assert parse_qs(target.query) == ({'auth': [auth], 'reason': ['denied']} if auth == 'error' else {'auth': [auth]})
     assert response.headers['Cache-Control'] == 'no-store'
+
+
+def test_photos_oauth_returns_to_gallery_without_forwarding_provider_data(export):
+    client, _, dist = export
+    response = client.get('/?auth=photos-connected&code=private&next=//external.invalid')
+    assert response.status_code == 302 and response.location == '/app/photos'
+    assert response.headers['Cache-Control'] == 'no-store'
+    (dist / 'index.html').unlink()
+    assert client.get('/?auth=photos-connected').location == '/classic?auth=photos-connected'
 
 
 def test_account_sign_in_and_unknown_queries_open_expo(export):

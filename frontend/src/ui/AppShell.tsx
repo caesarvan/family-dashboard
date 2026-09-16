@@ -3,7 +3,7 @@ import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native'
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Banner, BottomNavigation, Button, Divider, Drawer, IconButton, Menu, Surface, Text, useTheme } from 'react-native-paper';
-import type { ItemKind, RouteName, ThemeName } from '../lib/types';
+import type { ItemKind, RouteName } from '../lib/types';
 
 type Action = () => void | Promise<void>;
 export type AppShellProps = {
@@ -18,8 +18,6 @@ export type AppShellProps = {
   refreshing: boolean;
   offline: boolean;
   children: ReactNode;
-  themeMode: ThemeName;
-  onThemeChange: (name: ThemeName) => void | Promise<void>;
   onLegacy: (fragment: string) => void;
 };
 
@@ -36,12 +34,6 @@ const creation: { kind: ItemKind; title: string; icon: string }[] = [
   { kind: 'shopping', title: '添加采购', icon: 'cart-plus' },
   { kind: 'trips', title: '计划旅行', icon: 'airplane' },
 ];
-const appearances: { key: ThemeName; title: string; icon: string }[] = [
-  { key: 'light', title: '晨光白', icon: 'white-balance-sunny' },
-  { key: 'forest', title: '暖绿森林', icon: 'leaf' },
-  { key: 'ocean', title: '海岸蓝', icon: 'waves' },
-];
-
 /** Layout only. The parent owns identity, authorized data, forms and persistence. */
 export default function AppShell(props: AppShellProps) {
   const { width } = useWindowDimensions();
@@ -49,7 +41,7 @@ export default function AppShell(props: AppShellProps) {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollView>(null);
-  const [menu, setMenu] = useState<'create' | 'theme' | 'account' | null>(null);
+  const [menu, setMenu] = useState<'create' | 'account' | null>(null);
   const { route, onNavigate, onLegacy } = props;
   useEffect(() => {
     setMenu(null);
@@ -82,17 +74,18 @@ export default function AppShell(props: AppShellProps) {
             <Divider style={styles.divider} />
             <Text variant="labelMedium" style={[styles.groupLabel, { color: theme.colors.onSurfaceVariant }]}>计划与记录</Text>
             <Drawer.Item label="旅行" icon="airplane" active={route === 'trips'} onPress={() => navigate('trips')} style={styles.drawerItem} />
-            <Drawer.Item label="相册" icon="image-multiple-outline" onPress={() => legacy('photos')} style={styles.drawerItem} />
+            <Drawer.Item label="相册" icon="image-multiple-outline" active={route === 'photos'} onPress={() => navigate('photos')} style={styles.drawerItem} />
             <Drawer.Item label="足迹地图" icon="map-outline" onPress={() => legacy('map')} style={styles.drawerItem} />
             <Drawer.Item label="家庭财务" icon="wallet-outline" active={route === 'finance'} onPress={() => navigate('finance')} style={styles.drawerItem} />
           </ScrollView>
           <Divider />
-          <Drawer.Item label="家庭助理" icon="creation-outline" onPress={() => legacy('assistant')} style={styles.drawerItem} />
+          <Drawer.Item label="家庭助理" icon="creation-outline" active={route === 'assistant'} onPress={() => navigate('assistant')} style={styles.drawerItem} />
           <Drawer.Item label="更多功能" icon="dots-horizontal" active={route === 'more'} onPress={() => navigate('more')} style={styles.drawerItem} />
         </Surface>
       ) : null}
       <View style={styles.main}>
         <Surface elevation={0} style={[styles.header, border, { backgroundColor: theme.colors.background, paddingHorizontal: wide ? 28 : 12 }]}>
+          {!wide && tabIndex < 0 ? <IconButton icon="arrow-left" size={22} onPress={() => navigate('more')} accessibilityLabel="返回更多功能" style={styles.iconButton} /> : null}
           <View style={styles.headerCopy}>
             {wide ? <Text variant="bodySmall" numberOfLines={1} style={{ color: theme.colors.onSurfaceVariant }}>{props.householdName || '我们的家'}</Text> : null}
             <Text variant="titleSmall" numberOfLines={1}>{props.title}</Text>
@@ -105,14 +98,6 @@ export default function AppShell(props: AppShellProps) {
               <IconButton icon="plus" mode="contained" containerColor={theme.colors.primary} iconColor={theme.colors.onPrimary} size={22} onPress={() => setMenu('create')} accessibilityLabel="新建记录" style={[styles.iconButton, styles.button]} />
             )} contentStyle={styles.menu}>
               {creation.map(item => <Menu.Item key={item.kind} title={item.title} leadingIcon={item.icon} onPress={() => { setMenu(null); props.onCreate(item.kind); }} />)}
-            </Menu>
-            <Menu visible={menu === 'theme'} onDismiss={() => setMenu(null)} anchor={
-              <IconButton icon={theme.dark ? 'weather-night' : 'white-balance-sunny'} size={21} onPress={() => setMenu('theme')} accessibilityLabel="更换主题" style={styles.iconButton} />
-            } contentStyle={styles.menu}>
-              {appearances.map(item => <Menu.Item key={item.key} title={item.title} leadingIcon={item.icon}
-                trailingIcon={props.themeMode === item.key ? 'check' : undefined}
-                accessibilityLabel={`${item.title}${props.themeMode === item.key ? '，当前主题' : ''}`}
-                onPress={() => { setMenu(null); void props.onThemeChange(item.key); }} />)}
             </Menu>
             <Menu visible={menu === 'account'} onDismiss={() => setMenu(null)} anchor={
               <IconButton icon="account-circle-outline" size={24} onPress={() => setMenu('account')} accessibilityLabel={`${props.name}，账户菜单`} style={styles.iconButton} />
