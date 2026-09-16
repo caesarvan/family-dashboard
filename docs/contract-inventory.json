@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-16T11:02:25.230695+00:00",
+  "generatedAt": "2026-09-16T12:14:11.433593+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -649,6 +649,12 @@
       "path": "/api/media/items/<uid>",
       "source": "household_media.py",
       "endpoint": "media_item"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media/items/<uid>/journey-suggestions",
+      "source": "household_media.py",
+      "endpoint": "media_journey_suggestions"
     },
     {
       "method": "GET",
