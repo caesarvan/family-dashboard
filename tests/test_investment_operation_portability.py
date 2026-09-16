@@ -3,11 +3,13 @@ from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
+import tarfile
 
 import pytest
 
 from test_app import app, member
 from test_data_portability import unpack
+from deploy.prepare_release import prepare
 
 
 @pytest.mark.parametrize('include_shared', [False, True])
@@ -41,3 +43,17 @@ def test_operation_export_whitelists_business_results_for_each_member(app, inclu
         assert 'investmentOperations' not in snapshot.get('shared', {})
     with closing(sqlite3.connect(Path(app.config['DATA_DIR']) / 'household.sqlite3')) as con:
         assert con.execute('SELECT * FROM hub_investment_operations ORDER BY owner,request_id').fetchall() == before
+
+
+def test_source_archive_and_docker_include_the_new_runtime_module(tmp_path):
+    root = Path(__file__).resolve().parents[1]
+    required = {'investment_operations.py', 'investment_import.py',
+        'frontend/src/screens/InvestmentsScreen.tsx', 'frontend/src/screens/InvestmentImportPanel.tsx',
+        'deploy/check_investment_operation_migration.py'}
+    package = prepare(root, access=tmp_path / 'synthetic-release')
+    with tarfile.open(package['archive']) as archive:
+        assert required <= set(archive.getnames())
+        for name in required:
+            assert archive.extractfile(name).read() == (root / name).read_bytes()
+    docker = (root / 'Dockerfile').read_text(encoding='utf-8')
+    assert 'COPY calendar_publish.py financial_files.py investment_import.py investment_operations.py ./' in docker
