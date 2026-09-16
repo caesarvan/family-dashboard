@@ -46,7 +46,7 @@ def configured(tmp_path, monkeypatch, household='default'):
     def require():
         if g.actor['role']!='member':
             raise Problem('只限成员',403)
-    engine=media.register_media_library(app,db,Problem,None,require,None)
+    engine=app.extensions.get('household_media') or media.register_media_library(app,db,Problem,None,require,None)
     clock=[time.time()]
     engine.clock=lambda:clock[0]
     ids={}

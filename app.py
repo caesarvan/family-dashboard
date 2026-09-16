@@ -33,6 +33,7 @@ from tv_display import stored_layout, validate_layout
 from sync_health import register_sync_health
 from shopping_settlement import register_shopping_settlement
 from household_routines import register_routines
+from household_media import register_media_library
 
 TZ = ZoneInfo("Asia/Shanghai")
 ROOT = Path(__file__).parent
@@ -146,17 +147,24 @@ def create_app(config=None):
     sessions = MemberSessions(app, db_path, Problem)
     app.extensions["member_sessions"] = sessions
 
+    def current_tv_device(con, cookie=None):
+        """Re-read the actual pairing secret in the caller's current snapshot."""
+        cookie = request.cookies.get('household_tv', '') if cookie is None else cookie
+        if not isinstance(cookie, str) or not cookie or len(cookie) > 4096:
+            return None
+        return con.execute('SELECT * FROM devices WHERE secret_hash=? AND approved=1 AND expires>?',
+                           (hashlib.sha256(cookie.encode()).hexdigest(), time.time())).fetchone()
+
+    app.extensions['current_tv_device'] = current_tv_device
+
     def actor():
         if session.get("uid") and request.headers.get("X-Display-Mode") != "tv":
             member = sessions.actor()
             if member:
                 return member
-        device = request.cookies.get("household_tv", "")
-        if device:
-            row = db().execute("SELECT * FROM devices WHERE secret_hash=? AND approved=1 AND expires>?",
-                               (hashlib.sha256(device.encode()).hexdigest(), time.time())).fetchone()
-            if row:
-                return {"id": row["id"], "role": "tv", "name": row["name"], "focus": row["focus"], "calendarView": row['calendar_view'], "layout": stored_layout(row['display_layout']), "householdId": app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')}
+        row = current_tv_device(db())
+        if row:
+            return {"id": row["id"], "role": "tv", "name": row["name"], "focus": row["focus"], "calendarView": row['calendar_view'], "layout": stored_layout(row['display_layout']), "householdId": app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')}
         return None
 
     def require_member():
@@ -334,10 +342,8 @@ def create_app(config=None):
         con.execute('BEGIN')
         display = {'calendarView': 'today', 'focus': g.actor.get('focus')}
         if g.actor['role'] == 'tv':
-            screen = con.execute('SELECT focus,calendar_view,display_layout FROM devices '
-                                 'WHERE id=? AND approved=1 AND expires>?',
-                                 (g.actor['id'], time.time())).fetchone()
-            if not screen:
+            screen = current_tv_device(con)
+            if not screen or screen['id'] != g.actor['id']:
                 raise Problem('电视配对已撤销或过期，请重新配对', 401)
             display = {'focus': screen['focus'], 'calendarView': screen['calendar_view'],
                        'layout': stored_layout(screen['display_layout'])}
@@ -634,6 +640,7 @@ def create_app(config=None):
     register_journeys(app, db, Problem, body, require_member, audit)
     register_journey_documents(app, db, Problem, body, require_member, limited, audit)
     register_journey_places(app, db, Problem, body, require_member, audit)
+    register_media_library(app, db, Problem, body, require_member, audit)
     register_calendar_publish(app, db, Problem, body, require_member, audit)
     register_task_publish(app, db, Problem, body, require_member, audit)
     register_sync_health(app, db, require_member)
