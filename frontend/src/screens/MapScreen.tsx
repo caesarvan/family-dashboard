@@ -19,6 +19,8 @@ type Choice = { title: string; options: { value: string; label: string }[]; sele
 const message = (error: unknown) => error instanceof Error ? error.message : '暂时无法完成操作，请稍后再试。';
 const scopeLabels: Record<string, string> = { visible: '全部可见', mine: '仅我的', shared: '已共享' };
 const disclosureLabels = { hidden: '隐藏坐标', coarse: '大致位置（约 0.1°）', exact: '精确坐标' };
+const browserOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false;
+const offlineNotice = '网络已断开，地点已隐藏。重新联网后会重新读取。';
 
 function VisitConfirmation({ checked, disabled, onPress }: { checked: boolean; disabled: boolean; onPress: () => void }) {
   const theme = useTheme();
@@ -45,6 +47,7 @@ function MapWorkspace(props: Props & { identityKey: string }) {
   const latest = useRef(household); latest.current = household;
   const initial = useRef(safeMapView(props.initialView));
   const alive = useRef(false), active = useRef(false), focused = useRef(false), working = useRef(false), generation = useRef(0);
+  const appActive = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
   const fence = useRef(new PlaceFence(() => request<PlaceSession>('/me'), props.identityKey));
   const [visible, setVisible] = useState(false), [denied, setDenied] = useState(false), [busy, setBusy] = useState(false);
   const [error, setError] = useState(''), [notice, setNotice] = useState('');
@@ -54,7 +57,7 @@ function MapWorkspace(props: Props & { identityKey: string }) {
   const [draft, setDraft] = useState<PlaceDraft | null>(null), [pending, setPending] = useState<Intent | null>(null), [picking, setPicking] = useState(false);
   const [choice, setChoice] = useState<Choice | null>(null), [decision, setDecision] = useState<'discard' | 'delete' | null>(null);
   const state = useRef({ filters, page, selected, place, draft, pending }); state.current = { filters, page, selected, place, draft, pending };
-  const current = () => alive.current && active.current && latest.current.identityKey === props.identityKey && (typeof document === 'undefined' || !document.hidden);
+  const current = () => alive.current && active.current && appActive.current && browserOnline() && latest.current.identityKey === props.identityKey && (typeof document === 'undefined' || !document.hidden);
   const locked = busy || !!pending || !household.online;
   const navigationLocked = locked || !!draft;
 
@@ -113,7 +116,7 @@ function MapWorkspace(props: Props & { identityKey: string }) {
     // Never adopt a newer revision while checking a preserved draft.
   }
   function enter() {
-    if (!alive.current || active.current || !focused.current || !latest.current.online || typeof document !== 'undefined' && document.hidden) return;
+    if (!alive.current || active.current || !focused.current || !appActive.current || !browserOnline() || !latest.current.online || typeof document !== 'undefined' && document.hidden) return;
     active.current = true; working.current = true; setBusy(true); setDenied(false);
     fence.current = new PlaceFence(() => request<PlaceSession>('/me'), props.identityKey);
     const ticket = generation.current;
@@ -130,9 +133,16 @@ function MapWorkspace(props: Props & { identityKey: string }) {
   useFocusEffect(useCallback(() => { focused.current = true; enter(); return () => { focused.current = false; conceal(true); }; }, [props.identityKey]));
   useEffect(() => {
     const visibility = () => { if (document.hidden) conceal(); else enter(); };
+    const offline = () => { conceal(); setError(offlineNotice); };
+    const online = () => { setError(previous => previous === offlineNotice ? '' : previous); enter(); };
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visibility);
-    const subscription = AppState.addEventListener('change', value => { if (value === 'active') enter(); else conceal(); });
-    return () => { if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', visibility); subscription.remove(); };
+    if (typeof window !== 'undefined') { window.addEventListener('offline', offline); window.addEventListener('online', online); }
+    const subscription = AppState.addEventListener('change', value => { appActive.current = value === 'active'; if (appActive.current) enter(); else conceal(); });
+    return () => {
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', visibility);
+      if (typeof window !== 'undefined') { window.removeEventListener('offline', offline); window.removeEventListener('online', online); }
+      subscription.remove();
+    };
   }, [props.identityKey]);
   useEffect(() => { if (!household.online) conceal(); else enter(); }, [household.online]);
   useEffect(() => {
@@ -282,12 +292,12 @@ function MapWorkspace(props: Props & { identityKey: string }) {
       </View></SectionCard> : null}
       <SectionCard title="世界概览" style={styles.bottom}><WorldMap places={page.items} selected={selected} disabled={navigationLocked} onSelect={id => void openPlace(id)} onPick={() => {}} /><Text variant="bodySmall" style={styles.top}>共 {page.total} 个地点 · 本页 {page.items.length} 个 · {page.items.filter(row => !row.coordinates).length} 个无可显示坐标</Text></SectionCard>
       <View style={[styles.panels, wide && styles.panelsWide]}>
-        <SectionCard title="地点" style={[styles.panel, wide && styles.listPanel]}>
+        <SectionCard title="地点" style={[styles.panel, wide && styles.widePanel, wide && styles.listPanel]}>
           {page.items.length ? page.items.map(row => <List.Item key={row.id} title={row.name} titleNumberOfLines={2} description={`${placeLabels[row.status]} · ${[row.country, row.city].filter(Boolean).join(' / ') || '未填城市'} · ${row.visibility === 'private' ? '仅本人' : '共享'}`} descriptionNumberOfLines={2} accessible accessibilityRole="button" accessibilityLabel={`打开地点：${row.name}`} onPress={() => void openPlace(row.id)} disabled={navigationLocked}
             left={iconProps => <List.Icon {...iconProps} icon={row.status === 'visited' ? 'map-marker-check-outline' : row.status === 'planned' ? 'calendar-outline' : 'heart-outline'} />} style={row.id === selected ? { backgroundColor: theme.colors.surface, borderRadius: 16 } : undefined} />) : <EmptyState title="这里还没有地点" description="添加一个想去的地方，或调整筛选。" />}
           <View style={[styles.actions, styles.top]}><Button disabled={navigationLocked || page.offset === 0} onPress={() => void runRead(() => refreshView(filters, Math.max(0, page.offset - 24), undefined))}>上一页</Button><Text>第 {Math.floor(page.offset / 24) + 1} 页</Text><Button disabled={navigationLocked || !page.hasMore} onPress={() => void runRead(() => refreshView(filters, page.offset + 24, undefined))}>下一页</Button></View>
         </SectionCard>
-        <SectionCard title={place?.name || '地点详情'} style={styles.panel}>
+        <SectionCard title={place?.name || '地点详情'} style={[styles.panel, wide && styles.widePanel]}>
           {place ? <View style={styles.form}>
             <Text variant="labelLarge">{placeLabels[place.status]} · {place.visibility === 'private' ? '仅本人可见' : '家庭共享'}</Text>
             <Text>{[place.country, place.city].filter(Boolean).join(' / ') || '尚未填写国家和城市'}</Text>
@@ -315,6 +325,6 @@ const styles = StyleSheet.create({
   loading: { alignItems: 'center', gap: 16, padding: 28 }, flex: { flex: 1, minWidth: 0 }, row: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
   form: { gap: 16 }, fields: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, field: { flexGrow: 1, flexBasis: 140, minWidth: 0 },
   actions: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }, bottom: { marginBottom: 20 }, top: { marginTop: 14 }, notice: { marginBottom: 14 },
-  panels: { gap: 20 }, panelsWide: { flexDirection: 'row', alignItems: 'flex-start' }, panel: { flexGrow: 1, flexBasis: 0, minWidth: 0 }, listPanel: { maxWidth: '48%' },
+  panels: { gap: 20 }, panelsWide: { flexDirection: 'row', alignItems: 'flex-start' }, panel: { minWidth: 0 }, widePanel: { flexGrow: 1, flexBasis: 0 }, listPanel: { maxWidth: '48%' },
   confirmation: { padding: 14, borderWidth: 1, borderRadius: 12 }, dialog: { maxWidth: 560, width: '92%', alignSelf: 'center' }, option: { marginVertical: 4 },
 });
