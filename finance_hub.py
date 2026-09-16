@@ -110,6 +110,16 @@ def cents(value, optional=False):
     return int(number * 100)
 
 
+def import_cents(value):
+    """File amounts must be unambiguous; keep the manual money API unchanged."""
+    raw = re.sub(r'^[¥￥]', '', value.strip()).strip()
+    if (',' in raw and '，' in raw) or not re.fullmatch(
+            r'(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]{1,2})?',
+            raw.replace('，', ',')):
+        raise FinanceHubError('金额须用小数点，逗号仅可为每三位一组的千分隔符；请核对原币种金额')
+    return cents(raw)
+
+
 def header_key(value):
     return re.sub(r'\s+', '', value).strip('\ufeff').lower()
 
@@ -377,7 +387,7 @@ def parse_import(payload):
                 if not match:
                     raise FinanceHubError('日期格式不正确')
                 when = valid_date(f'{int(match[1]):04}-{int(match[2]):02}-{int(match[3]):02}')
-                amount = cents(cell('amount'))
+                amount = import_cents(cell('amount'))
                 currency = currency_code(cell('currency', 'CNY'))
                 if order_metadata:
                     items = order_metadata['orderItems']
@@ -391,7 +401,9 @@ def parse_import(payload):
                 flow = normalized_flow(cell('flow'), category, status, kind)
                 # Preserve the pre-selection fingerprint of this file/row. Choosing
                 # another amount column must report a conflict, not create a second
-                # payment. A malformed former default never produced a legacy row.
+                # payment. Keep the former cents parser ONLY for this identity:
+                # even formerly accepted ambiguous text may identify an old row.
+                # Values rejected by that former parser never created such a row.
                 identity_amount = amount
                 if not external and selected != original_amount_column:
                     try:
@@ -933,6 +945,65 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
                        coverage='仅已导入记录；候选关联须本人确认，已确认重复才排除，不能视为全部财务资产。',
                        connectors=[{'id': s, 'mode': 'csv', 'status': 'manual_import'} for s in sorted(SOURCES - {'generic'})],
                        institutionsStatus='manual_dated_records')
+
+    @app.get('/api/finance-hub/transactions')
+    def hub_transactions():
+        uid = owner()
+        allowed = {'month', 'q', 'page', 'pageSize', 'snapshot'}
+        if set(request.args) - allowed or any(len(request.args.getlist(key)) != 1 for key in request.args):
+            raise FinanceHubError('查询字段不正确或重复')
+        month = valid_month(request.args.get('month', current_month()))
+        raw_query = request.args.get('q', '')
+        if len(raw_query) > 160:
+            raise FinanceHubError('搜索词最多 160 字符')
+        query = clean(raw_query, 160)
+        page, page_size = request.args.get('page', '1'), request.args.get('pageSize', '50')
+        if not re.fullmatch(r'[1-9][0-9]*', page) or not re.fullmatch(r'[1-9][0-9]*', page_size):
+            raise FinanceHubError('页码和每页条数须为正整数')
+        try:
+            page, page_size = int(page), int(page_size)
+        except ValueError:
+            raise FinanceHubError('页码或每页条数过大') from None
+        if page_size > 100:
+            raise FinanceHubError('每页条数须在 1 至 100 之间')
+        expected = request.args.get('snapshot')
+        if expected is not None and not re.fullmatch(r'[0-9a-fA-F]{64}', expected):
+            raise FinanceHubError('账本快照格式不正确')
+        # Read both tables from one database snapshot. Pagination is read-only,
+        # and the digest detects changes rather than storing historical pages.
+        con = db()
+        con.execute('BEGIN')
+        try:
+            state = ledger(uid)
+            con.commit()
+        except BaseException:
+            con.rollback()
+            raise
+        content = {'owner': uid, 'household': app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default'),
+                   'rows': sorted(state['rows'], key=lambda row: row['id']),
+                   'links': sorted(state['links'], key=lambda row: row['id'])}
+        snapshot = hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False,
+                                            separators=(',', ':')).encode()).hexdigest()
+        if expected is not None and expected.lower() != snapshot:
+            return jsonify(error='账本已变化，请刷新后重新查看', code='ledger_changed'), 409
+        rows = [row for row in reconciliation_rows(state['rows'], state['links']) if row['date'].startswith(month)]
+        count = len(rows)
+        if query:
+            term = query.casefold()
+            def matches(row):
+                values = [row.get(key, '') for key in ('title', 'category', 'externalId', 'merchantOrderId',
+                                                       'paymentId', 'originalTransactionId')]
+                values += [item.get(key, '') for item in row.get('orderItems', []) for key in ('title', 'variant')]
+                return any(term in value.casefold() for value in values)
+            rows = [row for row in rows if matches(row)]
+        rows.sort(key=lambda row: (row['date'], row['id']), reverse=True)
+        filtered = len(rows)
+        total_pages = max(1, (filtered + page_size - 1) // page_size)
+        page = min(page, total_pages)
+        start = (page - 1) * page_size
+        return jsonify(month=month, q=query, page=page, pageSize=page_size, transactionCount=count,
+                       filteredCount=filtered, totalPages=total_pages, hasNext=page < total_pages,
+                       hasPrevious=page > 1, snapshot=snapshot, transactions=rows[start:start + page_size])
 
     @app.get('/api/finance-hub/shared')
     def hub_shared():
