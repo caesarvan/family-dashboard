@@ -19,6 +19,7 @@ from unittest.mock import patch
 from urllib.parse import urlsplit
 
 from playwright.sync_api import expect, sync_playwright
+import browser_expo_finance_check as fixture_harness
 from browser_expo_finance_check import Run as FinanceRun, button, visibility, sha, csv_bytes
 
 
@@ -29,7 +30,12 @@ COLUMNS = ['holdingKey', 'name', 'institution', 'assetType', 'currency', 'quanti
 class Run(FinanceRun):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.report['fixtureHarnessSha256'] = sha(self.root / 'tests/browser_expo_finance_check.py')
+        actual = Path(fixture_harness.__file__).resolve()
+        actual_sha = sha(actual)
+        assert actual_sha == sha(self.root / 'tests/browser_expo_finance_check.py'), 'Loaded browser fixture differs from frozen source'
+        assert sha(Path(__file__)) == sha(self.root / 'tests/browser_expo_investments_check.py'), 'Executed harness differs from frozen source'
+        self.report['fixtureHarnessPath'] = str(actual)
+        self.report['fixtureHarnessSha256'] = actual_sha
 
     def clear_finance(self):
         super().clear_finance()
@@ -97,7 +103,7 @@ class Run(FinanceRun):
             def lose_reply(route):
                 if route.request.method != 'POST': return route.continue_()
                 captured.append(route.request.post_data_json)
-                reply = route.fetch()
+                reply = route.fetch(max_redirects=0)
                 assert reply.status == 201
                 route.abort('failed')
             page.route(self.base + BASE, lose_reply)
@@ -189,7 +195,7 @@ class Run(FinanceRun):
             captured = []
             def lose_reply(route):
                 captured.append(route.request.post_data_json)
-                reply = route.fetch()
+                reply = route.fetch(max_redirects=0)
                 assert reply.status == 200 and reply.json()['created'] == 1
                 route.abort('failed')
             page.route(self.base + BASE + '/imports/confirm', lose_reply)
