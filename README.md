@@ -1,8 +1,8 @@
 # 家庭中枢 · Family Dashboard
 
-> **线上版本：2026-09-16 21:59:19（北京时间）。** React Native／Expo Router／React Native Paper 新界面已上线，覆盖登录、首页、日程、待办和采购。手机底导航、电脑侧栏及晨光／森林／海岸主题保留；首页先看安排和共同资金，长标题与地点完整换行。详细财务、旅行、相册、地图、库存和助理暂由 `/classic` 提供。范围、固定身份和验证见 [Expo 交付](docs/EXPO-RELEASE.md)。
+> **线上版本：2026-09-16 23:02:11（北京时间）。** React Native／Expo Router／React Native Paper 网页按 [设计规范](expo/DESIGN.md) 统一为白底、黑色主按钮与细边框。登录、首页、日程、待办、采购，以及旅行计划、家庭助理和相册的主流程均可在新版完成；手机底导航、电脑侧栏，长标题与地点完整换行。详细范围、classic 保留入口和固定身份见 [本轮交付](docs/EXPO-NEXT-RELEASE.md)。
 
-> 此次为 53→53 无迁移发布。实际 1 户两库完整备份，21:59:51 正常 TLS 读回确认 427 源／112 运行／75 公开静态文件、四服务和备份正常，原配置保持。此前本人 Photos 5／5 保存成功；本期未重做真实云、本人最终体验或实体电视验收，也未交付原生 APK。本文为发布后本地交接，不改写已安装 manifest。
+> 此次为 53→53 无迁移发布。实际 1 户两库完整备份，23:02:30 正常 TLS 读回确认 444 源／112 运行／75 公开静态文件、四服务和备份正常，原配置保持。此前本人 Photos 5／5 保存成功；本期未重做真实 Google、本人最终体验或实体电视验收，也未交付原生 APK。本文为发布后本地交接，不改写已安装 manifest；21:59 首期身份保留于 [首期 Expo 发布](docs/EXPO-RELEASE.md)。
 
 当前 Windows 网络访问线上站点显示 `Website Filtered`，尚未完成该网络下的线上登录操作；服务器正常 TLS 读回与本地真实浏览器验证分别通过，详见 [验证边界](docs/VALIDATION.md)。
 
@@ -24,7 +24,7 @@ JPEG 补丁后本人已实际选择 5 张、全部出现预览并明确保存，
 | 开发一个模块 | [项目规则](AGENTS.md) → [交接与候选状态](docs/HANDOFF.md) → [Git 分支协作](docs/GIT-WORKFLOW.md) → 对应接口文档 |
 | 对接或修改 API | [基础 API](docs/API.md)、[平台 API](docs/PLATFORM-API.md)、[财务 API](docs/FINANCE-API.md)、[完整路由索引](docs/PLATFORM-ROUTES.md) |
 | 安装、更新、备份或排障 | [部署指导](docs/DEPLOYMENT.md)、[运维手册](docs/OPERATIONS.md)、[恢复演练](docs/RECOVERY-REHEARSAL.md) |
-| 开发新版 React Native 界面 | [前端开发与构建](frontend/README.md)、[同源托管与安全边界](docs/EXPO-WEB.md)、[Expo 交付](docs/EXPO-RELEASE.md) |
+| 开发新版 React Native 界面 | [前端开发与构建](frontend/README.md)、[同源托管与安全边界](docs/EXPO-WEB.md)、[本轮交付](docs/EXPO-NEXT-RELEASE.md)、[首期发布](docs/EXPO-RELEASE.md) |
 | 把项目交给其他 agent | 源码 ZIP 供阅读；Git bundle 保留 main、候选分支和完整提交历史。恢复命令见 [Git 指导](docs/GIT-WORKFLOW.md) |
 
 <a id="最新发布旅行地图"></a>
@@ -119,7 +119,7 @@ NVIDIA 已于 16:58 通过独立配置步骤启用，模型为 `us/azure/openai/
 | 模块 | 已实现 | 当前边界 |
 |---|---|---|
 | 工作台 | 桌面侧栏、手机底导航、今日/日程/待办/采购/家庭物品/旅行/相册/财务/助理/连接/设置入口，页面搜索、刷新与前后导航 | 搜索不包含私有财务；电视保持独立布局 |
-| 主题与偏好 | 三主题、两种密度、日程默认视图；成员首页和每台电视各自支持卡片排序／隐藏／恢复默认，revision 冲突处理 | 按按钮/键盘排序，尚无拖动或自定义背景；隐藏卡片不改变 API 可见范围 |
+| 主题与偏好 | Expo 使用统一白黑设计；classic 与电视保留三主题、密度和独立布局偏好，日程默认视图仍保存 | 首页卡片排序／隐藏／恢复默认暂由 classic 管理；尚无拖动或自定义背景，隐藏卡片不改变 API 可见范围 |
 | 家庭与身份 | 邀请创建独立家庭、成员密码登录、资料维护、Microsoft / Google 绑定身份登录、显式切换家庭 | 默认最多 30 户、每户两人；无公开匿名注册、收费或更多成员角色 |
 | 登录设备 | 查看本人有效浏览器登录；确认退出指定或其他全部会话；当前浏览器可从设置退出 | 最近使用约每 5 分钟更新；名称仅概括浏览器和系统，不证明物理设备或实时在线；云账号绑定与 TV 配对保持 |
 | 日程 | 今日、本周、前后 3 天、翻页、完整标题/地点、每日数量与时段并集；本地安排及两个云平台读取 | 自动轮询；仅统计选择的来源；纯 iCloud 实时连接未完成 |
@@ -158,7 +158,7 @@ NVIDIA 已于 16:58 通过独立配置步骤启用，模型为 `us/azure/openai/
 
 ## 软件架构
 
-视觉沿用已认可的 [电视原型](docs/approved-tv-prototype.png)：深蓝炭灰背景、暖白文字、鼠尾草绿主色，淡紫区分另一成员、杏色表示共同事项。采用圆角卡片、清晰层级和适量留白；今日安排与家庭资金优先显示。字体使用系统中文字体，旅行插画为本地 SVG。桌面用侧栏和网格，手机用底部导航和纵向内容，电视用独立只读布局；主题令牌和界面约束见 [工作台文档](docs/WORKSPACE-UI.md)。
+Expo 以 [expo/DESIGN.md](expo/DESIGN.md) 为准：纯白背景、黑色主按钮、近黑／冷灰文字、8px 控件和 12px 卡片；登录介绍区使用淡天空蓝，业务区保持简洁，中文使用系统字体回退。经典页与电视保留 [原电视设计](docs/approved-tv-prototype.png) 及各自主题偏好。桌面使用侧栏，手机使用底部导航，电视维持独立只读布局；分别见 [Expo 接缝](docs/EXPO-NAVIGATION.md) 与 [经典工作台](docs/WORKSPACE-UI.md)。
 
 ```mermaid
 flowchart LR

@@ -1,22 +1,22 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-16 21:59:19（北京时间）。** 固定 main `c74e72c`／integration `e00e5c2` 同树的 Expo 新界面已上线，React Native Web 由 Flask 同源托管，高级模块暂保留 `/classic`。21:59:51 发布后读回通过；完整固定身份见 [Expo 交付](EXPO-RELEASE.md)。本文只更新交接，不改变已安装源码包。
+> **线上版本：2026-09-16 23:02:11（北京时间）。** main `5c59ffb7fd535828222c05938d54fbe75f6ce87a`／integration `95c73ed11e3df9442bd125f4b6e6309d40f33fbb` 同树 `a405fd56c4e710f7273964b82a12461622432165`。Expo 统一白黑设计，旅行、助理、相册主流程已上线；23:02:30 发布后读回通过。完整身份见 [本轮交付](EXPO-NEXT-RELEASE.md)，此前 21:59 首期记录见 [EXPO-RELEASE](EXPO-RELEASE.md)。本文只更新交接，不改变已安装源码包。
 
-> 本轮镜像 `sha256:91857b8df087feb942a730f876cdbb9392a76508046e59ba50ec133885f95400`，427 源／112 运行／23 导出文件，75 项公开静态资源；53 张户内表及 2 张平台表保持。此前本人 Photos 5／5 预览与保存成功；原生安装包、新版本人体验、真实新云写入与实体电视未在本轮验收。
+> 本轮镜像 `sha256:c922946015345343810baae3ac16727b51602cca4c8ff4ab06f691b1ac1ff310`，444 源／112 运行／23 导出文件，75 项公开静态资源；53 张户内表及 2 张平台表保持。此前本人 Photos 5／5 预览与保存成功；原生安装包、新版本人体验、真实 Google 操作与实体电视未在本轮验收。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
-## 当前交接：Expo 日常界面
+## 当前交接：统一 Expo 与旅行、助理、相册
 
-新版登录、首页、日程、待办和采购使用 Expo Router／React Native Paper，复用现有 Cookie、CSRF、成员／家庭授权、revision 和图片接口；没有数据库迁移。资金与旅行概要可在新版查看，高级编辑、相册、地图、家庭物品、助理、账户绑定与首页布局管理仍从 `/classic` 进入。电视继续独立 `/tv`，没有改成成员界面。
+新版登录、首页、日程、待办、采购、旅行、助理和相册使用 Expo Router／React Native Paper，复用现有 Cookie、CSRF、成员／家庭授权、revision 和图片接口；没有数据库迁移。旅行预览后保存、助理勾选后确认、照片双同意导入与逐台 TV 许可均使用真实 API。详细财务、地图与相册返回、家庭物品、照片旅行推荐、复杂旅行编辑及账户／设备／首页布局管理仍从 `/classic` 进入；资金概览保留在新版。电视继续独立 `/tv`。
 
 从 [前端 README](../frontend/README.md) 按锁文件安装、类型检查和构建，再读 [同源托管契约](EXPO-WEB.md) 与 [首页／日程](EXPO-HOME-CALENDAR.md)。实际执行过 `npx getdesign@latest add expo`，设计依据为 [expo/DESIGN.md](../expo/DESIGN.md)。产物须与固定输入、锁文件和 SHA 清单共同审查，不能把开发服务器或未经验证的 `dist` 当成线上包。
 
-安装包包含 427 源文件和 23 个导出文件，112 个运行文件；实际导出入口 `entry-9f8043b59bbd1eff3305729bc114375b.js`。Windows 分段、真实 Flask／SQLite／Edge 八组操作、390／1440 视觉与镜像内 Linux 63 项检查分别通过，计数和原件见 [VALIDATION](VALIDATION.md)。实际 1 户两库完整备份后发布，全部 53 表行／schema／序列及平台注册库在新 app 启动时保持，原配置保全。随后核对全部源／运行／75 项正常 TLS 资源，十个匿名 API 均 401；四服务运行、重启 0、app healthy，备份 service success／timer active。
+安装包包含 444 源文件和 23 个导出文件，112 个运行文件；实际入口 `entry-88801b3aec5aad3ae711a561d7a55e91.js`。真实 Flask／SQLite／Edge r2 14 组、r3 6 组增量及独立视觉分别通过；新镜像内 Linux 63 项检查通过，计数和原件见 [VALIDATION](VALIDATION.md)。实际 1 户两库完整备份后发布，全部 53 表行／schema／序列及平台注册库在新 app 启动时保持，原配置保全。随后核对全部源／运行／75 项正常 TLS 资源，24 个内部生成路径及 20 个退役资源为 404，十个匿名 API 均 401；四服务运行、重启 0、app healthy，备份 service success／timer active。
 
-发布目录 `/opt/family-dashboard-releases/expo-53-20260916T135833130576Z`，manifest `ac7409cfd150b45cfc575007187138cf90f7b38f1c1f2e212d5d8c5877a1fa9b`。私有 `expo-release-20260916/` 脚本仅适用其固定旧 manifest／镜像，不能在当前版本重放；包、构建和生产原件位于 `expo-package-20260916/`。
+发布目录 `/opt/family-dashboard-releases/expo-next-53-20260916T150125849654Z`，manifest `42a9c32b105384d682f0e41e0040d682b35491fdf6ce294b4ef644fe3ae13e69`。本次私有操作脚本仅适用其固定旧 manifest／镜像，不能在当前版本重放；包、构建和生产原件位于 `expo-next-package-20260916/`。旧首期和 43／44／48 表迁移工具均不是当前部署入口。
 
-当前 Windows 网络的线上浏览器返回 `Website Filtered`，未进入应用；因此线上登录操作尚未验收，不与服务器正常 TLS 读回或本地八组浏览器混同。未修改 DNS／代理／安全配置，详情见 [VALIDATION](VALIDATION.md)。
+当前 Windows 网络的线上浏览器限制仍为 `Website Filtered`，未取得该网络下的线上登录验收；服务器正常 TLS 读回与本地真实浏览器分列记录。未修改 DNS／代理／安全配置，详情见 [VALIDATION](VALIDATION.md)。
 
 ## 此前线上交接：地图相册与照片旅行建议
 
