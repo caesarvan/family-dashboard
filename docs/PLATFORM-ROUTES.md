@@ -4,7 +4,7 @@
 
 本表描述**本地源码**，其与正式版本的差异见 [交接说明](HANDOFF.md)。表用于定位代码；字段、权限、错误和状态机参见 [README 文档导航](../README.md#文档导航)。
 
-Flask HTTP 方法与路径组合：**149**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
+Flask HTTP 方法与路径组合：**152**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
 
 | 方法 | 路径 | 实现 |
 |---|---|---|
@@ -48,12 +48,15 @@ Flask HTTP 方法与路径组合：**149**；另有 `GET /space/<slug>`。HEAD/O
 | POST | `/api/finance-hub/imports/confirm` | [finance_hub.py](../finance_hub.py) · `hub_confirm` |
 | POST | `/api/finance-hub/imports/preview` | [finance_hub.py](../finance_hub.py) · `hub_preview` |
 | GET | `/api/finance-hub/imports/results/<request_id>` | [finance_hub.py](../finance_hub.py) · `hub_import_result` |
+| GET | `/api/finance-hub/investments` | [investment_operations.py](../investment_operations.py) · `investment_current` |
 | POST | `/api/finance-hub/investments` | [finance_hub.py](../finance_hub.py) · `hub_create_investment` |
 | DELETE | `/api/finance-hub/investments/<rid>` | [finance_hub.py](../finance_hub.py) · `hub_delete_investment` |
 | PATCH | `/api/finance-hub/investments/<rid>` | [finance_hub.py](../finance_hub.py) · `hub_update_investment` |
 | POST | `/api/finance-hub/investments/imports/confirm` | [investment_import.py](../investment_import.py) · `investment_import_confirm` |
 | POST | `/api/finance-hub/investments/imports/preview` | [investment_import.py](../investment_import.py) · `investment_import_preview` |
+| GET | `/api/finance-hub/investments/imports/receipts` | [investment_import.py](../investment_import.py) · `investment_import_receipt` |
 | GET | `/api/finance-hub/investments/imports/template` | [investment_import.py](../investment_import.py) · `investment_import_template` |
+| GET | `/api/finance-hub/investments/operations/<rid>` | [investment_operations.py](../investment_operations.py) · `investment_operation_result` |
 | GET | `/api/finance-hub/overview` | [finance_hub.py](../finance_hub.py) · `hub_overview` |
 | GET | `/api/finance-hub/reconciliation` | [finance_hub.py](../finance_hub.py) · `hub_reconciliation` |
 | POST | `/api/finance-hub/reconciliation/<rid>/revoke` | [finance_hub.py](../finance_hub.py) · `hub_reconciliation_revoke` |
@@ -160,9 +163,9 @@ Flask HTTP 方法与路径组合：**149**；另有 `GET /space/<slug>`。HEAD/O
 
 ## 每户业务数据表
 
-共 **54** 张表：
+共 **55** 张表：
 
-`assistant_plans`, `attempts`, `audit`, `calendar_publications`, `cloud_accounts`, `cloud_items`, `cloud_oauth_states`, `cloud_sources`, `cloud_writes`, `devices`, `entities`, `finance_baselines`, `finance_source_receipts`, `finance_spending_observations`, `finance_spending_receipts`, `household_routines`, `hub_budgets`, `hub_import_receipts`, `hub_imports`, `hub_investment_import_previews`, `hub_investment_import_receipts`, `hub_investment_links`, `hub_investment_sources`, `hub_investments`, `hub_reconciliations`, `hub_shopping_settlement_receipts`, `hub_shopping_settlements`, `hub_transactions`, `inventory_acquisitions`, `inventory_items`, `inventory_movements`, `inventory_operations`, `inventory_source_links`, `journey_actions`, `journey_documents`, `journey_links`, `journey_places`, `journey_workflows`, `media_imports`, `media_items`, `media_playback`, `media_tv_grants`, `member_dashboard_layout`, `member_preferences`, `member_session_browsers`, `member_sessions`, `photo_refs`, `photos`, `private_finance`, `routine_occurrences`, `routine_receipts`, `settings`, `task_publications`, `users`
+`assistant_plans`, `attempts`, `audit`, `calendar_publications`, `cloud_accounts`, `cloud_items`, `cloud_oauth_states`, `cloud_sources`, `cloud_writes`, `devices`, `entities`, `finance_baselines`, `finance_source_receipts`, `finance_spending_observations`, `finance_spending_receipts`, `household_routines`, `hub_budgets`, `hub_import_receipts`, `hub_imports`, `hub_investment_import_previews`, `hub_investment_import_receipts`, `hub_investment_links`, `hub_investment_operations`, `hub_investment_sources`, `hub_investments`, `hub_reconciliations`, `hub_shopping_settlement_receipts`, `hub_shopping_settlements`, `hub_transactions`, `inventory_acquisitions`, `inventory_items`, `inventory_movements`, `inventory_operations`, `inventory_source_links`, `journey_actions`, `journey_documents`, `journey_links`, `journey_places`, `journey_workflows`, `media_imports`, `media_items`, `media_playback`, `media_tv_grants`, `member_dashboard_layout`, `member_preferences`, `member_session_browsers`, `member_sessions`, `photo_refs`, `photos`, `private_finance`, `routine_occurrences`, `routine_receipts`, `settings`, `task_publications`, `users`
 
 ## 平台注册目录
 

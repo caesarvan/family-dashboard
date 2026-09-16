@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-16T19:38:23.443102+00:00",
+  "generatedAt": "2026-09-16T21:35:31.082685+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -243,6 +243,12 @@
       "endpoint": "hub_import_result"
     },
     {
+      "method": "GET",
+      "path": "/api/finance-hub/investments",
+      "source": "investment_operations.py",
+      "endpoint": "investment_current"
+    },
+    {
       "method": "POST",
       "path": "/api/finance-hub/investments",
       "source": "finance_hub.py",
@@ -274,9 +280,21 @@
     },
     {
       "method": "GET",
+      "path": "/api/finance-hub/investments/imports/receipts",
+      "source": "investment_import.py",
+      "endpoint": "investment_import_receipt"
+    },
+    {
+      "method": "GET",
       "path": "/api/finance-hub/investments/imports/template",
       "source": "investment_import.py",
       "endpoint": "investment_import_template"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/investments/operations/<rid>",
+      "source": "investment_operations.py",
+      "endpoint": "investment_operation_result"
     },
     {
       "method": "GET",
@@ -1952,6 +1970,50 @@
       },
       {
         "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_investment_operations": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "record_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "payload_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "completed_at",
         "type": "TEXT",
         "notNull": true,
         "primaryKey": false

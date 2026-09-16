@@ -40,7 +40,7 @@ def stamp():
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
 
 
-def register_investment_import(app, db, Problem, body, require_member, audit, normalize):
+def register_investment_import(app, db, Problem, body, require_member, audit, normalize, *, identity=None):
     with app.app_context():
         db().executescript('''
         CREATE TABLE IF NOT EXISTS hub_investment_sources(
@@ -315,6 +315,34 @@ def register_investment_import(app, db, Problem, body, require_member, audit, no
             db().rollback()
             raise
         return jsonify(result)
+
+    @app.get(PREFIX + '/receipts')
+    def investment_import_receipt():
+        uid = owner()
+        if set(request.args) != {'sourceName', 'sourceDigest'} or any(len(request.args.getlist(k)) != 1 for k in request.args):
+            raise Problem('请提供唯一的来源名称和来源摘要', 400)
+        source = text(request.args.get('sourceName'), '来源名称', 80)
+        source_digest = request.args.get('sourceDigest')
+        if not re.fullmatch('[0-9a-f]{64}', source_digest):
+            raise Problem('来源摘要必须为 64 位小写十六进制字符', 400)
+        con = db()
+        con.execute('BEGIN')
+        try:
+            expected = identity(con) if identity else uid
+            row = con.execute('SELECT result FROM hub_investment_import_receipts '
+                              'WHERE owner=? AND source_name=? AND source_digest=?', (uid, source, source_digest)).fetchone()
+            value = {**json.loads(row['result']), 'replayed': True} if row else None
+            con.commit()
+            if identity and identity(con) != expected:
+                raise Problem('登录成员或家庭已变化，请重新登录', 401)
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+        if not row:
+            return jsonify(error='暂未读到这份持仓导入的结果，请保留原文件和预览后再次核对',
+                           code='investment_import_receipt_not_found'), 404
+        return jsonify(**value, sourceName=source, sourceDigest=source_digest)
 
     @app.post(PREFIX + '/confirm')
     def investment_import_confirm():

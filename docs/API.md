@@ -1,6 +1,20 @@
 # 家庭看板接口文档
 
-**当前版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
+当前线上为 2026-09-17 04:26:46 财务版、54 张户内表与两张平台注册表，实际身份见 [HANDOFF](HANDOFF.md)。下面基础接口和 20:23 旅行资料等段落保留当时契约与计数，不代表当前总数。
+
+## 本地已验持仓候选：三条新增读取接口
+
+候选源码 `753c7a3` 尚未部署，完整字段和状态码见 [持仓 API](INVESTMENTS-API.md)，使用见 [Expo 持仓](EXPO-INVESTMENTS.md)，实际验证见 [候选验收](VALIDATION.md#expo-holdings-candidate)。
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/finance-hub/investments` | 当前成员完整持仓与来源映射；不接受查询参数，客户端分币种精确汇总 |
+| GET | `/api/finance-hub/investments/operations/<rid>` | 按 32 位原 requestId 读取手工操作的历史结果；不接受查询参数 |
+| GET | `/api/finance-hub/investments/imports/receipts` | 仅接受唯一的 `sourceName`、`sourceDigest`，读取原文件的历史确认回执 |
+
+三者均仅本人当前家庭可读：匿名 401、电视 403；未找到回执返回 404，但不能据此认定在途写入不会提交。原 POST／PATCH／DELETE 路径保留，新界面附原 requestId 并在重试时保持完整内容与版本；原文件确认仍只提交 previewToken。读到回执后另读当前持仓，不根据历史结果复活记录。持久化需 [54→55 候选迁移](DATA-MODEL.md#investment-operations55)，没有新银行或云账户连接。
+
+**历史版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 当时旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
 
 > 本文保留基础版本 35 个 HTTP 操作的详细字段。平台扩展后的完整路由见 [当前路由索引](PLATFORM-ROUTES.md)；新家庭、偏好、助理与旅行见 [平台扩展](PLATFORM.md)，账单/XLSX/投资见 [财务导入](FINANCE-IMPORT.md)。请勿把下方基础接口计数当作新版本总数。
 

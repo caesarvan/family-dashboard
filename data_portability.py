@@ -207,6 +207,20 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                 transaction.setdefault('provenance', {'status': 'unknown'})
             personal['transactionImportReceipts'] = export_import_receipts(con, uid)
             personal['investments'] = decoded_rows(con, 'hub_investments')
+            personal['investmentOperations'] = []
+            if 'hub_investment_operations' in available:
+                investment_fields = {'id': str, 'revision': int, 'name': str, 'institution': str,
+                    'assetType': str, 'currency': str, 'quantity': (str, type(None)),
+                    'costCents': int, 'valueCents': (int, type(None)), 'asOf': str,
+                    'note': str, 'valuationSource': str, 'visibility': str}
+                for row in con.execute(
+                        'SELECT request_id AS requestId,kind,record_id AS recordId,result,completed_at AS completedAt '
+                        'FROM hub_investment_operations WHERE owner=? ORDER BY completed_at,request_id', (uid,)):
+                    operation, result = dict(row), json.loads(row['result'])
+                    fields = {'deleted': bool} if row['kind'] == 'delete' else investment_fields
+                    operation['result'] = {key: result[key] for key, allowed in fields.items()
+                        if key in result and type(result[key]) in (allowed if isinstance(allowed, tuple) else (allowed,))}
+                    personal['investmentOperations'].append(operation)
             if 'hub_investment_sources' in available:
                 personal['investmentSources'] = [dict(r) for r in con.execute(
                     'SELECT source_name AS sourceName,revision,updated_at AS updatedAt '
