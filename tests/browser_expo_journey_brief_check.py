@@ -181,6 +181,22 @@ class Run(FinanceRun):
             expect(textfield(page, '旅行总预算（元）')).to_have_value('')
             expect(textfield(page, '出发日期')).to_have_value('')
             self.fill_brief(page, budget='')
+            domestic = page.get_by_role('radio', name='国内旅行', exact=True)
+            international = page.get_by_role('radio', name='境外旅行', exact=True)
+            domestic.click()
+            expect(domestic).to_have_attribute('aria-checked', 'true')
+            domestic.focus()
+            domestic.press('ArrowRight')
+            expect(international).to_have_attribute('aria-checked', 'true')
+            expect(domestic).to_have_attribute('aria-checked', 'false')
+            people = {row['id']: row['name'] for row in self.get(ctx, '/api/state')['people']}
+            partner = page.get_by_role('checkbox', name='出行成员：' + people['member2'], exact=True)
+            expect(partner).to_have_attribute('aria-checked', 'false')
+            partner.focus()
+            partner.press('Space')
+            expect(partner).to_have_attribute('aria-checked', 'true')
+            partner.press('Space')
+            expect(partner).to_have_attribute('aria-checked', 'false')
             self.choose_members(page, ('member2',))
             previews = self.count_requests('POST', PREVIEW)
             button(page, '核对并继续编辑').click()
@@ -194,7 +210,7 @@ class Run(FinanceRun):
             assert normalized['plan']['budget'] == 0
             assert normalized['plan']['memberIds'] == ['member2']
             assert self.snapshot() == before
-            self.passed('Unknown dates and budget require manual completion; explicit zero survives the real normalization preview and no business rows change')
+            self.passed('Keyboard Space changes member selection and radio ArrowRight changes travel type with matching ARIA state; missing dates/budget require completion and explicit zero normalizes without business writes')
 
     def full_roundtrip(self, browser):
         with self.flow(browser) as (ctx, page):
