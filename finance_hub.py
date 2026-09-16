@@ -1237,54 +1237,82 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
             if not isinstance(raw_quantity, str) or not re.fullmatch(r'\d{1,15}(?:\.\d{1,8})?', raw_quantity):
                 raise FinanceHubError('数量必须为非负数字，最多八位小数')
             quantity = raw_quantity
+        def investment_amount(raw, optional=False):
+            if optional and (raw is None or raw == ''):
+                return None
+            if isinstance(raw, bool) or not isinstance(raw, (str, int, float)):
+                raise FinanceHubError('投资金额必须是明确的非负十进制金额')
+            value = re.sub(r'^[¥￥]', '', str(raw).strip()).strip()
+            if (',' in value and '，' in value) or not re.fullmatch(
+                    r'(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]{1,2})?', value.replace('，', ',')):
+                raise FinanceHubError('投资金额须用小数点，逗号仅可为每三位一组的千分隔符')
+            return cents(value)
+
         return {'name': clean(payload.get('name', ''), 120, True),
                 'institution': clean(payload.get('institution', ''), 120, True),
                 'assetType': clean(payload.get('assetType', ''), 60, True),
                 'currency': currency_code(payload.get('currency', '')),
-                'quantity': quantity, 'costCents': cents(payload.get('cost')),
-                'valueCents': cents(payload.get('value'), True), 'asOf': valid_date(payload.get('asOf')),
+                'quantity': quantity, 'costCents': investment_amount(payload.get('cost')),
+                'valueCents': investment_amount(payload.get('value'), True), 'asOf': valid_date(payload.get('asOf')),
                 'note': clean(payload.get('note', ''), 1000), 'valuationSource': 'manual', 'visibility': 'private'}
+
+    from investment_operations import InvestmentOperationError, register_investment_operations
+    investment_operations = register_investment_operations(app, db, Problem, require_member, import_identity)
+
+    def investment_owned(con, uid, rid, payload):
+        row = con.execute('SELECT * FROM hub_investments WHERE id=? AND owner=?', (rid, uid)).fetchone()
+        if not row:
+            raise Problem('记录不存在', 404)
+        if type(payload.get('revision')) is not int or payload['revision'] != row['revision']:
+            raise InvestmentOperationError('记录已更新，请保留草稿并读取最新记录', 'revision_conflict')
+        return row
 
     @app.post('/api/finance-hub/investments')
     def hub_create_investment():
-        uid = owner()
-        value = investment_value(body())
-        db().execute('BEGIN IMMEDIATE')
-        if db().execute('SELECT count(*) FROM hub_investments WHERE owner=?', (uid,)).fetchone()[0] >= 300:
-            db().rollback()
-            raise FinanceHubError('每位成员最多 300 项投资记录')
-        rid = secrets.token_hex(12)
-        db().execute('INSERT INTO hub_investments(id,owner,data,updated_at) VALUES(?,?,?,?)', (rid, uid, json.dumps(value, ensure_ascii=False), stamp()))
-        audit('finance.investment.create', rid)
-        db().commit()
-        return jsonify({**value, 'id': rid, 'revision': 1}), 201
+        owner()
+        payload = body()
+        value = investment_value({k: v for k, v in payload.items() if k != 'requestId'})
+        def apply(con, uid):
+            if con.execute('SELECT count(*) FROM hub_investments WHERE owner=?', (uid,)).fetchone()[0] >= 300:
+                raise FinanceHubError('每位成员最多 300 项投资记录')
+            rid = secrets.token_hex(12)
+            con.execute('INSERT INTO hub_investments(id,owner,data,updated_at) VALUES(?,?,?,?)',
+                        (rid, uid, json.dumps(value, ensure_ascii=False), stamp()))
+            audit('finance.investment.create', rid)
+            return {**value, 'id': rid, 'revision': 1}
+        return investment_operations.execute('create', None, payload, value, apply)
 
     @app.patch('/api/finance-hub/investments/<rid>')
     def hub_update_investment(rid):
-        row = get_owned('hub_investments', rid)
+        owner()
         payload = body()
-        check_revision(payload, row)
-        value = investment_value(payload)
-        updated = db().execute('UPDATE hub_investments SET data=?,revision=revision+1,updated_at=? WHERE id=? AND owner=? AND revision=?',
-                               (json.dumps(value, ensure_ascii=False), stamp(), rid, g.actor['id'], row['revision']))
-        if updated.rowcount != 1:
-            db().rollback()
-            raise Problem('记录已更新，请刷新后重试', 409)
-        audit('finance.investment.update', rid)
-        db().commit()
-        return jsonify({**value, 'id': rid, 'revision': row['revision'] + 1})
+        if 'requestId' not in payload:
+            # Preserve the legacy owner/version error order. Modern requests
+            # must normalize first so a successful receipt can precede this lookup.
+            check_revision(payload, get_owned('hub_investments', rid))
+        value = investment_value({k: v for k, v in payload.items() if k != 'requestId'})
+        def apply(con, uid):
+            row = investment_owned(con, uid, rid, payload)
+            updated = con.execute('UPDATE hub_investments SET data=?,revision=revision+1,updated_at=? WHERE id=? AND owner=? AND revision=?',
+                                  (json.dumps(value, ensure_ascii=False), stamp(), rid, uid, row['revision']))
+            if updated.rowcount != 1:
+                raise InvestmentOperationError('记录已更新，请保留草稿并读取最新记录', 'revision_conflict')
+            audit('finance.investment.update', rid)
+            return {**value, 'id': rid, 'revision': row['revision'] + 1}
+        return investment_operations.execute('update', rid, payload, value, apply)
 
     @app.delete('/api/finance-hub/investments/<rid>')
     def hub_delete_investment(rid):
-        row = get_owned('hub_investments', rid)
-        check_revision(body(), row)
-        deleted = db().execute('DELETE FROM hub_investments WHERE id=? AND owner=? AND revision=?', (rid, g.actor['id'], row['revision']))
-        if deleted.rowcount != 1:
-            db().rollback()
-            raise Problem('记录已更新，请刷新后重试', 409)
-        audit('finance.investment.delete', rid)
-        db().commit()
-        return jsonify(deleted=True)
+        owner()
+        payload = body()
+        def apply(con, uid):
+            row = investment_owned(con, uid, rid, payload)
+            deleted = con.execute('DELETE FROM hub_investments WHERE id=? AND owner=? AND revision=?', (rid, uid, row['revision']))
+            if deleted.rowcount != 1:
+                raise InvestmentOperationError('记录已更新，请保留草稿并读取最新记录', 'revision_conflict')
+            audit('finance.investment.delete', rid)
+            return {'deleted': True}
+        return investment_operations.execute('delete', rid, payload, None, apply)
 
     @app.put('/api/finance-hub/budgets')
     def hub_put_budget():
@@ -1309,7 +1337,7 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
         db().commit()
         return jsonify(saved=True, revision=expected + 1)
 
-    # Share the existing money/date/private-record validator without changing
-    # the payment/order parser or the semantics of manual investment editing.
+    # Share the investment-only money/date/private-record validator; payment
+    # and order money parsing retains its independently documented behavior.
     from investment_import import register_investment_import
-    register_investment_import(app, db, Problem, body, require_member, audit, investment_value)
+    register_investment_import(app, db, Problem, body, require_member, audit, investment_value, identity=import_identity)
