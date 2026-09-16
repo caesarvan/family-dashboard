@@ -3,7 +3,7 @@ import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Button, Checkbox, Divider, Text, useTheme } from 'react-native-paper';
 import type { ListItem, ScreenProps } from '../lib/types';
 import { bounds, dayKey, duration, eventsForDay, overlapsDay, rangeDays, rangeSummary, shortDay } from '../lib/calendar';
-import { EmptyState, PageHeader, SectionCard } from '../ui/components';
+import { EmptyState, SectionCard } from '../ui/components';
 import { EventRow, RangeControls, WorkloadStrip } from './CalendarScreen';
 
 const cardKeys = ['calendar', 'finance', 'tasks', 'shopping', 'trips'];
@@ -33,6 +33,8 @@ export default function HomeScreen(props: ScreenProps) {
   const focusName = state.people.find(person => person.id === props.focus)?.name || '所选成员';
   const owner = (id: string) => state.people.find(person => person.id === id)?.name || '共同';
   const muted = { color: theme.colors.onSurfaceVariant };
+  const wide = width >= 1000;
+  const bento = { backgroundColor: theme.colors.surfaceVariant, borderWidth: 0, borderRadius: wide ? 40 : 24 };
   async function toggle(item: ListItem) {
     if (pending.current || props.pendingId || item.sync?.readOnly) return;
     const original = current.current; pending.current = true; setBusy(item.id); setError('');
@@ -41,20 +43,20 @@ export default function HomeScreen(props: ScreenProps) {
     finally { if (original === current.current) { pending.current = false; setBusy(''); } }
   }
   const cards: Record<string, React.ReactNode> = {
-    calendar: <SectionCard title={chosenDay ? `${shortDay(chosenDay)} 的安排` : '接下来的安排'} action={<Button compact onPress={() => props.onNavigate('calendar')}>全部日程</Button>}>
+    calendar: <SectionCard style={[styles.bento, bento]} title={chosenDay ? `${shortDay(chosenDay)} 的安排` : '接下来的安排'} action={<Button compact onPress={() => props.onNavigate('calendar')}>全部日程</Button>}>
       <Text variant="bodySmall" style={muted}>{focusName} + 共同 · 忙碌 {duration(summary.busyMinutes)}{summary.allDay ? ` · 全天 ${summary.allDay} 项` : ''}</Text>
       {days.length > 1 && <View style={styles.week}><WorkloadStrip summary={summary} selected={chosenDay} onSelect={setSelectedDay} /></View>}
       {appointments.length ? appointments.map(event => <EventRow key={event.id} event={event} day={chosenDay || (bounds(event).start < now ? today : dayKey(bounds(event).start))} props={props} />)
         : <EmptyState title={chosenDay ? '这天还没有安排' : '接下来没有已记录的安排'} action={<Button onPress={() => props.onEdit('events')}>添加安排</Button>} />}
     </SectionCard>,
-    finance: <SectionCard title="共同资金" action={<Button compact onPress={() => props.onNavigate('finance')}>查看资金</Button>}>
-      <View style={styles.money}><Text variant="bodyMedium" style={muted}>共同余额</Text><Text variant="headlineLarge">{state.finance.confirmedAt ? money(state.finance.wallet) : '待核对'}</Text></View>
+    finance: <SectionCard style={[styles.bento, bento]} title="共同资金" action={<Button compact onPress={() => props.onNavigate('finance')}>查看资金</Button>}>
+      <View style={[styles.money, wide && styles.moneyWide]}><Text variant="bodyMedium" style={muted}>共同余额</Text><Text variant="headlineLarge" style={wide ? styles.balanceWide : styles.balance}>{state.finance.confirmedAt ? money(state.finance.wallet) : '待核对'}</Text></View>
       <Divider /><View style={styles.moneyDetails}>
         <View style={styles.flex}><Text variant="bodySmall" style={muted}>本月已支出</Text><Text variant="titleMedium">{state.finance.confirmedAt ? money(state.finance.livingSpent) : '待核对'}</Text></View>
         <View style={styles.flex}><Text variant="bodySmall" style={muted}>本月预算</Text><Text variant="titleMedium">{state.finance.confirmedAt ? money(state.finance.livingBudget) : '待核对'}</Text></View>
       </View><Text variant="bodySmall" style={muted}>{state.finance.confirmedAt ? `手工核对 · ${shortDay(dayKey(state.finance.confirmedAt))}` : '核对共同资金后显示余额。'}</Text>
     </SectionCard>,
-    tasks: <SectionCard title="先做这几件" action={<Button compact onPress={() => props.onNavigate('tasks')}>全部待办</Button>}>
+    tasks: <SectionCard style={[styles.bento, bento]} title="先做这几件" action={<Button compact onPress={() => props.onNavigate('tasks')}>全部待办</Button>}>
       {tasks.length ? tasks.slice(0, 4).map(item => <View key={item.id} style={styles.task}>
         <Checkbox.Android status="unchecked" accessibilityLabel={`完成待办：${item.title}`} disabled={!!(busy || props.pendingId || item.sync?.readOnly)} onPress={() => void toggle(item)} />
         <View style={styles.flex}><Text variant="titleSmall">{item.title}</Text><Text variant="bodySmall" style={muted}>{item.due ? `${item.due < today ? '已逾期 · ' : ''}${shortDay(item.due)}` : '未设日期'} · {owner(item.owner)}{item.sync?.readOnly ? ' · 来源只读' : ''}</Text></View>
@@ -62,36 +64,55 @@ export default function HomeScreen(props: ScreenProps) {
       {tasks.length > 4 && <Text variant="bodySmall" style={muted}>还有 {tasks.length - 4} 项到期或未排期待办</Text>}
       {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     </SectionCard>,
-    shopping: <SectionCard title="需要添置" action={<Button compact onPress={() => props.onNavigate('shopping')}>采购清单</Button>}>
+    shopping: <SectionCard style={[styles.bento, bento]} title="需要添置" action={<Button compact onPress={() => props.onNavigate('shopping')}>采购清单</Button>}>
       {shopping.length ? shopping.slice(0, 3).map(item => <View key={item.id} style={styles.task}><View style={styles.flex}>
         <Text variant="titleSmall">{item.title}</Text><Text variant="bodySmall" style={muted}>{item.quantity || '未填数量'}</Text></View>
         <Button compact onPress={() => props.onEdit('shopping', item)}>查看</Button></View>)
         : <EmptyState title="暂时没有待采购的物品" action={<Button onPress={() => props.onEdit('shopping')}>添加采购</Button>} />}
       {shopping.length > 3 && <Text variant="bodySmall" style={muted}>还有 {shopping.length - 3} 件待采购</Text>}
     </SectionCard>,
-    trips: <SectionCard title="下一趟旅行" action={<Button compact onPress={() => props.onNavigate('trips')}>全部旅行</Button>}>
+    trips: <SectionCard style={[styles.bento, bento]} title="下一趟旅行" action={<Button compact onPress={() => props.onNavigate('trips')}>全部旅行</Button>}>
       {trip ? <View style={styles.trip}><Text variant="titleMedium">{trip.title}</Text><Text variant="bodyMedium" style={muted}>{shortDay(trip.start)}—{shortDay(trip.end)}{trip.destination ? ` · ${trip.destination}` : ''}</Text>
         <Button mode="outlined" onPress={() => props.onEdit('trips', trip)}>查看行程</Button></View>
         : <EmptyState title="还没有下一趟旅行" action={<Button onPress={() => props.onEdit('trips')}>计划旅行</Button>} />}
     </SectionCard>,
   };
   const order = [...new Set([...props.layout.order.filter(key => cardKeys.includes(key)), ...cardKeys])].filter(key => !props.layout.hidden.includes(key));
-  return <View style={styles.screen}>
-    <PageHeader title={`${props.user.name}，欢迎回家`} description={`${shortDay(today)} · 把今天安排得轻一点`} action={<Button icon="plus" mode="contained" onPress={() => props.onEdit('tasks')}>添加待办</Button>} />
-    <RangeControls props={props} />
-    <View style={styles.metrics}>
-      <Text variant="bodyMedium"><Text variant="titleMedium">{summary.total}</Text> 项安排</Text>
-      <Text variant="bodyMedium"><Text variant="titleMedium">{due}</Text> 项到期待办{overdue ? ` · ${overdue} 项逾期` : ''}</Text>
-      <Text variant="bodyMedium"><Text variant="titleMedium">{shopping.length}</Text> 件待采购</Text>
+  return <View style={[styles.screen, wide && styles.screenWide]}>
+    <View style={[styles.hero, wide && styles.heroWide]}>
+      <View style={styles.heroCopy}>
+        <Text variant="bodySmall" style={muted}>{shortDay(today)} · 我们的每一天</Text>
+        <Text accessibilityRole="header" style={[styles.title, wide && styles.titleWide]}>{`${props.user.name}，欢迎回家`}</Text>
+        {wide && <Text variant="bodyMedium" style={muted}>今天的安排、共同的计划，一起照顾好。</Text>}
+      </View>
+      <Button icon="plus" mode="contained" style={styles.pill} contentStyle={styles.primaryContent} onPress={() => props.onEdit('tasks')}>添加待办</Button>
     </View>
-    <View style={styles.grid}>{order.map(key => <View key={key} style={[styles.card, { width: width >= 1000 ? '49%' : '100%' }]}>{cards[key]}</View>)}</View>
+    <View style={[styles.overview, wide && styles.overviewWide]}>
+      <View style={styles.range}><RangeControls props={props} /></View>
+      <View style={[styles.metrics, wide && styles.metricsWide]}>
+        <Text variant="bodySmall" style={muted}><Text style={styles.metricNumber}>{summary.total}</Text> 项安排</Text>
+        <Text variant="bodySmall" style={muted}><Text style={styles.metricNumber}>{due}</Text> 项到期待办{overdue ? ` · ${overdue} 项逾期` : ''}</Text>
+        <Text variant="bodySmall" style={muted}><Text style={styles.metricNumber}>{shopping.length}</Text> 件待采购</Text>
+      </View>
+    </View>
+    <View style={styles.grid}>{order.map((key, index) => <View key={key} style={[styles.card, wide ? { flexBasis: index === 0 ? '58%' : index === 1 ? '36%' : '30%' } : styles.cardNarrow]}>{cards[key]}</View>)}</View>
   </View>;
 }
 
 const styles = StyleSheet.create({
-  screen: { gap: 16 }, metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', gap: 16 }, card: { minWidth: 0 },
-  flex: { flex: 1, minWidth: 0, gap: 4 }, week: { marginTop: 12 }, money: { gap: 6, paddingVertical: 16 },
+  screen: { gap: 18 }, screenWide: { gap: 24 },
+  hero: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 14, paddingVertical: 4 },
+  heroWide: { paddingTop: 20, paddingBottom: 8, gap: 28 }, heroCopy: { flexGrow: 1, flexShrink: 1, flexBasis: 220, minWidth: 0, gap: 8 },
+  title: { fontSize: 28, lineHeight: 34, fontWeight: '600', letterSpacing: -0.7 },
+  titleWide: { fontSize: 38, lineHeight: 44, letterSpacing: -1 },
+  pill: { borderRadius: 999, alignSelf: 'center' }, primaryContent: { minHeight: 40 },
+  overview: { gap: 14 }, overviewWide: { flexDirection: 'row', alignItems: 'center', gap: 32 },
+  range: { flexGrow: 1, flexShrink: 1, maxWidth: 680 },
+  metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, metricsWide: { maxWidth: 340, justifyContent: 'flex-end', columnGap: 20, rowGap: 8 },
+  metricNumber: { fontSize: 18, lineHeight: 24, fontWeight: '600' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 20 }, card: { minWidth: 0, flexGrow: 1, flexShrink: 1 }, cardNarrow: { width: '100%' }, bento: { flex: 1 },
+  flex: { flex: 1, minWidth: 0, gap: 4 }, week: { marginTop: 12 }, money: { gap: 8, paddingVertical: 18 }, moneyWide: { paddingTop: 28, paddingBottom: 28 },
+  balance: { fontSize: 32, lineHeight: 40, fontWeight: '600', letterSpacing: -0.8 }, balanceWide: { fontSize: 40, lineHeight: 48, fontWeight: '600', letterSpacing: -1.2 },
   moneyDetails: { flexDirection: 'row', gap: 16, paddingVertical: 16 },
   task: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10 }, trip: { gap: 12 },
 });
