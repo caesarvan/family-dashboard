@@ -21,7 +21,7 @@ import tempfile
 import threading
 import traceback
 from unittest.mock import patch
-from urllib.parse import urlsplit
+from urllib.parse import urlencode, urlsplit
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
@@ -201,7 +201,7 @@ def main():
                     return {(item['kind'], item['remoteId']): (item['owner'], item['primary']) for item in account(ctx, uid)['sources']}
 
                 def button(p, name):
-                    return p.get_by_role('button', name=re.compile(r'(?:^|\s)' + re.escape(name) + r'$'))
+                    return p.get_by_role('button', name=re.compile(r'(?:^|\s)' + re.escape(name) + r'(?=$|[：:])'))
 
                 def checkbox(p, name):
                     return p.get_by_role('checkbox', name=name, exact=True)
@@ -258,6 +258,27 @@ def main():
                     button(p, '查看变更').click()
                     expect(button(p, '确认保存')).to_be_enabled()
 
+                for status, reason, message in [
+                    ('connected', '', '请核对下方账户，并选择要同步和共享的日历、清单。'),
+                    ('error', 'insufficient_permissions', '缺少日历或清单权限，请重新连接并允许这些权限。'),
+                    ('error', 'SYNTHETIC-UNTRUSTED-TEXT', '账户授权未完成，请稍后重试。'),
+                ]:
+                    page.goto(base + '/?' + urlencode({'auth': status, 'reason': reason,
+                        'code': 'SYNTHETIC-PRIVATE-CODE', 'state': 'SYNTHETIC-PRIVATE-STATE'}))
+                    expect(page).to_have_url(base + '/app/connections')
+                    expect(page.get_by_text(message, exact=True)).to_be_visible()
+                    expect(page.locator('body')).not_to_contain_text('SYNTHETIC-')
+                    assert len(get(owner, '/api/accounts')['accounts']) == 1
+                guest = context()
+                guest_page = guest.new_page()
+                guest_page.goto(base + '/?auth=error&reason=unbound_account')
+                expect(guest_page).to_have_url(base + '/app/connections')
+                expect(guest_page.get_by_text('这个账户尚未绑定。请先用家庭密码登录，再连接自己的账户。', exact=True)).to_be_visible()
+                expect(guest_page.get_by_role('textbox', name='登录密码', exact=True)).to_be_visible()
+                page.goto(base + '/?auth=photos-connected')
+                expect(page).to_have_url(base + '/app/photos')
+                passed('real OAuth return bridge drops code/state and unknown text; fixed result messages are consumed in Expo, anonymous login error remains actionable and Photos return remains separate')
+
                 open_accounts(page)
                 expect(page.get_by_text(owner_name, exact=True)).to_be_visible()
                 expect(page.locator('body')).not_to_contain_text(partner_name)
@@ -271,6 +292,7 @@ def main():
                 open_editor(page)
                 checkbox(page, '选择日历：私人日历').focus()
                 checkbox(page, '选择日历：私人日历').press('Space')
+                button(page, '日历 私人日历 归属：共同').click()
                 checkbox(page, '选择清单：共同待办').click()
                 expect(checkbox(page, '选择清单：只读归档清单')).to_be_disabled()
                 button(page, '设为主清单：共同待办').click()
@@ -279,7 +301,7 @@ def main():
                 assert not source_posts()
                 button(page, '确认保存').click()
                 expect(button(page, '选择日历与清单').first).to_be_enabled()
-                assert saved(owner) == {('calendar', 'cal-1'): ('member1', False), ('tasks', 'list-1'): ('shared', True)}
+                assert saved(owner) == {('calendar', 'cal-1'): ('shared', False), ('tasks', 'list-1'): ('shared', True)}
                 assert len(source_posts()) == 1 and source_posts()[0]['body']['selectionVersion']
                 assert not any(item['lastSuccess'] for item in account(owner)['sources'])
                 passed('keyboard selection, explicit sharing consent and review persist chosen calendar/task/primary only; read-only task cannot be selected')
@@ -291,7 +313,7 @@ def main():
                      'allDay': False, 'location': '合成公开会合地点'}}}
                 snapshots_before = control['snapshots']
                 button(page, '检查更新').first.click()
-                expect(page.get_by_text(re.compile('已.*排队|已.*提交|等待.*读取|已安排'))).to_be_visible()
+                expect(page.get_by_text('已安排后台检查。请查看各来源的最近成功时间，排队不代表同步完成。', exact=True)).to_be_visible()
                 assert control['snapshots'] == snapshots_before
                 assert not any(item['lastSuccess'] for item in account(owner)['sources'])
                 engine.tick()
@@ -500,6 +522,36 @@ def main():
                 assert child.request.get(base + '/api/accounts/' + new_aid + '/sources').status == 404
                 expect(child_page.locator('body')).not_to_contain_text('合成迟到账户')
                 expect(child_page.locator('body')).not_to_contain_text(partner_name)
+
+                open_accounts(page)
+                expect(page.get_by_text('合成迟到账户', exact=True)).to_be_visible()
+                held.clear()
+                hold[0] = True
+                page.route('**/api/accounts', hold_accounts)
+                for _ in range(130):
+                    if held:
+                        break
+                    page.wait_for_timeout(150)
+                assert held
+                visibility(page, True)
+                switch = owner.request.get(base + created['entry'])
+                assert switch.status == 200
+                login(owner)
+                assert get(owner, '/api/me')['user']['householdId'] != 'default'
+                hold[0] = False
+                for handler, response in held:
+                    handler.fulfill(response=response)
+                page.unroute('**/api/accounts', hold_accounts)
+                visibility(page, False)
+                expect(page.get_by_text('合成迟到账户', exact=True)).to_have_count(0)
+                open_accounts(page)
+                assert get(owner, '/api/accounts')['accounts'] == []
+                expect(page.locator('body')).not_to_contain_text('合成迟到账户')
+                assert owner.request.get(base + '/space/home').status == 200
+                login(owner)
+                assert get(owner, '/api/me')['user']['householdId'] == 'default'
+                passed('same member ID in another real household cannot receive held prior-household account response; returning requires a fresh household session')
+
                 tv = context()
                 pairing = tv.request.post(base + '/api/pair/start', data={}).json()
                 write(owner, 'POST', '/api/pair/approve', {'code': pairing['code'], 'name': '合成账户电视'})
