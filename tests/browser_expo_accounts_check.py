@@ -353,6 +353,11 @@ def main():
                 state = get(owner, '/api/state')
                 assert any(item['title'] == '合成云清单事项' for item in state['tasks'])
                 assert state['events'][0]['location'] == '合成公开会合地点'
+                partner_state = get(partner, '/api/state')
+                assert any(item['title'] == '合成云清单事项' for item in partner_state['tasks'])
+                assert partner_state['events'][0]['title'] == '合成完整日程标题'
+                assert partner_state['events'][0]['location'] == '合成公开会合地点'
+                assert all(item['id'] != aid for item in get(partner, '/api/accounts')['accounts'])
                 open_accounts(page)
                 remote.fail_snapshot = True
                 fixture.due(engine)
