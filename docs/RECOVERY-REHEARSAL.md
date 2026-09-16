@@ -6,9 +6,13 @@
 
 ## 已验证结果
 
+2026-09-16，地点版 `journey_places44` profile 已在镜像 `sha256:9cd092392b27d6e2342ab1890ff3514149416281fe130df62976b8b1488acac8` 完成实际双户 Docker 恢复。65 项控制器检查、23 项 seed、232 项 verify 分列通过；恢复 24 条地点（含 4 条删除标记）、8 份旅行资料及 8 张采购图片，旧会话和 OAuth 状态各拒绝 4 个。22 个容器、6 个新卷全部清理。原件 SHA `63753f35cf4d6336508eeddf9fd8e53bcb0424a7928ad5b6d03beb8073ae6bbc`。这是隔离合成数据验证，不是生产数据库覆盖恢复。
+
+该 profile 复用并扩展真实 fixture `tests/restore_rehearsal_fixture.py`；`legacy43` 保留历史用途。运行当前 44 表源码必须显式选择 `--profile journey_places44`，不能仅改报告表数或使用旧 43 表夹具。真实 report 的 79 个依赖散列对应运行模块与恢复夹具等子集；完整候选 manifest、实际调用和不可变镜像另行绑定，不能把子集冒充全部 295 源文件。
+
 2026-09-15 16:54（北京时间），在 racknerd 使用当时的 42 表不可变镜像完成一次独立演练：65 项控制器检查、9 项 seed 检查、202 项恢复后检查通过，exit 0。22 个容器和 6 个新卷均已清理，原线上三个服务保持运行状态。13 项不调用 Docker 的安全测试另行通过。逐项范围和散列见 [VALIDATION](VALIDATION.md)；这仅证明该历史合成恢复。
 
-当前 43 表夹具已在 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352` 完成两户真实 Docker 恢复：65 项控制器、15 项 seed、216 项 verify 分别通过，八份虚构资料的文件原字节、元数据、权限与导出边界已核对；22 个容器、6 个新卷清理。最终配置修订没有改变恢复所需源码依赖的原始字节，复用同镜像原记录，不宣称重复运行。它不包含删除旅行后的孤立资料，后者由 API／浏览器生命周期测试覆盖。另一个单户 42→43 配置迁移演练使用不同数据和目的，不与本恢复计数相加，见 [VALIDATION](VALIDATION.md)。
+历史 43 表夹具曾在 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352` 完成两户真实 Docker 恢复：65 项控制器、15 项 seed、216 项 verify 分别通过，八份虚构资料的文件原字节、元数据、权限与导出边界已核对；22 个容器、6 个新卷清理。最终配置修订没有改变恢复所需源码依赖的原始字节，复用同镜像原记录，不宣称重复运行。它不包含删除旅行后的孤立资料，后者由 API／浏览器生命周期测试覆盖。另一个单户 42→43 配置迁移演练使用不同数据和目的，不与本恢复计数相加，见 [VALIDATION](VALIDATION.md)。
 
 ## 软件与执行入口
 
@@ -25,7 +29,7 @@
 
 在 Linux Docker 主机上准备本源码包及已存在的相配镜像。执行账户需能调用 Docker。镜像参数必须是完整不可变 `sha256:` ID；不接受标签，也不拉取镜像。源码中的全部顶层 Python、requirements 和静态文件必须与镜像 `/app` 中对应文件逐字一致。
 
-下面只创建新的演练报告目录。必须先将 `rehearsal_image` 替换为与所选源码逐字匹配、已构建的完整镜像 ID；占位符不可直接执行。旧 16:25 镜像仅适用于其对应的 42 表源码包，当前 43 表源码不能使用它。
+下面只创建新的演练报告目录。必须先将 `rehearsal_image` 替换为与所选源码逐字匹配、已构建的完整镜像 ID；占位符不可直接执行。旧镜像只适用于各自的源码和表结构，当前 44 表源码不能使用 42 或 43 表历史镜像。
 
 ```sh
 cd /opt/family-dashboard
@@ -33,7 +37,7 @@ rehearsal_image='sha256:<已验证且与本源码匹配的64位镜像散列>'
 rehearsal_parent='/opt/family-dashboard-rehearsal-reports'
 install -d -m 0700 "$rehearsal_parent"
 rehearsal_output="$rehearsal_parent/run-$(date -u +%Y%m%dT%H%M%SZ)"
-python3 deploy/rehearse_restore.py --image "$rehearsal_image" --output "$rehearsal_output"
+python3 deploy/rehearse_restore.py --image "$rehearsal_image" --profile journey_places44 --output "$rehearsal_output"
 ```
 
 `--output` 的父目录必须已存在，输出目录必须不存在；程序不会覆盖旧报告。也可用 `--source-root` 指向独立源码副本。不要独立对生产 app 容器执行 fixture；正常环境缺少专用 marker 和 runId 时，fixture 会拒绝运行。
