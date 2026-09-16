@@ -179,8 +179,10 @@ window.InventoryUI = (() => {
   async function act(f,action,target) {
     if (!alive(f)||f.busy) return;
     if (action==='retry'&&f.pending?.phase==='unknown') return job(f,async check=>{
-      try {const result=await read(f,check,'/operations/'+f.pending.body.requestId);if (result) await accept(f,result,check);}
-      catch (e) {if (e.status!==404) throw e;if (await check()) await sendPending(f,check);}
+      let result;
+      try {result=await read(f,check,'/operations/'+f.pending.body.requestId);}
+      catch (e) {if (e.status!==404) throw e;if (await check()) await sendPending(f,check);return;}
+      if (result) await accept(f,result,check);
     });
     if (action==='recheck'&&f.pending?.phase==='rejected') return job(f,async check=>{
       if (f.item) await details(f,check,f.item.id,f.acquisition?.id);
