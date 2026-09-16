@@ -135,7 +135,7 @@ class Run:
 
         def route(handler):
             parsed = urlsplit(handler.request.url)
-            if parsed.scheme not in ('http', 'https') or parsed.hostname != '127.0.0.1' or parsed.port != self.server.server_port:
+            if (parsed.scheme, parsed.netloc) != (urlsplit(self.base).scheme, urlsplit(self.base).netloc):
                 self.report['externalRequests'].append({'host': parsed.hostname, 'scheme': parsed.scheme})
                 handler.abort()
                 return
@@ -254,7 +254,21 @@ class Run:
             button(page, action).click()
         response = pending.value
         assert response.status == 200, response.text()
-        return response.json()
+        result = response.json()
+        if result['requiresSheetSelection']:
+            expect(button(page, '选择账单工作表')).to_be_enabled()
+        elif result['requiresAmountSelection']:
+            expect(button(page, '选择入账金额列')).to_be_enabled()
+        else:
+            expect(page.get_by_role('heading', name='核对预览', exact=True)).to_be_visible()
+            if result['rows']:
+                expect(page.get_by_test_id('finance-import-row-' + str(result['rows'][0]['line']))).to_be_visible()
+            if result['errorCount'] or not result['rows']:
+                expect(button(page, '确认导入 · 仅本人')).to_be_disabled()
+            else:
+                expect(button(page, '确认导入 · 仅本人')).to_be_enabled()
+        expect(page.get_by_label('正在处理文件', exact=True)).to_have_count(0)
+        return result
 
     def confirm_file(self, page):
         with page.expect_response(lambda response: urlsplit(response.url).path == BASE + '/imports/confirm'
@@ -327,6 +341,7 @@ class Run:
         self.report['screenshots'].append({'path': path.name, 'sha256': sha(path), 'metrics': metrics})
 
     def run_scenarios(self, browser):
+        self.shared_funds(browser)
         self.import_and_provenance(browser)
         self.amount_and_sheets(browser)
         self.cancel_and_read_failure(browser)
@@ -336,6 +351,52 @@ class Run:
         self.version_conflicts(browser)
         self.private_boundaries(browser)
         self.async_boundaries(browser)
+
+    def shared_funds(self, browser):
+        with self.flow(browser) as (ctx, page):
+            original = self.get(ctx, '/api/state')['finance']
+            amounts = {'wallet': 1000000, 'livingBudget': 620000, 'livingSpent': 12345,
+                'travelSaved': 340000, 'travelAnnualBudget': 15000000, 'longterm': 456789,
+                'reserveTarget': 1000000, 'upcomingPayments': 89123}
+            initial = {**amounts, 'contributionPercent': 50, 'note': '合成共享资金核对', 'revision': original['revision']}
+            self.write(ctx, 'PUT', '/api/finance', initial)
+            before = self.snapshot()
+            self.open_finance(page)
+            expect(page.get_by_text('CNY 10,000.00', exact=True).first).to_be_visible()
+            button(page, '核对资金').click()
+            wallet = page.get_by_role('textbox', name='荷包余额', exact=True)
+            expect(wallet).to_have_value('10000.00')
+            wallet.fill('123.45')
+            self.screenshot(page, 'shared-funds-editor', 320, dialog=True)
+            with page.expect_response(lambda response: urlsplit(response.url).path == '/api/finance'
+                and response.request.method == 'PUT') as saved:
+                button(page, '确认共同资金').click()
+            assert saved.value.status == 200, saved.value.text()
+            submitted = saved.value.request.post_data_json
+            assert submitted['wallet'] == 12345 and type(submitted['wallet']) is int
+            for field, value in amounts.items():
+                if field != 'wallet':
+                    assert submitted[field] == value and type(submitted[field]) is int
+            assert submitted['contributionPercent'] == 50 and type(submitted['contributionPercent']) is int
+            expect(button(page, '确认共同资金')).not_to_be_visible()
+            stored = self.get(ctx, '/api/state')['finance']
+            assert stored['wallet'] == 12345
+            assert self.snapshot()['hub_transactions'] == before['hub_transactions']
+            button(page, '核对资金').click()
+            wallet.fill('200.00')
+            self.write(ctx, 'PUT', '/api/finance', {**{k: stored[k] for k in initial}, 'wallet': 30000})
+            with page.expect_response(lambda response: urlsplit(response.url).path == '/api/finance'
+                and response.request.method == 'PUT') as changed:
+                button(page, '确认共同资金').click()
+            assert changed.value.status == 409
+            expect(wallet).to_have_value('200.00')
+            expect(button(page, '确认共同资金')).to_be_disabled()
+            button(page, '读取最新资金').click()
+            expect(wallet).to_have_value('300.00')
+            expect(button(page, '确认共同资金')).to_be_enabled()
+            button(page, '取消').click()
+            assert self.get(ctx, '/api/state')['finance']['wallet'] == 30000
+            self.passed('Shared funds display exact cents as yuan, preserve all eight integer-cent fields and integer contribution, write only on confirmation and recover a real revision conflict')
 
     def import_and_provenance(self, browser):
         with self.flow(browser) as (ctx, page):
@@ -349,11 +410,35 @@ class Run:
             for width in (320, 390, 1040, 1440):
                 self.screenshot(page, 'import-preview', width)
             # Picking another file invalidates the old signed preview immediately.
-            self.choose_file(page, content, 'synthetic-coffee-reselected.csv')
+            page.evaluate('''() => {
+              const original = File.prototype.arrayBuffer;
+              File.prototype.arrayBuffer = function() {
+                if (this.name !== 'synthetic-coffee-reselected.csv') return original.call(this);
+                const file = this;
+                return new Promise(resolve => { window.releaseFinanceFile = async () => {
+                  File.prototype.arrayBuffer = original; resolve(await original.call(file));
+                }; });
+              };
+            }''')
+            with page.expect_file_chooser() as replacement:
+                button(page, '选择账单文件').click()
+            replacement.value.set_files({'name': 'synthetic-coffee-reselected.csv', 'mimeType': 'text/csv', 'buffer': content})
+            page.wait_for_function('() => typeof window.releaseFinanceFile === "function"')
             expect(button(page, '确认导入 · 仅本人')).to_have_count(0)
+            expect(button(page, '选择账单文件')).to_be_disabled()
             assert self.snapshot() == before
+            page.evaluate('() => window.releaseFinanceFile()')
+            expect(page.get_by_text('synthetic-coffee-reselected.csv', exact=True)).to_be_visible()
             preview = self.preview_file(page)
             assert preview['previewToken']
+            with page.expect_file_chooser() as invalid:
+                button(page, '选择账单文件').click()
+            invalid.value.set_files({'name': 'synthetic-empty.csv', 'mimeType': 'text/csv', 'buffer': b''})
+            expect(page.locator('body')).to_contain_text('请选择非空且不超过 2 MiB 的文件。')
+            expect(button(page, '确认导入 · 仅本人')).to_have_count(0)
+            assert self.snapshot() == before
+            self.choose_file(page, content, 'synthetic-coffee-reselected.csv')
+            self.preview_file(page)
             posts = self.count_requests('POST', BASE + '/imports/confirm')
             result = self.confirm_file(page)
             assert result['imported'] == 1 and result['duplicates'] == 0 and result['conflicts'] == 0
@@ -464,18 +549,18 @@ class Run:
 
             def lose_overview(handler):
                 if not dropped:
-                    response = handler.fetch()
+                    response = handler.fetch(max_redirects=0)
                     assert response.status == 200
                     dropped.append(response.status)
                     handler.abort('failed')
                 else:
                     handler.continue_()
 
-            page.route('**' + BASE + '/overview?*', lose_overview)
+            page.route(self.base + BASE + '/overview?*', lose_overview)
             button(page, '查看已导入账本').click()
             self.settle(page, lambda: bool(dropped))
             expect(button(page, '刷新账本')).to_be_enabled()
-            page.unroute('**' + BASE + '/overview?*', lose_overview)
+            page.unroute(self.base + BASE + '/overview?*', lose_overview)
             stored = self.overview(ctx)['transactions'][0]
             self.write(ctx, 'DELETE', BASE + '/transactions/' + stored['id'], {'revision': stored['revision']})
             button(page, '刷新账本').click()
@@ -497,7 +582,7 @@ class Run:
             def drop_commit(handler):
                 if handler.request.method == 'POST' and not dropped:
                     dropped['body'] = handler.request.post_data_json
-                    response = handler.fetch()
+                    response = handler.fetch(max_redirects=0)
                     assert response.status == 200, response.text()
                     dropped['result'] = response.json()
                     handler.abort('failed')
@@ -505,10 +590,10 @@ class Run:
                     handler.continue_()
 
             start_posts = self.count_requests('POST', BASE + '/imports/confirm')
-            page.route('**' + BASE + '/imports/confirm', drop_commit)
+            page.route(self.base + BASE + '/imports/confirm', drop_commit)
             button(page, '确认导入 · 仅本人').click()
             expect(button(page, '核对保存结果')).to_be_enabled()
-            page.unroute('**' + BASE + '/imports/confirm', drop_commit)
+            page.unroute(self.base + BASE + '/imports/confirm', drop_commit)
             assert dropped and self.overview(ctx)['totalRecordCount'] == 1
             assert self.count_requests('POST', BASE + '/imports/confirm') == start_posts + 1
             with page.expect_response(lambda response: urlsplit(response.url).path == BASE + '/imports/results/' + dropped['body']['requestId']) as readback:
@@ -543,10 +628,10 @@ class Run:
                 else:
                     handler.continue_()
 
-            page.route('**' + BASE + '/imports/confirm', drop_before_send)
+            page.route(self.base + BASE + '/imports/confirm', drop_before_send)
             button(page, '确认导入 · 仅本人').click()
             expect(button(page, '核对保存结果')).to_be_enabled()
-            page.unroute('**' + BASE + '/imports/confirm', drop_before_send)
+            page.unroute(self.base + BASE + '/imports/confirm', drop_before_send)
             assert self.overview(ctx)['totalRecordCount'] == 0
             with page.expect_response(lambda response: urlsplit(response.url).path == BASE + '/imports/results/' + blocked[0]['requestId']) as missing:
                 button(page, '核对保存结果').click()
@@ -559,6 +644,42 @@ class Run:
             expect(button(page, '查看已导入账本')).to_be_enabled()
             assert self.overview(ctx)['totalRecordCount'] == 1
             self.passed('Unsent request stays unknown until explicit GET; missing receipt allows only an explicit byte-equivalent logical request retry and saves once')
+
+        with self.flow(browser) as (ctx, page):
+            self.open_finance(page)
+            self.open_import(page, csv_bytes([row('合成迟到原请求', '31.00')]))
+            self.preview_file(page)
+            delayed = []
+
+            def delay_submission(handler):
+                delayed.append(handler.request.post_data_json)
+                handler.abort('failed')
+
+            page.route(self.base + BASE + '/imports/confirm', delay_submission)
+            button(page, '确认导入 · 仅本人').click()
+            expect(button(page, '核对保存结果')).to_be_enabled()
+            page.unroute(self.base + BASE + '/imports/confirm', delay_submission)
+            button(page, '核对保存结果').click()
+            expect(button(page, '使用原请求重试')).to_be_enabled()
+            # Advance the real token validator's clock, never substitute a response.
+            from itsdangerous.timed import TimestampSigner
+            original_clock = TimestampSigner.get_timestamp
+            with patch.object(TimestampSigner, 'get_timestamp', lambda signer: original_clock(signer) + 1300):
+                with page.expect_response(lambda response: urlsplit(response.url).path == BASE + '/imports/confirm') as expired:
+                    button(page, '使用原请求重试').click()
+                assert expired.value.status == 400
+                assert expired.value.request.post_data_json == delayed[0]
+                expect(button(page, '核对保存结果')).to_be_enabled()
+            assert self.overview(ctx)['totalRecordCount'] == 0
+            # Deliver the preserved request after the failed retry. The live API
+            # validates and persists it; GET must still recover that exact ID.
+            committed = self.write(ctx, 'POST', BASE + '/imports/confirm', delayed[0])
+            with page.expect_response(lambda response: urlsplit(response.url).path == BASE + '/imports/results/' + delayed[0]['requestId']) as recovered:
+                button(page, '核对保存结果').click()
+            assert recovered.value.status == 200 and recovered.value.json()['receiptId'] == committed['receiptId']
+            expect(button(page, '查看已导入账本')).to_be_enabled()
+            assert self.overview(ctx)['totalRecordCount'] == 1
+            self.passed('A real expired-token retry cannot discard the unknown request identity; later delivery of the preserved request remains recoverable through its exact GET receipt')
 
     def ledger_pagination(self, browser):
         with self.flow(browser) as (ctx, page):
@@ -753,6 +874,19 @@ class Run:
             assert self.total(data)['categories'] == {'购物': 8000, '原退款分类': -6000}
             self.passed('Real budget409 preserves draft until latest version is read; stale relationship preview cannot commit, fresh partial20 allocation leaves refund60 unallocated without inferring full refund')
 
+            self.transaction(page, '合成部分退款') if not page.get_by_role('heading', name='交易详情', exact=True).is_visible() else None
+            current = self.find(self.overview(ctx), '合成部分退款')
+            self.write(ctx, 'DELETE', BASE + '/transactions/' + current['id'], {'revision': current['revision']})
+            button(page, '刷新账本').click()
+            expect(button(page, '导入账单')).to_be_enabled()
+            expect(page.get_by_role('textbox', name='交易分类', exact=True)).to_have_count(0)
+            self.ledger(page)
+            expect(button(page, '查看交易合成部分退款')).to_have_count(0)
+            button(page, '刷新账本').click()
+            expect(button(page, '导入账单')).to_be_enabled()
+            assert not any(t['id'] == current['id'] for t in self.overview(ctx)['transactions'])
+            self.passed('Deleting the currently viewed transaction through the real API clears the vanished detail and returns to a refreshable ledger without recreating the record')
+
     def private_boundaries(self, browser):
         with self.flow(browser) as (ctx, page):
             self.seed(ctx, [row('合成本人敏感流水', '42.50', category='私人类别')])
@@ -848,14 +982,14 @@ class Run:
 
                 def hold_ledger(handler):
                     if handler.request.method == 'GET' and hold[0]:
-                        response = handler.fetch()
+                        response = handler.fetch(max_redirects=0)
                         assert response.status == 200
                         assert 'set-cookie' not in response.headers
                         held.append((handler, response))
                     else:
                         handler.continue_()
 
-                page.route('**' + BASE + '/transactions?*', hold_ledger)
+                page.route(self.base + BASE + '/transactions?*', hold_ledger)
                 button(page, '刷新账本').click()
                 self.settle(page, lambda: bool(held))
                 visibility(page, True)
@@ -868,7 +1002,7 @@ class Run:
                 hold[0] = False
                 for handler, response in held:
                     handler.fulfill(response=response)
-                page.unroute('**' + BASE + '/transactions?*', hold_ledger)
+                page.unroute(self.base + BASE + '/transactions?*', hold_ledger)
                 visibility(page, False)
                 expect(button(page, '查看交易合成旧成员迟到流水')).to_have_count(0)
                 self.open_finance(page)
@@ -890,13 +1024,13 @@ class Run:
 
                 def hold_confirmation(handler):
                     if handler.request.method == 'POST' and not held:
-                        response = handler.fetch()
+                        response = handler.fetch(max_redirects=0)
                         assert response.status == 200
                         held.append((handler, response, handler.request.post_data_json))
                     else:
                         handler.continue_()
 
-                page.route('**' + BASE + '/imports/confirm', hold_confirmation)
+                page.route(self.base + BASE + '/imports/confirm', hold_confirmation)
                 button(page, '确认导入 · 仅本人').click()
                 self.settle(page, lambda: bool(held))
                 assert self.overview(ctx)['totalRecordCount'] == 1
@@ -910,7 +1044,7 @@ class Run:
                 request_id = held[0][2]['requestId']
                 for handler, response, _ in held:
                     handler.fulfill(response=response)
-                page.unroute('**' + BASE + '/imports/confirm', hold_confirmation)
+                page.unroute(self.base + BASE + '/imports/confirm', hold_confirmation)
                 visibility(page, False)
                 expect(page.locator('body')).not_to_contain_text('合成迟到导入私有名称')
                 expect(page.locator('body')).not_to_contain_text('synthetic-private-late.csv')
