@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+from contextlib import closing
 from datetime import datetime, timezone
 import hashlib
 import json
@@ -15,6 +16,8 @@ import os
 from pathlib import Path
 import re
 import secrets
+import sqlite3
+import stat
 import subprocess
 import sys
 import time
@@ -24,10 +27,62 @@ import uuid
 LABEL = 'org.family-dashboard.synthetic-recovery'
 IMAGE_RE = re.compile(r'sha256:[a-f0-9]{64}\Z')
 RUN_RE = re.compile(r'[a-f0-9]{32}\Z')
+PROFILES = ('legacy43', 'journey_places44')
+LEGACY_TABLES = frozenset('''
+assistant_plans attempts audit calendar_publications cloud_accounts cloud_items
+cloud_oauth_states cloud_sources cloud_writes devices entities finance_baselines
+finance_source_receipts finance_spending_observations finance_spending_receipts
+household_routines hub_budgets hub_imports hub_investment_import_previews
+hub_investment_import_receipts hub_investment_links hub_investment_sources
+hub_investments hub_reconciliations hub_shopping_settlement_receipts
+hub_shopping_settlements hub_transactions journey_actions journey_documents
+journey_links journey_workflows member_dashboard_layout member_preferences
+member_session_browsers member_sessions photo_refs photos private_finance
+routine_occurrences routine_receipts settings task_publications users
+'''.split())
 
 
 def sha(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def profile_definition(root, profile):
+    """Explicit table profiles; read reviewed DDL without importing the app."""
+    if profile not in PROFILES:
+        raise ValueError('Unknown restore profile')
+    tables = LEGACY_TABLES | ({'journey_places'} if profile == 'journey_places44' else set())
+    details = {'name': profile, 'householdTables': len(tables),
+               'tableSetSha256': sha('\n'.join(sorted(tables)).encode()), 'schemaSha256': None}
+    expected = []
+    if profile == 'journey_places44':
+        root = root.resolve(strict=True)
+        path = root / 'journey_places.py'
+        if path.is_symlink() or not path.resolve(strict=True).is_relative_to(root):
+            raise ValueError('Unsafe places schema path')
+        tree = ast.parse(path.read_text(encoding='utf-8'))
+        values = [ast.literal_eval(node.value) for node in tree.body if isinstance(node, ast.Assign)
+                  and any(isinstance(target, ast.Name) and target.id == 'SCHEMA_SQL' for target in node.targets)]
+        if len(values) != 1 or not isinstance(values[0], str):
+            raise ValueError('Expected one literal places schema')
+        details['schemaSha256'] = sha(values[0].encode('utf-8'))
+        with closing(sqlite3.connect(':memory:')) as con:
+            con.executescript('CREATE TABLE users(id TEXT PRIMARY KEY); CREATE TABLE journey_workflows(id TEXT PRIMARY KEY);\n' + values[0])
+            expected = [list(row) for row in con.execute(
+                "SELECT type,name,tbl_name,sql FROM sqlite_master WHERE tbl_name='journey_places' ORDER BY type,name")]
+    return details, expected
+
+
+def validate_snapshot_profile(value, root, profile):
+    details, expected = profile_definition(root, profile)
+    tables = set(value['tables'])
+    allowed = LEGACY_TABLES | ({'journey_places'} if profile == 'journey_places44' else set())
+    if tables - {'sqlite_sequence'} != allowed:
+        raise ValueError('Household table set does not match restore profile')
+    if profile == 'journey_places44':
+        actual = [row for row in value['schema'] if row[2] == 'journey_places']
+        if actual != expected:
+            raise ValueError('Journey places DDL does not match source schema')
+    return details
 
 
 def documented_programs(root):
@@ -49,6 +104,7 @@ def documented_programs(root):
 
 
 def source_hashes(root):
+    require_clean_source_tree(root)
     runtime = sorted([*root.glob('*.py'), root / 'requirements.txt',
                       *(root / 'static').rglob('*')])
     runtime = [p for p in runtime if p.is_file()]
@@ -61,6 +117,33 @@ def source_hashes(root):
             [p.relative_to(root).as_posix() for p in runtime])
 
 
+def require_clean_source_tree(root):
+    """Reject importable caches and links before reading or executing fixtures.
+
+    -B prevents writes, not reads. Include untracked/ignored entries and reject
+    Windows junctions/reparse points without descending through them.
+    """
+    root = Path(root).absolute()
+    def linked(info):
+        return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
+    if any(linked(path.lstat()) for path in (root, *root.parents)):
+        raise ValueError('Source path contains a link or reparse point')
+    folders = [root]
+    while folders:
+        with os.scandir(folders.pop()) as entries:
+            for entry in entries:
+                info = entry.stat(follow_symlinks=False)
+                if linked(info) or entry.name.lower().endswith(('.pyc', '.pyo')):
+                    raise ValueError('Source tree contains a link, reparse point or bytecode cache')
+                if stat.S_ISDIR(info.st_mode):
+                    folders.append(Path(entry.path))
+
+
+def require_no_bytecode_mode():
+    if not sys.dont_write_bytecode or sys.pycache_prefix is not None:
+        raise ValueError('Run Python with -B and without a pycache prefix')
+
+
 def owned_resource(info, kind, run_id, name):
     """Require exact run identity and resource name before any resource mutation."""
     if not RUN_RE.fullmatch(run_id) or not re.fullmatch('fd-rehearsal-' + run_id + r'-[a-z0-9-]+', name):
@@ -71,10 +154,13 @@ def owned_resource(info, kind, run_id, name):
 
 
 class Rehearsal:
-    def __init__(self, root, image, output):
+    def __init__(self, root, image, output, profile='legacy43'):
         if not IMAGE_RE.fullmatch(image):
             raise ValueError('An immutable local image ID is required')
-        self.root, self.image, self.output = root.resolve(strict=True), image, output
+        self.root, self.image, self.output = root.absolute(), image, output
+        if not self.root.is_dir():
+            raise ValueError('Source root must be an existing directory')
+        self.profile, _ = profile_definition(self.root, profile)
         self.run_id = uuid.uuid4().hex
         self.resources = []
         self.counter = 0
@@ -82,6 +168,8 @@ class Rehearsal:
         self.output_created = False
         self.report = {'runId': self.run_id, 'scope': 'synthetic Docker recovery only',
                        'startedAt': datetime.now(timezone.utc).isoformat(), 'image': image,
+                       'profile': self.profile, 'schemaSha256': self.profile['schemaSha256'],
+                       'householdTables': self.profile['householdTables'],
                        'checks': [], 'containers': [], 'passed': False}
         self.env = {
             'DATA_DIR': '/data', 'SECRET_KEY': secrets.token_hex(32),
@@ -93,6 +181,8 @@ class Rehearsal:
             'GOOGLE_CLIENT_ID': 'synthetic-rehearsal-client',
             'GOOGLE_CLIENT_SECRET': 'synthetic-rehearsal-secret',
             'OPENAI_API_KEY': '', 'OPENAI_MODEL': '',
+            'ASSISTANT_PROVIDER': 'local', 'NVIDIA_API_KEY': '', 'NVIDIA_MODEL': '',
+            'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONPYCACHEPREFIX': '',
             'FAMILY_DASHBOARD_SYNTHETIC_REHEARSAL': '1', 'REHEARSAL_RUN_ID': self.run_id,
         }
 
@@ -202,9 +292,12 @@ class Rehearsal:
 
     def fixture(self, name, phase):
         self.phase = 'fixture_' + phase
+        # Also used by an independently controlled parent-image migration run:
+        # validate source imports here, without comparing that image's runtime.
+        source_hashes(self.root)
         self.require_owned('container', name)
-        result = self.docker(['exec', name, 'python', '/rehearsal/tests/restore_rehearsal_fixture.py',
-                              phase, '--proof-dir', '/proof'], timeout=180, check=False)
+        result = self.docker(['exec', name, 'python', '-B', '/rehearsal/tests/restore_rehearsal_fixture.py',
+                              phase, '--proof-dir', '/proof', '--profile', self.profile['name']], timeout=180, check=False)
         try:
             value = json.loads(result.stdout.strip().splitlines()[-1])
         except (ValueError, IndexError):
@@ -217,11 +310,16 @@ class Rehearsal:
                               'counts': {k: v for k, v in value.get('counts', {}).items()
                                          if re.fullmatch(r'[A-Za-z][A-Za-z0-9]{0,60}', k) and type(v) is int},
                               'httpRequests': value.get('httpRequests'),
+                              'profile': value.get('profile'),
+                              'schemaFingerprints': value.get('schemaFingerprints'),
                               'stage': value.get('stage'), 'errorType': value.get('errorType')}
         self.check('fixture_' + phase, result.returncode == 0 and value.get('passed') is True
+                   and value.get('profile') == self.profile
+                   and value.get('counts', {}).get('householdTablesEach') == self.profile['householdTables']
                    and bool(checks) and all(x['passed'] for x in checks))
 
     def run(self):
+        require_no_bytecode_mode()
         if os.name != 'posix':
             raise RuntimeError('Run on the Linux Docker host')
         # Existing output paths are rejected, including symlinks; no evidence overwrite.
@@ -366,12 +464,14 @@ print('Documented member invalidation completed for both synthetic households.')
 
 
 def main(argv=None):
+    require_no_bytecode_mode()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image', required=True, help='Already local immutable sha256 image ID')
     parser.add_argument('--output', required=True, type=Path, help='New private report directory; parent must exist')
     parser.add_argument('--source-root', type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument('--profile', choices=PROFILES, default='legacy43', help='Exact household table profile; legacy43 remains the default')
     args = parser.parse_args(argv)
-    rehearsal = Rehearsal(args.source_root, args.image, args.output)
+    rehearsal = Rehearsal(args.source_root, args.image, args.output, args.profile)
     try:
         rehearsal.run()
     except Exception as exc:

@@ -1,4 +1,7 @@
-"""Actual Flask/SQLite 43-table fixtures; no Docker, Git, private input or network."""
+"""Historical 43-table Flask/SQLite fixtures with later places disabled.
+
+No Docker, Git, private input or network; this is not the current 44-table app.
+"""
 from contextlib import closing
 import hashlib
 import importlib.util
@@ -35,7 +38,9 @@ import sqlite3
 from contextlib import closing
 from pathlib import Path
 sys.path.insert(0,sys.argv[1])
-from app import create_app
+import app as app_module
+app_module.register_journey_places = lambda *args, **kwargs: None
+create_app = app_module.create_app
 application=create_app({'TESTING':True})
 platform=application.extensions['household_platform']
 client=application.test_client();client.get('/api/me')
@@ -62,7 +67,9 @@ print('seeded-two-households')
 '''
 START = GUARD + r'''
 sys.path.insert(0,sys.argv[1])
-from app import create_app
+import app as app_module
+app_module.register_journey_places = lambda *args, **kwargs: None
+create_app = app_module.create_app
 application=create_app({'TESTING':True})
 platform=application.extensions['household_platform']
 for household in platform.households():platform.child(household)
@@ -74,7 +81,9 @@ import hashlib,importlib.util,io,json,urllib.request,urllib.error,urllib.parse
 from contextlib import redirect_stdout
 from pathlib import Path
 root=Path(sys.argv[1]);sys.path.insert(0,str(root))
-from app import create_app
+import app as app_module
+app_module.register_journey_places = lambda *args, **kwargs: None
+create_app = app_module.create_app
 application=create_app({'TESTING':True})
 client=application.test_client()
 spec=importlib.util.spec_from_file_location('actual_static_controller',root/'deploy/activate_static_release.py')

@@ -32,11 +32,15 @@ from urllib.request import HTTPCookieProcessor, HTTPRedirectHandler, ProxyHandle
 from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
+RUNTIME_ROOT = ROOT
 sys.path.insert(0, str(ROOT))
 # The controller mounts tests at /rehearsal/tests; image modules live at /app.
 # Accept that one fixed image location, never a caller-selected import root.
 if os.name == 'posix' and Path('/app/cloud_accounts.py').is_file():
     sys.path.insert(0, '/app')
+    RUNTIME_ROOT = Path('/app')
+
+from deploy.rehearse_restore import PROFILES, profile_definition, validate_snapshot_profile
 
 
 class FixtureFailure(Exception):
@@ -358,12 +362,122 @@ def seed_documents(client, journey_id, marker, number):
     return documents
 
 
+def seed_places(client, journey_id, unlink_id, marker, number):
+    """Six cases per member, all created/deleted through the actual API."""
+    places = []
+    for kind, visibility, disclosure, status in (
+        ('private', 'private', 'exact', 'visited'), ('coarse', 'shared', 'coarse', 'planned'),
+        ('exact', 'shared', 'exact', 'wish'), ('hidden', 'shared', 'hidden', 'visited'),
+        ('unlink', 'shared', 'coarse', 'visited'), ('deleted', 'shared', 'exact', 'visited')):
+        sign = -1 if kind in {'coarse', 'unlink'} else 1
+        coordinates = {'latitude': sign * (10 + number + .234567), 'longitude': sign * (20 + number + .456789)}
+        # Round synthetic floats before JSON serialization to obey API precision.
+        coordinates = {key: round(value, 6) for key, value in coordinates.items()}
+        payload = {'requestId': secrets.token_hex(16), 'name': marker + '-' + kind + '-place',
+                   'country': 'Synthetic', 'city': 'Recovery-' + str(number), 'coordinates': coordinates,
+                   'status': status, 'journeyId': unlink_id if kind == 'unlink' else journey_id,
+                   'startDate': '2026-12-03', 'endDate': '2026-12-05', 'visibility': visibility,
+                   'coordinateDisclosure': disclosure, 'confirmVisited': status == 'visited'}
+        result = client.request('POST', '/api/journey-places', payload, status=201)
+        require(result['replayed'] is False)
+        place = result['place']
+        require(place['coordinates'] == coordinates and place['revision'] == 1)
+        require((place['visitedConfirmedAt'] is not None) == (status == 'visited'))
+        require(place['visitedConfirmedBy'] == place['owner'] if status == 'visited' else place['visitedConfirmedBy'] is None)
+        shared = None if disclosure == 'hidden' else coordinates
+        if disclosure == 'coarse':
+            shared = {'latitude': sign * (10 + number + .2), 'longitude': sign * (20 + number + .5)}
+        precision = {'hidden': 'hidden', 'coarse': 'approximate', 'exact': 'exact'}[disclosure]
+        require(place['sharedCoordinates'] == shared and place['sharedCoordinatePrecision'] == precision)
+        require(place['sharedCoordinateGridDegrees'] == (0.1 if disclosure == 'coarse' else None))
+        record = {'kind': kind, 'payload': payload, 'place': place}
+        if kind == 'deleted':
+            record['deletion'] = client.request('DELETE', '/api/journey-places/' + place['id'], {'revision': place['revision']})
+            require(record['deletion'] == {'deleted': True, 'id': place['id'], 'revision': 2, 'replayed': False})
+        places.append(record)
+    return places
+
+
+def finish_place_unlink(client, item, clients):
+    trip = next(row for row in client.request('GET', '/api/state')['trips'] if row['id'] == item['unlinkTripId'])
+    client.request('DELETE', '/api/items/trips/' + trip['id'], {'revision': trip['revision']})
+    for record in item['places']:
+        if record['kind'] != 'unlink':
+            continue
+        before = record['place']
+        owner = clients[(item['id'], before['owner'])]
+        after = owner.request('GET', '/api/journey-places/' + before['id'])['place']
+        require(after['journeyId'] is None and after['journey'] is None and after['revision'] == before['revision'] + 1)
+        require(after['visitedConfirmedAt'] == before['visitedConfirmedAt'] and after['visitedConfirmedBy'] == before['visitedConfirmedBy'])
+        record['place'] = after
+
+
+def verify_place_rows(house, database, audit):
+    rows = {row['id']: row for row in row_objects(database['tables']['journey_places'])}
+    require(set(rows) == {record['place']['id'] for record in house['places']})
+    for record in house['places']:
+        row, place = rows[record['place']['id']], record['place']
+        require(row['request_id'] == record['payload']['requestId'] and len(row['payload_digest']) == 64)
+        if record['kind'] == 'deleted':
+            require(row['deleted_at'] is not None and row['revision'] == 2)
+            require(all(row[key] is None for key in ('latitude_e6', 'longitude_e6', 'journey_id', 'start_date', 'end_date', 'visited_confirmed_at', 'visited_confirmed_by')))
+            require(row['name'] == row['country'] == row['city'] == '' and row['visibility'] == 'private' and row['coordinate_disclosure'] == 'hidden')
+        else:
+            require(row['deleted_at'] is None and row['revision'] == place['revision'])
+            require(row['visited_confirmed_at'] == place['visitedConfirmedAt'] and row['visited_confirmed_by'] == place['visitedConfirmedBy'])
+            if record['kind'] == 'unlink':
+                require(row['journey_id'] is None and row['revision'] == 2)
+    audit.check(house['slug'] + '_place_rows_receipts_tombstone_scrubbing_visit_and_unlink_revision')
+
+
+def visible_place(place, uid):
+    if place['owner'] == uid:
+        return place
+    projected = dict(place)
+    for target, source in (('coordinates', 'sharedCoordinates'), ('coordinatePrecision', 'sharedCoordinatePrecision'),
+                           ('coordinateGridDegrees', 'sharedCoordinateGridDegrees')):
+        projected[target] = projected.pop(source)
+    projected['canManage'] = False
+    return projected
+
+
+def verify_places(client, house, uid, state, audit):
+    visible = [record for record in house['places'] if record['kind'] != 'deleted'
+               and (record['place']['owner'] == uid or record['place']['visibility'] == 'shared')]
+    listing = client.request('GET', '/api/journey-places?limit=200')
+    require(listing['total'] == len(visible) and not listing['hasMore'])
+    require({row['id']: row for row in listing['items']} == {record['place']['id']: visible_place(record['place'], uid) for record in visible})
+    for record in house['places']:
+        place, payload = record['place'], record['payload']
+        path = '/api/journey-places/' + place['id']
+        require(place['id'] not in canonical(state) and place['name'] not in canonical(state))
+        allowed = record in visible
+        response = client.request('GET', path, status=200 if allowed else 404)
+        if allowed:
+            require(response['place'] == visible_place(place, uid))
+        if place['owner'] == uid:
+            if record['kind'] == 'deleted':
+                client.request('POST', '/api/journey-places', payload, status=410)
+                require(client.request('DELETE', path, {'revision': 1}) == {**record['deletion'], 'replayed': True})
+            else:
+                replay = client.request('POST', '/api/journey-places', payload)
+                require(replay == {'place': place, 'replayed': True})
+                client.request('POST', '/api/journey-places', {**payload, 'name': 'MUST_NOT_BE_CHANGED'}, status=409)
+                if record['kind'] == 'unlink':
+                    client.request('PATCH', path, {'revision': 1, 'visibility': 'private'}, status=409)
+        else:
+            client.request('PATCH', path, {'revision': place['revision'], 'visibility': 'private'}, status=403 if allowed else 404)
+            client.request('DELETE', path, {'revision': place['revision']}, status=403 if allowed else 404)
+    audit.check(house['slug'] + '_' + uid + '_places_private_shared_projection_owner_only_replay_tombstone_and_conflict')
+
+
 def seed(args, audit, data_dir, expected_path, run_id):
     audit.stage = 'empty_isolated_seed_target'
     require(not expected_path.exists())
     houses = registry(data_dir)
     require(len(houses) == 1 and houses[0]['id'] == 'default')
     initial = snapshot(database_path(data_dir, 'default'))
+    profile = validate_snapshot_profile(initial, RUNTIME_ROOT, args.profile)
     require(all(not value['rows'] for name, value in initial['tables'].items() if name not in {'users', 'settings', 'sqlite_sequence'}))
     require(not snapshot(data_dir / 'platform.sqlite3')['tables']['household_invitations']['rows'])
     audit.check('seed_target_has_no_existing_business_or_accounts')
@@ -377,12 +491,12 @@ def seed(args, audit, data_dir, expected_path, run_id):
                   'MEMBER1_PASSWORD': password('child', 1, run_id), 'MEMBER2_PASSWORD': password('child', 2, run_id)}, status=201)
     houses = registry(data_dir)
     require(len(houses) == 2)
-    expected = {'version': 1, 'runId': run_id, 'seededAt': time.time(), 'households': [],
+    expected = {'version': 2, 'runId': run_id, 'profile': profile, 'seededAt': time.time(), 'households': [],
                 'configurationDigest': digest([os.environ[x] for x in ('SECRET_KEY', 'MEMBER1_PASSWORD', 'MEMBER2_PASSWORD')])}
     for index, house in enumerate(houses):
         hid, slug = house['id'], house['slug']
         entry = '/space/' + slug
-        item = {'id': hid, 'slug': slug, 'entry': entry, 'members': {}, 'tasks': [], 'shopping': [], 'photos': [], 'documents': []}
+        item = {'id': hid, 'slug': slug, 'entry': entry, 'members': {}, 'tasks': [], 'shopping': [], 'photos': [], 'documents': [], 'places': []}
         for number in (1, 2):
             audit.stage = 'seed_shared_private_and_photos'
             client = admin if hid == 'default' and number == 1 else Client(args.base_url, audit)
@@ -395,9 +509,15 @@ def seed(args, audit, data_dir, expected_path, run_id):
                 item['journeyId'] = created_journey['id']
                 item['tripId'] = created_journey['tripId']
                 audit.check('seed_' + slug + '_journey_created_by_actual_api')
+                if args.profile == 'journey_places44':
+                    unlink = seed_journey(client, run_id + '-unlink', hid)
+                    item['unlinkTripId'], item['unlinkJourneyId'] = unlink['tripId'], unlink['id']
             marker = 'SYNTHETIC-' + hid + '-' + uid
             item['documents'].extend(seed_documents(client, item['journeyId'], marker, index * 2 + number))
             audit.check('seed_' + slug + '_' + uid + '_private_pdf_shared_sanitized_image')
+            if args.profile == 'journey_places44':
+                item['places'].extend(seed_places(client, item['journeyId'], item['unlinkJourneyId'], marker, index * 2 + number))
+                audit.check('seed_' + slug + '_' + uid + '_private_coarse_exact_hidden_visit_and_tombstone_places')
             task = client.request('POST', '/api/items/tasks', {'title': marker + '-task', 'owner': 'shared', 'note': 'Synthetic recovery fixture'}, status=201)
             item['tasks'].append(task['id'])
             photos = []
@@ -424,6 +544,9 @@ def seed(args, audit, data_dir, expected_path, run_id):
             item['members'][uid] = {'cookies': client.cookies(), 'oldOAuthState': state, 'private': client.request('GET', '/api/private-finance'),
                                     'transactionId': transaction_id, 'transactionTitle': marker + '-private-payment'}
             audit.check('seed_' + slug + '_' + uid + '_shared_private_photo_and_oauth')
+        if args.profile == 'journey_places44':
+            finish_place_unlink(clients[(hid, 'member1')], item, clients)
+            audit.check('seed_' + slug + '_trip_deletion_unlinks_places_and_preserves_visited_confirmation')
         tv = Client(args.base_url, audit)
         tv.route(entry)
         pair = tv.request('POST', '/api/pair/start', {})
@@ -452,10 +575,14 @@ def seed(args, audit, data_dir, expected_path, run_id):
     expected['registry'] = snapshot(data_dir / 'platform.sqlite3')
     expected['databases'] = {house['id']: snapshot(database_path(data_dir, house['id'])) for house in houses}
     expected['fingerprints'] = {hid: digest(value) for hid, value in expected['databases'].items()}
-    require(all(sum(not name.startswith('sqlite_') for name in value['tables']) == 43 for value in expected['databases'].values()))
+    for house in expected['households']:
+        require(validate_snapshot_profile(expected['databases'][house['id']], RUNTIME_ROOT, args.profile) == profile)
+        if args.profile == 'journey_places44':
+            verify_place_rows(house, expected['databases'][house['id']], audit)
+    expected['schemaFingerprints'] = {hid: digest(value['schema']) for hid, value in expected['databases'].items()}
     require(len(expected['registry']['tables']) == 2)
     require(all(len(value['tables']['cloud_oauth_states']['rows']) == 2 for value in expected['databases'].values()))
-    audit.check('seed_snapshot_contains_two_43_table_households_and_two_registry_tables')
+    audit.check('seed_snapshot_contains_two_exact_' + args.profile + '_households_and_two_registry_tables')
     descriptor = os.open(expected_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(descriptor, 'w', encoding='utf-8') as output:
         output.write(canonical(expected) + '\n')
@@ -463,7 +590,9 @@ def seed(args, audit, data_dir, expected_path, run_id):
         os.fsync(output.fileno())
     audit.check('seed_expected_written_exclusively')
     return {'households': 2, 'members': 4, 'tasks': 4, 'shopping': 4, 'photos': 8, 'tvs': 2, 'oauthStates': 4, 'fakeAccounts': 2,
-            'journeys': 2, 'journeyDocuments': 8}
+            'journeys': 2, 'journeyDocuments': 8, 'householdTablesEach': profile['householdTables'],
+            'journeyPlaces': 24 if args.profile == 'journey_places44' else 0,
+            'placeTombstones': 4 if args.profile == 'journey_places44' else 0}
 
 
 def compare_restored(old, new, audit, label, seeded_at):
@@ -498,7 +627,9 @@ def verify(args, audit, data_dir, expected_path, run_id):
     audit.stage = 'expected_proof_binding'
     require(expected_path.is_file() and not expected_path.is_symlink() and expected_path.stat().st_size < 20_000_000)
     expected = json.loads(expected_path.read_text(encoding='utf-8'))
-    require(expected['version'] == 1 and expected['runId'] == run_id)
+    require(expected['version'] == 2 and expected['runId'] == run_id)
+    profile, _ = profile_definition(RUNTIME_ROOT, args.profile)
+    require(expected['profile'] == profile)
     require(expected['configurationDigest'] == digest([os.environ[x] for x in ('SECRET_KEY', 'MEMBER1_PASSWORD', 'MEMBER2_PASSWORD')]))
     audit.check('proof_run_and_original_configuration_bound')
     # Must finish all DB/registry checks before any HTTP, including /me.
@@ -512,7 +643,12 @@ def verify(args, audit, data_dir, expected_path, run_id):
     for house in expected['households']:
         hid = house['id']
         require(digest(expected['databases'][hid]) == expected['fingerprints'][hid])
-        compare_restored(expected['databases'][hid], snapshot(database_path(data_dir, hid)), audit, house['slug'], expected['seededAt'])
+        restored = snapshot(database_path(data_dir, hid))
+        require(validate_snapshot_profile(restored, RUNTIME_ROOT, args.profile) == profile)
+        require(expected['schemaFingerprints'][hid] == digest(restored['schema']))
+        compare_restored(expected['databases'][hid], restored, audit, house['slug'], expected['seededAt'])
+        if args.profile == 'journey_places44':
+            verify_place_rows(house, restored, audit)
     audit.check('all_database_checks_completed_before_first_http_request', audit.requests == 0)
     clients = {}
     for house in expected['households']:
@@ -522,6 +658,8 @@ def verify(args, audit, data_dir, expected_path, run_id):
             old = Client(args.base_url, audit, member['cookies'])
             old.request('GET', '/api/state', status=401)
             old.request('GET', '/api/private-finance', status=401)
+            if args.profile == 'journey_places44':
+                old.request('GET', '/api/journey-places', status=401)
             result = old.request('GET', '/auth/microsoft/callback?' + urlencode({'state': member['oldOAuthState'], 'error': 'access_denied'}), status=302)
             require(parse_qs(urlsplit(result['location']).query).get('reason') == ['invalid_state'])
             audit.check(slug + '_' + uid + '_old_cookie_401_and_old_oauth_invalid_without_exchange')
@@ -565,6 +703,8 @@ def verify(args, audit, data_dir, expected_path, run_id):
                     require(actual['canManage'] == (meta['owner'] == uid))
                     require(digest(content) == document['sha256'] and len(content) == document['bytes'])
             audit.check(slug + '_' + uid + '_document_metadata_file_hash_private_shared_and_state_isolation')
+            if args.profile == 'journey_places44':
+                verify_places(client, house, uid, state, audit)
         audit.stage = 'restored_tv_and_key_verification'
         tv = Client(args.base_url, audit, house['tv']['cookies'])
         state = tv.request('GET', '/api/state')
@@ -583,6 +723,15 @@ def verify(args, audit, data_dir, expected_path, run_id):
         for document in house['documents']:
             tv.request('GET', '/api/journey-documents/' + document['metadata']['id'] + '/file', status=403)
         audit.check(slug + '_original_tv_cannot_read_journey_document_metadata_or_files')
+        if args.profile == 'journey_places44':
+            record = house['places'][0]
+            path = '/api/journey-places/' + record['place']['id']
+            for method, url, payload in (('GET', '/api/journey-places', None), ('GET', path, None),
+                ('POST', '/api/journey-places', record['payload']), ('PATCH', path, {'revision': 1, 'visibility': 'private'}),
+                ('DELETE', path, {'revision': 1})):
+                tv.request(method, url, payload, status=403)
+            require(all(record['place']['id'] not in canonical(state) for record in house['places']))
+            audit.check(slug + '_original_tv_denied_all_five_place_api_routes')
         with read_db(database_path(data_dir, hid)) as con:
             token = con.execute('SELECT tokens FROM cloud_accounts WHERE id=?', (house['cloud']['accountId'],)).fetchone()
         require(token and digest(token[0].encode()) == house['cloud']['ciphertextSha256'])
@@ -606,6 +755,14 @@ def verify(args, audit, data_dir, expected_path, run_id):
             for document in other['documents']:
                 client.request('GET', '/api/journey-documents/' + document['metadata']['id'] + '/file', status=404)
             audit.check(house['slug'] + '_' + uid + '_cross_household_journey_documents_404')
+            if args.profile == 'journey_places44':
+                client.request('GET', '/api/journey-places?journeyId=' + other['journeyId'], status=404)
+                for record in other['places']:
+                    path = '/api/journey-places/' + record['place']['id']
+                    client.request('GET', path, status=404)
+                    client.request('PATCH', path, {'revision': record['place']['revision'], 'visibility': 'private'}, status=404)
+                    client.request('DELETE', path, {'revision': record['place']['revision']}, status=404)
+                audit.check(house['slug'] + '_' + uid + '_cross_household_places_read_write_404')
     # Authentication verification necessarily creates fresh sessions/attempts.
     # Every other table, including audit and sqlite_sequence, must still match
     # the original synthetic business snapshot after the denied write probes.
@@ -618,8 +775,10 @@ def verify(args, audit, data_dir, expected_path, run_id):
                     all(before['tables'][name] == after['tables'][name] for name in before['tables'] if name not in auth_tables))
     audit.check('platform_unchanged_after_http_permission_probes', snapshot(data_dir / 'platform.sqlite3') == expected['registry'])
     audit.check('fixture_used_only_loopback_http_and_no_provider_endpoint', not audit.external)
-    return {'households': 2, 'members': 4, 'householdTablesEach': 43, 'registryTables': 2, 'photos': 8, 'tvs': 2,
+    return {'households': 2, 'members': 4, 'householdTablesEach': profile['householdTables'], 'registryTables': 2, 'photos': 8, 'tvs': 2,
             'journeys': 2, 'journeyDocuments': 8,
+            'journeyPlaces': 24 if args.profile == 'journey_places44' else 0,
+            'placeTombstones': 4 if args.profile == 'journey_places44' else 0,
             'oldCookiesRejected': 4, 'oldOAuthStatesRejected': 4, 'fakeTokensDecrypted': 2}
 
 
@@ -630,6 +789,7 @@ def main(argv=None):
         parser.add_argument('phase', choices=['seed', 'verify'])
         parser.add_argument('--proof-dir', default='/proof')
         parser.add_argument('--base-url', default='http://127.0.0.1:8000')
+        parser.add_argument('--profile', choices=PROFILES, default='legacy43')
         args = parser.parse_args(argv)
         audit.phase = args.phase
         require(os.environ.get('FAMILY_DASHBOARD_SYNTHETIC_REHEARSAL') == '1')
@@ -638,6 +798,8 @@ def main(argv=None):
         for name in ('DATA_DIR', 'SECRET_KEY', 'MEMBER1_PASSWORD', 'MEMBER2_PASSWORD', 'MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET'):
             require(bool(os.environ.get(name)))
         require(not os.environ.get('OPENAI_API_KEY') and not os.environ.get('OPENAI_MODEL'))
+        require(not os.environ.get('NVIDIA_API_KEY') and not os.environ.get('NVIDIA_MODEL'))
+        require(os.environ.get('ASSISTANT_PROVIDER', 'local') == 'local')
         require(os.environ.get('COOKIE_SECURE') == '0')
         origin = loopback_url(os.environ.get('PUBLIC_ORIGIN', ''))
         require(origin.scheme == 'https')
@@ -649,7 +811,9 @@ def main(argv=None):
         expected_path = proof_dir / 'expected.json'
         with only_loopback(audit):
             counts = (seed if args.phase == 'seed' else verify)(args, audit, data_dir, expected_path, run_id)
+        proof = json.loads(expected_path.read_text(encoding='utf-8'))
         output = {'phase': audit.phase, 'passed': True, 'checks': audit.checks, 'checkCount': len(audit.checks), 'counts': counts,
+                  'profile': proof['profile'], 'schemaFingerprints': proof['schemaFingerprints'],
                   'httpRequests': audit.requests, 'externalRequests': audit.external, 'providerRequestsInitiatedByFixture': 0,
                   'networkBoundary': 'Loopback-only client; callback uses error=access_denied and never follows redirects. Controller enforces Docker --network none.',
                   'restorePerformedByFixture': False, 'productionInputs': 0}

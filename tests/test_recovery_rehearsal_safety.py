@@ -63,6 +63,9 @@ def test_cleanup_refuses_changed_ownership(tmp_path, monkeypatch, kind):
 
 
 def test_existing_evidence_directory_is_untouched(tmp_path, monkeypatch):
+    # This helper tests existing-output protection under the required CLI mode.
+    monkeypatch.setattr(module.sys, 'dont_write_bytecode', True)
+    monkeypatch.setattr(module.sys, 'pycache_prefix', None)
     output = tmp_path / 'existing'
     output.mkdir()
     marker = output / 'marker'
