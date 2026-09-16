@@ -11,6 +11,7 @@ import { AssistantFlow, AssistantState, memberKey, type Match } from '../lib/ass
 import { useHousehold } from '../lib/household';
 import type { ScreenProps } from '../lib/types';
 import { PageHeader, SectionCard } from '../ui/components';
+import { SelectionRow } from '../ui/SelectionRow';
 
 function inventorySummary(item: Match) {
   const quantities = [item.onHandQty, item.inTransitQty, item.plannedQty];
@@ -150,10 +151,10 @@ function AssistantWorkspace(props: ScreenProps & {
         placeholder="待办：明天预约保洁；确认酒店" />
       <View style={styles.choices}>{['待办：明天预约保洁；确认酒店', '采购：收纳袋；转换插头', '搜索：电池', '看看这周安排'].map(text =>
         <Chip key={text} disabled={editingLocked} onPress={() => { if (!editingLocked) setPrompt(text); }}>{text.startsWith('待办') ? '整理待办' : text.startsWith('采购') ? '准备采购' : text.startsWith('搜索') ? '查找家里物品' : '本周概览'}</Chip>)}</View>
-      <Checkbox.Item label="使用已配置的 AI 整理" status={useModel ? 'checked' : 'unchecked'} disabled={editingLocked || !view?.modelConfigured}
+      <SelectionRow label="使用已配置的 AI 整理" checked={useModel} disabled={editingLocked || !view?.modelConfigured}
         onPress={() => { if (!editingLocked && view?.modelConfigured) { setUseModel(!useModel); setIncludeContext(false); } }} />
       {useModel && <><Text variant="bodySmall">本次文字会发送给已配置的 AI 服务。结果是建议，尚未执行。</Text>
-        <Checkbox.Item label="附带近期日程和待办标题" status={includeContext ? 'checked' : 'unchecked'} disabled={editingLocked}
+        <SelectionRow label="附带近期日程和待办标题" checked={includeContext} disabled={editingLocked}
           onPress={() => { if (!editingLocked) setIncludeContext(!includeContext); }} /></>}
       {!view?.modelConfigured && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>可直接整理本地待办、采购或搜索已有记录。</Text>}
       <Button mode="contained" loading={!!view?.busy && !view?.pending} disabled={editingLocked || !prompt.trim()}
