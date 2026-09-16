@@ -48,6 +48,7 @@ PROVIDERS = {
 }
 
 GOOGLE_PHOTOS_SCOPE = 'https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
+_UNVERSIONED = object()
 
 
 def photos_allowed(provider, scope):
@@ -142,6 +143,11 @@ class NoRedirect(HTTPRedirectHandler):
 class AccountBusy(ProviderError):
     def __init__(self):
         super().__init__('此账号正在同步，请稍后重试', 409)
+
+
+class SelectionConflict(ProviderError):
+    def __init__(self):
+        super().__init__('来源选择已被更新，请重新读取后确认保存', 409)
 
 
 class CloudAccounts:
@@ -407,7 +413,18 @@ class CloudAccounts:
             media.on_account_authority_changed(con, before['id'], reason)
             con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
 
-    def active_provider(self, account):
+    def request_account(self, con, account_id, owner, auth_context=None):
+        """Validate an HTTP caller in the same transaction as its final read/write."""
+        if auth_context is not None:
+            current = self.app.extensions['member_sessions'].validate_context(con, auth_context, member=True)
+            if current['owner'] != owner:
+                raise ProviderError('登录状态已变化，请重新登录', 401)
+        current = con.execute('SELECT * FROM cloud_accounts WHERE id=? AND owner=?', (account_id, owner)).fetchone()
+        if not current:
+            raise ProviderError('账号不存在或不属于当前成员', 404)
+        return current
+
+    def active_provider(self, account, *, auth_context=None):
         client_id, secret = self.credentials(account['provider'])
         if not secret or client_id != account['client_id']:
             raise ProviderError('应用配置已变更，请重新绑定账号', 401, reauth=True)
@@ -422,7 +439,8 @@ class CloudAccounts:
             tokens.update(fresh)
             with self.db() as con:
                 con.execute('BEGIN IMMEDIATE')
-                current = con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account['id'],)).fetchone()
+                current = (self.request_account(con, account['id'], account['owner'], auth_context)
+                           if auth_context is not None else con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account['id'],)).fetchone())
                 if not current or any(current[k] != account[k] for k in ('owner','provider','client_id','subject','tokens','needs_reauth')):
                     raise ProviderError('账户授权已变更，请重试', 409)
                 self.media_account_transition(con, current, tokens=tokens)
@@ -481,7 +499,7 @@ class CloudAccounts:
                 raise ProviderError('照片权限未获授权，请重新连接照片', 403)
             return tokens['access_token']
 
-    def sync_provider(self, account):
+    def sync_provider(self, account, *, auth_context=None):
         """Do not present a photo-only grant as calendar/task authorization."""
         def check(current):
             if current['provider'] == 'google':
@@ -489,7 +507,7 @@ class CloudAccounts:
                 if 'scope' in tokens and missing_sync_permissions('google', tokens['scope']):
                     raise ProviderError('请单独授权日历和待办后再选择同步来源', 403)
         check(account)
-        provider = self.active_provider(account)
+        provider = self.active_provider(account, auth_context=auth_context) if auth_context is not None else self.active_provider(account)
         check(self.account(account['id'], account['owner']))
         return provider
 
@@ -502,8 +520,23 @@ class CloudAccounts:
     def adapter_source(row):
         return {'id': row['remote_id'], 'kind': row['kind'], 'name': row['name'], 'owner': row['owner']}
 
-    def accounts_json(self, owner):
+    @staticmethod
+    def selection_version(con, account_id):
+        # Local IDs distinguish removal/recreation of the same remote source.
+        # Sync progress and provider display-name changes are not user choices.
+        rows = [list(row) for row in con.execute(
+            'SELECT id,kind,remote_id,owner,is_primary FROM cloud_sources WHERE account_id=? ORDER BY id',
+            (account_id,))]
+        value = json.dumps([account_id, rows], ensure_ascii=True, separators=(',', ':'))
+        return hashlib.sha256(value.encode('utf-8')).hexdigest()
+
+    def accounts_json(self, owner, *, auth_context=None):
         with self.db() as con:
+            con.execute('BEGIN')
+            if auth_context is not None:
+                current = self.app.extensions['member_sessions'].validate_context(con, auth_context, member=True)
+                if current['owner'] != owner:
+                    raise ProviderError('登录状态已变化，请重新登录', 401)
             result = []
             for a in con.execute('SELECT * FROM cloud_accounts WHERE owner=? ORDER BY provider,name', (owner,)):
                 unreadable = False
@@ -518,6 +551,7 @@ class CloudAccounts:
                 result.append({'id': a['id'], 'provider': a['provider'], 'name': a['name'], 'email': a['email'],
                                'needsReauth': bool(unreadable or a['needs_reauth'] or self.credentials(a['provider'])[0] != a['client_id']),
                                'capabilities': {'photos': photos, 'sync': sync},
+                               'selectionVersion': self.selection_version(con, a['id']),
                                'sources': [self.source_json(s) for s in con.execute('SELECT * FROM cloud_sources WHERE account_id=?', (a['id'],))]})
             return result
 
@@ -535,14 +569,29 @@ class CloudAccounts:
                     'error': next((s['error'] for s in sources if s['error']), ''), 'primaryTaskSource': primary,
                     'taskSources': [{'id': s['id'], 'name': s['name'], 'provider': s['provider'], 'writable': True} for s in sources if s['kind'] == 'tasks']}
 
-    def discovery(self, account_id, owner):
+    def discovered_sources(self, account, auth_context=None):
+        """Called under the account lock; stale HTTP failures cannot revoke grants."""
+        try:
+            provider = self.sync_provider(account, auth_context=auth_context)
+            account = self.account(account['id'], account['owner'])
+            return provider.list_sources()
+        except ProviderError as error:
+            if error.reauth and auth_context is not None:
+                self.failure(account['id'], error, auth_context=auth_context,
+                             owner=account['owner'], expected_account=account)
+            raise
+
+    def discovery(self, account_id, owner, *, auth_context=None):
         self.account(account_id, owner)
         with self.lock(account_id):
             account = self.account(account_id, owner)
-            sources = self.sync_provider(account).list_sources()
+            sources = self.discovered_sources(account, auth_context)
             with self.db() as con:
+                con.execute('BEGIN')
+                self.request_account(con, account_id, owner, auth_context)
                 selected = [self.source_json(s) for s in con.execute('SELECT * FROM cloud_sources WHERE account_id=?', (account_id,))]
-            return {'sources': sources, 'selected': selected}
+                version = self.selection_version(con, account_id)
+            return {'sources': sources, 'selected': selected, 'selectionVersion': version}
 
     @staticmethod
     def remove_source(con, source_id):
@@ -552,14 +601,16 @@ class CloudAccounts:
         con.execute('DELETE FROM entities WHERE id IN (SELECT entity_id FROM cloud_items WHERE source_id=?)', (source_id,))
         con.execute('DELETE FROM cloud_sources WHERE id=?', (source_id,))
 
-    def select_sources(self, account_id, owner, chosen):
+    def select_sources(self, account_id, owner, chosen, *, selection_version=_UNVERSIONED, auth_context=None):
         if not isinstance(chosen, list) or len(chosen) > 12:
             raise ProviderError('每个账号最多选择 12 个日历或清单', 400)
+        if selection_version is not _UNVERSIONED and (not isinstance(selection_version, str) or not re.fullmatch(r'[0-9a-f]{64}', selection_version)):
+            raise ProviderError('来源选择版本无效，请重新读取列表', 400)
         self.account(account_id, owner)
         with self.lock(account_id):
             account = self.account(account_id, owner)
-            # Empty selection can always remove stale mirrors, even after revocation.
-            discovered = self.sync_provider(account).list_sources() if chosen else []
+            # A valid member may remove stale mirrors even after cloud grant revocation.
+            discovered = self.discovered_sources(account, auth_context) if chosen else []
             available = {(s['kind'], s['id']): s for s in discovered}
             validated, seen = [], set()
             for entry in chosen:
@@ -583,6 +634,9 @@ class CloudAccounts:
                 raise ProviderError('只能设置一份共同主清单', 400)
             with self.db() as con:
                 con.execute('BEGIN IMMEDIATE')
+                self.request_account(con, account_id, owner, auth_context)
+                if selection_version is not _UNVERSIONED and not secrets.compare_digest(selection_version, self.selection_version(con, account_id)):
+                    raise SelectionConflict()
                 total = con.execute('SELECT count(*) FROM cloud_sources WHERE account_id<>?', (account_id,)).fetchone()[0]
                 if total + len(validated) > 24:
                     raise ProviderError('家庭最多同步 24 个来源，请先取消不需要的来源', 400)
@@ -608,6 +662,15 @@ class CloudAccounts:
                             value['owner'] = scope
                             con.execute('UPDATE entities SET data=?,revision=revision+1,updated_at=? WHERE id=?', (json.dumps(value), stamp(), entity['id']))
                 con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
+                version = self.selection_version(con, account_id)
+            return {'ok': True, 'queued': bool(validated), 'selectionVersion': version}
+
+    def queue_sync(self, account_id, owner, *, auth_context=None):
+        with self.db() as con:
+            con.execute('BEGIN IMMEDIATE')
+            self.request_account(con, account_id, owner, auth_context)
+            queued = con.execute('UPDATE cloud_sources SET next_attempt=0 WHERE account_id=?', (account_id,)).rowcount
+        return {'ok': True, 'queued': bool(queued)}
 
     def disconnect(self, account_id, owner, auth_context=None):
         self.account(account_id, owner)
@@ -697,11 +760,15 @@ class CloudAccounts:
             if changed:
                 con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
 
-    def failure(self, account_id, error, source_id=None):
+    def failure(self, account_id, error, source_id=None, *, auth_context=None, owner=None, expected_account=None):
         # Only local, sanitized error messages enter the shared state.
         message = '授权已失效，请账号拥有者重新绑定' if error.reauth else '同步暂时失败，保留上次内容并自动重试'
         with self.db() as con:
             con.execute('BEGIN IMMEDIATE')
+            if auth_context is not None:
+                account = self.request_account(con, account_id, owner, auth_context)
+                if expected_account is not None and any(account[k] != expected_account[k] for k in ('owner', 'provider', 'client_id', 'subject', 'tokens', 'needs_reauth')):
+                    raise ProviderError('账户授权已变更，请重试', 409)
             if error.reauth:
                 account = con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account_id,)).fetchone()
                 self.media_account_transition(con, account, reauth=True)
@@ -802,7 +869,30 @@ def register_accounts(app, db, Problem, body, require_member, limited):
 
     @app.errorhandler(ProviderError)
     def provider_problem(error):
+        if isinstance(error, SelectionConflict):
+            return jsonify(error=error.message, code='selection_conflict'), error.status
         return jsonify(error=error.message), error.status
+
+    def request_context():
+        require_member()
+        context, _ = members.capture(claim=False, member=True)
+        g.account_request_context = context
+        return context
+
+    @app.after_request
+    def account_response_fence(response):
+        # Discovery may take seconds. Do not release a successful private DTO
+        # after this browser was revoked or replaced while serializing it.
+        context = getattr(g, 'account_request_context', None)
+        if context is not None and 200 <= response.status_code < 300:
+            try:
+                with engine.db() as con:
+                    con.execute('BEGIN')
+                    members.validate_context(con, context, member=True)
+            except (Problem, ProviderError) as error:
+                response = jsonify(error=error.message)
+                response.status_code = error.status
+        return response
 
     @app.get('/api/auth/providers')
     def providers():
@@ -823,8 +913,8 @@ def register_accounts(app, db, Problem, body, require_member, limited):
 
     @app.get('/api/accounts')
     def accounts():
-        require_member()
-        return jsonify(accounts=engine.accounts_json(g.actor['id']), providers=engine.provider_status())
+        context = request_context()
+        return jsonify(accounts=engine.accounts_json(g.actor['id'], auth_context=context), providers=engine.provider_status())
 
     @app.post('/api/accounts/bind')
     def bind():
@@ -989,26 +1079,19 @@ def register_accounts(app, db, Problem, body, require_member, limited):
 
     @app.route('/api/accounts/<account_id>/sources', methods=['GET', 'POST'])
     def sources(account_id):
-        require_member()
-        try:
-            if request.method == 'GET':
-                return jsonify(engine.discovery(account_id, g.actor['id']))
-            engine.select_sources(account_id, g.actor['id'], body().get('sources'))
-            return jsonify(ok=True, queued=True)
-        except ProviderError as error:
-            # Access control is checked before any account status can be changed.
-            if error.reauth:
-                engine.account(account_id, g.actor['id'])
-                engine.failure(account_id, error)
-            raise
+        context = request_context()
+        if request.method == 'GET':
+            return jsonify(engine.discovery(account_id, g.actor['id'], auth_context=context))
+        data = body()
+        return jsonify(engine.select_sources(account_id, g.actor['id'], data.get('sources'),
+            selection_version=data.get('selectionVersion', _UNVERSIONED), auth_context=context))
 
     @app.post('/api/accounts/<account_id>/sync')
     def sync_now(account_id):
+        context = request_context()
         engine.account(account_id, g.actor['id'])
         limited('sync_now', 10, 60)
-        with engine.db() as con:
-            con.execute('UPDATE cloud_sources SET next_attempt=0 WHERE account_id=?', (account_id,))
-        return jsonify(ok=True, queued=True)
+        return jsonify(engine.queue_sync(account_id, g.actor['id'], auth_context=context))
 
     @app.delete('/api/accounts/<account_id>')
     def disconnect(account_id):
