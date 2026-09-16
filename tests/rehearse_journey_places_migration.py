@@ -58,6 +58,17 @@ def runtime(files):
             or '/' not in n and n.endswith('.py')}
 
 
+def validate_runtime_delta(base, candidate):
+    before, after = runtime(base), runtime(candidate)
+    need(set(before) <= set(after), 'runtime_removal')
+    python = lambda values: {n for n in values if '/' not in n and n.endswith('.py')}
+    # Static additions are expected for the map. Only the root Python module
+    # addition is constrained here; both complete images are still SHA-probed.
+    need(python(after) - python(before) == {'journey_places.py'}, 'runtime_delta')
+    need(before.get('requirements.txt') == after.get('requirements.txt')
+         and 'requirements.txt' in before, 'runtime_dependencies')
+
+
 PROBE = r'''
 import hashlib,json,pathlib,sys
 root=pathlib.Path('/app'); expected=json.loads(sys.argv[1])
@@ -147,7 +158,7 @@ def run(args):
     need(files.get(SELF) == sha(HERE.read_bytes()), 'runner_source_mismatch')
     base = json.loads((root / 'BASE-MANIFEST.json').read_bytes())
     need(sha((root / 'BASE-MANIFEST.json').read_bytes()) == args.base_manifest_sha, 'base_manifest')
-    need(set(runtime(files)) - set(runtime(base['files'])) == {'journey_places.py'}, 'runtime_delta')
+    validate_runtime_delta(base['files'], files)
     need(all(re.fullmatch(r'sha256:[a-f0-9]{64}', i) for i in (args.parent, args.image))
          and args.parent != args.image, 'immutable_images')
     need(args.output.is_absolute() and args.output.parent.resolve(strict=True) == args.output.parent
