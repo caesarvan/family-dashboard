@@ -95,7 +95,7 @@ def main():
             for name in ('OPENAI_API_KEY', 'OPENAI_MODEL', 'NVIDIA_API_KEY', 'NVIDIA_MODEL'):
                 monkey.setenv(name, '')
             remote = fixture.Remote()
-            control = {'discoveryError': None, 'discoveries': 0, 'snapshots': 0}
+            control = {'discoveryError': None, 'discoveries': 0, 'snapshots': 0, 'omitSources': set()}
             original_factory = remote.factory
 
             def provider_factory(name, token, transport=None):
@@ -109,8 +109,9 @@ def main():
                         control['discoveries'] += 1
                         if control['discoveryError']:
                             raise control['discoveryError']
-                        return original.list_sources() + [
+                        return [item for item in original.list_sources() + [
                             {'id': 'read-only-tasks', 'kind': 'tasks', 'name': '只读归档清单', 'writable': False}]
+                            if item['id'] not in control['omitSources']]
 
                     def snapshot(self, selected, start, end):
                         control['snapshots'] += 1
@@ -461,6 +462,15 @@ def main():
                 open_accounts(page)
                 open_editor(page)
                 expect(checkbox(page, '选择清单：可选清单')).to_be_checked()
+                control['omitSources'] = {'list-2'}
+                button(page, '重新读取来源').click()
+                expect(page.locator('body')).to_contain_text('本次未发现，已保留')
+                expect(checkbox(page, '选择清单：可选清单')).to_be_checked()
+                assert saved(owner) == {('tasks', 'list-2'): ('shared', False)}
+                control['omitSources'] = set()
+                button(page, '重新读取来源').click()
+                expect(page.locator('body')).not_to_contain_text('本次未发现，已保留')
+                expect(checkbox(page, '选择清单：可选清单')).to_be_checked()
                 open_accounts(page)
                 control['discoveryError'] = provider_error('合成授权需要重新确认', 401, reauth=True)
                 button(page, '选择日历与清单').first.click()
@@ -472,7 +482,7 @@ def main():
                 fixture.due(engine)
                 engine.tick()
                 open_accounts(page)
-                passed('provider discovery failure does not display invented sources; reauthorization error is persisted and shown, synthetic grant repair recovers')
+                passed('provider failure invents no sources, omitted selected source is retained until explicit removal, and persisted reauthorization error shows a recovery action')
 
                 for width in (320, 390, 1040, 1440):
                     page.set_viewport_size({'width': width, 'height': 900 if width >= 1000 else 844})
@@ -498,8 +508,22 @@ def main():
                 remote_before = json.dumps(list(remote.records.items()), sort_keys=True)
                 button(page, '断开绑定').first.click()
                 assert account(owner)['id'] == aid
+                disconnected = {}
+
+                def drop_disconnect(handler):
+                    if handler.request.method == 'DELETE' and not disconnected:
+                        response = handler.fetch()
+                        assert response.status == 200
+                        disconnected['status'] = response.status
+                        handler.abort('failed')
+                    else:
+                        handler.continue_()
+
+                page.route('**/api/accounts/' + aid, drop_disconnect)
                 button(page, '确认断开').click()
                 expect(page.get_by_text(owner_name, exact=True)).to_have_count(0)
+                page.unroute('**/api/accounts/' + aid, drop_disconnect)
+                assert disconnected and len([r for r in requests if r['method'] == 'DELETE' and r['path'] == '/api/accounts/' + aid]) == 1
                 assert get(owner, '/api/accounts')['accounts'] == []
                 assert {item['title'] for item in get(owner, '/api/state')['tasks']} == {'合成本地待办保留'}
                 assert json.dumps(list(remote.records.items()), sort_keys=True) == remote_before
@@ -507,11 +531,17 @@ def main():
                 with closing(sqlite3.connect(folder / 'data' / 'household.sqlite3')) as con:
                     assert con.execute('PRAGMA foreign_key_check').fetchall() == []
                     assert con.execute('SELECT count(*) FROM cloud_sources WHERE account_id=?', (aid,)).fetchone()[0] == 0
-                passed('explicit disconnect deletes only owner binding/local source mirrors, preserves manual task, partner binding and original synthetic provider records')
+                report['droppedDisconnect'] = {'realServerCommit': True, 'status': disconnected['status'], 'deleteCount': 1}
+                passed('explicit disconnect with lost committed response reads back without repeat; owner mirrors removed while manual task, partner binding and provider originals remain')
 
                 # Restore a synthetic account through real OAuth routes for late
                 # response/session checks; never navigate to an external provider.
-                seed_client, seed_headers, new_aid = fixture.bind(application, remote, 1, subject='owner-final')
+                remote.identities['owner-final'] = {'subject': 'owner-final', 'name': '合成迟到账户', 'email': 'final@example.test'}
+                authorization = write(owner, 'POST', '/api/accounts/bind', {'provider': 'microsoft'})
+                state = parse_qs(urlsplit(authorization['url']).query)['state'][0]
+                callback = owner.request.get(base + '/auth/microsoft/callback?' + urlencode({'state': state, 'code': 'owner-final'}), max_redirects=0)
+                assert callback.status == 302 and callback.headers['location'].endswith('/?auth=connected')
+                new_aid = get(owner, '/api/accounts')['accounts'][0]['id']
                 with engine.db() as con:
                     con.execute('UPDATE cloud_accounts SET name=? WHERE id=?', ('合成迟到账户', new_aid))
                 open_accounts(page)
