@@ -115,15 +115,23 @@ export function budgetPayload(draft: { month: string; currency: string; category
   const category = draft.category.trim(); if (!category || category.length > 60) throw new Error('分类需要 1 至 60 个字符；总预算使用“全部”。');
   return { month: draft.month, currency: code, category, amount: decimalInput(draft.amount), revision: integer(draft.revision) };
 }
-export const sharedFinanceFields = ['wallet', 'livingBudget', 'livingSpent', 'travelSaved', 'longterm', 'reserveTarget'] as const;
-export const sharedFinanceLabels = { wallet: '荷包余额', livingBudget: '日常预算', livingSpent: '本月日常支出', travelSaved: '旅行准备金', longterm: '长期共同储蓄', reserveTarget: '周转目标' };
+export const sharedFinanceFields = ['wallet', 'livingBudget', 'livingSpent', 'travelSaved', 'travelAnnualBudget', 'longterm', 'reserveTarget', 'upcomingPayments'] as const;
+export const sharedFinanceLabels = { wallet: '荷包余额', livingBudget: '日常预算', livingSpent: '本月日常支出', travelSaved: '旅行准备金', travelAnnualBudget: '年度旅行预算', longterm: '长期共同储蓄', reserveTarget: '周转目标', upcomingPayments: '近期付款' };
 export type SharedSnapshot = Record<typeof sharedFinanceFields[number], number> & { contributionPercent: number; note: string; revision: number; confirmedAt?: string };
 export function readSharedSnapshot(value: unknown): SharedSnapshot {
-  const v = object(value), r: Record<string, any> = { revision: integer(v.revision, 1), contributionPercent: v.contributionPercent, note: str(v.note ?? '', 500) };
-  for (const k of [...sharedFinanceFields, 'contributionPercent'] as const) { if (typeof v[k] !== 'number' || !Number.isFinite(v[k]) || v[k] < 0) bad(); decimalInput(String(v[k]), false, k === 'contributionPercent' ? 100n : 100000000000n); r[k] = v[k]; }
+  const v = object(value), r: Record<string, any> = { revision: integer(v.revision, 1), contributionPercent: integer(v.contributionPercent), note: str(v.note ?? '', 500) };
+  if (r.contributionPercent > 100) bad();
+  for (const k of sharedFinanceFields) { r[k] = integer(v[k]); if (r[k] > 100000000000) bad(); }
   if (v.confirmedAt) r.confirmedAt = str(v.confirmedAt, 100); return r as SharedSnapshot;
 }
 export function sharedSnapshotPayload(base: SharedSnapshot, inputs: Record<string, string>) {
-  const values = Object.fromEntries(sharedFinanceFields.map(k => [k, decimalInput(inputs[k], false, 100000000000n)]));
-  return { ...values, contributionPercent: decimalInput(inputs.contributionPercent, false, 100n), note: str(inputs.note, 500), revision: base.revision };
+  readSharedSnapshot(base);
+  const values = Object.fromEntries(sharedFinanceFields.map(k => {
+    if (inputs[k] === undefined) return [k, base[k]];
+    const [whole, fraction] = decimalInput(inputs[k], false, 1000000000n).split('.');
+    return [k, Number(BigInt(whole) * 100n + BigInt(fraction))];
+  })) as Record<typeof sharedFinanceFields[number], number>;
+  const percent = (inputs.contributionPercent ?? String(base.contributionPercent)).trim();
+  if (!/^(0|[1-9]\d{0,2})$/.test(percent) || Number(percent) > 100) throw new Error('共同出资比例请填写 0 至 100 的整数。');
+  return { ...values, contributionPercent: Number(percent), note: str(inputs.note ?? base.note, 500), revision: base.revision };
 }

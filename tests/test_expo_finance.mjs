@@ -5,7 +5,7 @@ import { centsToDecimal, formatFinanceAmount, decimalInput, readTransaction, rea
 const first = 'a'.repeat(24), second = 'b'.repeat(24), snapshot = 'c'.repeat(64);
 const transaction = (patch = {}) => ({ id: first, revision: 1, date: '2026-09-01', amountCents: 12345, currency: 'CNY', title: '合成采购', category: '家庭采购', source: 'generic', kind: 'payments', flow: 'expense', visibility: 'private', externalId: 'synthetic-1', status: '已完成', importedAt: '2026-09-17T00:00:00+00:00', checkedAt: null, ...patch });
 const ledger = (patch = {}) => ({ month: '2026-09', q: '', page: 1, pageSize: 25, totalPages: 1, hasNext: false, hasPrevious: false, transactionCount: 1, filteredCount: 1, snapshot, transactions: [transaction()], ...patch });
-const shared = () => ({ wallet: 10000, livingBudget: 1000.25, livingSpent: 150.31, travelSaved: 3500, longterm: 80000, reserveTarget: 10000, contributionPercent: 50, note: '合成快照', revision: 2 });
+const shared = () => ({ wallet: 1000000, livingBudget: 100025, livingSpent: 15031, travelSaved: 350000, travelAnnualBudget: 10400000, longterm: 8000000, reserveTarget: 1000000, upcomingPayments: 88888, contributionPercent: 50, note: '合成快照', revision: 2 });
 
 test('integer formatting preserves cents, negatives and the largest safe integer exactly', () => {
   assert.equal(centsToDecimal(1), '0.01'); assert.equal(centsToDecimal(-1), '-0.01');
@@ -67,13 +67,18 @@ test('reconciliation preview binds both identities versions and currency', () =>
   assert.equal(context.candidates[0].maxAmountCents, 12345);
 });
 
-test('legacy shared snapshot sends all original-unit decimal fields and its revision', () => {
+test('shared API requires all eight integer-cent amounts, independent integer percentage and revision', () => {
   const snapshot = readSharedSnapshot(shared());
-  const inputs = Object.fromEntries(Object.entries(snapshot).filter(([key]) => key !== 'revision').map(([k, v]) => [k, String(v)]));
-  const payload = sharedSnapshotPayload(snapshot, inputs);
-  assert.equal(payload.wallet, '10000.00'); assert.equal(payload.livingSpent, '150.31'); assert.equal(payload.revision, 2); assert.equal(payload.note, '合成快照');
-  assert.throws(() => sharedSnapshotPayload(snapshot, { ...inputs, contributionPercent: '100.01' }));
-  assert.throws(() => readSharedSnapshot({ ...shared(), livingSpent: NaN }));
+  assert.equal(formatFinanceAmount(snapshot.wallet, 'CNY'), 'CNY 10,000.00');
+  const payload = sharedSnapshotPayload(snapshot, { wallet: '123.45' });
+  assert.deepEqual(payload, { ...shared(), wallet: 12345 });
+  assert.equal(payload.travelAnnualBudget, 10400000); assert.equal(payload.upcomingPayments, 88888); assert.equal(payload.contributionPercent, 50);
+  for (const field of ['wallet', 'livingBudget', 'livingSpent', 'travelSaved', 'travelAnnualBudget', 'longterm', 'reserveTarget', 'upcomingPayments']) assert.ok(Number.isSafeInteger(payload[field]));
+  assert.equal(sharedSnapshotPayload(snapshot, { contributionPercent: '0' }).contributionPercent, 0);
+  for (const contributionPercent of ['50.5', '100.01', '101', '-1', '1e2']) assert.throws(() => sharedSnapshotPayload(snapshot, { contributionPercent }));
+  for (const patch of [{ livingSpent: NaN }, { livingBudget: 1000.25 }, { contributionPercent: 50.1 }, { upcomingPayments: undefined }]) assert.throws(() => readSharedSnapshot({ ...shared(), ...patch }));
+  assert.throws(() => sharedSnapshotPayload(snapshot, { wallet: '1000000000.01' }));
+  assert.equal(sharedSnapshotPayload(snapshot, { wallet: '1000000000.00' }).wallet, 100000000000);
 });
 
 test('overview projects actual existing months without treating zero selected-month records as an empty history', () => {

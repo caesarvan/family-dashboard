@@ -27,8 +27,9 @@ const message = (v: unknown) => v instanceof Error ? v.message : '暂时无法�
 const currentMonth = () => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit' }).format(new Date());
 const sharedConsent = '将本笔金额纳入共同消费汇总';
 const sharedNumericFields = [...sharedFinanceFields, 'contributionPercent'] as const;
+const sharedInputs = (base: SharedSnapshot): Record<string, string> => ({ ...Object.fromEntries(sharedFinanceFields.map(k => [k, centsToDecimal(base[k])])), contributionPercent: String(base.contributionPercent), note: base.note });
 const time = (s: string | null | undefined) => s ? s.replace('T', ' ').replace(/\.\d+/, '') : '尚未记录';
-const decimalDisplay = (value: number) => 'CNY ' + decimalInput(String(value)).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+const decimalDisplay = (value: number) => formatFinanceAmount(value, 'CNY');
 
 function Check({ label, checked, disabled, onPress }: { label: string; checked: boolean; disabled: boolean; onPress: () => void }) {
   const keyboard = Platform.OS === 'web' ? { onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => { if (e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); e.stopPropagation(); if (!e.repeat && !disabled) onPress(); } } } : {};
@@ -86,6 +87,15 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
   }
   async function guarded<T>(load: () => Promise<T>, ticket = epoch.current) { return fence.current.read(load, () => current() && ticket === epoch.current); }
   async function fetchDetail(id: string, q = '') { return readReconciliation(await guarded(() => request<unknown>('/finance-hub/reconciliation?' + new URLSearchParams({ transactionId: id, q })))); }
+  async function fetchFocus(id: string, q = ''): Promise<Reconciliation | null> {
+    try { return await fetchDetail(id, q); }
+    catch (caught) {
+      if (!(caught instanceof ApiError && caught.status === 404)) throw caught;
+      // A failed GET does not run the fence's post-read check. Verify the
+      // complete session again before installing the already-read ledger.
+      await guarded(async () => true); return null;
+    }
+  }
   function installDetail(next: Reconciliation, reset = false) {
     setDetail(next); const prior = editRef.current;
     if (reset || !prior || prior.original.id !== next.transaction.id) setEdit({ original: next.transaction, category: next.transaction.category, flow: next.transaction.flow, shared: next.transaction.visibility === 'shared', conflict: false });
@@ -110,7 +120,12 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     let matches = false;
     const next = await fetchData(true);
     if (intent.kind === 'transaction' || intent.kind === 'confirm' || intent.kind === 'revoke') {
-      const context = await fetchDetail(intent.kind === 'transaction' ? intent.id : intent.transactionId);
+      const context = await fetchFocus(intent.kind === 'transaction' ? intent.id : intent.transactionId);
+      if (!context) {
+        if (!current()) return;
+        closeDetail(); installData(next); setPending(null); setVisible(true); setTab('ledger');
+        setNotice('当前记录已不存在。本次操作的历史结果无法仅凭当前缺失确认；已回到账本，不会自动重复提交或重建记录。'); void latest.current.refresh(); return;
+      }
       if (intent.kind === 'transaction') { const row = context.transaction, p = intent.payload; matches = row.revision > p.revision && row.category === p.category && row.flow === p.flow && row.visibility === p.visibility; }
       else if (intent.kind === 'confirm') { const p = intent.preview; matches = context.relations.some(r => r.kind === p.kind && r.leftId === p.leftId && r.rightId === p.rightId && r.amountCents === p.amountCents && r.status === 'active'); }
       else matches = context.relations.some(r => r.id === intent.relation.id && r.status === 'revoked' && r.revision > intent.relation.revision);
@@ -118,7 +133,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
       installDetail(context, matches); setPreview(null); setCandidate(null); setRevoke(null);
     } else if (intent.kind === 'budget') { const p = intent.payload; const view = p.month === next.overview.month ? next.overview : readOverview(await guarded(() => request<unknown>('/finance-hub/overview?month=' + p.month)));
       matches = view.budgets.some(b => b.month === p.month && b.currency === p.currency && b.category === p.category && b.revision > p.revision && centsToDecimal(b.amountCents) === p.amount); if (matches) setBudget(null);
-    } else { const p = intent.payload as Record<string, string | number>; matches = next.finance.revision > Number(p.revision) && sharedNumericFields.every(k => decimalInput(String(next.finance[k])) === p[k]) && next.finance.note === p.note; if (matches) setSharedEditor(null); }
+    } else { const p = intent.payload; matches = next.finance.revision > p.revision && sharedNumericFields.every(k => next.finance[k] === p[k]) && next.finance.note === p.note; if (matches) setSharedEditor(null); }
     if (!current()) return;
     installData(next); setPending(null); setVisible(true);
     setNotice(matches ? (acknowledged ? '已保存，并读取最新记录核对。' : '已读取最新记录：当前状态与本次操作一致。') : '已读取最新记录，但当前状态与本次操作不一致。请核对最新版本后重新决定；不会自动重复提交。');
@@ -130,7 +145,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     reading.current = true; setBusy(true); setError(''); const ticket = epoch.current;
     try {
       if (pendingRef.current) await recover(pendingRef.current);
-      else { const next = await fetchData(resetSnapshot); const id = detailRef.current?.transaction.id; const context = id ? await fetchDetail(id) : null; if (current() && ticket === epoch.current) { installData(next); if (context) installDetail(context); setVisible(true); } }
+      else { const next = await fetchData(resetSnapshot); const id = detailRef.current?.transaction.id; const context = id ? await fetchFocus(id) : null; if (current() && ticket === epoch.current) { installData(next); if (context) installDetail(context); else if (id) { closeDetail(); setTab('ledger'); setNotice('这条记录已删除或不再存在，已回到最新账本。'); } setVisible(true); } }
     } catch (caught) { if (ticket === epoch.current) { failure(caught); if (!(caught instanceof ApiError && caught.code === 'ledger_changed')) { setVisible(false); setData(null); } } }
     finally { if (ticket === epoch.current) { reading.current = false; if (alive.current) setBusy(false); } }
   }
@@ -170,7 +185,9 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
   function search() { if (!current() || busy || pending) return; query.current = { ...query.current, q: searchInput.trim(), page: 1 }; void reload(); }
   function turnPage(page: number) { if (!current() || busy || pending || ledgerChanged) return; query.current = { ...query.current, page }; void reload(); }
   async function openTransaction(id: string, reset = true, q = '') {
-    await operation(async () => { const context = await fetchDetail(id, q); if (!current()) return; installDetail(context, reset); setCandidate(null); setPreview(null); setRevoke(null); if (reset) setRelationQuery(''); });
+    await operation(async () => { const context = await fetchFocus(id, q); if (!current()) return;
+      if (!context) { const next = await fetchData(true); if (current()) { closeDetail(); installData(next); setTab('ledger'); setNotice('这条记录已删除或不再存在，已回到最新账本。'); } return; }
+      installDetail(context, reset); setCandidate(null); setPreview(null); setRevoke(null); if (reset) setRelationQuery(''); });
   }
   async function saveTransaction() {
     const draft = editRef.current; if (!draft || draft.conflict) return;
@@ -196,8 +213,8 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
       if (current()) { setBudget({ ...draft, ...p, amount: row ? centsToDecimal(row.amountCents) : draft.amount, revision: row?.revision || 0, conflict: false }); setNotice('已读取此月份、币种与分类的最新预算。请核对金额后再保存。'); } });
   }
   async function saveBudget() { const draft = budgetRef.current; if (!draft || draft.conflict) return; await operation(async () => { const payload = budgetPayload(draft); await write({ kind: 'budget', payload }, '/finance-hub/budgets', 'PUT', payload); }); }
-  function openShared(base: SharedSnapshot) { if (!current() || busy || pending) return; setSharedEditor({ base, inputs: { ...Object.fromEntries(sharedNumericFields.map(k => [k, decimalInput(String(base[k]))])), note: base.note }, conflict: false }); }
-  async function refreshShared() { await operation(async () => { const response = await guarded(() => request<{ finance: unknown }>('/state')); const base = readSharedSnapshot(response.finance); if (current()) { setSharedEditor({ base, inputs: { ...Object.fromEntries(sharedNumericFields.map(k => [k, decimalInput(String(base[k]))])), note: base.note }, conflict: false }); setNotice('已读取共同资金的最新值。请重新核对后保存。'); } }); }
+  function openShared(base: SharedSnapshot) { if (!current() || busy || pending) return; setSharedEditor({ base, inputs: sharedInputs(base), conflict: false }); }
+  async function refreshShared() { await operation(async () => { const response = await guarded(() => request<{ finance: unknown }>('/state')); const base = readSharedSnapshot(response.finance); if (current()) { setSharedEditor({ base, inputs: sharedInputs(base), conflict: false }); setNotice('已读取共同资金的最新值。请重新核对后保存。'); } }); }
   async function saveShared() { const editor = sharedRef.current; if (!editor || editor.conflict) return; await operation(async () => { const payload = sharedSnapshotPayload(editor.base, editor.inputs); await write({ kind: 'finance', payload }, '/finance', 'PUT', payload); }); }
   const locked = busy || !!pending || !current(), privateVisible = visible && current();
   const dialogStyle = [styles.dialog, { maxHeight: Math.max(240, height - 40), backgroundColor: theme.colors.surfaceVariant }];
