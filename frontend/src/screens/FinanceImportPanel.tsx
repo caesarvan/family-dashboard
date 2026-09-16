@@ -202,7 +202,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
       <SectionCard title="选择文件"><View style={styles.page}>
         <View style={styles.controls}>{dropdown('source', '文件来源：' + sources[source], Object.entries(sources).map(([key, title]) => ({ key, title })), value => { invalidatePreview(); setSource(value as ImportSource); setSheets([]); setSheet(''); setColumn(undefined); })}</View>
         <SegmentedButtons value={kind} onValueChange={value => { invalidatePreview(); setKind(value as ImportKind); setSheets([]); setSheet(''); setColumn(undefined); }} buttons={[{ value: 'payments', label: '支付账单', disabled }, { value: 'orders', label: '订单记录', disabled }]} />
-        <Button mode="outlined" icon="file-upload-outline" disabled={disabled} onPress={() => void choose()}>选择账单文件</Button>
+        <Button mode="outlined" icon="file-upload-outline" accessibilityLabel="选择账单文件" disabled={disabled} onPress={() => void choose()}>选择账单文件</Button>
         <Text>{file?.name || '支持 CSV、TXT、无宏 XLSX，最大 2 MiB。'}</Text>
         <Button disabled={disabled} onPress={() => void template()}>下载通用模板</Button>
         {file && !/\.xlsx$/i.test(file.name) && dropdown('encoding', '编码：' + ({ auto: '自动识别', 'utf-8': 'UTF-8', gb18030: 'GB18030' })[file.encoding], [{ key: 'auto', title: '自动识别' }, { key: 'utf-8', title: 'UTF-8' }, { key: 'gb18030', title: 'GB18030' }], value => { invalidatePreview(); setFile({ ...file, encoding: value as ImportFile['encoding'] }); setColumn(undefined); })}
