@@ -1,5 +1,19 @@
 # 验证记录
 
+## Expo 官网风格发布：2026-09-16 23:48:34
+
+安装 integration `5ebfd2d6db408128f8137de288f300900794b1bb`，同树 main `d94f7ce746bfbc45de328c516ac9c24d640f2d40`，tree `f57a232684180d72a0254d04bdbf3f1d15ae6f89`。本轮按当前 expo.dev 重做共享风格、导航、首页和登录布局，并修复 Paper Menu 初次隐藏动画竞态；各菜单局部关闭动画，不改变原业务请求和授权逻辑。构建原件 SHA256 `039ab1ebb33bdab720b3308e1f97431669db1686a659d6d7fe5f20e60e3b25a1`。
+
+真实临时 Flask／SQLite／Edge 在 **320／390／1040／1440** 四种宽度通过登录、首页、导航、新建与账户菜单、待办表单打开／取消及退出检查；记录 154 次成功 API 响应和 42 项布局测量，无页面异常、请求失败、外站请求或页面横向溢出。源码与 bundle 前后 SHA 保持。独立审查实际查看最终 19 张截图，核对黑色胶囊、浅灰大圆角、横向导航和长金额完整显示；23 个导出文件另行匹配。
+
+浏览器原件 `expo-review-20260916T154102434460Z/result.json` SHA256 `95cf81ac3449cd59f201815ea1ae9846deaecf3a72b15920f83208e875cc9af4`；组合审核 `expo-site-visual-review-20260916/final-combination-review-r3.json` SHA256 `a08032db55544cee293fc7b16c28fdc4f38c6a5b55345de3d2f0e2adbb8e22df`。初次 Menu 动画失败原件保留，修复后重新构建和完成上述四宽终检。此轮使用合成家庭数据，不把视觉及导航验收等同于重跑上一轮全部云端和复杂业务矩阵；原生安装包、本人真实云操作和实体电视未另验。
+
+本次固定镜像 `sha256:befe93434119bf8bb5a58423895174ed7093b9a1b8ae8f1e41be06f2ab87c0bc` 内 dashboard layout／display preferences／household spaces／frontend runtime 四模块 **63 passed、0 failed／error／skipped**；明确 deselect 一项 Windows junction 检查，运行文件前后 SHA 保持。此项与四宽浏览器分开计数。
+
+**23:48:34 激活，23:48:49 正常 TLS 读回通过。** 实际 1 户两库完整备份，无 schema 迁移；全部 53 表行／schema／序列及平台注册库在新 app 启动时保持，原环境配置保全。447 源／112 运行／75 HTTPS 静态文件匹配，24 个内部生成路径与 1 个退役资源 404，十个匿名接口 401；四服务 running／restart 0、app healthy，发布后备份 service success／timer active。数据相等限于启动核对时点，开放服务后允许正常业务变化。
+
+私有原件 `expo-site-package-20260916/activation.json` SHA256 `961d601a2721eea111b569a0ab2aa78e1ff60e974f26c65e47a2199066e77a2c`、`post-readback.json` SHA256 `9fbe4200423897db85bc3baaf6b090569e66fa43ab3983391b6d68a0af068166`、`validation.json` SHA256 `99ece4d8854daa61ed48fed6b4eee78634942ba59f9e900fb5bc3692943a79c2`。两库备份 manifest SHA256 `34ec0a2878cfa71b1b624b89d7a5db8fddd6ebdcc876deefc689ae9e58381c4f`。固定包身份见 [官网风格交付](EXPO-SITE-STYLE.md)。Windows 公共域名 `Website Filtered` 限制仍保留，未据本地浏览器或服务器 TLS 读回声称该网络下本人登录验收通过。
+
 ## Expo 统一设计与三模块发布：2026-09-16 23:02:11
 
 本轮旅行、助理、相册接入真实原有 API，不改变 53+2 表。main `5c59ffb7`／integration `95c73ed` 同树 `a405fd56`，23:02:11 激活、23:02:30 正常 TLS 读回通过；完整源码／镜像／包身份见 [本轮交付](EXPO-NEXT-RELEASE.md)。
