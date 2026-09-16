@@ -135,6 +135,7 @@ export default function AppShell(props: AppShellProps) {
           </View>
         </ScrollView>
         {!wide ? <BottomNavigation.Bar navigationState={{ index: tabIndex >= 0 ? tabIndex : 4, routes: navigation }}
+          getAccessibilityLabel={({ route: item }) => item.title}
           onTabPress={({ route: next }) => navigate(next.key)}
           activeColor={theme.colors.onSurface} inactiveColor={theme.colors.onSurfaceVariant}
           shifting={false} labeled safeAreaInsets={{ bottom: insets.bottom, left: insets.left, right: insets.right }}
