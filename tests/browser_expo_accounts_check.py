@@ -312,10 +312,13 @@ def main():
                         application.config.update(GOOGLE_CLIENT_ID='synthetic-google-client', GOOGLE_CLIENT_SECRET='synthetic-google-secret')
                         open_accounts(page)
                     page.route('https://' + host + '/**', abort_authorization)
-                    with page.expect_request(re.compile(r'^https://' + re.escape(host) + '/')):
+                    # request alone fires before its route callback is handled.
+                    # Wait for the actual abort and a loaded local document before
+                    # unregistering, so no in-flight handler is displaced.
+                    with page.expect_event('requestfailed', predicate=lambda request: urlsplit(request.url).hostname == host):
                         button(page, '连接 ' + provider).click()
-                    page.unroute('https://' + host + '/**', abort_authorization)
                     open_accounts(page)
+                    page.unroute('https://' + host + '/**', abort_authorization)
                     assert len(get(owner, '/api/accounts')['accounts']) == 1
                 application.config.update(GOOGLE_CLIENT_ID='', GOOGLE_CLIENT_SECRET='')
                 open_accounts(page)
