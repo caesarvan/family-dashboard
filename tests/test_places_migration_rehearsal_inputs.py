@@ -52,3 +52,12 @@ def test_embedded_programs_are_valid_python():
         compile(getattr(M,name),name,'exec')
     # The actual runtime test performs network isolation and source validation;
     # this check only catches embedded-program syntax before a Docker invocation.
+
+
+def test_unlisted_cache_directory_symlink_is_rejected_without_following(tmp_path):
+    root=tmp_path/'source';root.mkdir()
+    outside=tmp_path/'external-cache';outside.mkdir()
+    (root/'deploy').mkdir();(root/'app.py').write_bytes(b'original')
+    digest=manifest(root,{'app.py':M.sha(b'original')})
+    (root/'deploy'/'__pycache__').symlink_to(outside,target_is_directory=True)
+    with pytest.raises(RuntimeError,match='source_link'):M.frozen(root,digest)

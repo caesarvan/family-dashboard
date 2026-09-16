@@ -35,7 +35,9 @@ def frozen(root, manifest_sha, name='RELEASE-MANIFEST.json'):
     need(root.is_absolute() and root.resolve(strict=True) == root, 'source_path')
     # -B prevents writes, not reads of pre-existing import caches. Helpers on
     # the host and /rehearsal must therefore contain source bytes only.
-    need(not any(p.suffix in ('.pyc', '.pyo') for p in root.rglob('*')), 'source_bytecode')
+    for path in root.rglob('*'):
+        need(not path.is_symlink() and not getattr(path, 'is_junction', lambda: False)(), 'source_link')
+        need(path.suffix not in ('.pyc', '.pyo'), 'source_bytecode')
     manifest = root / name
     need(not manifest.is_symlink(), 'manifest_symlink')
     raw = manifest.read_bytes()
