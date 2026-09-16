@@ -20,7 +20,7 @@
 | `frontend/src/screens/MapWorkspace.tsx` | 同一路由中的地图、旅行与照片切换，内存保存返回条件 |
 | `frontend/src/screens/TripPhotosScreen.tsx` | 只读旅行相册，不读取账户、导入或设备管理信息 |
 
-沿用现有 [地点 API](JOURNEY-PLACES.md)、[媒体 API](MEDIA-API.md) 与 [地图相册契约](MAP-TRAVEL-PHOTOS.md)。旅行实体的 `tripId` 和工作流 `journeyId` 各用各的接口，不能互换。没有新数据表、数据库迁移、云授权或依赖安装；[同源 Expo 托管](EXPO-WEB.md) 支持 `/app/map` 的直接访问与刷新。
+沿用现有 [地点 API](JOURNEY-PLACES.md)、[媒体 API](HOUSEHOLD-MEDIA-API.md) 与 [地图相册契约](MAP-TRAVEL-PHOTOS.md)。旅行实体的 `tripId` 和工作流 `journeyId` 各用各的接口，不能互换。没有新数据表、数据库迁移、云授权或依赖安装；[同源 Expo 托管](EXPO-WEB.md) 支持 `/app/map` 的直接访问与刷新。
 
 地图底图复用 [Natural Earth 本地文件](MAP-BASEMAP.md)，没有外站瓦片、自动定位、街道导航或地理编码。地图不可用时仍保留可访问的列表和手工录入。地图可见不代表照片可见，照片关联也不自动共享或授予电视展示。
 
