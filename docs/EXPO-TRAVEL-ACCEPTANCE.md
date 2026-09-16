@@ -1,6 +1,37 @@
 # Expo 助理与旅行协作验收
 
-本页记录源码候选；是否已部署以 [README](../README.md) 顶部及正式发布读回为准。界面延续当前 Expo 官网的白底、黑色胶囊按钮和浅灰圆角卡片，复用 React Native Web／Paper，没有新增依赖。
+本功能已于 2026-09-17 07:38:17（北京时间）激活，07:39:46 正常 TLS 读回通过；当前入口见 [README](../README.md)。界面延续当前 Expo 官网的白底、黑色胶囊按钮和浅灰圆角卡片，复用 React Native Web／Paper，没有新增依赖。
+
+<a id="expo-travel-release"></a>
+## 实际发布与运行身份
+
+运行包与后续纯文档提交分别记录；本文不改变已安装 manifest。发布目录 `/opt/family-dashboard-releases/expo-travel-55-20260916T233718910034Z`。
+
+| 身份 | 实际值 |
+| --- | --- |
+| main／source | `6b2bb55758fce0df02f51252d5eac2441b7c9869`／`e0c1c6b03e14424bc170d1aa7d7c28529b381801` |
+| tree | `bb00b3b6cde61296d7860fec56e7a2b0acf373ef` |
+| manifest SHA256 | `4534b837252ec4cb31d7bc0ad074cfff53f1b0901117cbbfd234c6d570378e9c` |
+| archive SHA256 | `6b652f275cfebcb67f1dc382734218ef7a095d198734064f9329c0dad27e284c` |
+| app／sync／media 镜像 | `sha256:b394b59bc8e13f60d597f01e87e887c90358be81b073a928f6430d6a5b5b576f` |
+| 内容 | 516 个源文件、113 个运行文件、23 个前端导出；构建与浏览器身份见下方 |
+
+新镜像 Linux 11 模块收集 330 项，329 通过，唯一跳过为 `tests.test_frontend_runtime.test_windows_junction_rejected`（`Windows junction semantics`），零失败／错误，JUnit 350.537 秒；运行文件在测试前后核对保持。Linux 不执行需要 Node／TypeScript 的两组桥接测试，这些检查按下方 Windows 实际记录单列；各组有重叠，不相加为一次完整测试。
+
+实际停写并完整备份 1 户两库；55→55 不执行迁移，`schemaChange=false`。新 app healthy 后的全部 55 表行、schema、序列和注册库与停写快照相等，随后才启动 worker／web；原配置保持。生产持仓操作回执当时为 0 行，允许非空及保全已有回执由合成双户测试验证，不能表述为生产已验证非空回执。`before.json`／`after-app.json` 同 SHA256 `3c314d127120f3e53312da1ec927020fc445279f28c778537c53046947273e4a`；五份 proof 原件均与激活报告绑定匹配，分别记录备份、备份核验、停写前快照、新 app 启动后快照及保全结论。
+
+正常 TLS 读回核对 516 源／113 运行文件、75 项 HTTPS 静态资源；24 项内部生成路径及 1 项退役资源拒绝访问，22 个匿名 API 均返回 401；四服务 running、零重启，app healthy，配置保持。新备份 invocation `5c4f380aa6a14f29893c0892ec9f45ae` 成功且 timer active，其 `manifest-20260916T233942616081Z.json` SHA256 为 `edee484ee0486297f42e308cfb00da48b974a950aef6bf934f7960154b29f9b8`，完整 1 户两库备份的散列、55 表及注册结构可读性核验通过。这是逐库在线备份，`liveGroupSnapshotRechecked=false`，不等同跨库全局事务或再次读取 live 全组快照。
+
+私有原件位于 `expo-travel-tools-20260917-r1/server-evidence/`：
+
+| 原件 | SHA256 |
+| --- | --- |
+| `activation.json` | `a491513a35d07bb75f06f82823fa54a8e8df03f3c755b7285a233babbebda39b` |
+| `post-readback.json` | `1733bc5ae69e49debfa3dd5f54b76ca5799ed422f146fcbc853c36e552ae21fa` |
+| `validation.json` | `2965b200962c59e86f4192c0e11ccf1c36011a39a17bfba0df3595ad4accd115` |
+| `validation/results.xml` | `a6e6cf268764e765b65c622d757fc90e712a940a1a58e129de19fd4b88f14bde` |
+
+首次读回封装命令遗漏必需的 `--reviewed-sha256`，在 argparse 阶段退出 2、未运行读回或备份；`post_readback-command.stderr` 保留原件。显式传入已审脚本 SHA 后，`post-reviewed-command.stdout` 记录成功结果。没有重新部署或迁移，不能写成所有命令首次全绿。此前 06:15 持仓发布身份及全部历史证据继续保留于 [验证记录](VALIDATION.md#expo-holdings-release)。
 
 ## 用户流程
 
@@ -22,11 +53,11 @@ AI 只在用户勾选后整理本次文字。模型失败保留原文，用户�
 | 完整前端类型检查 | 可访问性修正后的实际构建目录通过 |
 | 浏览器前三轮 | 前两轮定位 Paper Item 外层缺 ARIA 状态并修复；第三轮已通过键盘选择，随后因测试未匹配按钮图标名称停止。全部失败原件保留 |
 | 浏览器最终组合 | 第四轮 7 场景通过，0 页面错误／外部请求；320／390／1040／1440 四宽 12 张截图全部查看，均为内部滚动区当前可见部分 |
-| 55→55 发布适配器 | 作者和独立审查者各运行 22 项通过；实际旧九脚本生成检查通过，正式新镜像和发布尚待独立执行 |
+| 55→55 发布适配器 | 作者和独立审查者各运行 22 项通过；实际旧九脚本生成检查通过；正式新镜像 Linux 和发布读回见上方 |
 
 选择控件已改用现有账户／库存页面采用的 Paper TouchableRipple、Icon 和 Text 组合，视觉、原生辅助状态与网页 `aria-checked` 使用同一受控值。支持空格键切换、单选方向键及可见焦点；无嵌套交互控件。修正由非作者审查；真实浏览器的空格键、单选方向键及对应选中状态均已通过。保存后真实重启仍保留旅行、负责人、整数分采购预算及未知预算；响应丢失后原操作重放不重复写入；两种迟到响应均不能将旧成员输入带入新会话。
 
-原件均保存在私有 `family-dashboard-access/`，不包含真实家庭数据：
+以下本地测试原件均保存在私有 `family-dashboard-access/`，使用合成家庭；上方生产保全原件亦属私有，不提交 Git：
 
 - `worktrees/integration/test-results/expo-travel-combined.xml`：首次组合及环境失败。
 - `worktrees/expo-n2/test-results/expo-travel-assistant-flow.xml`：唯一失败项补跑。
@@ -38,7 +69,7 @@ AI 只在用户勾选后整理本次文字。模型失败保留原文，用户�
 
 最终受验来源 `ce5885035d13ba24d350dd6ad17aa8a1e39c0f20`，tree `98bfb35b1fdf5957437c58e8a451480e43ff6ef2`；构建证据 SHA256 `9d202c1b96a3060cd14ce417c3e27367d6f023a6344f75206edcdd253f083c71`。最终报告在 `worktrees/expo-travel-acceptance/test-results/expo-journey-brief-20260916T231150309219Z/result.json`，SHA256 `452e6ffb6bf6e76e6b30fcfe03b3b9d2087499f6464b4dea6c67267b4092dac7`；受验源码和导出均未变化。模型替身只验证一次失败后明确本地恢复，不是模型成功生成或真实模型质量验收。后续文档、发布工具合入与受验运行输入分开核对，不能改写该原件身份。
 
-发布采用独立审查的 [55→55 适配器](TRAVEL-RELEASE.md)，保存现有全部数据及非空持仓操作回执，不执行生产迁移。当前正式安装版仍是 README 顶部版本；最终 Linux、新备份和正常 TLS 读回完成后另记。
+发布采用独立审查的 [55→55 适配器](TRAVEL-RELEASE.md)，实际保全范围见上方；后续发布须重新绑定当前 55 表、镜像及 manifest，不能重放旧 54→55 迁移或本次固定发布操作。
 
 ## 最终场景的剩余工作
 
