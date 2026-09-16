@@ -2,7 +2,7 @@
 
 > “连接中心 → 查看同步与问题”继续只读日历／清单来源及本人问题，不能替代进程健康或财务覆盖验收。两张本人消费观察表于 2026-09-15 15:10 的历史版本新增；20:23 旅行资料版本另新增一张表，原例行三表与采购私有关系保持权限。来源更新和实际支付对账各有口径。
 
-完整首次部署、更新和恢复见 **[DEPLOYMENT](DEPLOYMENT.md)**。当前运行版本为 2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`，新增旅行资料并完成 42→43。源码数量、精确发布和读回见 [README](../README.md) 与 [VALIDATION](VALIDATION.md)；本次失败处理是停止并保全，不自动数据库恢复。
+完整首次部署、更新和恢复见 **[DEPLOYMENT](DEPLOYMENT.md)**。当前地点版于2026-09-16 16:33:32发布，镜像 `sha256:9cd092392b27d6e2342ab1890ff3514149416281fe130df62976b8b1488acac8`，43→44迁移通过。精确证据见 [VALIDATION](VALIDATION.md)；失败保留现场，不自动覆盖恢复。
 
 <a id="投资导入候选的排障与保存范围"></a>
 
@@ -17,8 +17,8 @@
 ## 当前部署
 
 - 正式入口 https://home.caesarcharles.world/，服务器 racknerd／96.44.160.28，源码 `/opt/family-dashboard`。
-- app 提供 API、页面、OAuth；sync 是独立同步进程；web 是 Nginx。2026-09-15 核验三容器运行，app 健康。
-- 当前旅行资料版为 43 张户内表及 2 张平台表；实际迁移保留全部旧 42 表。分段测试、独立审查与服务器内部读回见 [VALIDATION](VALIDATION.md)。
+- app提供API、页面、OAuth；sync独立同步；web为Nginx。本次发布后核验三服务运行、app健康。
+- 当前44户内表及2平台表；本次新增journey_places，原43表在停写核对窗口保持。295源文件、47静态、112方法/路径模板。
 - **历史财务发布记录：2026-09-15 15:10:00（北京时间）**，镜像 `sha256:65a71881894ed85ff7d88b818372962a42eaf1ead4610338de3318f0decc6c3c`。当时为 214 文件／34 Markdown／101 路由／42+2 表／42 静态；Windows 1200 passed / 18 skipped，Linux 1217 passed / 1 skipped，各自 1218 项。财务 10 组 222 项，另 1 个导出观察限制不计通过；当时保留原 40 表，新增的消费观察两表为空。该批证据见 [VALIDATION](VALIDATION.md)，不代替当前版本验收。
 - 命名卷 `family-dashboard_household-data`。原家庭 `/data/household.sqlite3`；新版另有平台注册目录 `/data/platform.sqlite3` 与 `/data/spaces/<随机id>/household.sqlite3`。照片、账单、投资、财务基线及发布队列在各户 SQLite 内。
 - 原家庭 Microsoft / Google 的读取与清单同步已有绑定验证；新增家庭分别绑定自己的账号。新增旅行日历与本地待办发布已部署，但真实写入仍须本人授权并验收，不重新初始化原家庭。
@@ -26,7 +26,7 @@
 - 证书 `/var/lib/family-dashboard/letsencrypt`，ACME `/var/lib/family-dashboard/acme`。
 - 备份每天北京时间 04:20；证书每六小时检查。两个 timer 已安装，具体成功需读各自日志。
 
-本次 44 个静态资源和 8 个匿名受保护 GET 均从 app 容器回环读取核验；SQLite 使用只读连接。公网浏览器、实体设备和真实 OAuth 回跳仍需独立验收，不绕过组织策略。
+本次47静态和10匿名受保护GET从app回环读取核验，另有正常TLS五项HTTPS读回。实体设备和真实新OAuth/云写入仍单独验收，电视先按浏览器实现、机型待补。
 
 ## 采购实付核对排障
 

@@ -187,6 +187,7 @@ function showAccountAuthResult() {
     provider_error:'账户授权未完成，请重新尝试；若仍失败，请联系看板维护者查看具体原因。',
   };
   const message = result === 'connected' ? '账户已绑定，请选择要共享的日历和清单。'
+    : result === 'photos-connected' ? 'Google Photos 已连接，请选择要保存的照片。'
     : result === 'signed-in' ? '已使用绑定账户登录。'
     : reasons[query.get('reason')] || '账户授权未完成，请重新尝试。';
   query.delete('auth'); query.delete('reason');
@@ -194,6 +195,7 @@ function showAccountAuthResult() {
   const error = $('#login-form .error');
   if (result === 'error' && error) error.textContent = message;
   else toast(message, result === 'error');
+  if (result === 'photos-connected') { window.ProductShell?.navigate('photos'); return; }
   AccountsReturn.restore(result).then(restored => {
     if (!restored && result === 'connected' && canEdit()) return accountsModal();
   }).catch(error => toast(error.message, true));
@@ -240,8 +242,8 @@ async function accountsModal() {
   const connections = accounts.map(account => `<article class="account-card">
     <header><div><strong>${esc(accountProviderName(account.provider))} · ${esc(account.name || '已绑定账户')}</strong>${account.email ? `<small>${esc(account.email)}</small>` : ''}</div><span class="pill ${account.needsReauth ? 'demo' : ''}">${account.needsReauth ? '需要重新授权' : '已绑定'}</span></header>
     ${account.needsReauth ? '<p class="error">授权已失效，请使用下方同一平台的绑定按钮重新授权这个账户。</p>' : ''}
-    <div class="account-sources">${account.sources.length ? account.sources.map(source => `<div class="account-source-summary"><span>${icon(source.kind === 'calendar' ? 'calendar' : 'list')} ${esc(source.name)}${source.primary ? ' <span class="sage">· 共同待办主清单</span>' : ''}</span><small>${source.kind === 'calendar' ? esc(who(source.owner)) + ' · ' : ''}${esc(accountTimestamp(source.lastSuccess))}</small>${source.error ? `<p class="error">${esc(source.error)}</p>` : ''}</div>`).join('') : '<p class="help">还没有共享数据。选择日历或清单后才会开始同步。</p>'}</div>
-    <div class="account-actions"><button class="btn small secondary" data-account-select="${esc(account.id)}" ${account.needsReauth ? 'disabled' : ''}>选择日历与清单</button><button class="btn small secondary" data-account-sync="${esc(account.id)}" ${account.needsReauth || !account.sources.length ? 'disabled' : ''}>立即检查更新</button><button class="quiet" data-account-disconnect="${esc(account.id)}">断开绑定</button></div>
+    <div class="account-sources">${account.sources.length ? account.sources.map(source => `<div class="account-source-summary"><span>${icon(source.kind === 'calendar' ? 'calendar' : 'list')} ${esc(source.name)}${source.primary ? ' <span class="sage">· 共同待办主清单</span>' : ''}</span><small>${source.kind === 'calendar' ? esc(who(source.owner)) + ' · ' : ''}${esc(accountTimestamp(source.lastSuccess))}</small>${source.error ? `<p class="error">${esc(source.error)}</p>` : ''}</div>`).join('') : account.capabilities?.sync === false ? '<p class="help">这个账户用于相册，照片请在家庭相册中选择和管理。日历与清单需要另外授权。</p>' : '<p class="help">还没有共享数据。选择日历或清单后才会开始同步。</p>'}</div>
+    <div class="account-actions">${account.capabilities?.photos ? `<button class="btn small secondary" data-account-photos="${esc(account.id)}">管理相册</button>` : ''}<button class="btn small secondary" data-account-select="${esc(account.id)}" ${account.needsReauth || account.capabilities?.sync === false ? 'disabled' : ''}>选择日历与清单</button><button class="btn small secondary" data-account-sync="${esc(account.id)}" ${account.needsReauth || !account.sources.length ? 'disabled' : ''}>立即检查更新</button><button class="quiet" data-account-disconnect="${esc(account.id)}">断开绑定</button></div>
   </article>`).join('');
   openModal('账户与自动同步', `<div class="info-box">只同步你明确选择的日历与清单。选中的完整日程标题、地点和任务会展示给双方与已配对电视；个人财务仍仅本人可见。</div>
     ${AccountsReturn.footer()}
@@ -253,6 +255,10 @@ async function accountsModal() {
     <div class="dialog-footer"><button class="btn secondary" id="account-refresh">刷新状态</button><button class="btn" data-action="close">完成</button></div>`, true);
   $('[id="account-refresh"]').onclick = () => accountsModal().catch(error => toast(error.message, true));
   document.querySelectorAll('[data-account-bind]').forEach(button => button.onclick = () => bindAccount(button.dataset.accountBind, button, context));
+  document.querySelectorAll('[data-account-photos]').forEach(button => button.onclick = async () => {
+    try { await accountViewCheck(context, button); window.ProductShell?.navigate('photos'); }
+    catch (error) { toast(error.message, true); }
+  });
   document.querySelectorAll('[data-account-select]').forEach(button => button.onclick = async () => {
     button.disabled = true;
     try { await accountViewCheck(context, button); await accountSourcesModal(accounts.find(account => account.id === button.dataset.accountSelect)); }
@@ -265,7 +271,7 @@ async function accountsModal() {
     finally { button.disabled = false; }
   });
   document.querySelectorAll('[data-account-disconnect]').forEach(button => button.onclick = async () => {
-    if (!confirm('断开这个账户并移除它同步到看板的日程和任务？原应用中的数据会保留。')) return;
+    if (!confirm('断开这个账户并移除它同步到看板的日程、任务和照片副本，同时收回照片的家庭共享与电视展示？原应用和 Google Photos 中的原始数据会保留。')) return;
     button.disabled = true;
     try { await accountViewCheck(context, button); await write('/accounts/' + encodeURIComponent(button.dataset.accountDisconnect), 'DELETE'); await accountViewCheck(context, button); await refresh(true); await accountViewCheck(context, button); await accountsModal(); toast('已断开账户绑定'); }
     catch (error) { toast(error.message, true); button.disabled = false; }

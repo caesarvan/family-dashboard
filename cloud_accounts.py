@@ -47,6 +47,23 @@ PROVIDERS = {
     },
 }
 
+GOOGLE_PHOTOS_SCOPE = 'https://www.googleapis.com/auth/photospicker.mediaitems.readonly'
+
+
+def photos_allowed(provider, scope):
+    """Only a recorded, explicit Picker grant enables the photos capability."""
+    return provider == 'google' and isinstance(scope, str) and GOOGLE_PHOTOS_SCOPE in scope.split()
+
+
+def google_sync_capabilities(scope):
+    """Permissions whose loss would break an existing Google sync connection."""
+    missing = missing_sync_permissions('google', scope)
+    return {
+        'calendar_read': 'https://www.googleapis.com/auth/calendar.readonly' not in missing,
+        'calendar_write': calendar_write_allowed('google', scope),
+        'tasks': task_write_allowed('google', scope),
+    }
+
 
 def stamp():
     return datetime.now(timezone.utc).isoformat(timespec='seconds')
@@ -238,7 +255,7 @@ class CloudAccounts:
                  'loginUrl': f'/auth/{p}/login', 'callbackUrl': self.origin + f'/auth/{p}/callback'}
                 for p, cfg in PROVIDERS.items()]
 
-    def authorize(self, provider, mode, user=None, calendar_write=False, account_id=None):
+    def authorize(self, provider, mode, user=None, calendar_write=False, account_id=None, photos=False):
         client_id, secret = self.credentials(provider)
         if not client_id or not secret:
             raise ProviderError('该平台等待管理员配置，请查看账号接入指南', 503)
@@ -248,6 +265,14 @@ class CloudAccounts:
             account = self.account(account_id, user['id'])
             if account['provider'] != provider:
                 raise ProviderError('账户平台不匹配', 400)
+        target = None
+        if photos:
+            if provider != 'google' or mode != 'bind' or not user or calendar_write:
+                raise ProviderError('请单独发起 Google 照片授权', 400)
+            if account_id is not None:
+                target = self.account(account_id, user['id'])
+                if target['provider'] != provider or target['client_id'] != client_id:
+                    raise ProviderError('请使用当前应用的本人 Google 账户', 400)
         verifier, state = secrets.token_urlsafe(48), secrets.token_urlsafe(32)
         auth_context = self.app.extensions['member_sessions'].oauth_context(mode)
         browser = session.setdefault('oauth_browser', secrets.token_urlsafe(32))
@@ -256,17 +281,27 @@ class CloudAccounts:
             self.app.extensions['member_sessions'].validate_context(con, auth_context, member=mode != 'login')
             auth_context['accounts'] = [dict(r) for r in con.execute(
                 'SELECT id,owner,provider,client_id,subject FROM cloud_accounts WHERE provider=? AND client_id=?', (provider, client_id))]
+            if target:
+                expected = {k: target[k] for k in ('id', 'owner', 'provider', 'client_id', 'subject')}
+                if expected not in auth_context['accounts']:
+                    raise ProviderError('账户已变更，请重新发起照片授权', 409)
+                auth_context['photosAccount'] = expected
             con.execute('DELETE FROM cloud_oauth_states WHERE expires<?', (time.time(),))
             if calendar_write and con.execute("SELECT count(*) FROM cloud_oauth_states WHERE owner=? AND mode LIKE 'bind_write:%'", (user['id'],)).fetchone()[0] >= 20:
                 raise ProviderError('授权请求过多，请完成已有授权或稍后再试', 429)
+            if photos and con.execute("SELECT count(*) FROM cloud_oauth_states WHERE owner=? AND mode LIKE 'bind_photos%'", (user['id'],)).fetchone()[0] >= 20:
+                raise ProviderError('授权请求过多，请完成已有授权或稍后再试', 429)
+            state_mode = 'bind_write:' + account_id if calendar_write else mode
+            if photos:
+                state_mode = 'bind_photos' + (':' + account_id if account_id else '')
             con.execute('INSERT INTO cloud_oauth_states '
                         '(state_hash,browser_hash,provider,mode,owner,auth_version,verifier,client_id,expires,auth_context) '
                         'VALUES(?,?,?,?,?,?,?,?,?,?)',
                         (hashlib.sha256(state.encode()).hexdigest(), hashlib.sha256(browser.encode()).hexdigest(), provider,
-                         'bind_write:' + account_id if calendar_write else mode, user['id'] if user else None, user['auth_version'] if user else None,
+                         state_mode, user['id'] if user else None, user['auth_version'] if user else None,
                          self.encrypt(verifier), client_id, time.time()+600, json.dumps(auth_context)))
         cfg = PROVIDERS[provider]
-        scopes = cfg['basic'] + (cfg['sync'] if mode == 'bind' else [])
+        scopes = cfg['basic'] + ([GOOGLE_PHOTOS_SCOPE] if photos else cfg['sync'] if mode == 'bind' else [])
         if calendar_write:
             scopes = scopes + (['Calendars.ReadWrite'] if provider == 'microsoft' else ['https://www.googleapis.com/auth/calendar.events'])
         params = {'client_id': client_id, 'redirect_uri': self.origin + f'/auth/{provider}/callback',
@@ -340,6 +375,38 @@ class CloudAccounts:
                 raise ProviderError('账号不存在或不属于当前成员', 404)
             return dict(row)
 
+    def media_account_transition(self, con, before, *, tokens=None, identity=None, reauth=False):
+        """Media withdrawal shares the account writer's existing transaction.
+
+        A normal refresh retains omitted scope on the same grant. An explicit
+        new grant without Picker permission is different from a transient API
+        failure. This hook never performs network I/O or commits caller work.
+        """
+        media = self.app.extensions.get('household_media')
+        if media is None or before is None:
+            return
+        if not con.in_transaction:
+            raise RuntimeError('Account media transition requires a transaction')
+        reason = None
+        if identity is not None and any(before[key] != identity.get(key) for key in ('owner','provider','client_id','subject')):
+            reason = 'identity_changed'
+        elif tokens is not None:
+            previous_scope = None
+            readable = True
+            try:
+                previous_scope = self.decrypt(before['tokens']).get('scope')
+            except ProviderError:
+                readable = False
+            if not readable:
+                reason = 'reauth'
+            elif photos_allowed(before['provider'], previous_scope) and not photos_allowed(before['provider'], tokens.get('scope')):
+                reason = 'scope_revoked' if isinstance(tokens.get('scope'), str) else 'reauth'
+        if reason is None and reauth:
+            reason = 'reauth'
+        if reason:
+            media.on_account_authority_changed(con, before['id'], reason)
+            con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
+
     def active_provider(self, account):
         client_id, secret = self.credentials(account['provider'])
         if not secret or client_id != account['client_id']:
@@ -354,8 +421,77 @@ class CloudAccounts:
                                                            'client_id': client_id, 'client_secret': secret})
             tokens.update(fresh)
             with self.db() as con:
+                con.execute('BEGIN IMMEDIATE')
+                current = con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account['id'],)).fetchone()
+                if not current or any(current[k] != account[k] for k in ('owner','provider','client_id','subject','tokens','needs_reauth')):
+                    raise ProviderError('账户授权已变更，请重试', 409)
+                self.media_account_transition(con, current, tokens=tokens)
                 con.execute('UPDATE cloud_accounts SET tokens=? WHERE id=?', (self.encrypt(tokens), account['id']))
         return self.provider(account['provider'], tokens['access_token'])
+
+    def photos_access_token(self, account_id, owner):
+        """Server-only credential access; caller must authorize its own operation.
+
+        The caller supplies the authenticated owner in this household. This
+        lock/ownership check is not a member-session or media-write transaction.
+        Never serialize the returned credential in an HTTP response or log.
+        """
+        if not isinstance(owner, str) or not owner or not isinstance(account_id, str) or not account_id:
+            raise ProviderError('账号不存在或不属于当前成员', 404)
+        self.account(account_id, owner)
+        with self.lock(account_id):
+            account = self.account(account_id, owner)
+            client_id, secret = self.credentials('google')
+            if account['provider'] != 'google':
+                raise ProviderError('此账户不支持 Google 照片', 403)
+            if not secret or account['client_id'] != client_id or account['needs_reauth']:
+                raise ProviderError('账号需要重新授权', 401, reauth=True)
+            tokens = self.decrypt(account['tokens'])
+            if not photos_allowed('google', tokens.get('scope')):
+                raise ProviderError('请先明确授权 Google 照片选择器', 403)
+            fresh = None
+            if tokens.get('expires_at', 0) < time.time()+60:
+                refresh = tokens.get('refresh_token')
+                if not isinstance(refresh, str) or not refresh:
+                    raise ProviderError('缺少离线授权，请重新绑定', 401, reauth=True)
+                # No scope is requested: RFC 6749 sections 5.1/6 permit an
+                # omitted response scope to retain this same grant's scope.
+                fresh = self.token_request('google', {'grant_type': 'refresh_token', 'refresh_token': refresh,
+                                                      'client_id': client_id, 'client_secret': secret})
+                if 'refresh_token' in fresh and (not isinstance(fresh['refresh_token'], str) or not fresh['refresh_token']):
+                    raise ProviderError('授权响应无效，请重新授权', 502)
+            with self.db() as con:
+                con.execute('BEGIN IMMEDIATE')
+                current = con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account_id,)).fetchone()
+                if not current or current['owner'] != owner:
+                    raise ProviderError('账号不存在或不属于当前成员', 404)
+                # Also reject out-of-band replacement/revocation while the
+                # refresh HTTP request was in flight, even if a writer ignored
+                # the account lock. Ciphertext equality binds the refresh grant.
+                if any(current[k] != account[k] for k in ('provider', 'client_id', 'subject', 'tokens', 'needs_reauth')) or self.credentials('google') != (client_id, secret):
+                    raise ProviderError('账户授权已变更，请重试', 409)
+                if fresh is not None:
+                    tokens.update(fresh)
+                    self.media_account_transition(con, current, tokens=tokens)
+                    con.execute('UPDATE cloud_accounts SET tokens=? WHERE id=? AND owner=?',
+                                (self.encrypt(tokens), account_id, owner))
+            # Persist an explicitly reduced grant before rejecting use, so the
+            # public capability cannot continue to claim a revoked permission.
+            if not photos_allowed('google', tokens.get('scope')):
+                raise ProviderError('照片权限未获授权，请重新连接照片', 403)
+            return tokens['access_token']
+
+    def sync_provider(self, account):
+        """Do not present a photo-only grant as calendar/task authorization."""
+        def check(current):
+            if current['provider'] == 'google':
+                tokens = self.decrypt(current['tokens'])
+                if 'scope' in tokens and missing_sync_permissions('google', tokens['scope']):
+                    raise ProviderError('请单独授权日历和待办后再选择同步来源', 403)
+        check(account)
+        provider = self.active_provider(account)
+        check(self.account(account['id'], account['owner']))
+        return provider
 
     @staticmethod
     def source_json(row):
@@ -370,8 +506,18 @@ class CloudAccounts:
         with self.db() as con:
             result = []
             for a in con.execute('SELECT * FROM cloud_accounts WHERE owner=? ORDER BY provider,name', (owner,)):
+                unreadable = False
+                try:
+                    tokens = self.decrypt(a['tokens'])
+                    photos = photos_allowed(a['provider'], tokens.get('scope'))
+                    # Legacy grants without a recorded scope retain discovery;
+                    # explicit photo-only grants never masquerade as sync.
+                    sync = 'scope' not in tokens or not missing_sync_permissions(a['provider'], tokens.get('scope'))
+                except ProviderError:
+                    photos, sync, unreadable = False, False, True
                 result.append({'id': a['id'], 'provider': a['provider'], 'name': a['name'], 'email': a['email'],
-                               'needsReauth': bool(a['needs_reauth'] or self.credentials(a['provider'])[0] != a['client_id']),
+                               'needsReauth': bool(unreadable or a['needs_reauth'] or self.credentials(a['provider'])[0] != a['client_id']),
+                               'capabilities': {'photos': photos, 'sync': sync},
                                'sources': [self.source_json(s) for s in con.execute('SELECT * FROM cloud_sources WHERE account_id=?', (a['id'],))]})
             return result
 
@@ -393,7 +539,7 @@ class CloudAccounts:
         self.account(account_id, owner)
         with self.lock(account_id):
             account = self.account(account_id, owner)
-            sources = self.active_provider(account).list_sources()
+            sources = self.sync_provider(account).list_sources()
             with self.db() as con:
                 selected = [self.source_json(s) for s in con.execute('SELECT * FROM cloud_sources WHERE account_id=?', (account_id,))]
             return {'sources': sources, 'selected': selected}
@@ -413,7 +559,7 @@ class CloudAccounts:
         with self.lock(account_id):
             account = self.account(account_id, owner)
             # Empty selection can always remove stale mirrors, even after revocation.
-            discovered = self.active_provider(account).list_sources() if chosen else []
+            discovered = self.sync_provider(account).list_sources() if chosen else []
             available = {(s['kind'], s['id']): s for s in discovered}
             validated, seen = [], set()
             for entry in chosen:
@@ -463,11 +609,22 @@ class CloudAccounts:
                             con.execute('UPDATE entities SET data=?,revision=revision+1,updated_at=? WHERE id=?', (json.dumps(value), stamp(), entity['id']))
                 con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
 
-    def disconnect(self, account_id, owner):
+    def disconnect(self, account_id, owner, auth_context=None):
         self.account(account_id, owner)
         with self.lock(account_id):
             self.account(account_id, owner)
             with self.db() as con:
+                con.execute('BEGIN IMMEDIATE')
+                if auth_context is not None:
+                    current = self.app.extensions['member_sessions'].validate_context(con, auth_context, member=True)
+                    if current['owner'] != owner:
+                        raise ProviderError('登录状态已变化，请重新登录', 401)
+                account = con.execute('SELECT * FROM cloud_accounts WHERE id=? AND owner=?', (account_id, owner)).fetchone()
+                if not account:
+                    raise ProviderError('账号不存在或不属于当前成员', 404)
+                media = self.app.extensions.get('household_media')
+                if media is not None:
+                    media.on_account_removed(con, account_id)
                 for s in con.execute('SELECT id FROM cloud_sources WHERE account_id=?', (account_id,)).fetchall():
                     self.remove_source(con, s['id'])
                 con.execute('DELETE FROM cloud_accounts WHERE id=?', (account_id,))
@@ -544,7 +701,10 @@ class CloudAccounts:
         # Only local, sanitized error messages enter the shared state.
         message = '授权已失效，请账号拥有者重新绑定' if error.reauth else '同步暂时失败，保留上次内容并自动重试'
         with self.db() as con:
+            con.execute('BEGIN IMMEDIATE')
             if error.reauth:
+                account = con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account_id,)).fetchone()
+                self.media_account_transition(con, account, reauth=True)
                 con.execute('UPDATE cloud_accounts SET needs_reauth=1 WHERE id=?', (account_id,))
             rows = con.execute('SELECT * FROM cloud_sources WHERE account_id=?', (account_id,)).fetchall()
             changed = False
@@ -673,6 +833,18 @@ def register_accounts(app, db, Problem, body, require_member, limited):
         limited('oauth_bind', 20)
         return jsonify(url=engine.authorize(body().get('provider'), 'bind', g.actor))
 
+    @app.post('/api/accounts/google-photos/bind')
+    def bind_google_photos():
+        require_member()
+        if request.host_url.rstrip('/') != engine.origin:
+            raise Problem('请通过 ' + engine.origin + ' 登录后连接照片', 400)
+        value = body()
+        if set(value) - {'accountId'} or ('accountId' in value and
+                (not isinstance(value['accountId'], str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,128}', value['accountId']))):
+            raise Problem('照片授权仅接受可选的本人 accountId', 400)
+        limited('oauth_bind', 20)
+        return jsonify(url=engine.authorize('google', 'bind', g.actor, account_id=value.get('accountId'), photos=True))
+
     @app.get('/auth/<provider>/callback')
     def callback(provider):
         stage = 'state_validation'
@@ -685,6 +857,7 @@ def register_accounts(app, db, Problem, body, require_member, limited):
         state = engine.consume_state(provider, request.args.get('state'))
         if not state:
             return fail('invalid_state')
+        photos = state['mode'] == 'bind_photos' or state['mode'].startswith('bind_photos:')
         if request.args.get('error'):
             stage = 'authorization_return'
             return fail('provider_denied', OAuthFailure({'error': request.args.get('error'),
@@ -718,6 +891,11 @@ def register_accounts(app, db, Problem, body, require_member, limited):
             with engine.db() as con:
                 existing = con.execute('SELECT * FROM cloud_accounts WHERE provider=? AND client_id=? AND subject=?', (provider, client_id, subject)).fetchone()
             if state['mode'].startswith('bind_write:') and (not existing or existing['id'] != state['mode'].split(':', 1)[1]):
+                return fail('provider_error')
+            photos_target = auth_context.get('photosAccount') if photos else None
+            if photos and (provider != 'google' or (state['mode'].startswith('bind_photos:') and
+                    (not photos_target or not existing or existing['id'] != state['mode'].split(':', 1)[1] or
+                     any(existing[k] != photos_target.get(k) for k in ('id', 'owner', 'provider', 'client_id', 'subject'))))):
                 return fail('provider_error')
             if state['mode'] == 'login':
                 if not existing:
@@ -755,6 +933,8 @@ def register_accounts(app, db, Problem, body, require_member, limited):
                     return fail('already_bound')
                 if existing and existing['id'] != account_id:
                     return fail('provider_error')
+                if photos_target and (not existing or any(existing[k] != photos_target.get(k) for k in ('id', 'owner', 'provider', 'client_id', 'subject'))):
+                    return fail('bind_session_changed')
                 if not existing and con.execute('SELECT count(*) FROM cloud_accounts WHERE owner=?', (state['owner'],)).fetchone()[0] >= 4:
                     return fail('account_limit')
                 if existing and not tokens.get('refresh_token'):
@@ -762,22 +942,39 @@ def register_accounts(app, db, Problem, body, require_member, limited):
                 stage = 'offline_permission'
                 if not tokens.get('refresh_token'):
                     return fail('missing_refresh_token')
+                if photos and not isinstance(tokens['refresh_token'], str):
+                    return fail('missing_refresh_token')
                 stage = 'scope_validation'
-                if 'scope' in tokens:
+                if photos:
+                    if not photos_allowed(provider, tokens.get('scope')):
+                        return fail('insufficient_permissions', missing=['photos_picker'])
+                    if existing:
+                        previous_scope = engine.decrypt(existing['tokens']).get('scope')
+                        required = google_sync_capabilities(previous_scope)
+                        for source in con.execute('SELECT kind FROM cloud_sources WHERE account_id=?', (account_id,)):
+                            required['calendar_read' if source['kind'] == 'calendar' else 'tasks'] = True
+                        granted = google_sync_capabilities(tokens.get('scope'))
+                        lost = sorted(k for k in required if required[k] and not granted[k])
+                        if lost:
+                            return fail('insufficient_permissions', missing=lost)
+                elif 'scope' in tokens:
                     missing = missing_sync_permissions(provider, tokens['scope'])
                     if missing:
                         return fail('insufficient_permissions', missing=missing)
                 if state['mode'].startswith('bind_write:') and not calendar_write_allowed(provider, tokens.get('scope')):
                     return fail('insufficient_permissions', missing=['calendar_write'])
                 stage = 'account_save'
+                engine.media_account_transition(con, existing, tokens=tokens,
+                    identity={'owner':state['owner'],'provider':provider,'client_id':client_id,'subject':subject})
                 con.execute('''INSERT INTO cloud_accounts(id,owner,provider,client_id,subject,name,email,tokens)
                     VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET
                     name=excluded.name,email=excluded.email,tokens=excluded.tokens,needs_reauth=0''',
                     (account_id, state['owner'], provider, client_id, subject, str(identity.get('name') or PROVIDERS[provider]['name'])[:200],
                      str(identity.get('email') or '')[:254], engine.encrypt(tokens)))
-                con.execute("UPDATE cloud_sources SET next_attempt=0,error='',failures=0 WHERE account_id=?", (account_id,))
+                if not photos:
+                    con.execute("UPDATE cloud_sources SET next_attempt=0,error='',failures=0 WHERE account_id=?", (account_id,))
                 con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
-            return redirect(engine.origin + '/?auth=connected')
+            return redirect(engine.origin + '/?auth=' + ('photos-connected' if photos else 'connected'))
         except Problem:
             return fail('session_changed')
         except ProviderError as error:
@@ -815,7 +1012,9 @@ def register_accounts(app, db, Problem, body, require_member, limited):
 
     @app.delete('/api/accounts/<account_id>')
     def disconnect(account_id):
-        engine.disconnect(account_id, g.actor['id'])
+        require_member()
+        context, _ = members.capture(claim=False, member=True)
+        engine.disconnect(account_id, g.actor['id'], auth_context=context)
         return jsonify(ok=True)
 
     return engine

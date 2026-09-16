@@ -1,8 +1,16 @@
 # 部署、更新与恢复交接
 
-> **线上版本：2026-09-16 13:24:33（北京时间），镜像 `sha256:ea399441e6696bc29214842ab8c47e3db943714c1ae72a05ca1266bdc4a1b739`。** 完整账本分页、搜索和导入金额校验已通过 SOURCE 43→43 更新发布；258 源文件、43 Markdown、44 静态资源、107 方法／路径模板、43 张户内表及 2 张平台表。实际安装为同树 main `79faaf3`／integration `82f4401`；本次发布后的七份文档及文档检查器修订仅在本地交接，尚未同步服务器。 原件见 [VALIDATION](VALIDATION.md)。
+> **线上版本：2026-09-16 16:33:32（北京时间），镜像 `sha256:9cd092392b27d6e2342ab1890ff3514149416281fe130df62976b8b1488acac8`。** 旅行地图已完成 43→44 迁移发布；295 源文件、52 Markdown、47 静态资源、112 个方法／路径模板、44 张户内表及 2 张平台表。安装源码对应 main `6f3d978`／integration `cd857f5` 的同一文件树；本次发布后的交接文档尚未同步服务器。NVIDIA 已于同日 16:58 完成配置与真实模型草稿验证；真实用户全流程和电视验收仍分别记录。
 
-## 当前 43→43 SOURCE 更新
+## 当前地点版：已完成 43→44
+
+2026-09-16 16:33:32按 [地点发布流程](JOURNEY-PLACES-RELEASE.md) 上线，实际记录见 [VALIDATION](VALIDATION.md)。当前44户内表+2平台表；manifest `1a5990e0b7e500ed44986b979e413a8ba26c92bd6cf4c7757be429bed17e51d8`；发布目录 `/opt/family-dashboard-releases/journey-places-20260916T083232752975Z`。43→44不可重复执行，旧43→43 SOURCE不适用后续44表更新。
+
+候选源码须允许校验UID10001读取：本次根root:10001 0750、manifest 0640，其余源文件及祖先可读。仅调整非秘密源码路径，READY/evidence/原配置/备份保持私有，不递归放宽权限。原0700预检拒绝记录保留。停写、组备份、精确DDL和数据读回仍由固定controller执行。
+
+当前源码初始化44+2表，完整新机安装仍待单独验收。恢复算法保持，实际演练须显式选 `--profile journey_places44`，见 [恢复指导](RECOVERY-REHEARSAL.md)。NVIDIA 配置已于同日 16:58 独立启用：只新增 `ASSISTANT_PROVIDER`、`NVIDIA_MODEL`、`NVIDIA_API_KEY`，原镜像 no-build 有序重建 app/sync/web。旧 `.env` 原样 0600 备份位于 `/opt/family-dashboard/.env.assistant-backup-20260916T085405063887Z-04bea8ef39f84e6cb395db494622a4f0`；其他配置 record 原字节不变。仅配置回退须先核对现环境未被后续变更，再恢复配对备份并重建服务，不恢复数据库；此回退未实际执行。下方旧版本操作仅作历史追溯。
+
+## 历史 13:24 的 43→43 SOURCE 更新
 
 本次通过 [SOURCE-RELEASE](SOURCE-RELEASE.md) 的 `source-update` 入口更新一项既有根 Python 和三项静态文件。安装 Git 树 `e627bb843bcf84024b097eaa5e486d98d437c17f`，manifest `7089ca8899929ec8eee8b705547943c697b21c684014855f92b7f5ca4fa8fb42`；BASE 为 Git `54c0854` 的 255 文件，原 manifest `169c9621…` 保留。镜像 `sha256:ea399441e6696bc29214842ab8c47e3db943714c1ae72a05ca1266bdc4a1b739` 通过 Linux 后端 435 项、工具 275 项和真实双户演练后，完成实际单户／2 库备份、三阶段 43+2 全数据比较及读回。原配置保持，未初始化 schema 或恢复数据库；新三服务运行且 app 健康，随后独立核验全部 258 源文件与 HTTPS。原件与范围见 [VALIDATION](VALIDATION.md)。
 
