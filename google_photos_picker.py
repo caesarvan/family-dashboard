@@ -35,6 +35,7 @@ _MESSAGES = {
     'invalid_token': 'Google Photos 授权凭据不可用，请重新授权。',
     'reauth': 'Google Photos 授权已失效，请重新授权。',
     'forbidden': 'Google Photos 选择会话无权访问或已过期。',
+    'api_disabled': 'Google Photos Picker API 尚未启用。请联系应用维护者启用后，再重新选片；无需重复授权。',
     'not_found': 'Google Photos 选择会话或媒体不可访问。',
     'not_ready': '请先完成 Google Photos 选择，或等待视频处理完成。',
     'rate_limited': 'Google Photos 请求暂时受限，请稍后由原流程重试。',
@@ -56,7 +57,7 @@ class PickerError(Exception):
     def __init__(self, code, *, outcome_unknown=False):
         self.code = code
         self.message = _MESSAGES[code]
-        self.status = {'invalid_input':400,'invalid_token':401,'reauth':401,'forbidden':403,
+        self.status = {'invalid_input':400,'invalid_token':401,'reauth':401,'forbidden':403,'api_disabled':503,
                        'not_found':404,'not_ready':409,'not_selected':409,'expired':410,
                        'rate_limited':429,'too_large':413,'selection_limit':413,
                        'unsupported_media':415}.get(code,502)
@@ -223,6 +224,40 @@ class GooglePhotosPicker:
     def __exit__(self, *_args):
         self.close()
 
+    def _permission_code(self, response, url, deadline):
+        # Error bodies are untrusted. Inspect only a bounded ErrorInfo allowlist;
+        # never expose its message, project, activation URL or other metadata.
+        try:
+            if (response.geturl()!=url or _header(response,'Content-Encoding').lower() not in ('','identity')
+                    or _header(response,'Content-Type').split(';',1)[0].strip().lower()!='application/json'):
+                return 'forbidden'
+            chunks, size, limit = [], 0, 64*1024
+            while True:
+                if time.monotonic()>=deadline:
+                    return 'forbidden'
+                chunk = response.read1(min(4096,limit+1-size))
+                if time.monotonic()>=deadline or not isinstance(chunk,bytes):
+                    return 'forbidden'
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size>limit:
+                    return 'forbidden'
+                chunks.append(chunk)
+            error = _json(b''.join(chunks),self._token).get('error')
+            if (not isinstance(error,dict) or type(error.get('code')) is not int or error['code']!=403
+                    or error.get('status')!='PERMISSION_DENIED' or not isinstance(error.get('details'),list)):
+                return 'forbidden'
+            for detail in error['details']:
+                if (isinstance(detail,dict) and detail.get('@type')=='type.googleapis.com/google.rpc.ErrorInfo'
+                        and detail.get('domain')=='googleapis.com' and detail.get('reason')=='SERVICE_DISABLED'
+                        and isinstance(detail.get('metadata'),dict)
+                        and detail['metadata'].get('service')=='photospicker.googleapis.com'):
+                    return 'api_disabled'
+        except Exception:
+            pass
+        return 'forbidden'
+
     def _request(self, method, url, *, body=None, limit=JSON_LIMIT, media=False, deadline=None):
         if not self._token:
             raise PickerError('invalid_token')
@@ -242,6 +277,8 @@ class GooglePhotosPicker:
             status = response.status
             if type(status) is not int:
                 raise PickerError('bad_response')
+            if status==403 and not media:
+                raise PickerError(self._permission_code(response,url,deadline))
             self._status(status)
             if response.geturl()!=url:
                 raise PickerError('redirect')
@@ -276,6 +313,8 @@ class GooglePhotosPicker:
             return b''.join(chunks),mime,status
         except HTTPError as error:
             try:
+                if error.code==403 and not media:
+                    raise PickerError(self._permission_code(error,url,deadline))
                 self._status(error.code)
                 raise PickerError('bad_response')
             except PickerError as safe:

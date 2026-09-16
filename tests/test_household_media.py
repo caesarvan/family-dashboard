@@ -517,6 +517,39 @@ def test_worker_reauth_marks_account_and_blocks_new_import(env):
     assert c.post('/api/media/imports',json=value,headers=h).status_code==409
 
 
+@pytest.mark.parametrize('code',['api_disabled','forbidden','reauth','invalid_token'])
+def test_picker_error_preserves_only_disabled_service_existing_authority(env,code):
+    c,h,item=saved(env);item=share(c,h,item)
+    uid,tv,_=device(env)
+    endpoint='/api/media/items/'+item['id']
+    assert c.put(endpoint+'/tv-grants',json={'revision':item['revision'],'deviceIds':[uid],
+        'consentVersion':'media-v1','allowTvDisplay':True},headers=h).status_code==200
+    other,_=login(env[0],2)
+    c,h,imported,request_value=create(env)
+    job=env[1].claim_next();assert job['action']=='create'
+    assert env[1].fail(job,code,reauth=code in ('reauth','invalid_token'))
+    result=c.get('/api/media/imports/'+imported['id']).json['import']
+    with env[1].transaction() as con:
+        needs_reauth=con.execute('SELECT needs_reauth FROM cloud_accounts WHERE id=?',(env[3][1],)).fetchone()[0]
+        grant_count=con.execute('SELECT count(*) FROM media_tv_grants WHERE media_id=?',(item['id'],)).fetchone()[0]
+    if code=='api_disabled':
+        assert result['state']=='failed' and result['error']['code']=='api_disabled'
+        assert '无需重复授权' in result['error']['message']
+        assert needs_reauth==0 and grant_count==1
+        assert other.get(endpoint).status_code==200 and tv.get('/api/media-tv/items').json['items'][0]['id']==item['id']
+        assert env[1].claim_next() is None  # no automatic second create
+        replay=c.post('/api/media/imports',json=request_value,headers=h)
+        assert replay.status_code==200 and replay.json['import']['state']=='failed'
+        assert env[1].claim_next() is None
+        fresh=dict(request_value,requestId=secrets.token_hex(16))
+        assert c.post('/api/media/imports',json=fresh,headers=h).status_code==202
+    else:
+        assert result['state']=='cancelled' and result['error']['code']=='reauth'
+        assert needs_reauth==int(code in ('reauth','invalid_token')) and grant_count==0
+        assert other.get(endpoint).status_code==404 and tv.get('/api/media-tv/items').json['items']==[]
+    assert c.get(endpoint+'/preview').status_code==200  # confirmed owner copy retained
+
+
 def test_factory_media_tables_and_hooks_require_transaction(env):
     with env[1].sessions.db() as con:
         names={r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'media_%'")}
