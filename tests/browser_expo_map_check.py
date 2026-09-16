@@ -457,14 +457,18 @@ def main():
                 button(page, '查看旅行').click()
                 expect(button(page, '返回足迹地图')).to_be_enabled()
                 expect(page.get_by_text('旅行详情', exact=True)).to_be_visible()
-                expect(page.get_by_text('合成山海旅行', exact=True).filter(visible=True)).to_be_visible()
+                expect(page.get_by_role('heading', name='合成山海旅行', exact=True)).to_be_visible()
                 button(page, '返回足迹地图').click()
                 expect(button(page, '查看旅行照片')).to_be_enabled()
                 assert urlsplit(page.url).path == '/app/map'
                 pending_travel = []
+                hold_travel_reads = [True]
 
                 def hold_travel(handler):
-                    pending_travel.append((handler, handler.fetch()))
+                    if hold_travel_reads[0]:
+                        pending_travel.append((handler, handler.fetch()))
+                    else:
+                        handler.continue_()
 
                 page.route('**/api/journeys', hold_travel)
                 button(page, '查看旅行').click()
@@ -474,11 +478,12 @@ def main():
                     page.wait_for_timeout(30)
                 assert pending_travel
                 expect(button(page, '返回足迹地图')).to_be_enabled()
-                page.unroute('**/api/journeys', hold_travel)
+                hold_travel_reads[0] = False
                 button(page, '返回足迹地图').click()
                 expect(button(page, '查看旅行照片')).to_be_enabled()
                 for handler, response in pending_travel:
                     handler.fulfill(response=response)
+                page.unroute('**/api/journeys', hold_travel)
                 expect(page.get_by_text('旅行详情', exact=True)).to_have_count(0)
                 expect(button(page, '查看旅行照片')).to_be_enabled()
                 passed('photo/travel returns preserve all filters and selected ID with fresh reads; returning during held genuine travel read remains available and fences late response')
@@ -540,14 +545,17 @@ def main():
                     assert_layout(page, width, 'map-overview')
                     button(page, '打开地点：' + screenshot_place['name']).click()
                     expect(button(page, '查看旅行照片')).to_be_enabled()
+                    button(page, '查看旅行照片').scroll_into_view_if_needed()
                     assert_layout(page, width, 'map-detail')
                     button(page, '编辑地点').click()
                     expect(page.get_by_role('textbox', name='地点名称', exact=True)).to_be_visible()
+                    page.get_by_role('textbox', name='地点名称', exact=True).scroll_into_view_if_needed()
                     assert_layout(page, width, 'map-editor')
                     button(page, '取消编辑').click()
                     button(page, '放弃编辑').click()
                     button(page, '查看旅行照片').click()
                     expect(photos(page)).to_have_count(24)
+                    button(page, '返回地图').scroll_into_view_if_needed()
                     assert_layout(page, width, 'trip-photos')
                     button(page, '返回地图').click()
                     expect(button(page, '查看旅行照片')).to_be_enabled()
