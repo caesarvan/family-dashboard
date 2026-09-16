@@ -150,7 +150,9 @@ function MapWorkspace(props: Props & { identityKey: string }) {
     finally { if (ticket === generation.current) { working.current = false; if (current() && showBusy) setBusy(false); } }
   }
   function change(patch: Partial<PlaceDraft>) {
-    if (locked || working.current) return;
+    // Permission polling keeps its request lock but never replaces the draft.
+    // Allow normal input while that background read is in flight.
+    if (locked) return;
     setDraft(value => value ? { ...value, ...patch, ...(['name', 'country', 'city', 'latitude', 'longitude', 'startDate', 'endDate', 'journeyId', 'status'].some(key => key in patch) ? { confirmed: false } : {}) } : null);
   }
   function begin(placeToEdit?: Place) {
