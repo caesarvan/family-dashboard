@@ -664,7 +664,8 @@ class Run:
             # Advance the real token validator's clock, never substitute a response.
             from itsdangerous.timed import TimestampSigner
             original_clock = TimestampSigner.get_timestamp
-            with patch.object(TimestampSigner, 'get_timestamp', lambda signer: original_clock(signer) + 1300):
+            with patch.object(TimestampSigner, 'get_timestamp', lambda signer: original_clock(signer)
+                + (1300 if signer.salt == b'household-finance-preview-v1' else 0)):
                 with page.expect_response(lambda response: urlsplit(response.url).path == BASE + '/imports/confirm') as expired:
                     button(page, '使用原请求重试').click()
                 assert expired.value.status == 400
