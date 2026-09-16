@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-16T09:41:44.218414+00:00",
+  "generatedAt": "2026-09-16T11:02:25.230695+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -73,6 +73,12 @@
       "path": "/api/assistant/plans/<uid>/apply",
       "source": "home_assistant.py",
       "endpoint": "apply_plan"
+    },
+    {
+      "method": "GET",
+      "path": "/api/assistant/search",
+      "source": "home_assistant.py",
+      "endpoint": "search"
     },
     {
       "method": "GET",
@@ -343,6 +349,84 @@
       "path": "/api/finance-hub/transactions/<rid>",
       "source": "finance_hub.py",
       "endpoint": "hub_patch_transaction"
+    },
+    {
+      "method": "GET",
+      "path": "/api/inventory/acquisitions/<uid>",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_acquisition"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/inventory/acquisitions/<uid>",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_acquisition"
+    },
+    {
+      "method": "GET",
+      "path": "/api/inventory/acquisitions/<uid>/movements",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_movements"
+    },
+    {
+      "method": "POST",
+      "path": "/api/inventory/acquisitions/<uid>/movements",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_movements"
+    },
+    {
+      "method": "POST",
+      "path": "/api/inventory/acquisitions/<uid>/movements/<movement_id>/reverse",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_reverse"
+    },
+    {
+      "method": "GET",
+      "path": "/api/inventory/items",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_items"
+    },
+    {
+      "method": "POST",
+      "path": "/api/inventory/items",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_items"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/inventory/items/<uid>",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_item"
+    },
+    {
+      "method": "GET",
+      "path": "/api/inventory/items/<uid>",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_item"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/inventory/items/<uid>",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_item"
+    },
+    {
+      "method": "GET",
+      "path": "/api/inventory/items/<uid>/acquisitions",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_acquisitions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/inventory/items/<uid>/acquisitions",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_acquisitions"
+    },
+    {
+      "method": "GET",
+      "path": "/api/inventory/operations/<request_id>",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_operation"
     },
     {
       "method": "POST",
@@ -2094,6 +2178,376 @@
       },
       {
         "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "inventory_acquisitions": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "item_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_by",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "shopping_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "ordered_qty",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "order_state",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "ordered_on",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "expected_on",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "warranty_until",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "after_sales_state",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "note",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "deleted_at",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
+    "inventory_items": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "visibility",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "title",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "variant",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "unit",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "location",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "reorder_point",
+        "type": "INTEGER",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "deleted_at",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
+    "inventory_movements": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "item_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "acquisition_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "actor",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "delta_qty",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "occurred_on",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "reason",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "reverses_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "inventory_operations": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "actor",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "payload_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "operation",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "item_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "acquisition_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "inventory_source_links": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "acquisition_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "order_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "line_key",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "settlement_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
         "type": "TEXT",
         "notNull": true,
         "primaryKey": false

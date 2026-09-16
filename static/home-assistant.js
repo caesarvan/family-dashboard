@@ -1,6 +1,8 @@
 /* Shared-record action desk. Context stays in this tab and never enters localStorage. */
 window.HomeAssistant = (() => {
   let state = null, bridge = null, observer = null, busy = false, sequence = 0, journeySequence = 0;
+  let previewUrl = null, sourceTimer = null, sourceExpiry = null, sourceEpoch = 0;
+  const sourceKinds = new Set(['media', 'places']);
   const allowedKinds = new Set(['tasks', 'shopping', 'events', 'trips']);
   const identity = actor => actor?.role === 'member' ? `${actor.householdId || 'default'}:${actor.id}` : '';
   const active = () => !!document.querySelector('#assistant-workspace');
@@ -12,9 +14,10 @@ window.HomeAssistant = (() => {
   const currentItem = (kind, id) => itemIn(state?.shared, kind, id);
   const sameContext = current => state === current && identity(user) === current.identity && csrf === current.csrf && canEdit();
   const explicitListCommand = prompt => /^(?:添加|新增|创建)?\s*(?:待办|任务|采购|购物|搜索|查找)\s*[：:]/.test(prompt.trimStart());
-  const requestsJourney = prompt => !explicitListCommand(prompt)
+  const isSearch = prompt => /^(?:搜索|查找|找一下)/.test(prompt.trimStart());
+  const requestsJourney = prompt => !isSearch(prompt) && !explicitListCommand(prompt)
     && (state?.journeyIntent || /旅行|旅游|行程|出发日期|返程日期/.test(prompt));
-  const submitLabel = prompt => requestsJourney(prompt)
+  const submitLabel = prompt => isSearch(prompt) ? '搜索本地记录' : requestsJourney(prompt)
     ? (state?.journeyDraft ? '按当前文字重新整理' : '整理旅行简报') : '生成可审阅方案';
 
   function blank() {
@@ -22,7 +25,14 @@ window.HomeAssistant = (() => {
       includeContext: false, draft: null, selected: [], applied: null, notice: '', error: '',
       submittedTasks: new Set(), composerOpen: true, visible: true, journeyDraft: null, journeyIntent: false};
   }
+  function clearSource() {
+    sourceEpoch++; clearTimeout(sourceTimer); clearTimeout(sourceExpiry); sourceTimer = sourceExpiry = null;
+    if (previewUrl) URL.revokeObjectURL(previewUrl); previewUrl = null;
+    document.querySelector('#assistant-source-preview')?.remove();
+    if (state) state.sourceDetail = null;
+  }
   function clear() {
+    clearSource();
     sequence++; journeySequence++; state = null; bridge = null; busy = false;
     observer?.disconnect(); observer = null;
   }
@@ -42,7 +52,11 @@ window.HomeAssistant = (() => {
   async function verify(current) {
     // A late request owns only its captured context, never a newer open/session.
     if (state !== current) throw new Error('这次读取已被新的助理页面替代');
-    const me = await api('/me');
+    let me;
+    try { me = await api('/me'); } catch (error) {
+      if (state === current && [401,403].includes(error.status)) expired();
+      throw error;
+    }
     if (state !== current) throw new Error('这次读取已被新的助理页面替代');
     if (!sameContext(current) || identity(me.user) !== current.identity || me.csrf !== current.csrf) {
       expired(); throw new Error('登录状态已变化，请重新打开家庭助理');
@@ -50,9 +64,16 @@ window.HomeAssistant = (() => {
   }
   async function load(current) {
     await verify(current);
+    const search = current.draft?.search; clearSource();
+    if (search) current.draft = null;
     // These are shared endpoints; never query private finance or account data.
     const [brief, shared] = await Promise.all([api('/assistant/brief'), api('/state')]);
     await verify(current);
+    if (search) {
+      const result = await api('/assistant/search?' + new URLSearchParams({q:search.query,limit:search.limit,offset:search.offset}));
+      await verify(current);
+      current.draft = {id:null,actions:[],mode:'local',summary:`找到 ${result.total} 条当前可见记录。`,matches:result.matches,search:result};
+    }
     current.brief = brief; current.shared = shared; current.loadedAt = new Date();
     current.submittedTasks.clear();
   }
@@ -94,13 +115,84 @@ window.HomeAssistant = (() => {
     const draft = state.draft;
     if (!draft) return '';
     const created = state.applied?.created || [];
-    return `<section class="assistant-answer"><span class="pill">${draft.mode === 'model' ? 'AI 建议' : '本地规划'} · ${state.applied ? '已提交' : '待确认'}</span><p class="assistant-summary">${esc(draft.summary)}</p>
-      ${draft.matches.map(item => allowedKinds.has(item.kind) ? `<div class="assistant-search-record">${action('visit', esc(item.title), targetAttrs(item.kind, item.id))}<small>${esc(item.start || item.due || '')}</small></div>` : '').join('')}
+    return `<section class="assistant-answer"><span class="pill">${draft.search ? '本地搜索 · 只读结果' : (draft.mode === 'model' ? 'AI 建议' : '本地规划') + ' · ' + (state.applied ? '已提交' : '待确认')}</span><p class="assistant-summary">${esc(draft.summary)}</p>
+      ${draft.matches.map(item => allowedKinds.has(item.kind) || sourceKinds.has(item.kind) ? `<div class="assistant-search-record">${action(sourceKinds.has(item.kind) ? 'source' : 'visit', esc(item.title), targetAttrs(item.kind, item.id))}<small>${esc(item.kind === 'media' ? '照片说明' : item.kind === 'places' ? '地图地点' : item.start || item.due || '')}${item.journey ? ' · ' + esc(item.journey.title) : ''}</small></div>` : '').join('')}
+      ${draft.search ? `<p class="help">本地搜索 · 当前可见 ${draft.search.total} 条 · 第 ${Math.floor(draft.search.offset / draft.search.limit) + 1} 页。不会把搜索词或结果发送给模型。</p>${draft.search.offset ? action('search-page', '上一页', `data-offset="${Math.max(0,draft.search.offset-draft.search.limit)}"`) : ''}${draft.search.nextOffset != null ? action('search-page', '下一页', `data-offset="${draft.search.nextOffset}"`) : ''}` : ''}
+      ${sourceMarkup()}
       ${draft.actions.length ? `<h3>${state.applied ? '本次创建结果' : '准备创建'}</h3>${draft.actions.map((item, index) => `<label class="assistant-action"><input type="checkbox" data-plan-index="${index}" ${state.selected.includes(index) ? 'checked' : ''} ${state.applied ? 'disabled' : ''}><span><strong>${esc(item.data.title)}</strong><small>${item.kind === 'tasks' ? '待办' : '采购'} · ${esc(person(item.data.owner))}${item.data.due ? ' · ' + esc(item.data.due) : ''}</small></span></label>`).join('')}
       <p class="help">创建到本家庭共享清单。不会发送消息、下单或执行转账。</p><button class="btn" id="assistant-apply" data-assistant-action="apply" ${state.applied ? 'disabled' : ''}>${state.applied ? `已创建 ${created.length} 项` : '确认创建选中事项'}</button>` : ''}
       ${created.map(item => `<div class="assistant-created">${action('visit', `查看 ${esc(item.title)}`, targetAttrs(item.kind, item.id))}</div>`).join('')}
       ${created.some(item => item.kind === 'tasks') && window.TaskPublish ? action('publish', '将这些待办同步到主清单', 'id="assistant-publish-tasks"') : ''}</section>`;
   }
+  function sourceMarkup() {
+    const item = state.sourceDetail;
+    if (!item) return '';
+    return `<article class="assistant-readonly" id="assistant-source-detail"><h3>${esc(item.title)}</h3><p>${esc(item.description)}</p>${item.journey ? `<p>关联旅行 · ${esc(item.journey.title)}</p>` : ''}${previewUrl ? `<img id="assistant-source-preview" src="${esc(previewUrl)}" alt="精选照片展示副本" style="max-width:100%;max-height:360px;object-fit:contain">` : ''}<p class="help">仅展示当前仍有权读取的内容。地图坐标请在地图中查看。</p>${action('source-page', item.kind === 'media' ? '打开家庭相册' : '打开足迹地图')}${action('source-close','收起详情')}</article>`;
+  }
+  async function searchPage(offset) {
+    const current = state, search = current.draft?.search;
+    if (!search || !Number.isInteger(offset) || offset < 0 || offset > 20000) return;
+    clearSource(); await verify(current);
+    try {
+      const result = await api('/assistant/search?' + new URLSearchParams({q:search.query,limit:search.limit,offset}));
+      await verify(current);
+      current.draft = {...current.draft, matches:result.matches, search:result}; render();
+    } catch (error) { if (state === current) { current.draft = null; render(); } throw error; }
+  }
+  async function visitSource(kind, id) {
+    const current = state;
+    if (!sourceKinds.has(kind) || !/^[a-f0-9]{24}$/.test(id) || !current.draft?.matches.some(item=>item.kind===kind && item.id===id)) return;
+    clearSource(); const epoch = sourceEpoch;
+    const valid = () => state === current && sameContext(current) && sourceEpoch === epoch && current.visible && active() && !document.hidden;
+    const route = kind === 'media' ? '/media/items/' : '/journey-places/';
+    async function readDetail() {
+      await verify(current);
+      const result = await api(route + id); await verify(current);
+      if (!valid()) throw new Error('详情已关闭，请重新打开');
+      return kind === 'media' ? result.item : result.place;
+    }
+    try {
+      const item = await readDetail();
+      if (kind === 'media') {
+        const path = '/api/media/items/' + id + '/preview';
+        if (item.previewUrl !== path) throw new Error('照片预览地址无效');
+        const response = await fetch(path, {credentials:'same-origin', cache:'no-store', redirect:'error'});
+        if (!response.ok || response.headers.get('content-type')?.split(';')[0] !== 'image/jpeg') throw new Error('照片预览暂不可用');
+        const bytes = await response.arrayBuffer();
+        if (!bytes.byteLength || bytes.byteLength > 2*1024*1024) throw new Error('照片预览大小无效');
+        // A second authorized detail read fences a permission change during download.
+        const latest = await readDetail();
+        if (latest.revision !== item.revision) throw new Error('照片已变化，请重新打开');
+        if (!valid()) return;
+        previewUrl = URL.createObjectURL(new Blob([bytes], {type:'image/jpeg'}));
+      }
+      if (!valid()) return;
+      current.sourceDetail = {kind,id,title:kind==='media' ? item.caption || '精选照片' : item.name,
+        description:kind==='media' ? '照片说明 · '+(item.visibility==='private'?'仅本人':'已共享') : [item.country,item.city,{visited:'已明确确认到访',planned:'计划前往',wish:'愿望地点'}[item.status]].filter(Boolean).join(' · '), journey:item.journey};
+      render(); document.getElementById('assistant-source-detail')?.scrollIntoView({block:'start'});
+      const renew = () => {
+        clearTimeout(sourceExpiry);
+        sourceExpiry=setTimeout(() => {
+          if (state===current && sourceEpoch===epoch) {
+            clearSource(); current.draft=null; current.error='详情授权未能及时重新核验，请重新搜索。'; render();
+          }
+        },15000);
+      };
+      const refreshSource = async () => {
+        if (!valid()) return;
+        try { const latest=await readDetail(); if (latest.revision !== item.revision) throw new Error('内容已更新，请重新打开'); }
+        catch (error) { if (state===current && sourceEpoch===epoch) { clearSource(); current.draft=null; current.error='详情已清除，请重新搜索：'+error.message; render(); } return; }
+        if (valid()) { renew(); sourceTimer=setTimeout(refreshSource,10000); }
+      };
+      renew(); sourceTimer=setTimeout(refreshSource,10000);
+    } catch (error) { if (state===current && sourceEpoch===epoch) { clearSource(); current.draft=null; render(); } throw error; }
+  }
+  function concealSource() {
+    if (!state?.sourceDetail && !previewUrl) { sourceEpoch++; return; }
+    clearSource(); if (state) { state.draft=null; state.error='详情已清除，请在恢复连接或返回页面后重新搜索。'; if (active()) render(); }
+  }
+  window.addEventListener('offline', concealSource);
+  document.addEventListener('visibilitychange', () => { if (document.hidden) concealSource(); });
   function render() {
     if (!state || !sameContext(state) || !state.visible) return;
     activeManager = '';
@@ -110,7 +202,7 @@ window.HomeAssistant = (() => {
       <details id="assistant-composer" class="assistant-composer" ${state.composerOpen ? 'open' : ''}><summary>继续规划 · 旅行、清单与共享记录</summary><p class="help">${esc(brief?.coverage || '仅基于本家庭共享记录，不包含个人账单和投资账户。')}</p>
       <div class="assistant-suggestions">${action('prompt', '搜索记录', 'data-prompt="搜索：酒店"')}${action('prompt', '安排几件事', 'data-prompt="待办：明天预约保洁；确认旅行酒店"')}${action('prompt', '准备采购', 'data-prompt="采购：旅行转换插头；收纳袋"')}${action('journey', '规划一次旅行', 'id="assistant-journey"')}${!isDemo&&window.HouseholdRoutines?action('routines', '设置例行计划', 'id="assistant-routines"'):''}</div>
       <form id="assistant-form"><label class="field"><span>你想安排什么</span><textarea name="prompt" required maxlength="2000" rows="3" placeholder="说明想去的国家、城市、日期和预算；也可以输入 待办：明天预约保洁">${esc(state.prompt)}</textarea></label>
-      ${brief?.modelConfigured ? `<label class="label-check"><input type="checkbox" name="useModel" ${state.useModel ? 'checked' : ''}>使用 AI 理解自由表达（将发送本次文字到已配置的 AI 服务）</label><label class="label-check"><input type="checkbox" name="includeHouseholdContext" ${state.includeContext ? 'checked' : ''}>同时提供近期日程标题和待办（不包含财务数据）</label>` : '<p class="help">本地概览、搜索和清单指令直接可用；不需要配置模型。</p>'}
+      ${brief?.modelConfigured ? `<label class="label-check"><input type="checkbox" name="useModel" ${state.useModel ? 'checked' : ''}>使用 AI 理解自由表达（自由表达将发送到已配置的 AI 服务；明确搜索始终在本地进行）</label><label class="label-check"><input type="checkbox" name="includeHouseholdContext" ${state.includeContext ? 'checked' : ''}>同时提供近期日程标题和待办（不包含财务数据）</label>` : '<p class="help">本地概览、搜索和清单指令直接可用；不需要配置模型。</p>'}
       ${state.journeyDraft ? '<p class="help">重新整理会使用当前文字，成功后替换已保留的简报。若想保留已填写的内容，请选择“继续已保留的旅行简报”。</p>' : ''}
       <p class="error" role="alert"></p><button class="btn" type="submit">${submitLabel(state.prompt)}</button>${action('journey-local', state.journeyDraft ? '继续已保留的旅行简报' : '分步填写旅行简报（不调用 AI）')}</form><div id="assistant-result" aria-live="polite">${resultMarkup()}</div></details></div>`, true);
     document.getElementById('dialog').classList.add('assistant-dialog');
@@ -133,7 +225,7 @@ window.HomeAssistant = (() => {
       clear(); openModal('家庭助理 · 演示', '<div id="assistant-demo" class="info-box"><h3>本周待处理</h3><p>示例：确认周末保洁、填写转换插头预算、核对旅行准备。</p><p>这是虚构内容。演示不会请求家庭记录、创建事项或修改资金。</p></div>'); return;
     }
     if (!canEdit()) { clear(); toast('请先登录家庭后使用助理'); return; }
-    capture(); state = state && sameContext(state) ? {...state} : blank();
+    capture(); clearSource(); state = state && sameContext(state) ? {...state} : blank();
     bridge = null; observer?.disconnect(); observer = null;
     const current = state, turn = ++sequence; current.visible = true; current.journeyIntent = false;
     // Never paint cached household content until this server session is verified.
@@ -269,7 +361,7 @@ window.HomeAssistant = (() => {
     openModal('查看共享记录', `<article class="assistant-readonly"><span class="pill">${esc(source(item))}</span><h3>${esc(item.title)}</h3><p>${owner(item)}</p>${item.start ? `<p>${esc(item.start)} — ${esc(item.end || '')}</p>` : item.due ? `<p>截止 · ${esc(item.due)}</p>` : ''}<p>${esc(item.location || '')}</p><p class="assistant-summary">${esc(item.note || '')}</p><p class="help">这项内容来自已选择的同步来源，请在原应用调整。这里不会重新创建或改写该记录。</p></article>`);
   }
   async function visit(kind, id) {
-    const current = state; capture(); await verify(current);
+    const current = state; capture(); clearSource(); await verify(current);
     // Fetch current revision before the existing editor captures its CAS baseline.
     await refresh(true); await verify(current); if (!current.visible) return;
     const item = kind === 'finance' ? data.finance : itemIn(data, kind, id);
@@ -322,7 +414,7 @@ window.HomeAssistant = (() => {
     event.preventDefault(); if (busy || !state) return;
     const originalForm=event.currentTarget;
     if (requestsJourney(originalForm.elements.prompt.value)) { await beginJourney(originalForm); return; }
-    capture(); const current = state; setBusy(true);
+    capture(); clearSource(); const current = state; setBusy(true);
     const errorBox = document.querySelector('#assistant-form .error'); errorBox.textContent = '';
     try {
       await verify(current);
@@ -359,6 +451,13 @@ window.HomeAssistant = (() => {
         if (target) { if (target.tagName === 'DETAILS') target.open = true; target.scrollIntoView({block: 'start'}); target.focus({preventScroll: true}); }
       }
       else if (name === 'visit' && allowedKinds.has(button.dataset.kind)) await visit(button.dataset.kind, button.dataset.id);
+      else if (name === 'source') await visitSource(button.dataset.kind, button.dataset.id);
+      else if (name === 'search-page') await searchPage(Number(button.dataset.offset));
+      else if (name === 'source-close') { clearSource(); render(); }
+      else if (name === 'source-page' && current.sourceDetail) {
+        await verify(current); const route=current.sourceDetail.kind==='media'?'photos':'map'; clearSource();
+        closeModal(); window.ProductShell?.navigate(route);
+      }
       else if (name === 'finance') await visit('finance', '');
       else if (name === 'complete') await complete(button.dataset.id);
       else if (name === 'apply') await applyDraft();
@@ -389,6 +488,7 @@ window.HomeAssistant = (() => {
   document.getElementById('dialog').addEventListener('close', event => {
     // A queued close event can arrive after another workflow has reopened the dialog.
     if (event.target.open) return;
+    clearSource();
     const returning = bridge;
     if (returning) setTimeout(() => {
       if (!event.target.open && bridge === returning) void returnDesk(true);
