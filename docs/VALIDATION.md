@@ -1,5 +1,33 @@
 # 验证记录
 
+## Expo 家庭物品与库存搜索发布：2026-09-17 00:40:16
+
+安装 main `2925be09d09a4b6e1eab2d6633c1cf5bdebfc8ad`／integration `c1ca0e14acc44d61afe08641fd237e19705dd750` 同树 `3d28f16a7036f84bc2bfbe326a5eb0e34eee3c43`。r2 构建证据 SHA256 `a53d6e55125e095c5f29e5e020e315c88037abfa99b727daf863dc5e1d2ef178`，23 个导出文件；实际 00:40:16 激活、00:40:31 正常 TLS 读回通过。
+
+真实临时 Flask／SQLite／Edge 使用精确 r2 bundle，**14 项检查通过**：私有物品与成员权限、批次不提前计库存、分批收货、共享成员允许的操作、使用／退回／历史撤销、已提交丢响应后原回执恢复、后台草稿保留、真实 409 重核、助理搜索跳转重新读取数量、刷新及应用重启保持、撤共享和真实邀请创建的第二家庭隔离，以及 320／390／1040／1440 四宽布局与原生入口。14 项已包含四宽检查，不再相加；没有页面异常或外站请求，源码与 bundle 前后保持。
+
+原件 `inventory-native-browser/test-results/expo-inventory-20260916T162359438974Z/result.json` SHA256 `3fb0baecd6443c5e7ad31978d59e357e662337189b82cb0f1ad78c7f137bcb3d`，`passed`、`businessChecksPassed`、`accessibilityPassed` 均为 true。保存 16 张截图，作者查看全部，root 另看四张。r1 的业务／布局检查虽通过，但选中语义缺失导致整体失败；修复 Paper 选择控件语义与键盘操作、隐藏 Banner 残留 alert 和手机数量排版后，重新构建完成 r2，不将 r1 diagnostic 计作验收通过。
+
+本轮使用合成数据、真实 Cookie／CSRF／SQLite；后台场景注入页面可见性事件，丢响应场景丢弃一次真实已提交的响应，不替换业务接口。未写生产家庭数据，没有真实商家、云模型或本人库存操作验收，也不证明所有设备的系统后台行为。
+
+实际新镜像内 `test_home_assistant.py`、`test_assistant_inventory_search.py`、`test_inventory_api.py` 三模块 **86 passed、0 failed／error／skipped**；明确 deselect 一项需要 Windows Edge 的浏览器节点，运行文件前后 SHA 保持。此前作者 Windows 同组三模块 86 项与经典页 Edge 七项流程分别验证，照片／地点搜索另 29 项，不能与 Linux 或 Expo 14 项合算成单轮全套。
+
+第一次 Linux 执行是 **84 passed／2 failed**，旧 `expo-inventory-package-20260917/failed-validation.json` SHA256 `2a48bcef4fded6239df784985c924f29c3768db340635dffddc1e337ef9dc138` 保留。当时隔离验证环境设 `ASSISTANT_PROVIDER=local`，两个模型 mock 测试在进入 mock 前因无效 provider 返回 503。新操作候选仅把隔离测试 provider 改为匹配 mock 的 `openai`，真实密钥为空且容器无网络；没有放宽断言、修改业务源码或生产配置，完整 86 项重新执行通过。第一次失败候选没有 stage 或 activate。
+
+生产实际 1 户两库完整备份，无 schema 迁移；全部 53 张户内表的行／schema／序列和平台注册库在新 app 启动时保持，原配置保全。发布后核对 453 源／112 运行／75 HTTPS 资源，24 个内部路径和 1 个退役资源 404，十个匿名接口 401；四服务 running／restart 0、app healthy，备份 service success／timer active。数据相等限于启动核对时点，恢复服务后允许正常业务变化。
+
+最终私有原件均在 `expo-inventory-package-20260917-r2/`：
+
+| 原件 | SHA256 |
+|---|---|
+| `build.json` | `b1561c744c427e4c4fef50b1fd8b9219971a64a054051c70c4c3cd1b5e25e354` |
+| `validation.json` | `ff88615ec4eff7908e0ec6fd843a7bd2a2e1c54bc0987a14787a885cfa8ee0bb` |
+| `ready.json` | `b5228b51d35d50d91c58f66874de01830cc2f50d693d5a1fb0a812ddf8a1f6fc` |
+| `activation.json` | `3e370a28efa29574d84afb207c6482cb50adcb1b6e126b3a4978d15963a5ec9a` |
+| `post-readback.json` | `2712a26909e3efaa4cbbcf4ce3c0bd7f6078a7da50012cd3e778bf67afd790d1` |
+
+两库备份 manifest SHA256 `3965ccb867d163b3bb8468f087bc183b615ae141faa39a167185766d5f6f9731`；源码、镜像、manifest 和发布目录见 [家庭物品交付](INVENTORY-DELIVERY.md)。当前 Windows 公共域名仍受 `Website Filtered` 限制；本地真实浏览器与服务器 TLS 读回不代替本人线上库存、真实云、原生安装包或实体电视验收。
+
 ## Expo 官网风格发布：2026-09-16 23:48:34
 
 安装 integration `5ebfd2d6db408128f8137de288f300900794b1bb`，同树 main `d94f7ce746bfbc45de328c516ac9c24d640f2d40`，tree `f57a232684180d72a0254d04bdbf3f1d15ae6f89`。本轮按当前 expo.dev 重做共享风格、导航、首页和登录布局，并修复 Paper Menu 初次隐藏动画竞态；各菜单局部关闭动画，不改变原业务请求和授权逻辑。构建原件 SHA256 `039ab1ebb33bdab720b3308e1f97431669db1686a659d6d7fe5f20e60e3b25a1`。
