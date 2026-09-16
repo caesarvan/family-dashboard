@@ -65,7 +65,7 @@ def main():
     shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], httpErrors=[], screenshots=[],
                   eventInjections=['document.hidden/visibilityState and visibilitychange for background/foreground; real business API unchanged'],
-                  diagnosticA11y=args.diagnostic_a11y, accessibilityPassed=not args.diagnostic_a11y,
+                  diagnosticA11y=args.diagnostic_a11y, accessibilityPassed=False,
                   head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path),
                   harnessSha256=sha(out / 'executed-harness.py'), sourceHashesBefore=hashes(), bundleHashesBefore=bundle_hashes(),
                   scope='Real frozen Expo bundle, factory, member cookies, CSRF, household routing and SQLite; synthetic input only. One committed response deliberately dropped.', productionWrites=0)
@@ -173,7 +173,8 @@ def main():
                     if args.diagnostic_a11y:
                         checkbox.click()
                     else:
-                        checkbox.check()
+                        checkbox.focus()
+                        checkbox.press('Space')
                         expect(checkbox).to_be_checked()
 
                 def visibility(p, hidden):
@@ -268,7 +269,14 @@ def main():
                 open_inventory(page)
                 open_item(page, title)
                 button(page, '编辑物品').click()
-                page.get_by_role('radio', name='与家庭共享', exact=True).click()
+                sharing = page.get_by_role('radio', name='与家庭共享', exact=True)
+                if args.diagnostic_a11y:
+                    sharing.click()
+                else:
+                    sharing.focus()
+                    sharing.press('Space')
+                    expect(sharing).to_be_checked()
+                    expect(page.get_by_role('radio', name='仅本人可见', exact=True)).not_to_be_checked()
                 button(page, '保存物品').click()
                 expect(button(page, '编辑物品')).to_be_enabled()
                 open_inventory(partner_page)
@@ -462,6 +470,7 @@ def main():
                     passed(f'{width}px list/detail/batch fit viewport and the navigation menu opens native inventory')
                 assert not report['pageErrors'] and not report['externalRequests']
                 report['businessChecksPassed'] = True
+                report['accessibilityPassed'] = not args.diagnostic_a11y
                 report['passed'] = not args.diagnostic_a11y
     except Exception:
         report['failure'] = traceback.format_exc()
