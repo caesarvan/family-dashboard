@@ -57,6 +57,12 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
     active.current = false; ++generation.current; fence.current.invalidate(); clearPrivate();
     setVisible(false); setBusy(false); setLoading(false); working.current = false;
   }
+  function conceal() {
+    // A phone may briefly switch apps to check an order. Keep this identity's
+    // in-memory draft and original receipt, but render no private content.
+    active.current = false; ++generation.current; fence.current.invalidate();
+    setVisible(false); setBusy(false); setLoading(false); working.current = false;
+  }
   function fail(caught: unknown) {
     if (!current()) return;
     if (caught instanceof InventoryDiscarded && caught.message !== 'identity') return;
@@ -113,9 +119,33 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
   }
   function enter() {
     if (!alive.current || active.current || !routeFocused.current || typeof document !== 'undefined' && document.hidden) return;
-    active.current = true; setVisible(true); setDenied(false);
+    active.current = true; working.current = true; setDenied(false); setLoading(true);
     fence.current = new InventoryFence(() => request<InventorySession>('/me'), props.identityKey);
-    void runRead(async () => { const values = await readItems('all', '', 0); if (current()) setPage(values); });
+    const ticket = generation.current;
+    void (async () => {
+      try {
+        const saved = state.current;
+        if (saved.draft || saved.pending) {
+          // Verify the full identity even for a new item with no saved target.
+          await fence.current.run(async () => true, current);
+          const itemId = saved.pending?.itemId || saved.item?.id;
+          const batchId = saved.pending?.acquisitionId || saved.batch?.id;
+          if (itemId) await readItem(itemId);
+          if (batchId) await readBatch(batchId);
+          // Do not silently adopt newer revisions or change the original intent.
+          if (current()) setNotice('已核对当前身份和访问权限，原输入仍保留。待确认的操作请先核对原结果。');
+        } else await refreshView();
+        if (current() && ticket === generation.current) setVisible(true);
+      } catch (caught) {
+        fail(caught);
+        if (ticket === generation.current && current()) {
+          if (caught instanceof ApiError && [404, 410].includes(caught.status)) setVisible(true);
+          else active.current = false;
+        }
+      } finally {
+        if (ticket === generation.current) { working.current = false; if (alive.current) setLoading(false); }
+      }
+    })();
   }
   useEffect(() => { alive.current = true; return () => { alive.current = false; active.current = false; ++generation.current; fence.current.invalidate(); }; }, []);
   useFocusEffect(useCallback(() => {
@@ -123,9 +153,9 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
     return () => { routeFocused.current = false; invalidate(); };
   }, [props.identityKey]));
   useEffect(() => {
-    const onVisibility = () => { if (document.hidden) invalidate(); else enter(); };
+    const onVisibility = () => { if (document.hidden) conceal(); else enter(); };
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', onVisibility);
-    const subscription = AppState.addEventListener('change', value => { if (value === 'active') enter(); else invalidate(); });
+    const subscription = AppState.addEventListener('change', value => { if (value === 'active') enter(); else conceal(); });
     return () => { if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', onVisibility); subscription.remove(); };
   }, [props.identityKey]);
   useEffect(() => {
@@ -303,7 +333,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
   const editable = (name: string) => draft?.type === 'batch' && (!draft.id || !!batch?.editableFields.includes(name));
 
   if (denied) return <EmptyState title="正在核对登录身份" description="旧账户的家庭物品和草稿已清空。" />;
-  if (!visible) return null;
+  if (!visible) return routeFocused.current && (typeof document === 'undefined' || !document.hidden) ? <EmptyState title={loading ? '正在核对物品访问权限' : '暂时无法核对物品'} description={loading ? '原输入会在身份和权限核对完成后显示。' : error || '请恢复网络后重新读取，待核对的操作不会自动重发。'} action={!loading ? <Button onPress={enter}>重新读取物品</Button> : undefined} /> : null;
   return <View style={styles.page}>
     <PageHeader title="家庭物品" description="知道家里有什么，到货后顺手记一下。" action={<Button mode="contained" icon="plus" disabled={navigationLocked} onPress={() => begin(blankItem())}>新增物品</Button>} />
     <View style={styles.wrap}>
@@ -362,7 +392,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
           <Button mode="contained" disabled={locked || draft.type === 'movement' && !draft.confirmed} onPress={save}>{draft.type === 'item' ? '保存物品' : draft.type === 'batch' ? '保存批次' : draft.kind === 'reverse' ? '确认撤销原记录' : '确认实物变动'}</Button>
           <Button disabled={busy || loading || !!pending} onPress={() => setDecision('discard')}>取消编辑</Button>
         </View>
-        <Text variant="bodySmall">未保存的输入只保留在当前页面。离开、切换家庭或将应用放到后台会清空。</Text>
+        <Text variant="bodySmall">未保存的输入只保留在当前页面。暂时切换应用会隐藏内容，回来时重新核对身份和权限；离开此页、关闭页面或切换家庭会清空。</Text>
       </View>
     </SectionCard> : item ? <>
       <SectionCard title="物品详情" action={item.canManage ? <Button disabled={navigationLocked} onPress={() => begin(itemDraft(item))}>编辑物品</Button> : undefined}>
