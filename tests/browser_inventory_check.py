@@ -33,7 +33,7 @@ class Quiet(WSGIRequestHandler):
 class Fixture:
     def __init__(self):
         self.actor='member1';self.items={};self.batches={};self.movements={};self.receipts={};self.records=[]
-        self.serial=0;self.lose_after=True;self.lose_before=False;self.conflict=False;self.hold=False
+        self.serial=0;self.lose_after=True;self.lose_before=False;self.conflict=False;self.hold=False;self.revoke_on_receipt=False
         self.started=threading.Event();self.release=threading.Event()
 
     def identifier(self):
@@ -91,6 +91,8 @@ class Fixture:
                 if not self.permitted(item):return error('not_found',404)
                 result['item']=self.project(item);result['operation']['replayed']=True
                 if 'acquisition' in result:result['acquisition']=self.batch(self.batches[result['acquisition']['id']])
+                if self.revoke_on_receipt:
+                    self.revoke_on_receipt=False;assert item['owner']!=self.actor;item['visibility']='private'
                 return jsonify(result)
             if parts==['items'] and request.method=='GET':
                 scope=request.args.get('scope','all');q=request.args.get('q','').lower()
@@ -240,6 +242,12 @@ def main():
                 patch=next(r['body']['patch'] for r in reversed(fixture.records) if r['method']=='PATCH' and r['path']=='inventory/acquisitions/'+other_batch['id']);assert set(patch)==set(LIMITED)
                 other['visibility']='private';page.locator('[data-iv=refresh]').click();expect(page.locator('.iv-detail')).to_have_count(0);expect(page.locator('#host')).not_to_contain_text('家人共享茶叶')
                 passed('shared member edits only allowed batch fields; revoked item clears old DOM')
+                other['visibility']='shared';page.locator('[data-iv=refresh]').click();expect(page.locator('.iv-card')).to_have_count(2);page.locator(f'[data-iv=select-item][data-id="{other["id"]}"]').click();page.locator('[data-iv=select-batch]').click();page.locator('[data-iv=edit-batch]').click()
+                form=page.locator('[data-iv-form]');form.locator('[name=note]').fill('回执成功后发生共享撤回');fixture.lose_after=True;form.locator('[type=submit]').click();expect(page.locator('[data-iv=retry]')).to_be_enabled()
+                writes=len([r for r in fixture.records if r['method']=='PATCH']);fixture.revoke_on_receipt=True;page.locator('[data-iv=retry]').click()
+                expect(page.locator('.iv-detail')).to_have_count(0);expect(page.locator('#host')).not_to_contain_text('家人共享茶叶');expect(page.locator('#host')).not_to_contain_text('Cannot read')
+                assert other['visibility']=='private' and len([r for r in fixture.records if r['method']=='PATCH'])==writes
+                passed('receipt lookup success followed by ACL 404 clears details without resending or masking the error')
                 for index in range(27):fixture.item('分页合成 '+str(index))
                 page.locator('[data-iv=refresh]').click();expect(page.locator('.iv-card')).to_have_count(24);page.locator('[data-iv=items-next]').click();expect(page.locator('.iv-card')).to_have_count(4)
                 page.locator('[data-iv-filters] [name=q]').fill('分页合成 26');page.locator('[data-iv-filters] [type=submit]').click();expect(page.locator('.iv-card')).to_have_count(1)
