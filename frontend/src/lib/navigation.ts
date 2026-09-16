@@ -1,4 +1,16 @@
 import { Linking, Platform } from 'react-native';
+import { syncAuthorizeUrl, type SyncProvider } from './authNavigation';
+
+/** Start the existing same-tab authorization; acceptance is not binding success. */
+export function openSyncProvider(raw: string, provider: SyncProvider): boolean {
+  const web = Platform.OS === 'web' && typeof window !== 'undefined';
+  const origin = web ? window.location.origin : (process.env.EXPO_PUBLIC_API_ORIGIN || '').replace(/\/$/, '');
+  const target = syncAuthorizeUrl(raw, provider, origin);
+  if (!target) return false;
+  if (web) window.location.assign(target);
+  else void Linking.openURL(target);
+  return true;
+}
 
 /** Controlled same-origin application destinations only; never a new browser tab. */
 export function openLocal(path: string) {

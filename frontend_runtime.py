@@ -14,6 +14,13 @@ PUBLIC_TYPES = {
     '.woff2': 'font/woff2',
 }
 
+AUTH_REASONS = frozenset({
+    'not_configured', 'unbound_account', 'already_bound', 'provider_denied',
+    'invalid_state', 'bind_session_changed', 'session_changed', 'account_limit',
+    'missing_refresh_token', 'insufficient_permissions', 'invalid_client',
+    'invalid_grant', 'token_failed', 'identity_failed', 'provider_error',
+})
+
 
 def _linked(path):
     return path.is_symlink() or getattr(path, 'is_junction', lambda: False)()
@@ -84,7 +91,7 @@ def register_frontend_runtime(app, static_root):
         return serve(path, 'text/html')
 
     def home_frontend():
-        # These callbacks continue the existing source-selection/import flow.
+        # Continue source selection in Expo when a completed export exists.
         # Forward only the known status fields, never provider codes or tokens.
         auth = request.args.get('auth')
         if auth == 'photos-connected' and index_file() is not None:
@@ -94,8 +101,10 @@ def register_frontend_runtime(app, static_root):
         if auth in {'connected', 'photos-connected', 'error'}:
             query = {'auth': auth}
             if auth == 'error':
-                query['reason'] = request.args.get('reason', '')[:80]
-            response = redirect('/classic?' + urlencode(query), code=302)
+                reason = request.args.get('reason', '')
+                query['reason'] = reason if reason in AUTH_REASONS else 'provider_error'
+            destination = '/app/connections' if index_file() is not None else '/classic'
+            response = redirect(destination + '?' + urlencode(query), code=302)
             response.headers['Cache-Control'] = 'no-store'
             return response
         # A checkout without a build keeps the working classic entry. Invalid
