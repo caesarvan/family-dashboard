@@ -1,6 +1,6 @@
 # 验证记录
 
-> **线上版本：2026-09-16 19:16:22（北京时间），镜像 `sha256:6688c51fed543794a393bf397b49ccb0c36dee8c24e19efbdb0a3715c2ebd86c`。** JPEG 主图兼容补丁已上线；346 源文件、71 Markdown、51 静态资源、130 个方法／路径模板、48 张户内表及 2 张平台表，无数据迁移。安装源码对应 main `f603151`／integration `e2087e0` 同树；本次文档仅本地交接，不改已发布 manifest。本人已授权，后续十选五的诊断与保存数已验证；JPEG 补丁对其余五张的效果仍待本人重选，实体电视另验。
+> **线上版本：2026-09-16 19:16:22（北京时间），镜像 `sha256:6688c51fed543794a393bf397b49ccb0c36dee8c24e19efbdb0a3715c2ebd86c`。** JPEG 主图兼容补丁已上线；346 源文件、71 Markdown、51 静态资源、130 个方法／路径模板、48 张户内表及 2 张平台表，无数据迁移。安装源码对应 main `f603151`／integration `e2087e0` 同树；本次文档仅本地交接，不改已发布 manifest。发布后本人重试并经服务器读回确认：本批 5 张均出现预览并成功保存，0 失败。原失败的具体原因仍未确定，实体电视及长期行为另验。
 
 ## JPEG 主图兼容发布：2026-09-16 19:16:22
 
@@ -15,7 +15,7 @@ main `f603151`／integration `e2087e0` 同树 `dc8e805e22914b701c2e2e0b6d888bd04
 
 私有原件在 `photos-jpeg-20260916/` 的 `build.json`、`validation.json`、`activation.json`、`post-readback.json`；目录 `/opt/family-dashboard-releases/photos-jpeg-20260916T111536Z-20260916`。完整备份 manifest SHA256 `58a97281b62a4af864149803a9190183c3fb83a020109430ba95385f5647ce0b`。Linux 计数来自实际执行日志，`validation.json` 只绑定退出状态与镜像／运行字节，不从该 JSON 补造用例数。
 
-18:57 诊断补丁后的本人重试确实得到十选五和五项 `invalid_image`（见下一节），但没有原图级根因证明。JPEG 兼容补丁尚待本人重新选这五张验证；不宣称已解决这些照片，也不以 MPO／尾部／坏 EXIF 合成成功推定真实原因。
+18:57 诊断补丁后的本人重试确实得到十选五和五项 `invalid_image`（见下一节），但没有原图级根因证明。发布后本人重试明确反馈“出现预览，并成功保存”；服务器只读确认最新记录为 confirmed／resultsState=known，selected=5、ready=5、failed=0、skipped=0、pending=0、saved=5、unselected=0，五项均 successful。本批真实 Google 授权选片→处理→明确保存已 5／5 成功，补丁对这次重试有效；不以此推定原失败的逐项 MPO／尾部／EXIF 原因，也不扩展到实体电视或长期配额验收。该反馈晚于 19:17 读回，原 `post-readback.json` 中当时的未验收标识原样保留，不反写原件。 后续独立原件 `photos-jpeg-20260916/real-import-acceptance.json`（SHA256 `c8c7548e3be056e63768e85472822a8f6ffd21c83a5f7343ddf77e02cf39ff0f`）记录本批成功，不断言它与此前每个 source ID 的逐项映射。
 
 ## 相册结果诊断发布：2026-09-16 18:57:14
 
