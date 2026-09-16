@@ -1,5 +1,22 @@
 # 验证记录
 
+<a id="expo-travel-release"></a>
+## Expo 旅行协作发布：2026-09-17 07:38:17
+
+北京时间 07:38:17 实际激活，07:39:46 正常 TLS 读回通过。旅行简报可进入新建草稿，补齐准备／采购负责人和采购预算，再预览确认保存并打开地图；完整场景 A 仍未完成。以下是实际安装身份，后续文档合并不重新构建或部署。
+
+| 项目 | 本次发布 |
+| --- | --- |
+| main／source | `6b2bb55758fce0df02f51252d5eac2441b7c9869`／`e0c1c6b03e14424bc170d1aa7d7c28529b381801` |
+| 相同文件树 | `bb00b3b6cde61296d7860fec56e7a2b0acf373ef` |
+| 发布目录 | `/opt/family-dashboard-releases/expo-travel-55-20260916T233718910034Z` |
+| 镜像 | `sha256:b394b59bc8e13f60d597f01e87e887c90358be81b073a928f6430d6a5b5b576f` |
+| manifest SHA256 | `4534b837252ec4cb31d7bc0ad074cfff53f1b0901117cbbfd234c6d570378e9c` |
+
+新镜像 Linux 实际收集 330 项，329 通过、1 个精确 Windows junction 跳过，零失败／错误；前端类型检查、Node 和真实临时 Flask／SQLite／Edge 验证的详细范围见 [本轮验收](EXPO-TRAVEL-ACCEPTANCE.md#expo-travel-release)。生产核对 516 个源码文件、113 个运行时文件及 75 个正常 HTTPS 静态文件；55→55 无 schema 变更，停写后的 1 户／2 库完整备份与新 app 启动后的旧行、schema、序列和注册库保全均通过。随后新一次逐库在线备份核对通过，不代表跨库全局原子快照，`liveGroupSnapshotRechecked=false`。
+
+首次 post 包装调用漏传 `--reviewed-sha256`，在 argparse 阶段退出 2；保留该失败原件，随后显式传入已独立审查的脚本散列，主体读回成功。本人真实云日历写入／迁期、真实在线 AI 完整协作、真实个人金融操作和实体电视均未因本轮通过验收；详细测试、失败历史及发布证明统一见 [本轮验收](EXPO-TRAVEL-ACCEPTANCE.md#expo-travel-release)。
+
 <a id="expo-holdings-release"></a>
 ## Expo 我的持仓发布：2026-09-17 06:15:34
 
