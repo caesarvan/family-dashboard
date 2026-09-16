@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Linking, StyleSheet, View } from 'react-native';
-import { Button, Card, Divider, HelperText, SegmentedButtons, Text, TextInput, useTheme } from 'react-native-paper';
+import { Button, Card, Dialog, Divider, HelperText, Portal, SegmentedButtons, Text, TextInput, useTheme } from 'react-native-paper';
 import { request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 
@@ -8,6 +8,7 @@ export default function LoginScreen() {
   const { login } = useHousehold(); const theme = useTheme();
   const [username, setUsername] = useState('member1'); const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
+  const [spaceOpen,setSpaceOpen]=useState(false),[slug,setSlug]=useState('home');
   const [providers, setProviders] = useState<{id: string; configured: boolean; loginUrl: string}[]>([]);
   useEffect(() => { let active = true; request<{providers: typeof providers}>('/auth/providers').then(result => { if (active) setProviders(result.providers || []); }).catch(() => {}); return () => { active = false; }; }, []);
   async function submit() { setBusy(true); setError(''); try { await login(username, password); setPassword(''); } catch (e) { setError(e instanceof Error ? e.message : '暂时无法登录'); } finally { setBusy(false); } }
@@ -20,8 +21,9 @@ export default function LoginScreen() {
       {!!error && <HelperText type="error" accessibilityRole="alert">{error}</HelperText>}
       <Button mode="contained" loading={busy} disabled={busy || !password} onPress={submit}>进入家庭看板</Button>
       {providers.some(p=>p.configured) && <><Divider /><Text variant="bodySmall">也可以使用已绑定的账户登录</Text>{providers.filter(p=>p.configured && /^\/auth\/(microsoft|google)\/login$/.test(p.loginUrl)).map(provider=><Button key={provider.id} mode="outlined" onPress={()=>Linking.openURL(provider.loginUrl)}>{provider.id==='microsoft'?'Microsoft':'Google'} 账户</Button>)}</>}
-      <View style={styles.links}><Button compact onPress={()=>Linking.openURL('/classic#household')}>切换家庭</Button><Button compact onPress={()=>Linking.openURL('/tv')}>连接电视</Button></View>
+      <View style={styles.links}><Button compact onPress={()=>setSpaceOpen(true)}>切换家庭</Button><Button compact onPress={()=>Linking.openURL('/tv')}>连接电视</Button></View>
     </Card.Content></Card>
+    <Portal><Dialog visible={spaceOpen} onDismiss={()=>setSpaceOpen(false)} style={{maxWidth:440,width:'90%',alignSelf:'center'}}><Dialog.Title>切换家庭</Dialog.Title><Dialog.Content><TextInput mode="outlined" label="家庭入口名称" value={slug} onChangeText={setSlug} autoCapitalize="none"/><HelperText type="info">输入邀请时使用的家庭入口名称。</HelperText></Dialog.Content><Dialog.Actions><Button onPress={()=>setSpaceOpen(false)}>取消</Button><Button disabled={!/^[a-z0-9][a-z0-9-]{2,39}$/.test(slug)} onPress={()=>Linking.openURL('/space/'+encodeURIComponent(slug))}>进入家庭</Button></Dialog.Actions></Dialog></Portal>
   </View>;
 }
 const styles=StyleSheet.create({page:{flex:1,minHeight:700,padding:24,justifyContent:'center',alignItems:'center',gap:32},intro:{width:'100%',maxWidth:420,gap:12},title:{fontWeight:'700'},card:{width:'100%',maxWidth:420,borderRadius:16},content:{padding:24,gap:18},links:{flexDirection:'row',flexWrap:'wrap',justifyContent:'space-between'}});

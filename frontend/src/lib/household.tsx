@@ -23,8 +23,12 @@ function useHouseholdState() {
   const sequence = useRef(0);
   const mounted = useRef(true);
   const reading = useRef<Promise<void> | null>(null);
+  const authTransition = useRef(false);
+  const preferenceWriting = useRef(false);
+  const preferencesRef = useRef(defaults);
 
   const refresh = useCallback(async () => {
+    if (authTransition.current) return;
     if (reading.current) return reading.current;
     const ticket = ++sequence.current;
     const job = (async () => {
@@ -40,7 +44,7 @@ function useHouseholdState() {
           request<FamilyState>('/state'), request<Preferences>('/preferences'), request<HomeLayout>('/dashboard-layout'),
         ]);
         if (!mounted.current || ticket !== sequence.current || signature(next) !== signature(current.current)) return;
-        setState(snapshot); setPreferences(prefs); setLayout(cards);
+        setState(snapshot); preferencesRef.current=prefs; setPreferences(prefs); setLayout(cards);
         setFocus(value => snapshot.people.some(person => person.id === value) ? value : next.user!.id);
         setError(''); setOnline(true);
       } catch (failure) {
@@ -65,8 +69,13 @@ function useHouseholdState() {
   }, [refresh]);
 
   const login = async (username: string, password: string) => {
-    await request('/login', { method: 'POST', body: JSON.stringify({ username, password }) });
-    if (reading.current) await reading.current;
+    if (authTransition.current) throw new Error('正在切换登录状态，请稍等');
+    authTransition.current=true;
+    try {
+      // Let every old response install its cookies before issuing a new login.
+      if (reading.current) await reading.current;
+      await request('/login', { method: 'POST', body: JSON.stringify({ username, password }) });
+    } finally { authTransition.current=false; }
     await refresh();
   };
   const mutate = async <T,>(path: string, method: string, payload: unknown = {}): Promise<T> => {
@@ -79,6 +88,7 @@ function useHouseholdState() {
       if (signature(actor) !== signature(current.current)) throw new ApiError('登录身份已变化，请刷新查看', 409);
       ++sequence.current;
       if (reading.current) await reading.current;
+      if (mounted.current) setRefreshing(false);
       return result;
     } catch (failure) {
       if (failure instanceof ApiError && [401, 403, 409].includes(failure.status)) await refresh();
@@ -86,15 +96,24 @@ function useHouseholdState() {
     }
   };
   const savePreferences = async (patch: Partial<Preferences>) => {
+    if (preferenceWriting.current) throw new Error('正在保存显示设置，请稍等');
+    preferenceWriting.current=true;
     const actor = signature(current.current);
-    const result = await mutate<Preferences>('/preferences', 'PUT', { ...preferences, ...patch });
-    if (actor === signature(current.current)) setPreferences(result);
-    await refresh();
+    try {
+      const result = await mutate<Preferences>('/preferences', 'PUT', { ...preferencesRef.current, ...patch });
+      if (actor === signature(current.current)) { preferencesRef.current=result; setPreferences(result); }
+      await refresh();
+    } finally { preferenceWriting.current=false; }
   };
   const logout = async () => {
-    await mutate('/logout', 'POST');
-    ++sequence.current; current.current = { user: null }; setSession({ user: null }); setState(null); setPreferences(defaults); setLayout(defaultLayout);
-    if (reading.current) await reading.current;
+    if (authTransition.current) throw new Error('正在切换登录状态，请稍等');
+    authTransition.current=true;
+    try {
+      if (reading.current) await reading.current;
+      await mutate('/logout', 'POST');
+      ++sequence.current; current.current = { user: null }; setSession({ user: null }); setState(null); setPreferences(defaults); setLayout(defaultLayout);
+      preferencesRef.current=defaults;
+    } finally { authTransition.current=false; }
     await refresh();
   };
   return { user: session.user, state, preferences, layout, focus, setFocus, loading, refreshing, online, error, notice, setNotice, refresh, login, logout, mutate, savePreferences };
