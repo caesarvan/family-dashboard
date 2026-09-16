@@ -111,7 +111,7 @@ window.HouseholdMedia = (() => {
     try {
       const {item} = await api('/media/items/' + encodeURIComponent(editor.item.id));
       if (!await check()) return;
-      if (editor.item.revision !== item.revision && item.canManage) editor.conflict = true;
+      if (editor.item.revision !== item.revision) {clearSuggestions(editor,'照片已更新，请重新读取照片和推荐。'); if (item.canManage) editor.conflict = true;}
       if (!item.canManage) editor.item = item;
     } catch (error) {
       if (!await check()) return;
@@ -234,6 +234,108 @@ window.HouseholdMedia = (() => {
       ${item.journey ? `<div class="hm-travel-link"><span>关联旅行 · ${escape(item.journey.title)}</span>${button('open-journey','查看行程 →')}</div>` : ''}
       ${item.canManage ? `<section class="hm-tv-settings"><h3>在家里的电视上展示</h3><p class="hm-muted">先保存为家庭共享，再明确选择屏幕。未勾选的电视无法播放这张照片。</p>${f.devices.length ? f.devices.map(device => `<label class="hm-consent"><input type="checkbox" data-hm-device="${escape(device.id)}" ${grantIds.includes(device.id) ? 'checked' : ''} ${item.visibility !== 'shared' || f.busy ? 'disabled' : ''}><span>${escape(device.name || '家庭电视')}</span></label>`).join('') : '<p>还没有配对的电视。请在设置中连接设备。</p>'}<label class="hm-consent"><input type="checkbox" data-hm-tv-consent ${editor.tvConsent ? 'checked' : ''} ${item.visibility !== 'shared' ? 'disabled' : ''}><span>允许选中的电视展示这张照片。</span></label>${button('save-grants','保存电视范围',`${busy} ${item.visibility !== 'shared' ? 'disabled' : ''}`)}${button('revoke-grants','收回全部电视展示',busy)}</section><div class="hm-danger-zone">${button('delete','从看板移除这张照片',busy)}<p class="hm-muted">只移除看板副本，Google Photos 原图保留。</p></div>` : ''}</aside>`;
   }
+  const revision = value => Number.isSafeInteger(value) && value > 0;
+  function clearSuggestions(editor, message = '') {
+    if (!editor) return;
+    editor.suggestionEpoch = (editor.suggestionEpoch || 0) + 1;
+    editor.suggestions = null; editor.suggestionMessage = message;
+  }
+  function hasPhotoDraft(editor) {
+    return editor.draft.caption !== (editor.item.caption || '') || editor.draft.visibility !== editor.item.visibility
+      || editor.draft.journeyId !== (editor.item.journey?.id || '');
+  }
+  function suggestionData(value, item) {
+    if (!value || value.photoId !== item.id || value.photoRevision !== item.revision
+        || value.currentJourneyId !== (item.journey?.id || null) || !revision(value.photoRevision)
+        || !['known','unknown'].includes(value.sourceTimeState) || value.limit !== 20
+        || (value.sourceTimeState === 'known' && (typeof value.sourceCreatedAt !== 'string' || value.sourceCreatedAt.length > 100))
+        || typeof value.hasMore !== 'boolean' || !Array.isArray(value.suggestions) || value.suggestions.length > 20
+        || !['date_overlap','source_time_unknown','no_matching_journeys'].includes(value.reason?.code)
+        || (value.sourceTimeState === 'unknown' && (value.sourceCreatedAt !== null || value.suggestions.length))) throw new Error('照片或推荐已变化，请重新读取后核对。');
+    const ids = new Set();
+    for (const row of value.suggestions) {
+      if (!id(row.journeyId) || ids.has(row.journeyId) || !revision(row.journeyRevision) || !revision(row.tripRevision)
+          || typeof row.title !== 'string' || row.title.length > 500 || typeof row.alreadyLinked !== 'boolean'
+          || row.alreadyLinked !== (row.journeyId === value.currentJourneyId) || row.reason?.code !== 'date_overlap'
+          || !['plan','legacy_default'].includes(row.referenceTimezoneSource) || typeof row.referenceTimezone !== 'string'
+          || row.referenceTimezone.length > 100 || ![row.start,row.end,row.sourceDate].every(day => typeof day === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(day))) throw new Error('推荐暂时无法核对，请重新读取。');
+      ids.add(row.journeyId);
+    }
+    return value;
+  }
+  function renderSuggestions(f) {
+    f.node.querySelector('[data-hm-suggestions]')?.remove();
+    const editor = f.editor;
+    if (!editor?.item.canManage || f.mapVisit) return;
+    const journeySelect = f.node.querySelector('[data-hm-editor] [name=journeyId]');
+    if (journeySelect && editor.draft.journeyId && ![...journeySelect.options].some(option => option.value === editor.draft.journeyId)) {
+      journeySelect.add(new Option(editor.item.journey?.title || '当前关联旅行',editor.draft.journeyId));
+      journeySelect.value = editor.draft.journeyId;
+    }
+    const value = editor.suggestions, busy = f.busy ? 'disabled' : '', dirty = hasPhotoDraft(editor);
+    const reason = value?.sourceTimeState === 'unknown' ? '这张照片没有已记录的来源创建时间，无法按日期建议旅行。请手动核对关联。'
+      : value && !value.suggestions.length ? '照片时间没有匹配当前旅行日期，请手动核对关联。' : '';
+    f.node.querySelector('.hm-detail-image')?.insertAdjacentHTML('afterend',`<section class="hm-journey-suggestions" data-hm-suggestions aria-label="按照片时间推荐">
+      <h3>按照片时间推荐</h3><p class="hm-muted">照片时间仅作线索，请核对行程。确认只关联这张照片，不改变共享、到访或电视许可。</p>
+      ${editor.suggestionMessage ? `<p class="hm-warning" role="status">${escape(editor.suggestionMessage)}</p>` : ''}
+      ${reason ? `<p role="status">${escape(reason)}</p>` : ''}
+      ${dirty ? '<p class="hm-warning">有未保存的照片编辑，请先保存或重新读取，再确认推荐。</p>' : ''}
+      ${(value?.suggestions || []).map(row => `<article class="hm-journey-option"><h4>${escape(row.title)}</h4><p>${escape(row.start)} — ${escape(row.end)}</p><p class="hm-muted">照片日期 ${escape(row.sourceDate)} · 按旅行时区 ${escape(row.referenceTimezone)}${row.referenceTimezoneSource === 'legacy_default' ? '（旧旅行使用默认时区）' : ''}</p>${button('confirm-journey',row.alreadyLinked ? '已关联这次旅行' : '确认关联这次旅行',`data-journey="${escape(row.journeyId)}" ${busy} ${dirty || row.alreadyLinked ? 'disabled' : ''}`)}</article>`).join('')}
+      ${value?.hasMore ? '<p class="hm-muted">仅显示前 20 条推荐，还有其他匹配旅行。可在下方手动关联中核对。</p>' : ''}
+      ${button('journey-suggestions',value || editor.suggestionMessage ? '重新读取照片和推荐' : '查看推荐',busy)}</section>`);
+  }
+  async function loadSuggestions(f) {
+    const editor = f.editor;
+    if (!editor?.item.canManage || f.mapVisit) return;
+    clearSuggestions(editor);
+    const epoch = editor.suggestionEpoch;
+    const active = () => f.editor === editor && editor.suggestionEpoch === epoch;
+    await job(f,async check => {
+      try {
+        const {item} = await api('/media/items/' + editor.item.id);
+        if (!await check() || !active()) return;
+        if (!item?.canManage) {f.editor = null; return;}
+        const dirty = hasPhotoDraft(editor);
+        if (item.revision !== editor.item.revision && dirty) editor.conflict = true;
+        editor.item = item;
+        if (!dirty) editor.draft = {caption:item.caption || '',visibility:item.visibility,journeyId:item.journey?.id || ''};
+        const value = await api('/media/items/' + item.id + '/journey-suggestions');
+        if (!await check() || !active()) return;
+        editor.suggestions = suggestionData(value,item);
+      } catch (error) {
+        if (active()) {
+          clearSuggestions(editor,'无法读取推荐，请稍后重新读取或手动核对关联。');
+          if ([403,404,410].includes(error.status)) f.editor = null;
+        }
+        throw error;
+      }
+    });
+  }
+  async function confirmJourney(f, journeyId) {
+    const editor = f.editor, value = editor?.suggestions;
+    const row = value?.suggestions.find(row => row.journeyId === journeyId);
+    if (!editor?.item.canManage || f.mapVisit || !row || row.alreadyLinked || hasPhotoDraft(editor)) return;
+    const payload = {revision:value.photoRevision,journeyId:row.journeyId,
+      expectedJourneyRevision:row.journeyRevision,expectedTripRevision:row.tripRevision};
+    clearSuggestions(editor,'关联结果待核对，请重新读取照片和推荐。');
+    await job(f,async check => {
+      try {
+        const {item} = await write('/media/items/' + editor.item.id,'PATCH',payload);
+        if (!await check() || f.editor !== editor) return;
+        if (!item?.canManage || item.id !== editor.item.id) throw new Error('关联结果尚未核对，请重新读取。');
+        editor.item = item; editor.draft = {caption:item.caption || '',visibility:item.visibility,journeyId:item.journey?.id || ''};
+        editor.conflict = false; editor.tvConsent = false;
+        clearSuggestions(editor,'关联已保存。共享范围和电视许可保持原设置。');
+        await gallery(f,check);
+      } catch (error) {
+        if (f.editor === editor) {
+          clearSuggestions(editor,error.status === 409 ? '照片或旅行已更新。请重新读取照片和推荐，核对后再次明确确认。' : '关联结果尚未核对。请重新读取照片和推荐；不会自动重发关联。');
+          if ([403,404,410].includes(error.status)) f.editor = null;
+        }
+        throw error;
+      }
+    });
+  }
   function render(f) {
     if (!alive(f)) return;
     const focused = f.node.contains(document.activeElement) ? document.activeElement : null;
@@ -246,7 +348,7 @@ window.HouseholdMedia = (() => {
       ${f.imports.length ? `<details class="hm-history"><summary>最近的选择记录</summary>${f.imports.map(item => button('resume',`${escape(labels[item.state] || item.state)} · ${escape(new Date(item.createdAt).toLocaleString('zh-CN'))}`,`data-id="${escape(item.id)}" ${busy}`)).join('')}</details>` : ''}
       <div class="hm-library-head"><div><span class="hm-kicker">YOUR COLLECTION</span><h2>我们的相册 <small>${f.total} 张</small></h2></div>${button('refresh','刷新',busy)}</div><form class="hm-filters" data-hm-filters><label>查看范围<select name="scope">${option('mine','我的照片',f.scope)}${option('visible','我能查看的',f.scope)}${option('shared','家人分享给我',f.scope)}</select></label><label>旅行<select name="journeyId">${option('','全部旅行',f.journeyId)}${f.journeys.map(journey => option(journey.id,journey.trip?.title || journey.plan?.title || '旅行',f.journeyId)).join('')}</select></label><button class="hm-button" type="submit" ${busy}>查看</button></form>
       <div class="hm-library-layout ${f.editor ? 'has-detail' : ''}"><div><div class="hm-grid">${f.items.length ? f.items.map(item => `<button type="button" class="hm-card" data-hm="detail" data-id="${escape(item.id)}">${imageMarkup(item)}<span class="hm-card-caption"><strong>${escape(item.caption || item.journey?.title || '一段生活的片刻')}</strong><span>${item.visibility === 'shared' ? '家庭共享' : '仅我自己'}${item.journey ? ' · '+escape(item.journey.title) : ''}</span></span></button>`).join('') : `<div class="hm-empty"><span aria-hidden="true">▧</span><h3>${f.loaded ? '回忆，从你挑选的第一张开始' : '正在打开相册…'}</h3><p>${f.loaded ? '从 Google Photos 选择照片，确认保存后会出现在这里。也可以换个范围查看家庭共享照片。' : '正在核对照片和连接状态。'}</p></div>`}</div><div class="hm-pagination">${button('previous','上一页',`${busy} ${f.offset === 0 ? 'disabled' : ''}`)}<span>第 ${Math.floor(f.offset/24)+1} 页</span>${button('next','下一页',`${busy} ${!f.hasMore ? 'disabled' : ''}`)}</div></div>${editorMarkup(f)}</div>`;
-    renderImport(f); renderMessage(f);
+    renderImport(f); renderMessage(f); renderSuggestions(f);
     if (focusName) {
       const input = [...f.node.querySelectorAll('[name]')].find(node => node.name === focusName && (focused.closest('[data-hm-editor]') ? node.closest('[data-hm-editor]') : !node.closest('[data-hm-editor]')));
       input?.focus({preventScroll:true});
@@ -282,6 +384,8 @@ window.HouseholdMedia = (() => {
     if (action === 'refresh') return refresh(f);
     if (action === 'detail') return detail(f,target.dataset.id);
     if (action === 'reload-detail') return detail(f,f.editor.item.id,true);
+    if (action === 'journey-suggestions') return loadSuggestions(f);
+    if (action === 'confirm-journey') return confirmJourney(f,target.dataset.journey);
     if (action === 'close-detail') {f.editor = null; render(f); return;}
     if (action === 'open-journey') {const journey = f.editor?.item.journey; if (journey?.tripId) f.openJourney?.(journey.tripId,{returnTo:'photos'}); return;}
     if (action === 'resume') return job(f,check => readImport(f,target.dataset.id,check));
@@ -369,7 +473,10 @@ window.HouseholdMedia = (() => {
     const f = {node,openJourney,actor:actor(),dead:false,epoch:0,busy:false,loaded:false,freshAt:Date.now(),error:'',notice:'',scope:'mine',journeyId:'',offset:0,total:0,hasMore:false,items:[],accounts:[],journeys:[],devices:[],imports:[],accountId:'',temporary:false,persist:false,selection:new Set(),importResult:null,editor:null,createPending:null,confirmPending:null,confirmConflict:false};
     current = f;
     f.click = event => {const target = event.target.closest('[data-hm]'); if (target) {event.preventDefault(); void act(f,target.dataset.hm,target);}};
-    f.input = event => {if (event.target.closest('[data-hm-editor]') && f.editor && event.target.name) f.editor.draft[event.target.name] = event.target.value;};
+    f.input = event => {if (event.target.closest('[data-hm-editor]') && f.editor && event.target.name) {
+      if (f.editor.draft[event.target.name] !== event.target.value) clearSuggestions(f.editor);
+      f.editor.draft[event.target.name] = event.target.value; renderSuggestions(f);
+    }};
     f.change = event => {
       if (!alive(f) || f.busy) return;
       const target = event.target;
@@ -387,7 +494,7 @@ window.HouseholdMedia = (() => {
     };
     f.submit = event => {
       event.preventDefault(); if (!alive(f) || f.busy) return;
-      if (event.target.matches('[data-hm-filters]')) {const values = new FormData(event.target); f.scope = values.get('scope'); f.journeyId = values.get('journeyId'); f.offset = 0; void job(f,check => gallery(f,check));}
+      if (event.target.matches('[data-hm-filters]')) {clearSuggestions(f.editor); const values = new FormData(event.target); f.scope = values.get('scope'); f.journeyId = values.get('journeyId'); f.offset = 0; void job(f,check => gallery(f,check));}
       if (event.target.matches('[data-hm-editor]') && f.editor?.item.canManage) {
         const editor = f.editor;
         const payload = {revision:editor.item.revision,caption:editor.draft.caption,visibility:editor.draft.visibility,journeyId:editor.draft.journeyId || null};
@@ -403,7 +510,7 @@ window.HouseholdMedia = (() => {
     };
     f.visibility = () => {if (document.hidden) clearTimeout(f.timer); else if (alive(f)) void job(f,async check => {if (f.importResult) await readImport(f,f.importResult.import.id,check); await visibleState(f,check);});};
     f.online = () => {if (alive(f)) {f.error = ''; renderMessage(f); schedule(f);}};
-    f.offline = () => {if (alive(f)) renderMessage(f);};
+    f.offline = () => {if (alive(f)) {clearSuggestions(f.editor); renderSuggestions(f); renderMessage(f);}};
     f.observer = new MutationObserver(() => {if (current === f && !f.node.isConnected) unmount();});
     f.observer.observe(document.body,{childList:true,subtree:true});
     node.addEventListener('click',f.click); node.addEventListener('input',f.input); node.addEventListener('change',f.change); node.addEventListener('submit',f.submit);
