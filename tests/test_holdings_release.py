@@ -195,6 +195,48 @@ def check_pinned_local_operators(source_root):
         generated = adapter.prepare(access, output)
         assert generated['bound'] is False and generated['finalFreezeProvided'] is False
         directory = output / 'operators'
+        # Check generated executable syntax, including Python inside strings:
+        # unchanged old lines do not appear in the adapter's reviewed diff.
+        def assert_no_old_table_count(tree):
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Constant):
+                    assert not (type(node.value) is int and node.value == 53)
+                    if isinstance(node.value, str):
+                        try:
+                            embedded = ast.parse(node.value)
+                        except (SyntaxError, ValueError):
+                            continue
+                        assert_no_old_table_count(embedded)
+        for filename in generated['generatedHashes']:
+            assert_no_old_table_count(ast.parse((output / filename).read_bytes()))
+        activation = ast.parse((directory / 'activate.py').read_bytes())
+        migration_guards = [node for node in ast.walk(activation)
+                            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+                            and node.func.id == 'need' and node.args
+                            and isinstance(node.args[0], ast.Compare)
+                            and isinstance(node.args[0].left, ast.Name)
+                            and node.args[0].left.id == 'migration_result']
+        assert len(migration_guards) == 1
+        guard = compile(ast.fix_missing_locations(ast.Module(
+            body=[ast.Expr(value=migration_guards[0])], type_ignores=[])), '<generated-migration-guard>', 'exec')
+        expected_result = {'originalTablesPreserved': 54, 'newTables': 1, 'households': 2,
+                           'newTableEmpty': True, 'oldRowsSchemaAndSequencesPreserved': True,
+                           'registryPreserved': True}
+        rejected_results = [('old_53', {'originalTablesPreserved': 53}),
+                            ('after_55', {'originalTablesPreserved': 55}),
+                            ('wrong_new_count', {'newTables': 0}), ('wrong_households', {'households': 1}),
+                            ('not_empty', {'newTableEmpty': False}),
+                            ('old_data_changed', {'oldRowsSchemaAndSequencesPreserved': False}),
+                            ('registry_changed', {'registryPreserved': False}), ('extra_key', {'extra': True})]
+        for mode, change in [('valid_54_two_households', {}), *rejected_results]:
+            context = {'__builtins__': {'len': len}, 'need': adapter.need,
+                       'before': {'households': [{}, {}]}, 'migration_result': {**expected_result, **change}}
+            try:
+                exec(guard, context)
+            except RuntimeError as exc:
+                assert mode != 'valid_54_two_households' and str(exc) == 'Unexpected migration result'
+            else:
+                assert mode == 'valid_54_two_households', mode
         blocked = []
         with patch.object(subprocess, 'run', deny), patch.object(subprocess, 'check_output', deny), patch.object(socket.socket, 'connect', deny):
             def load(name, filename):
@@ -274,6 +316,9 @@ def check_pinned_local_operators(source_root):
                         raise AssertionError('Fresh backup guard accepted: ' + mode)
         assert adapter.read_sources(source_root) == original_sources
         return {'sourceHashes': adapter.PINNED, 'transformedPythonFiles': 9,
+                'generatedMigrationGuard': {'accepted': 'valid_54_two_households',
+                                            'rejected': [mode for mode, _ in rejected_results]},
+                'oldTableCount53AbsentFromGeneratedSyntax': True,
                 'unboundEntrypointsRejected': blocked, 'unfrozenBindingRejected': True,
                 'syntheticJunitParserChecks': junit_checks, 'syntheticFreshBackupRejections': backup_checks,
                 'freshBackupR3SourceSha256': adapter.PINNED['expo-finance-post-r3-20260917/post_readback_r3.py'],
