@@ -88,7 +88,7 @@ def assignment(source, name, expression):
 
 
 DOCKER_CONTRACT = '''def verify_docker_delta(old, new):
-    before = b'COPY calendar_publish.py financial_files.py investment_import.py ./\\n'
+    before = b'COPY calendar_publish.py financial_files.py investment_import.py ./\\r\\n'
     after = b'COPY calendar_publish.py financial_files.py investment_import.py investment_operations.py ./\\n'
     need(old.count(before) == 1 and b'investment_operations.py' not in old,
          'Installed Dockerfile does not have the reviewed investment COPY line')
