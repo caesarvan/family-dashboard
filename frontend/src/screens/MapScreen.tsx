@@ -97,7 +97,10 @@ function MapWorkspace(props: Props & { identityKey: string }) {
     const id = target && values.items.some(row => row.id === target) ? target : undefined;
     const detail = id ? await readPlace(id) : null;
     if (!current()) return;
-    setPage(values); setFilters(nextFilters); setFilterDraft(nextFilters); setJourneys(options); setSelected(id); setPlace(detail);
+    setPage(values); setFilters(nextFilters);
+    // A same-filter refresh must not overwrite unfinished filter input.
+    if (nextFilters !== state.current.filters) setFilterDraft(nextFilters);
+    setJourneys(options); setSelected(id); setPlace(detail);
   }
   async function checkDraft() {
     await fence.current.run(async () => true, current);
@@ -142,7 +145,7 @@ function MapWorkspace(props: Props & { identityKey: string }) {
   }, [visible, denied]);
   async function runRead(job: () => Promise<void>, showBusy = true) {
     if (!current() || working.current) return;
-    working.current = true; const ticket = generation.current; if (showBusy) setBusy(true); setError('');
+    working.current = true; const ticket = generation.current; if (showBusy) { setBusy(true); setError(''); }
     try { await job(); } catch (caught) { fail(caught); }
     finally { if (ticket === generation.current) { working.current = false; if (current() && showBusy) setBusy(false); } }
   }
