@@ -214,7 +214,7 @@ def test_partial_pagination_never_completes_or_downloads():
 def test_invalid_picture_records_only_fixed_item_failure():
     engine = Engine(job())
     run, _, _ = worker(engine, session(), {'mediaItems': [item()]}, Response(b'\x89PNG\r\n\x1a\nbroken', mime='image/png'))
-    assert run.tick() and not engine.completed and engine.failed[0][0] == 'unsupported_image'
+    assert run.tick() and not engine.completed and engine.failed[0][0] == 'invalid_image'
 
 
 @pytest.mark.parametrize('status,code,retry', [(429, 'rate_limited', True), (503, 'unavailable', True), (403, 'forbidden', False)])

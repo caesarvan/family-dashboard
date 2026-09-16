@@ -18,6 +18,8 @@ from media_images import MediaImageError, sanitize_media_preview
 
 MAX_ITEMS = 20
 MAX_PAGES = 40
+IMAGE_ERROR_CODES = frozenset({'invalid_input','input_too_large','unsupported_format','invalid_image',
+    'multiple_frames','too_many_pixels','output_too_large','unsafe_decoder_configuration'})
 
 
 def _manifest(items):
@@ -99,8 +101,8 @@ class MediaImportWorker:
         except PickerError as error:
             self._fail(job, error.code, retryable=error.retryable,
                        outcome_unknown=error.outcome_unknown, reauth=error.reauth)
-        except MediaImageError:
-            self._fail(job, 'unsupported_image')
+        except MediaImageError as error:
+            self._fail(job, error.code if isinstance(error.code,str) and error.code in IMAGE_ERROR_CODES else 'unsupported_image')
         except AccountBusy:
             self._fail(job, 'unavailable', retryable=True)
         except ProviderError as error:
