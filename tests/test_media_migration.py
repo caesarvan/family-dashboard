@@ -12,6 +12,13 @@ from deploy.backup import backup_all
 from deploy import check_media_migration as migration
 
 
+@pytest.fixture(autouse=True)
+def historical_without_investment_operations(monkeypatch):
+    """This suite models schemas predating the 55th operation-receipt table."""
+    import investment_operations
+    monkeypatch.setattr(investment_operations, "INVESTMENT_OPERATIONS_SCHEMA_SQL", "")
+
+
 @pytest.fixture(params=['media47','media48'])
 def group(tmp_path,monkeypatch,request):
     # Historical 44->47/48 fixture: the later inventory registrar is excluded

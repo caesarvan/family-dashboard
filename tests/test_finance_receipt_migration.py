@@ -44,6 +44,13 @@ def import_row(client, headers, name, *, request_id=None):
     return body, confirmed.json
 
 
+@pytest.fixture(autouse=True)
+def historical_without_investment_operations(monkeypatch):
+    """This suite models schemas predating the 55th operation-receipt table."""
+    import investment_operations
+    monkeypatch.setattr(investment_operations, "INVESTMENT_OPERATIONS_SCHEMA_SQL", "")
+
+
 @pytest.fixture
 def group(tmp_path, monkeypatch):
     def offline(*_args, **_kwargs):
