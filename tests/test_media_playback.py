@@ -23,7 +23,7 @@ def offline(monkeypatch):
 
 def setup(tmp_path, monkeypatch, household='default'):
     env = configured(tmp_path, monkeypatch, household)
-    controller = playback.register_media_playback(env[0])
+    controller = env[0].extensions.get('media_playback') or playback.register_media_playback(env[0])
     controller.clock = lambda: env[2][0]
     return env, controller
 
@@ -267,11 +267,13 @@ def test_audit_failure_rolls_back_state(env,monkeypatch):
     assert c.get(path(uid)).json['revision'] == 0
 
 
-def test_no_schema_registration_in_existing_app_and_reject_partial(tmp_path,monkeypatch):
+def test_factory_schema_registration_and_reject_partial(tmp_path,monkeypatch):
     env = configured(tmp_path,monkeypatch)
-    assert 'media_playback' not in env[0].extensions
+    assert 'media_playback' in env[0].extensions
     with env[1].sessions.db() as con:
-        assert con.execute("SELECT name FROM sqlite_master WHERE name='media_playback'").fetchone() is None
+        assert con.execute("SELECT name FROM sqlite_master WHERE name='media_playback'").fetchone() is not None
+        playback.initialize_media_playback(con)
+        con.execute('DROP TABLE media_playback')  # Only this disposable fixture.
         con.execute('CREATE TABLE media_playback(device_id TEXT)')
     with env[1].sessions.db() as con, pytest.raises(RuntimeError,match='schema mismatch'):
         playback.initialize_media_playback(con)

@@ -1,4 +1,5 @@
-"""Loopback Flask/SQLite/Edge playback. Only fixture HTML wires the pending assets."""
+"""Loopback Flask/SQLite/Edge playback; strict mode requires real factory/assets."""
+import argparse
 from datetime import datetime, timedelta
 import hashlib
 import json
@@ -25,11 +26,15 @@ class Quiet(WSGIRequestHandler):
 
 
 def main():
+    parser=argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--require-factory',action='store_true')
+    options=parser.parse_args()
     out = ROOT/'test-results/media-tv-playback'
     out.mkdir(parents=True, exist_ok=True)
     report = {'passed':False,'checks':[],'pageErrors':[],'serverErrors':[],'externalRequests':[],
         'realCloudWrites':0,'productionWrites':0,'realPrivateInputs':0,'realPhysicalTelevision':False,
-        'scope':'Temporary SQLite and actual loopback Flask/Edge. Synthetic photos; explicit fixture registration/HTML injection. Network faults are deliberately injected.',
+        'requireFactory':options.require_factory,
+        'scope':'Temporary SQLite and actual loopback Flask/Edge. Synthetic photos; '+('actual factory and shipped HTML' if options.require_factory else 'fixture registration/HTML injection allowed')+'. Network faults are deliberately injected.',
         'sourceHashes':{p:hashlib.sha256((ROOT/p).read_bytes()).hexdigest() for p in (
             'media_playback.py','household_media.py','static/media-tv.js','static/media-tv.css',
             'static/tv-display.js','tests/browser_media_tv_check.py')}}
@@ -46,10 +51,18 @@ def main():
         def fixture(response):
             if request.path in ('/','/tv') and response.status_code == 200:
                 response.direct_passthrough = False
-                text = response.get_data(as_text=True).replace('<link rel="stylesheet" href="/static/tv-display.css">',
-                    '<link rel="stylesheet" href="/static/tv-display.css"><link rel="stylesheet" href="/static/media-tv.css">')
-                text = text.replace('<script src="/static/tv-display.js" defer></script>',
-                    '<script src="/static/media-tv.js" defer></script><script src="/static/tv-display.js" defer></script>')
+                text = response.get_data(as_text=True)
+                if options.require_factory:
+                    assert text.count('src="/static/media-tv.js"')==1
+                    assert text.count('href="/static/media-tv.css"')==1
+                    assert text.index('src="/static/media-tv.js"')<text.index('src="/static/tv-display.js"')
+                else:
+                    if 'href="/static/media-tv.css"' not in text:
+                        text=text.replace('<link rel="stylesheet" href="/static/tv-display.css">',
+                            '<link rel="stylesheet" href="/static/tv-display.css"><link rel="stylesheet" href="/static/media-tv.css">')
+                    if 'src="/static/media-tv.js"' not in text:
+                        text=text.replace('<script src="/static/tv-display.js" defer></script>',
+                            '<script src="/static/media-tv.js" defer></script><script src="/static/tv-display.js" defer></script>')
                 response.set_data(text)
             if request.path == '/api/media-tv/playback' and response.status_code == 200:
                 if fault['blockState']:
@@ -74,6 +87,11 @@ def main():
         return 'http://127.0.0.1:'+str(server.server_port)
     try:
         with tempfile.TemporaryDirectory(prefix='media-tv-browser-') as folder:
+            if options.require_factory:
+                # Refuse fixture fallback before setup creates its first app.
+                def forbidden(_app):
+                    raise AssertionError('Actual factory playback registration required')
+                changes.setattr('media_playback.register_media_playback',forbidden)
             env, controller = setup(Path(folder)/'one',changes)
             other,_ = setup(Path(folder)/'two',changes,'b'*24)
             base, other_base = attach(env),attach(other)

@@ -4,7 +4,7 @@
 
 本表描述**本地源码**，其与正式版本的差异见 [交接说明](HANDOFF.md)。表用于定位代码；字段、权限、错误和状态机参见 [README 文档导航](../README.md#文档导航)。
 
-Flask HTTP 方法与路径组合：**112**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
+Flask HTTP 方法与路径组合：**130**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
 
 | 方法 | 路径 | 实现 |
 |---|---|---|
@@ -15,6 +15,7 @@ Flask HTTP 方法与路径组合：**112**；另有 `GET /space/<slug>`。HEAD/O
 | POST | `/api/accounts/<account_id>/sources` | [cloud_accounts.py](../cloud_accounts.py) · `sources` |
 | POST | `/api/accounts/<account_id>/sync` | [cloud_accounts.py](../cloud_accounts.py) · `sync_now` |
 | POST | `/api/accounts/bind` | [cloud_accounts.py](../cloud_accounts.py) · `bind` |
+| POST | `/api/accounts/google-photos/bind` | [cloud_accounts.py](../cloud_accounts.py) · `bind_google_photos` |
 | GET | `/api/assistant/brief` | [home_assistant.py](../home_assistant.py) · `get_brief` |
 | POST | `/api/assistant/journey-brief` | [home_assistant.py](../home_assistant.py) · `journey_brief` |
 | POST | `/api/assistant/plan` | [home_assistant.py](../home_assistant.py) · `plan` |
@@ -87,6 +88,23 @@ Flask HTTP 方法与路径组合：**112**；另有 `GET /space/<slug>`。HEAD/O
 | POST | `/api/login` | [app.py](../app.py) · `login` |
 | POST | `/api/logout` | [app.py](../app.py) · `logout` |
 | GET | `/api/me` | [app.py](../app.py) · `me` |
+| GET | `/api/media-playback/devices/<uid>` | [media_playback.py](../media_playback.py) · `media_playback_control` |
+| PUT | `/api/media-playback/devices/<uid>` | [media_playback.py](../media_playback.py) · `media_playback_control` |
+| GET | `/api/media-tv/items` | [household_media.py](../household_media.py) · `media_tv_items` |
+| GET | `/api/media-tv/items/<uid>/preview` | [household_media.py](../household_media.py) · `media_tv_preview` |
+| GET | `/api/media-tv/playback` | [media_playback.py](../media_playback.py) · `media_playback_tv` |
+| GET | `/api/media/imports` | [household_media.py](../household_media.py) · `media_imports` |
+| POST | `/api/media/imports` | [household_media.py](../household_media.py) · `media_imports` |
+| DELETE | `/api/media/imports/<uid>` | [household_media.py](../household_media.py) · `media_import_detail` |
+| GET | `/api/media/imports/<uid>` | [household_media.py](../household_media.py) · `media_import_detail` |
+| POST | `/api/media/imports/<uid>/confirm` | [household_media.py](../household_media.py) · `media_import_confirm` |
+| GET | `/api/media/items` | [household_media.py](../household_media.py) · `media_items` |
+| DELETE | `/api/media/items/<uid>` | [household_media.py](../household_media.py) · `media_item` |
+| GET | `/api/media/items/<uid>` | [household_media.py](../household_media.py) · `media_item` |
+| PATCH | `/api/media/items/<uid>` | [household_media.py](../household_media.py) · `media_item` |
+| GET | `/api/media/items/<uid>/preview` | [household_media.py](../household_media.py) · `media_preview` |
+| GET | `/api/media/items/<uid>/tv-grants` | [household_media.py](../household_media.py) · `media_tv_grants` |
+| PUT | `/api/media/items/<uid>/tv-grants` | [household_media.py](../household_media.py) · `media_tv_grants` |
 | POST | `/api/pair/approve` | [app.py](../app.py) · `pair_approve` |
 | POST | `/api/pair/poll` | [app.py](../app.py) · `pair_poll` |
 | POST | `/api/pair/start` | [app.py](../app.py) · `pair_start` |
@@ -123,9 +141,9 @@ Flask HTTP 方法与路径组合：**112**；另有 `GET /space/<slug>`。HEAD/O
 
 ## 每户业务数据表
 
-共 **44** 张表：
+共 **48** 张表：
 
-`assistant_plans`, `attempts`, `audit`, `calendar_publications`, `cloud_accounts`, `cloud_items`, `cloud_oauth_states`, `cloud_sources`, `cloud_writes`, `devices`, `entities`, `finance_baselines`, `finance_source_receipts`, `finance_spending_observations`, `finance_spending_receipts`, `household_routines`, `hub_budgets`, `hub_imports`, `hub_investment_import_previews`, `hub_investment_import_receipts`, `hub_investment_links`, `hub_investment_sources`, `hub_investments`, `hub_reconciliations`, `hub_shopping_settlement_receipts`, `hub_shopping_settlements`, `hub_transactions`, `journey_actions`, `journey_documents`, `journey_links`, `journey_places`, `journey_workflows`, `member_dashboard_layout`, `member_preferences`, `member_session_browsers`, `member_sessions`, `photo_refs`, `photos`, `private_finance`, `routine_occurrences`, `routine_receipts`, `settings`, `task_publications`, `users`
+`assistant_plans`, `attempts`, `audit`, `calendar_publications`, `cloud_accounts`, `cloud_items`, `cloud_oauth_states`, `cloud_sources`, `cloud_writes`, `devices`, `entities`, `finance_baselines`, `finance_source_receipts`, `finance_spending_observations`, `finance_spending_receipts`, `household_routines`, `hub_budgets`, `hub_imports`, `hub_investment_import_previews`, `hub_investment_import_receipts`, `hub_investment_links`, `hub_investment_sources`, `hub_investments`, `hub_reconciliations`, `hub_shopping_settlement_receipts`, `hub_shopping_settlements`, `hub_transactions`, `journey_actions`, `journey_documents`, `journey_links`, `journey_places`, `journey_workflows`, `media_imports`, `media_items`, `media_playback`, `media_tv_grants`, `member_dashboard_layout`, `member_preferences`, `member_session_browsers`, `member_sessions`, `photo_refs`, `photos`, `private_finance`, `routine_occurrences`, `routine_receipts`, `settings`, `task_publications`, `users`
 
 ## 平台注册目录
 

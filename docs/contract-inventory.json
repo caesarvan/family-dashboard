@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-16T06:34:01.709696+00:00",
+  "generatedAt": "2026-09-16T09:41:44.218414+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -43,6 +43,12 @@
       "path": "/api/accounts/bind",
       "source": "cloud_accounts.py",
       "endpoint": "bind"
+    },
+    {
+      "method": "POST",
+      "path": "/api/accounts/google-photos/bind",
+      "source": "cloud_accounts.py",
+      "endpoint": "bind_google_photos"
     },
     {
       "method": "GET",
@@ -475,6 +481,108 @@
       "path": "/api/me",
       "source": "app.py",
       "endpoint": "me"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media-playback/devices/<uid>",
+      "source": "media_playback.py",
+      "endpoint": "media_playback_control"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/media-playback/devices/<uid>",
+      "source": "media_playback.py",
+      "endpoint": "media_playback_control"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media-tv/items",
+      "source": "household_media.py",
+      "endpoint": "media_tv_items"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media-tv/items/<uid>/preview",
+      "source": "household_media.py",
+      "endpoint": "media_tv_preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media-tv/playback",
+      "source": "media_playback.py",
+      "endpoint": "media_playback_tv"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media/imports",
+      "source": "household_media.py",
+      "endpoint": "media_imports"
+    },
+    {
+      "method": "POST",
+      "path": "/api/media/imports",
+      "source": "household_media.py",
+      "endpoint": "media_imports"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/media/imports/<uid>",
+      "source": "household_media.py",
+      "endpoint": "media_import_detail"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media/imports/<uid>",
+      "source": "household_media.py",
+      "endpoint": "media_import_detail"
+    },
+    {
+      "method": "POST",
+      "path": "/api/media/imports/<uid>/confirm",
+      "source": "household_media.py",
+      "endpoint": "media_import_confirm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media/items",
+      "source": "household_media.py",
+      "endpoint": "media_items"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/media/items/<uid>",
+      "source": "household_media.py",
+      "endpoint": "media_item"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media/items/<uid>",
+      "source": "household_media.py",
+      "endpoint": "media_item"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/media/items/<uid>",
+      "source": "household_media.py",
+      "endpoint": "media_item"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media/items/<uid>/preview",
+      "source": "household_media.py",
+      "endpoint": "media_preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media/items/<uid>/tv-grants",
+      "source": "household_media.py",
+      "endpoint": "media_tv_grants"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/media/items/<uid>/tv-grants",
+      "source": "household_media.py",
+      "endpoint": "media_tv_grants"
     },
     {
       "method": "POST",
@@ -2321,6 +2429,332 @@
       {
         "name": "updated_at",
         "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "media_imports": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "request_key",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "state",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "next_attempt_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "attempts",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "create_attempted",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "lease_token",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "lease_until",
+        "type": "REAL",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "error_code",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "cleanup_state",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "context_cipher",
+        "type": "BLOB",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "session_cipher",
+        "type": "BLOB",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "manifest_cipher",
+        "type": "BLOB",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "confirm_request_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "confirm_key",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "cancel_revision",
+        "type": "INTEGER",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "reserved_bytes",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "media_items": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "import_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_key",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "state",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "visibility",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "journey_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "metadata_cipher",
+        "type": "BLOB",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "preview_cipher",
+        "type": "BLOB",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "preview_key",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "confirmed_at",
+        "type": "REAL",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "deleted_at",
+        "type": "REAL",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "delete_revision",
+        "type": "INTEGER",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
+    "media_playback": [
+      {
+        "name": "device_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "mode",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "paused",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "interval_seconds",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "cursor",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "anchor_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "media_tv_grants": [
+      {
+        "name": "media_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "device_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "granted_by",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
         "notNull": true,
         "primaryKey": false
       }
