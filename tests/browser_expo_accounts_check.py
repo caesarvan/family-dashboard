@@ -21,7 +21,7 @@ import tempfile
 import threading
 import traceback
 from unittest.mock import patch
-from urllib.parse import urlencode, urlsplit
+from urllib.parse import parse_qs, urlencode, urlsplit
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
@@ -61,7 +61,7 @@ def main():
     out = Path(__file__).resolve().parents[1] / 'test-results' / ('expo-accounts-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
     out.mkdir(parents=True)
     shutil.copyfile(__file__, out / 'executed-harness.py')
-    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], httpErrors=[], screenshots=[],
+    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], blockedAuthorizationNavigations=[], httpErrors=[], screenshots=[],
         eventInjections=['document.hidden/visibilityState plus visibilitychange for background/foreground'],
         head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
         sourceHashesBefore=hashes(), bundleHashesBefore=bundle_hashes(), productionWrites=0, realCloud=False, physicalTelevision=False,
@@ -136,6 +136,9 @@ def main():
             server = make_server('127.0.0.1', 0, application, threaded=True, request_handler=Quiet, ssl_context='adhoc')
             base = 'https://127.0.0.1:' + str(server.server_port)
             application.config.update(PUBLIC_ORIGIN=base, SESSION_COOKIE_SECURE=True)
+            # The ephemeral listener port was unavailable when constructing the
+            # real factory. Bind the engine's configured callback origin now.
+            engine.origin = base
             thread = threading.Thread(target=server.serve_forever, daemon=True)
             thread.start()
 
@@ -287,6 +290,35 @@ def main():
                 assert get(partner, '/api/accounts')['accounts'][0]['id'] == partner_aid
                 assert partner.request.get(base + source_path).status == 404
                 passed('configured/unconfigured providers are truthful; account cards are owner-only and opening does not discover cloud sources')
+
+                # The real bind API generates the URL and state. Abort the provider
+                # document request before any external network, recording no URL
+                # query or OAuth state. No account connection is inferred from it.
+                def abort_authorization(handler):
+                    target = urlsplit(handler.request.url)
+                    params = parse_qs(target.query)
+                    expected = '/common/oauth2/v2.0/authorize' if target.hostname == 'login.microsoftonline.com' else '/o/oauth2/v2/auth'
+                    provider = 'microsoft' if target.hostname == 'login.microsoftonline.com' else 'google'
+                    assert target.scheme == 'https' and target.path == expected
+                    assert params['redirect_uri'] == [base + '/auth/' + provider + '/callback']
+                    assert params['response_type'] == ['code'] and params['code_challenge_method'] == ['S256']
+                    assert len(params['state'][0]) >= 32 and len(params['code_challenge'][0]) == 43
+                    report['blockedAuthorizationNavigations'].append({'host': target.hostname, 'path': target.path, 'externalNetwork': False})
+                    handler.abort('blockedbyclient')
+
+                for provider, host in [('Microsoft', 'login.microsoftonline.com'), ('Google', 'accounts.google.com')]:
+                    if provider == 'Google':
+                        application.config.update(GOOGLE_CLIENT_ID='synthetic-google-client', GOOGLE_CLIENT_SECRET='synthetic-google-secret')
+                        open_accounts(page)
+                    page.route('https://' + host + '/**', abort_authorization)
+                    with page.expect_request(re.compile(r'^https://' + re.escape(host) + '/')):
+                        button(page, '连接 ' + provider).click()
+                    page.unroute('https://' + host + '/**', abort_authorization)
+                    open_accounts(page)
+                    assert len(get(owner, '/api/accounts')['accounts']) == 1
+                application.config.update(GOOGLE_CLIENT_ID='', GOOGLE_CLIENT_SECRET='')
+                open_accounts(page)
+                passed('real Microsoft and Google bind buttons generate current-app PKCE authorization URLs; provider navigation blocked before network, no binding or sync success fabricated')
 
                 write(owner, 'POST', '/api/items/tasks', {'title': '合成本地待办保留', 'sourceId': ''}, 201)
                 open_editor(page)
