@@ -520,6 +520,13 @@ def main():
                     assert_layout(page, width, 'accounts-disconnect')
                     passed(f'{width}px actual account overview/source selection/review/disconnect fit viewport')
 
+                for width in (1440, 390):
+                    page.set_viewport_size({'width': width, 'height': 900 if width >= 1000 else 844})
+                    page.goto(base + '/app')
+                    expect(page.get_by_role('heading', name=re.compile('欢迎回家$'))).to_be_visible()
+                    expect(page.get_by_text('合成本地待办保留', exact=True)).to_be_visible()
+                    assert_layout(page, width, 'home-overview')
+
                 open_accounts(page)
                 remote.records[('microsoft', 'list-2')] = {'u': {'id': 'u', 'version': 'v1', 'data':
                     {'title': '合成待移除镜像', 'done': False, 'note': '', 'due': '', 'tripId': ''}}}
