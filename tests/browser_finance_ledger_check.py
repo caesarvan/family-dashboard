@@ -179,6 +179,14 @@ def main():
                 f.gate=True;p.locator('[data-fh=ledger-next]').click();f.held_ready();f.search('no-match-after-held');f.release();p.wait_for_timeout(150)
                 expect(p.locator('#fh-ledger-search input')).to_have_value('no-match-after-held');expect(p.locator('.fh-ledger')).to_contain_text('没有匹配')
                 passed('late-page-cannot-replace-new-search')
+                f.search('batch');f.gate=True;p.locator('[data-fh=ledger-next]').click();f.held_ready()
+                p.locator('[data-fh-tab=overview]').click();expect(p.locator('.fh-currency')).to_be_visible()
+                p.locator('[data-fh-tab=ledger]').click();f.ready(2)
+                expect(p.locator('#fh-ledger-search input')).to_have_value('batch')
+                assert 'snapshot' not in report['ledgerRequests'][-1]
+                f.search('LEDGER-0001');f.release();p.wait_for_timeout(150)
+                expect(p.locator('#fh-ledger-search input')).to_have_value('LEDGER-0001');expect(p.locator('.fh-ledger-status')).to_contain_text('1 条匹配')
+                passed('tab-return-restarts-cancelled-load-and-rejects-old-response')
                 f.search('batch');f.gate=True;p.locator('[data-fh=ledger-next]').click();f.held_ready();p.locator('#fh-month').fill('2026-07');p.locator('#fh-month').dispatch_event('change');f.ready();f.release();p.wait_for_timeout(150)
                 expect(p.locator('#fh-month')).to_have_value('2026-07');expect(p.locator('.fh-ledger')).to_contain_text('这个月没有记录')
                 passed('late-page-cannot-replace-new-month')
@@ -194,6 +202,7 @@ def main():
                 passed('changed-member-before-delete-sends-no-mutation');f.close()
                 f=Flow(width=360);p=f.page;f.open();f.search('batch');assert p.locator('#fh-ledger-search').evaluate('(el)=>el.scrollWidth<=el.clientWidth+1')
                 assert p.locator('#dialog').evaluate('(el)=>el.scrollWidth<=el.clientWidth+1')
+                expect(p.locator('.fh-ledger-help')).not_to_have_attribute('open','');expect(p.locator('.fh-ledger-help summary')).to_be_visible()
                 screenshot=out/f'finance-ledger-mobile-{stamp}.png';p.screenshot(path=str(screenshot));report['screenshots'].append(str(screenshot));passed('mobile-search-and-pagination-fit-with-accessible-controls');f.close()
                 f=Flow('/demo#finance');p=f.page
                 p.locator('[data-ps-module=FinanceHub][data-ps-id=ledger]').click() if p.locator('[data-ps-module=FinanceHub][data-ps-id=ledger]').count() else p.locator('[data-ps-module=FinanceHub]').first.click()
@@ -209,7 +218,11 @@ def main():
         finally:
             server.shutdown();thread.join(timeout=5)
             report['sourceHashesAfter']=hashes();report['sourceFilesUnchanged']=report['sourceHashesAfter']==report['sourceHashesBefore']
+            report['passed']=report['passed'] and report['sourceFilesUnchanged']
+            if not report['sourceFilesUnchanged']:report['sourceIntegrityError']='Tracked source changed during browser verification'
             target.write_text(json.dumps(report,ensure_ascii=False,indent=2)+'\n',encoding='utf-8')
             print('REPORT '+str(target),flush=True)
+        # Reached only if no original test error is propagating; preserve that traceback.
+        assert report['sourceFilesUnchanged'], report['sourceIntegrityError']
 
 if __name__=='__main__':main()

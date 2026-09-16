@@ -153,6 +153,11 @@ window.FinanceHub = (() => {
     if(!ledger||ledger.month!==month||!matchesActor(ledger.actor,user,csrf))ledger={actor,month,q:'',draft:'',page:1,pageSize:50,result:null,error:'',loading:false,request:0};
     if(ledger.model!==model){ledger.model=model;ledger.result=null;ledger.error='';ledger.loading=false;ledger.snapshot=''}
   }
+  function selectTab(nextTab){
+    // The request belongs to its original visible page, even when the model is unchanged.
+    if(ledger?.loading){++ledger.request;ledger.loading=false;ledger.snapshot=''}
+    tab=nextTab;render();
+  }
   function transactionRecord(id){return ledger?.result?.transactions.find(row=>row.id===id)||model?.transactions.find(row=>row.id===id)}
   function demoModel(){
     const transactions=Array.from({length:123},(_,i)=>({id:'demo-ledger-'+String(i).padStart(3,'0'),revision:1,title:['虚构早餐','虚构旅行采购','虚构交通费'][i%3],date:month+'-'+String(1+i%28).padStart(2,'0'),category:['餐饮','采购','交通'][i%3],externalId:'DEMO-'+i,kind:'payments',source:'generic',flow:'expense',amountCents:1000+i*100,currency:'CNY',visibility:'private'})).sort((a,b)=>b.date.localeCompare(a.date)||b.id.localeCompare(a.id));
@@ -170,7 +175,7 @@ window.FinanceHub = (() => {
     const snapshot=fresh?'':state.snapshot;state.result=null;
     render();
     if(isDemo){state.result=localLedger(state);state.page=state.result.page;state.snapshot=state.result.snapshot;state.loading=false;render();return}
-    const node=document.querySelector('#dialog .fh-workspace');
+    const node=document.querySelector('#dialog .fh-workspace'),jobEpoch=importEpoch+1;
     try{await importJob(node,async check=>{
       try{
         let overview=null;
@@ -187,7 +192,7 @@ window.FinanceHub = (() => {
       }
     },actor)}finally{
       // Closed dialogs, newer requests and changed identities must never repaint old rows.
-      if(state===ledger&&ticket===state.request&&node.isConnected&&document.querySelector('#dialog').open&&node.querySelector('#fh-ledger-search')){
+      if(state===ledger&&ticket===state.request&&importEpoch===jobEpoch&&node.isConnected&&document.querySelector('#dialog').open&&node.querySelector('#fh-ledger-search')){
         state.loading=false;
         if(!state.result&&!state.error)state.error=node.querySelector('.error')?.textContent||'账本暂时未读回，请刷新后重试。';
         render();
@@ -203,7 +208,7 @@ window.FinanceHub = (() => {
     const state=ledger,result=state.result,rows=result?.transactions||[];
     const count=result?.transactionCount??model.transactionCount,start=result?.filteredCount?(result.page-1)*result.pageSize+1:0,end=result?Math.min(result.page*result.pageSize,result.filteredCount):0;
     const empty=result?(result.transactionCount===0?emptyLedger():message('没有匹配的记录。试试其他关键词，或清除搜索查看整月账本。')):'';
-    return `<section id="fh-ledger-panel" aria-busy="${state.loading}"><div class="fh-section-title"><h4>${esc(month)} · 全月 ${count} 条记录</h4>${isDemo?'':`<button class="btn small" data-fh-tab="import">导入账单 / 订单</button>`}</div><form id="fh-ledger-search" role="search"><label class="field"><span>搜索本月账本</span><input name="q" type="search" maxlength="160" value="${esc(state.draft)}" placeholder="名称、分类、交易编号、商品或规格"></label><div class="fh-actions"><button class="btn" type="submit">搜索</button><button class="btn secondary" type="button" data-fh="ledger-clear">清除搜索</button><button class="btn secondary" type="button" data-fh="ledger-refresh">刷新账本</button></div></form>${message('月度概览始终按全月记录计算；搜索只筛选明细，不改变月度支出。')}${isDemo?message('虚构演示 · 不读取真实账户，也不保存修改。'):message('在每笔记录的“核对 → 关联与对账”中匹配订单、付款和部分退款，或确认跨文件重复支付。')}<p class="error" role="alert">${esc(state.error)}</p><p class="fh-ledger-status" role="status" aria-live="polite">${state.loading?'正在读取账本…':result?`${state.q?'筛选“'+esc(state.q)+'” · ':''}${result.filteredCount} 条${state.q?'匹配':'记录'} · 显示 ${start}–${end} 条 · 第 ${result.page} / ${result.totalPages} 页`:''}</p><div class="fh-ledger">${rows.map(t=>`<article class="fh-transaction"><div class="fh-transaction-icon">${t.kind==='orders'?'▣':t.flow==='income'?'↙':t.flow==='refund'?'↩':'↗'}</div><div class="fh-transaction-main"><strong>${esc(t.title)}</strong><small>${esc(t.date)} · ${esc(sources[t.source]||t.source)} · ${esc(t.category)}</small><div class="fh-tags"><span>${t.kind==='orders'?'采购订单':esc(labels[t.flow])}</span>${t.visibility==='shared'?'<span class="fh-shared">共同汇总</span>':''}${t.checkedAt?'<span>已核对</span>':''}${t.reconciliation?.duplicateOf?'<span>已确认重复 · 不计入</span>':''}${t.reconciliation?.relationCount?'<span>'+t.reconciliation.relationCount+' 项关联</span>':''}</div>${orderItemsMarkup(t)}</div><div class="fh-transaction-value"><strong>${esc(fmt(t.amountCents,t.currency))}</strong>${isDemo?'':`<button class="btn small secondary" data-fh="transaction" data-id="${esc(t.id)}">核对</button>`}${!isDemo&&window.ShoppingSettlement&&t.currency==='CNY'&&(t.kind==='orders'||t.flow==='expense')?`<button class="btn small secondary" data-fh="shopping-settlement" data-id="${esc(t.id)}">关联采购</button>`:''}</div></article>`).join('')||empty}</div><nav class="fh-ledger-pages" aria-label="账本分页"><button class="btn secondary" type="button" data-fh="ledger-previous" ${!result?.hasPrevious||state.loading?'disabled':''}>上一页</button><span>${result?`${result.page} / ${result.totalPages}`:'—'}</span><button class="btn secondary" type="button" data-fh="ledger-next" ${!result?.hasNext||state.loading?'disabled':''}>下一页</button></nav></section>`;
+    return `<section id="fh-ledger-panel" aria-busy="${state.loading}"><div class="fh-section-title"><h4>${esc(month)} · 全月 ${count} 条记录</h4>${isDemo?'':`<button class="btn small" data-fh-tab="import">导入账单 / 订单</button>`}</div><form id="fh-ledger-search" role="search"><label class="field"><span>搜索本月账本</span><input name="q" type="search" maxlength="160" value="${esc(state.draft)}" placeholder="名称、分类、交易编号、商品或规格"></label><div class="fh-actions"><button class="btn" type="submit">搜索</button><button class="btn secondary" type="button" data-fh="ledger-clear">清除搜索</button><button class="btn secondary" type="button" data-fh="ledger-refresh">刷新账本</button></div></form>${message('筛选仅影响列表，月度汇总仍按全月。')}${isDemo?message('虚构演示 · 不读取真实账户，也不保存修改。'):'<details class="fh-ledger-help"><summary>如何核对与关联记录</summary>'+message('在每笔记录的“核对 → 关联与对账”中匹配订单、付款和部分退款，或确认跨文件重复支付。')+'</details>'}<p class="error" role="alert">${esc(state.error)}</p><p class="fh-ledger-status" role="status" aria-live="polite">${state.loading?'正在读取账本…':result?`${state.q?'筛选“'+esc(state.q)+'” · ':''}${result.filteredCount} 条${state.q?'匹配':'记录'} · 显示 ${start}–${end} 条 · 第 ${result.page} / ${result.totalPages} 页`:''}</p><div class="fh-ledger">${rows.map(t=>`<article class="fh-transaction"><div class="fh-transaction-icon">${t.kind==='orders'?'▣':t.flow==='income'?'↙':t.flow==='refund'?'↩':'↗'}</div><div class="fh-transaction-main"><strong>${esc(t.title)}</strong><small>${esc(t.date)} · ${esc(sources[t.source]||t.source)} · ${esc(t.category)}</small><div class="fh-tags"><span>${t.kind==='orders'?'采购订单':esc(labels[t.flow])}</span>${t.visibility==='shared'?'<span class="fh-shared">共同汇总</span>':''}${t.checkedAt?'<span>已核对</span>':''}${t.reconciliation?.duplicateOf?'<span>已确认重复 · 不计入</span>':''}${t.reconciliation?.relationCount?'<span>'+t.reconciliation.relationCount+' 项关联</span>':''}</div>${orderItemsMarkup(t)}</div><div class="fh-transaction-value"><strong>${esc(fmt(t.amountCents,t.currency))}</strong>${isDemo?'':`<button class="btn small secondary" data-fh="transaction" data-id="${esc(t.id)}">核对</button>`}${!isDemo&&window.ShoppingSettlement&&t.currency==='CNY'&&(t.kind==='orders'||t.flow==='expense')?`<button class="btn small secondary" data-fh="shopping-settlement" data-id="${esc(t.id)}">关联采购</button>`:''}</div></article>`).join('')||empty}</div><nav class="fh-ledger-pages" aria-label="账本分页"><button class="btn secondary" type="button" data-fh="ledger-previous" ${!result?.hasPrevious||state.loading?'disabled':''}>上一页</button><span>${result?`${result.page} / ${result.totalPages}`:'—'}</span><button class="btn secondary" type="button" data-fh="ledger-next" ${!result?.hasNext||state.loading?'disabled':''}>下一页</button></nav></section>`;
   }
   function investmentPanel(){
     const groups=model.investmentTotals.map(t=>`<section class="fh-currency"><h4>${esc(t.currency)} · 投资组合</h4><div class="fh-metrics"><div><small>已估值部分</small><strong>${esc(fmt(t.valueCents,t.currency))}</strong></div><div><small>对应持仓账面盈亏</small><strong class="${t.unrealizedGainCents<0?'fh-negative':''}">${esc(fmt(t.unrealizedGainCents,t.currency))}</strong></div><div><small>未估值项目</small><strong>${t.unvaluedCount} 项</strong></div></div><div class="fh-allocation">${t.allocation.map(a=>`<span>${esc(a.assetType)} ${a.percent===null?'—':a.percent+'%'}</span>`).join('')}</div></section>`).join('');
@@ -451,7 +456,7 @@ window.FinanceHub = (() => {
   }
   document.addEventListener('click',async e=>{
     const tabButton=e.target.closest('[data-fh-tab]');
-    if(tabButton&&!isTV&&(canEdit()||isDemo)){const nextTab=tabButton.dataset.fhTab;await modelEntry(tabButton,()=>{tab=nextTab;render()});return}
+    if(tabButton&&!isTV&&(canEdit()||isDemo)){const nextTab=tabButton.dataset.fhTab;await modelEntry(tabButton,()=>selectTab(nextTab));return}
     const b=e.target.closest('[data-fh]');if(!b||isTV||(!canEdit()&&!isDemo)||b.disabled)return;
     const a=b.dataset.fh,id=b.dataset.id;
     try{
