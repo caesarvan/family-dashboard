@@ -1,16 +1,16 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Button, Dialog, Divider, Menu, Portal, SegmentedButtons, Text, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Dialog, Divider, Menu, Portal, SegmentedButtons, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import { PhotoReadDiscarded, PhotoReadFence, type PhotoSession } from '../lib/photos';
-import { canConfirmImport, confirmImportPayload, importAmount, importPayload, newImportRequestId, readImportPreview, readImportReceipt,
+import { canConfirmImport, confirmImportPayload, importAmount, importPayload, importRejectionIsDefinite, importSourceLabel, newImportRequestId, readImportPreview, readImportReceipt,
   type FinanceImportReceipt, type ImportFile, type ImportKind, type ImportPayload, type ImportPreview, type ImportSource } from '../lib/financeImport';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 
 type Props = { onClose: () => void; onImported: (receipt: FinanceImportReceipt) => void };
-type Pending = { requestId: string; payload: ReturnType<typeof confirmImportPayload> };
+type Pending = { requestId: string; payload: ReturnType<typeof confirmImportPayload>; uncertain: boolean };
 const sources: Record<ImportSource, string> = { generic: '通用表格', alipay: '支付宝', wechat: '微信', taobao: '淘宝', pinduoduo: '拼多多' };
 const flows: Record<string, string> = { expense: '支出', income: '收入', refund: '退款', transfer: '转账／还款', unknown: '待核对', excluded: '不计收支' };
 const front = () => typeof document === 'undefined' || !document.hidden;
@@ -59,11 +59,11 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
   const [column, setColumn] = useState<number | undefined>(), [preview, setPreview] = useState<ImportPreview | null>(null);
   const previewRef = useRef<{ value: ImportPreview; payload: ImportPayload } | null>(null);
   const [pending, setPendingState] = useState<Pending | null>(null), [receipt, setReceipt] = useState<FinanceImportReceipt | null>(null);
-  const [notFound, setNotFound] = useState(false), [menu, setMenu] = useState(''), [page, setPage] = useState(0), [leaving, setLeaving] = useState(false);
+  const [notFound, setNotFound] = useState(false), [menu, setMenu] = useState(''), [page, setPage] = useState(0), [errorPage, setErrorPage] = useState(0), [leaving, setLeaving] = useState(false);
   const current = () => mounted.current && focused.current && active.current && !denied.current && appActive.current
     && latest.current.identityKey === identityKey && latest.current.online && front() && connected();
   const setPending = (value: Pending | null) => { pendingRef.current = value; setPendingState(value); };
-  function invalidatePreview() { ++draftEpoch.current; previewRef.current = null; setPreview(null); setPage(0); setError(''); }
+  function invalidatePreview() { ++draftEpoch.current; previewRef.current = null; setPreview(null); setPage(0); setErrorPage(0); setError(''); }
   function resetAll() { invalidatePreview(); setFile(null); setSheets([]); setSheet(''); setColumn(undefined); setPending(null); setReceipt(null); setNotFound(false); }
   function conceal(clear = false) {
     active.current = false; ++generation.current; fence.current.invalidate(); setVisible(false); setBusy(false); setMenu(''); setLeaving(false);
@@ -83,7 +83,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
   async function resume() {
     if (!mounted.current || !focused.current || !appActive.current || denied.current || !front() || !connected() || !latest.current.online) return;
     const ticket = ++generation.current; active.current = true;
-    try { await guarded(async () => true, ticket); if (current() && ticket === generation.current) setVisible(true); }
+    try { await guarded(async () => true, ticket); if (current() && ticket === generation.current) { setBusy(reading.current || writing.current); setVisible(true); } }
     catch (error) { failed(error); }
   }
   useEffect(() => {
@@ -102,13 +102,18 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
   async function choose() {
     if (!current() || writing.current || reading.current || pendingRef.current) return;
     picker.current?.abort(); picker.current = new AbortController();
-    const epoch = ++draftEpoch.current;
+    let epoch = ++draftEpoch.current, startedReading = false;
     try {
       const selected = await browserFile(picker.current.signal); if (!selected || !mounted.current || epoch !== draftEpoch.current) return;
+      if (writing.current || reading.current || pendingRef.current) return;
+      invalidatePreview(); epoch = draftEpoch.current;
+      setFile(null); setSheets([]); setSheet(''); setColumn(undefined); setReceipt(null); setNotFound(false);
+      reading.current = true; startedReading = true; setBusy(true);
       const next = await fileData(selected); if (!current() || epoch !== draftEpoch.current) return;
       await guarded(async () => true); if (!current() || epoch !== draftEpoch.current) return;
-      invalidatePreview(); setFile(next); setSheets([]); setSheet(''); setColumn(undefined); setReceipt(null); setNotFound(false);
-    } catch (error) { failed(error); }
+      setFile(next);
+    } catch (error) { if (epoch === draftEpoch.current) failed(error); }
+    finally { if (startedReading) { reading.current = false; if (current()) setBusy(writing.current); } }
   }
   async function inspect() {
     if (!file || !current() || reading.current || writing.current || pendingRef.current) return;
@@ -122,7 +127,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
       if (result.requiresSheetSelection) setSheets(result.fileInfo?.sheets || []);
       if (result.amountSelection?.selectedIndex !== null && result.amountSelection?.selectedIndex !== undefined) setColumn(result.amountSelection.selectedIndex);
     } catch (error) { if (epoch === draftEpoch.current) failed(error); }
-    finally { reading.current = false; if (mounted.current && ticket === generation.current) setBusy(false); }
+    finally { reading.current = false; if (current()) setBusy(writing.current); }
   }
   async function send(intent: Pending) {
     if (!current() || writing.current || reading.current) return;
@@ -132,15 +137,15 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
       if (!current()) return;
       setReceipt(result); setPending(null); previewRef.current = null; setPreview(null); setFile(null); setSheets([]); setSheet(''); setColumn(undefined);
     } catch (error) {
-      if (error instanceof ApiError && [400, 413, 422].includes(error.status) && current()) { setPending(null); invalidatePreview(); failed(error); }
-      else { failed(error); if (current() && !(error instanceof PhotoReadDiscarded)) setError('保存结果尚未确认，请先核对保存结果。'); }
-    } finally { writing.current = false; if (mounted.current && ticket === generation.current) setBusy(false); }
+      if (importRejectionIsDefinite(error instanceof ApiError ? error.status : undefined, intent.uncertain) && current()) { setPending(null); invalidatePreview(); failed(error); }
+      else { intent.uncertain = true; failed(error); if (current() && !(error instanceof PhotoReadDiscarded)) setError('保存结果尚未确认，请先核对保存结果。'); }
+    } finally { writing.current = false; if (current()) setBusy(reading.current); }
   }
   function confirm() {
     if (!current() || pendingRef.current || writing.current || reading.current || !previewRef.current) return;
     try {
       const { value, payload } = previewRef.current, requestId = newImportRequestId();
-      const intent = { requestId, payload: confirmImportPayload(payload, value, requestId) };
+      const intent = { requestId, payload: confirmImportPayload(payload, value, requestId), uncertain: false };
       setPending(intent); void send(intent);
     } catch (error) { failed(error); }
   }
@@ -155,7 +160,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
     } catch (error) {
       if (current() && error instanceof ApiError && error.status === 404 && error.code === 'import_result_not_found') { setNotFound(true); setError('暂未找到本次保存回执，原请求也可能仍在处理。可以继续核对，或使用同一请求重试。'); }
       else failed(error);
-    } finally { reading.current = false; if (mounted.current && ticket === generation.current) setBusy(false); }
+    } finally { reading.current = false; if (current()) setBusy(writing.current); }
   }
   async function showResults() {
     if (!receipt || !current() || writing.current || reading.current) return;
@@ -176,7 +181,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
   const disabled = busy || !!pending || !!receipt;
   const dropdown = (id: string, label: string, items: { key: string; title: string }[], change: (value: string) => void) =>
     <Menu visible={menu === id} onDismiss={() => setMenu('')} anchor={<Button mode="outlined" disabled={disabled} onPress={() => setMenu(id)} contentStyle={styles.buttonContent}>{label}</Button>}>
-      <ScrollView style={{ maxHeight: Math.min(340, height * .5) }}>{items.map(item => <Menu.Item key={item.key} title={item.title} onPress={() => { setMenu(''); change(item.key); }} />)}</ScrollView>
+      <ScrollView style={{ maxHeight: Math.min(340, height * .5), maxWidth: 280 }}>{items.map(item => <TouchableRipple key={item.key} accessibilityRole="menuitem" accessibilityLabel={item.title} onPress={() => { setMenu(''); change(item.key); }} style={{ paddingHorizontal: 16, paddingVertical: 12, minHeight: 44 }}><Text>{item.title}</Text></TouchableRipple>)}</ScrollView>
     </Menu>;
   const back = () => { if (file || pendingRef.current) setLeaving(true); else onClose(); };
   if (!visible) return <SectionCard title="导入账单"><Text>{error || (!connected() || !household.online ? '连接恢复后会重新核对身份，文件内容暂不显示。' : '正在核对登录状态…')}</Text>
@@ -185,7 +190,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
     <PageHeader title="导入账单" description="先核对，再保存。文件仅导入到本人的账本。" action={<Button onPress={back} disabled={busy}>返回账本</Button>} />
     {!!error && <SectionCard title="需要核对"><Text accessibilityLiveRegion="polite">{error}</Text></SectionCard>}
     {receipt ? <SectionCard title="导入结果"><View testID="finance-import-receipt" style={styles.page}>
-      <Text variant="headlineSmall">新增 {receipt.imported} 条</Text><Text>重复 {receipt.duplicates} 条 · 冲突 {receipt.conflicts} 条（保留原记录）</Text>
+      <Text variant="headlineSmall">{receipt.imported ? `新增 ${receipt.imported} 条` : '已核对，未新增记录'}</Text><Text>重复 {receipt.duplicates} 条 · 冲突 {receipt.conflicts} 条（保留原记录）</Text>
       <Text>已保存到本人账本，公共余额未改变。</Text><Text>原请求的保存结果已经确认；后来修改或删除的记录不会因核对回执而恢复。</Text>
       <Text variant="bodySmall">保存时间：{receipt.confirmedAt}</Text>
       {receipt.resultMonths.map(row => <Text key={row.month}>{row.month} · {row.recordCount} 条确认时保留的记录</Text>)}
@@ -210,13 +215,14 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
         <Text variant="bodySmall">重复项不再次入账，冲突项保留原值；订单与付款分别核对。</Text>
         {!!preview.fileInfo && <Text variant="bodySmall">{[preview.fileInfo.format, preview.fileInfo.encoding, preview.fileInfo.sheet].filter(Boolean).join(' · ')}</Text>}
         {preview.warnings.map((warning, index) => <Text key={index} style={{ color: theme.colors.onSurfaceVariant }}>{warning}</Text>)}
-        {preview.errors.slice(0, 24).map((row, index) => <Text key={index}>第 {row.line} 行：{row.message}</Text>)}
+        {preview.errors.slice(errorPage * 24, errorPage * 24 + 24).map((row, index) => <Text key={index}>第 {row.line} 行：{row.message}</Text>)}
+        {preview.errors.length > 24 && <View style={styles.controls}><Button disabled={errorPage === 0} onPress={() => setErrorPage(p => p - 1)}>上一页错误</Button><Text>错误 {errorPage + 1} / {Math.ceil(preview.errors.length / 24)} 页</Text><Button disabled={(errorPage + 1) * 24 >= preview.errors.length} onPress={() => setErrorPage(p => p + 1)}>下一页错误</Button></View>}
         {preview.errorCount > 0 && <Text>请修正文件后重新选择并预览，本次不会部分入账。</Text>}
         {preview.rows.slice(page * 24, page * 24 + 24).map((row, index) => <View key={page * 24 + index} testID={'finance-import-row-' + row.line} style={styles.row}>
-          <Text variant="titleMedium">{row.title}</Text><Text>{row.date} · {flows[row.flow] || '待核对'} · 第 {row.line} 行</Text>
+          <Text variant="titleMedium">{row.title}</Text><Text>{row.date} · {flows[row.flow] || '待核对'} · {importSourceLabel(row.sourceLocation)}</Text>
           <Text>{importAmount(row.amountCents, row.currency)}{row.conflict ? ' · 冲突，保留原值' : row.duplicate ? ' · 已有记录' : ''}</Text>
           {!!row.externalId && <Text variant="bodySmall">原编号：{row.externalId}</Text>}
-          {row.orderItems?.map((item, key) => <Text key={key} variant="bodySmall">{[item.title, item.variant, item.quantity].filter(Boolean).join(' · ')}</Text>)}<Divider />
+          {row.orderItems?.map((item, key) => <Text key={key} variant="bodySmall">{[item.title, item.variant, item.quantityText && '数量：' + item.quantityText, item.listedAmountText && '原标价：' + item.listedAmountText].filter(Boolean).join(' · ')}</Text>)}<Divider />
         </View>)}
         {preview.rows.length > 24 && <View style={styles.controls}><Button disabled={page === 0} onPress={() => setPage(p => p - 1)}>上一页</Button><Text>{page + 1} / {Math.ceil(preview.rows.length / 24)}</Text><Button disabled={(page + 1) * 24 >= preview.rows.length} onPress={() => setPage(p => p + 1)}>下一页</Button></View>}
         {!preview.rows.length && !preview.errorCount && <Text>这份文件没有可导入记录，请核对文件和工作表。</Text>}

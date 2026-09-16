@@ -2,7 +2,8 @@ export type ImportSource = 'generic' | 'alipay' | 'wechat' | 'taobao' | 'pinduod
 export type ImportKind = 'payments' | 'orders';
 export type ImportFile = { name: string; contentBase64: string; encoding: 'auto' | 'utf-8' | 'gb18030'; sheet?: string };
 export type ImportPayload = { source: ImportSource; kind: ImportKind; file: ImportFile; amountColumn?: number; inspectSheets?: boolean };
-export type ImportRow = { line: number; title: string; date: string; amountCents: number; currency: string; flow: string; externalId?: string; duplicate: boolean; conflict: boolean; orderItems?: { title: string; variant?: string; quantity?: string; amount?: string }[] };
+export type ImportSourceLocation = { lineStart: number; lineEnd: number; lineKind: 'csv_lines' | 'worksheet_rows' };
+export type ImportRow = { line: number; sourceLocation: ImportSourceLocation; title: string; date: string; amountCents: number; currency: string; flow: string; externalId?: string; duplicate: boolean; conflict: boolean; orderItems?: { title: string; variant?: string; quantityText?: string; listedAmountText?: string }[] };
 export type ImportPreview = {
   rows: ImportRow[]; errors: { line: number; message: string }[]; errorCount: number; warnings: string[];
   newCount: number; duplicateCount: number; conflictCount: number; previewToken: string | null;
@@ -37,8 +38,11 @@ export function readImportPreview(value: unknown): ImportPreview {
     if (!object(row) || !count(row.line) || typeof row.title !== 'string' || typeof row.date !== 'string'
       || !count(row.amountCents) || typeof row.currency !== 'string' || !/^[A-Z]{3}$/.test(row.currency)
       || typeof row.flow !== 'string' || typeof row.duplicate !== 'boolean' || typeof row.conflict !== 'boolean') throw new Error('预览记录不完整，请重新预览。');
+    const location = row.sourceLocation;
+    if (!object(location) || !count(location.lineStart) || location.lineStart < 1 || !count(location.lineEnd)
+      || location.lineEnd < location.lineStart || !['csv_lines', 'worksheet_rows'].includes(location.lineKind)) throw new Error('原文件行号无法核对，请重新预览。');
     if (row.orderItems !== undefined && (!Array.isArray(row.orderItems) || row.orderItems.some((item: unknown) => !object(item)
-      || typeof item.title !== 'string' || ['variant', 'quantity'].some(key => item[key] !== undefined && typeof item[key] !== 'string')))) throw new Error('商品明细无法核对，请重新预览。');
+      || typeof item.title !== 'string' || ['variant', 'quantityText', 'listedAmountText'].some(key => item[key] !== undefined && typeof item[key] !== 'string')))) throw new Error('商品明细无法核对，请重新预览。');
   }
   if (value.errors.some((row: unknown) => !object(row) || !count(row.line) || typeof row.message !== 'string')) throw new Error('文件错误信息无法读取。');
   if (value.requiresSheetSelection && (!Array.isArray(value.fileInfo?.sheets) || !value.fileInfo.sheets.every((v: unknown) => typeof v === 'string'))) throw new Error('工作表名单无法读取。');
@@ -49,6 +53,14 @@ export function readImportPreview(value: unknown): ImportPreview {
 export function canConfirmImport(preview: ImportPreview | null): preview is ImportPreview {
   return !!preview && !preview.requiresSheetSelection && !preview.requiresAmountSelection && preview.errorCount === 0
     && preview.rows.length > 0 && !!preview.previewToken;
+}
+export function importSourceLabel(location: ImportSourceLocation) {
+  const range = location.lineStart === location.lineEnd ? String(location.lineStart) : `${location.lineStart}–${location.lineEnd}`;
+  return `${location.lineKind === 'worksheet_rows' ? '工作表' : '原文件'}第 ${range} 行`;
+}
+// A later rejection cannot prove an earlier request with a lost response did not commit.
+export function importRejectionIsDefinite(status: number | undefined, wasUncertain: boolean) {
+  return !wasUncertain && status !== undefined && [400, 413, 422].includes(status);
 }
 export function confirmImportPayload(payload: ImportPayload, preview: ImportPreview, requestId: string) {
   if (!canConfirmImport(preview) || payload.inspectSheets || !isImportRequestId(requestId)) throw new Error('请重新核对文件预览后再保存。');
