@@ -27,7 +27,8 @@ def money_payload(amount, format='csv', **extras):
 
 @pytest.mark.parametrize('format', ['csv', 'csv-file', 'xlsx'])
 @pytest.mark.parametrize('amount', ['1,23', '12,34.56', '1，23', '1,234，567.89', '1,,234',
-                                   ',123', '123,', '1.2,3', '1e2', '+1', '-1', '1.001', 'NaN'])
+                                   ',123', '123,', '1.2,3', '1e2', '+1', '-1', '1.001', 'NaN',
+                                   '1 234.56', '￥1, 234.56', '¥12 .34', '¥ 1,23'])
 def test_ambiguous_file_amount_blocks_preview_and_all_writes(hub, format, amount):
     client, _ = hub
     value = money_payload(amount, format)
@@ -38,9 +39,10 @@ def test_ambiguous_file_amount_blocks_preview_and_all_writes(hub, format, amount
     assert overview(client)['totalRecordCount'] == 0
 
 
-@pytest.mark.parametrize('format', ['csv', 'xlsx'])
+@pytest.mark.parametrize('format', ['csv', 'csv-file', 'xlsx'])
 @pytest.mark.parametrize('amount,expected', [('0', 0), ('0.01', 1), ('1234.56', 123456),
     ('1,234.56', 123456), ('1，234.56', 123456), ('￥1,234.56', 123456), ('¥10.50', 1050),
+    ('¥ 1,234.56', 123456), ('￥ 12.34', 1234),
     (' 10.50 ', 1050), ('1000000000000.00', 100000000000000)])
 def test_valid_money_preserves_cents_dedup_and_budget(hub, format, amount, expected):
     client, _ = hub

@@ -112,7 +112,7 @@ def cents(value, optional=False):
 
 def import_cents(value):
     """File amounts must be unambiguous; keep the manual money API unchanged."""
-    raw = re.sub(r'^[¥￥]', '', value.strip())
+    raw = re.sub(r'^[¥￥]', '', value.strip()).strip()
     if (',' in raw and '，' in raw) or not re.fullmatch(
             r'(?:[0-9]+|[0-9]{1,3}(?:,[0-9]{3})+)(?:\.[0-9]{1,2})?',
             raw.replace('，', ',')):
