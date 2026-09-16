@@ -1,2 +1,2 @@
-import { Text, View } from 'react-native';
-export default function Index() { return <View><Text>家庭中枢</Text></View>; }
+import HouseholdApp from '../screens/HouseholdApp';
+export default function Index() { return <HouseholdApp />; }

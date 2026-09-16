@@ -7,13 +7,13 @@ export type Member = Person & { role: 'member' | 'tv'; householdId?: string; aut
 export type SyncInfo = { readOnly?: boolean; provider?: string; sourceId?: string };
 export type BaseItem = { id: string; revision: number; title: string; owner: string; note?: string; sync?: SyncInfo };
 export type CalendarEvent = BaseItem & { start: string; end: string; location?: string; allDay?: boolean; source?: string; journeyId?: string; travelTiming?: unknown };
-export type ListItem = BaseItem & { done: boolean; due?: string; quantity?: string; budget?: number | null; tripId?: string; photoId?: string; photoUrl?: string };
+export type ListItem = BaseItem & { done: boolean; due?: string; quantity?: string; budget?: number | null; tripId?: string; actual?: number | null; photoIds?: string[] };
 export type Trip = BaseItem & { start: string; end: string; destination?: string; budget: number; paid: number; saved: number };
 export type SharedFinance = { wallet: number; livingBudget: number; livingSpent: number; travelSaved: number; longterm: number; reserveTarget: number; confirmedAt?: string; revision: number; contributionPercent: number };
 export type Preferences = { theme: ThemeName; density: 'comfortable' | 'compact'; homeView: CalendarMode };
 export type HomeLayout = { revision: number; order: string[]; hidden: string[] };
 export type TaskSource = { id: string; name: string; provider: string; writable?: boolean };
-export type FamilyState = { revision: number; people: Person[]; events: CalendarEvent[]; tasks: ListItem[]; shopping: ListItem[]; trips: Trip[]; finance: SharedFinance; sync?: { taskSources?: TaskSource[]; primaryTaskSource?: { id: string }; health?: { state?: string } } };
+export type FamilyState = { revision: number; household?: { id: string; name: string; slug: string }; people: Person[]; events: CalendarEvent[]; tasks: ListItem[]; shopping: ListItem[]; trips: Trip[]; finance: SharedFinance; sync?: { taskSources?: TaskSource[]; primaryTaskSource?: { id: string }; health?: { state?: string } } };
 export type Entity = CalendarEvent | ListItem | Trip;
 export type ScreenProps = {
   state: FamilyState; user: Member; focus: string; mode: CalendarMode; layout: HomeLayout;
