@@ -30,6 +30,8 @@ const creation: { kind: ItemKind; title: string; icon: string }[] = [
   { kind: 'shopping', title: '添加采购', icon: 'cart-plus' },
   { kind: 'trips', title: '计划旅行', icon: 'airplane' },
 ];
+// Paper's initial hide animation can close a freshly opened menu after navigation.
+const menuTheme = { animation: { scale: 0 } };
 /** Layout only. The parent owns identity, authorized data and persistence. */
 export default function AppShell(props: AppShellProps) {
   const { width } = useWindowDimensions();
@@ -63,7 +65,7 @@ export default function AppShell(props: AppShellProps) {
               accessibilityState={{ selected: route === item.key }} textColor={route === item.key ? theme.colors.onSurface : theme.colors.onSurfaceVariant}
               style={[styles.navButton, route === item.key && { backgroundColor: theme.colors.primaryContainer }]}
               labelStyle={styles.navLabel}>{item.label || item.title}</Button>)}
-            <Menu visible={menu === 'more'} onDismiss={() => setMenu(null)} contentStyle={styles.menu}
+            <Menu theme={menuTheme} visible={menu === 'more'} onDismiss={() => setMenu(null)} contentStyle={styles.menu}
               anchor={<Button mode="text" compact icon="chevron-down" textColor={theme.colors.onSurfaceVariant}
                 accessibilityLabel="更多功能" accessibilityState={{ expanded: menu === 'more' }} style={styles.navButton}
                 contentStyle={styles.reverse} labelStyle={styles.navLabel} onPress={() => setMenu('more')}>更多</Button>}>
@@ -75,12 +77,12 @@ export default function AppShell(props: AppShellProps) {
           </View> : null}
           <View style={styles.headerActions}>
             <IconButton icon="refresh" size={20} onPress={props.onRefresh} disabled={props.refreshing} loading={props.refreshing} accessibilityLabel="刷新家庭数据" style={styles.iconButton} />
-            <Menu visible={menu === 'create'} onDismiss={() => setMenu(null)} anchor={wide ? (
+            <Menu theme={menuTheme} visible={menu === 'create'} onDismiss={() => setMenu(null)} anchor={wide ? (
               <Button mode="contained" icon="plus" onPress={() => setMenu('create')} style={styles.button} contentStyle={styles.buttonContent}>新建</Button>
             ) : <IconButton icon="plus" mode="contained" containerColor={theme.colors.primary} iconColor={theme.colors.onPrimary} size={21} onPress={() => setMenu('create')} accessibilityLabel="新建记录" style={[styles.iconButton, styles.button]} />} contentStyle={styles.menu}>
               {creation.map(item => <Menu.Item key={item.kind} title={item.title} leadingIcon={item.icon} onPress={() => { setMenu(null); props.onCreate(item.kind); }} />)}
             </Menu>
-            <Menu visible={menu === 'account'} onDismiss={() => setMenu(null)} anchor={
+            <Menu theme={menuTheme} visible={menu === 'account'} onDismiss={() => setMenu(null)} anchor={
               <IconButton icon="account-circle-outline" size={23} onPress={() => setMenu('account')} accessibilityLabel={`${props.name}，账户菜单`} style={styles.iconButton} />
             } contentStyle={styles.menu}>
               <Menu.Item title={props.name || '我的账户'} disabled /><Menu.Item title={props.householdName || '我们的家'} disabled />
