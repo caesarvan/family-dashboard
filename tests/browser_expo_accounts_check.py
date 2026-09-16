@@ -479,7 +479,8 @@ def main():
                 open_accounts(page)
                 control['discoveryError'] = provider_error('合成授权需要重新确认', 401, reauth=True)
                 button(page, '选择日历与清单').first.click()
-                expect(page.locator('body')).to_contain_text(re.compile('重新.*授权|重新.*绑定|重新.*连接'))
+                expect(page.get_by_text('需要重新授权', exact=True)).to_be_visible()
+                expect(button(page, '重新授权 Microsoft')).to_be_enabled()
                 assert account(owner)['needsReauth']
                 assert account(owner)['sources'][0]['primary']
                 before_stop_discovery = control['discoveries']
