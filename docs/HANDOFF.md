@@ -1,10 +1,26 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-17 03:01:51（北京时间）。** main `a6099c9c2e7d8e8c64aa7a8f911b00107945a6ab`／integration `549e23d842fab92569394cc2ba55efac219bf79f` 同树 `87f47c3414f7b663f64bdf3613d2e636d055edd9`。Expo 账户与同步已上线，03:02:05 正常 TLS 读回通过；完整身份见 [Expo 账户与同步](EXPO-ACCOUNTS.md)。此处为发布后本地文档，不改变已安装包或构建来源。
+> **线上版本：2026-09-17 04:26:46（北京时间），04:41:46 正常 TLS 读回通过。** main `a2081051657647564345a54b61662682ff4dd663`／integration `2d08258fc67388e4de237747eb35db3fe3b0d8cf` 同树 `9508cddb1b4cdde1caf70c268673110a0bd50194`。Expo 财务与 53→54 回执迁移已发布；身份与证据见 [VALIDATION](VALIDATION.md)。此处为发布后本地文档，不改变已安装包或构建来源。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。此前 23:02 三模块与 21:59 首期身份分别保留于 [EXPO-NEXT-RELEASE](EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](EXPO-RELEASE.md)，历次证据见 [VALIDATION](VALIDATION.md)。
 
-## 当前交接：Expo 账户与同步
+## 当前交接：Expo 财务
+
+各作者在独立分支实现主页面、导入面板、持久回执、迁移、测试和文档，经非作者审查与组合验证后合入 main。实际发布目录 `/opt/family-dashboard-releases/expo-finance-54-20260916T202549009688Z`，manifest `f5a49949e6d868533392f64fa46c4042a85df635b2f8123b3f05076a7d619976`，app／sync／media 镜像 `sha256:4433d1d5c97ec4ed4a1336c2402b0fae121a04e092050ff9eb2821ac61fa4798`。激活报告 `completed=true`，最终独立 r3 读回通过，源码、运行文件、归档和构建身份保持。
+
+`/app/finance` 提供共同资金、本人完整账本与月预算；从「导入账单」完成选文件、工作表／金额列、逐行预览和明确确认，按实际结果月份回到账本。交易详情可查看首次来源并核对分类／共享，订单、付款、退款和重复关系采用候选→金额预览→确认→可撤销。未知写入先读回，版本冲突保留草稿；完整身份在私有请求前后复核，后台／离线隐藏。使用与实现见 [Expo 财务](EXPO-FINANCE.md)。资产、投资与来源报告等高级财务仍在经典入口。
+
+最终 r3 构建包含 23 个导出文件，完整 typecheck、Node 19 项、Windows 418 项以及真实本地 Flask／SQLite／Edge 21 项分别通过。迁移专项 45 项包含于 Windows 418 项，不重复计数。19 张截图中已查看 15 张，所见区域无阻断性裁切；部分手机内部滚动区域未被截图覆盖。三次失败浏览器运行与前期代码审查修订、精确来源和报告哈希见 [VALIDATION](VALIDATION.md)。全部使用合成家庭与财务文件，未验收本人真实平台账单、新云操作或实体电视。
+
+同一新镜像 Linux 两次均实际为 417 通过、1 个 `test_windows_junction_rejected` 跳过、零失败／错误。首轮要求零跳过而拒绝，没有生产操作；r2 经独立审查只允许该完整测试身份和 `Windows junction semantics` 原因，重新全量执行后通过发布检查。两次原件保留，不能写成 418 passed，不能把两次结果相加；Windows 的 418 项仍全部通过。
+
+实际 1 户两库完整备份后，53→54 只新增空 `hub_import_receipts`；原 53 表的行、schema、序列及平台注册库保持，新 app healthy 后完整 54 表组再次核对保持。旧 `hub_imports` 七列不变，新交易保存首次来源，重复／冲突不覆盖；原配置保全。后续更新必须绑定实际 54 表基线，不能重放本次迁移或固定旧身份的发布操作，包含已有回执的恢复见 [回执迁移与完整恢复](FINANCE-RECEIPTS-RELEASE.md)。
+
+04:41:46 正常 TLS 读回核对 486 源／112 运行／75 静态资源，24 个内部生成路径和 1 个退役资源拒绝，19 个匿名 API 均 401；四服务 running／restarts 0，app healthy，配置保持。新一次备份 service success／timer active，核验该次完整 1 户两库备份的散列、54 表及两张注册表可读性；这是逐库在线备份，`liveGroupSnapshotRechecked=false`，不能表述为重新读取了 live 全组快照或跨库全局原子备份。原件在私有 `expo-finance-package-20260917-r2/post-readback-r3.json`，SHA256 `02a9104725599554a103acce5ff653867212f763d5133b3905bae7c296339332`。首次只读 WAL 检查失败和 r3 独立操作修订保留于 [VALIDATION](VALIDATION.md)；没有再次部署或迁移。
+
+以下发布段落保留各次当时的源码、表数和验收状态，当前身份以上方财务版本为准。
+
+## 此前线上交接：Expo 账户与同步
 
 账户主入口为 `/app/connections`：更多页「账户与自动同步」和顶部「连接与账户」打开同一个现代界面。绑定后显式选择日历／清单、核对归属与共享；保存前完整预览取消项，冲突保留草稿并核对最新选择，响应未知只读回。逐来源成功／错误与排队状态分开。失效时可不重新授权而停止同步，保留绑定和照片；断开账户则会移除已导入照片副本并撤销家庭／电视展示，原平台原件保留。使用与版本契约见 [账户界面](EXPO-ACCOUNTS.md)、[来源版本](ACCOUNT-SOURCE-VERSION.md)。
 
@@ -257,7 +273,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | 本人数据副本 | `data_portability.py`、`static/data-portability.js` | [导出契约](PORTABILITY.md)；仅本人私密与显式勾选的共同记录。排除令牌、会话/设备认证表和暂存预览；不是数据库恢复包 |
 | 部署与备份 | `Dockerfile`、`compose.yaml`、`deploy/` | [部署指导](DEPLOYMENT.md)、[运维说明](OPERATIONS.md)；源码白名单、现有配置、全部家庭、停止写入、成组备份及相配恢复 |
 
-路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)：既有 145 个方法／路径模板，本轮另增三个 Expo／classic GET 托管入口；[机器索引](contract-inventory.json) 保留既有结构。53 张户内表与 2 张平台表不变。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
+路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)：当前 149 个方法／路径模板，含三个 Expo／classic GET 和本人导入回执 GET；[机器索引](contract-inventory.json) 由实际应用生成。当前 54 张户内表与 2 张平台表，新增财务回执表。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
 
 ## 例行计划公共接缝
 
@@ -315,13 +331,13 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 ## 接手后的首轮检查
 
 1. 核对 Git 根目录、分支、HEAD、工作区状态和分配的 worktree；按 [Git 流程](GIT-WORKFLOW.md) 建立独立任务分支。使用源码归档时先核对清单，正式联合开发使用 bundle 恢复提交历史，不用旧候选整目录覆盖。
-2. 按 [DEVELOPMENT](DEVELOPMENT.md) 创建项目虚拟环境、安装 `requirements.txt` 和测试工具。生产是 Python 3.12，Windows 已使用 Python 3.14；前端无需 npm 构建。
+2. 按 [DEVELOPMENT](DEVELOPMENT.md) 创建项目虚拟环境、安装 `requirements.txt` 和测试工具。生产是 Python 3.12，Windows 已使用 Python 3.14；Expo 前端须按 [前端 README](../frontend/README.md) 使用锁文件安装、类型检查及构建，并核对同源导出证据。
 3. 按 [DEPLOYMENT 第 2 节](DEPLOYMENT.md#2-配置密钥与数据文件) 配置独立开发密钥、测试密码与临时 `DATA_DIR`，只绑定回环地址。Python 不自动读取 `.env`，不要复制生产配置。浏览器测试按各脚本使用自己的临时夹具。
 4. 先运行负责模块的已有测试，确认本机 Edge/Playwright 路径，再跑适用的真实临时浏览器。`pytest` 不自动运行 `*_check.py`；不要把旧生产 `live_check.py` 当默认回归。具体命令见 [开发与验收](DEVELOPMENT.md)。
 5. 明确接口/迁移/隐私变化后再编码。公共 API、数据模型、用户步骤、错误行为和相应测试一起交付；金额是整数分、不同币种分别计算，日期语义按旅行契约。
 6. 由集成人检查合并结果，完成对应组合测试、冻结、打包及发布。源码打包只收白名单，不生成凭据，也不是内容脱敏器；不能把私人文件临时放到 `docs/tests/static/deploy`。
 
-部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已是库存 53 表，历史 42→43、43→43、43→44、44→48 及本次 48→53 工具均不能重放；不能只改表数或照搬 DEPLOYMENT 的历史算法。下一次更新须绑定实际 53 表基线，完整恢复边界见 [库存与媒体恢复](INVENTORY-RECOVERY.md)。
+部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已是财务回执 54 表，历史 42→43、43→43、43→44、44→48、48→53 及本次 53→54 工具均不能重放；不能只改表数或照搬 DEPLOYMENT 的历史算法。下一次更新须绑定实际 54 表基线，完整恢复边界见 [回执迁移与完整恢复](FINANCE-RECEIPTS-RELEASE.md)。
 
 更新保留 `.env` 和主密钥，先关闭 web 并停止备份定时器，再停止 media／sync／app，核对注册目录、全部家庭与完整备份组后执行受审迁移。app 启动读回通过才开放 media／sync／web；本次控制器任何失败均停止并保全现场，不自动恢复数据库。需要恢复时另行确定相配源码、密钥、注册目录与家庭映射，不能让旧镜像盲接未知库；已有业务写入时不能用旧快照覆盖。**恢复后先使目标家庭旧成员登录失效并重新核对或撤回旧电视许可，再开放入口及 worker**。具体步骤见 [部署与恢复](DEPLOYMENT.md#6-备份恢复与回滚)、[运维](OPERATIONS.md) 和 [会话恢复要求](MEMBER-SESSIONS.md#恢复后使旧成员登录失效)。上一财务版本的 165／119 项离线激活／控制器恢复、79 项文档零结构检查均不是生产恢复演练。
 
