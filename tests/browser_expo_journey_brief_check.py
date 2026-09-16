@@ -110,8 +110,16 @@ class Run(FinanceRun):
         people = self.get(page.context, '/api/state')['people']
         for person in people:
             control = page.get_by_role('checkbox', name='出行成员：' + person['name'], exact=True)
-            if control.is_checked() != (person['id'] in identifiers):
+            # Paper renders a role=checkbox wrapper and a disabled inner icon
+            # checkbox. Read the named control's ARIA state, not an inner input.
+            expect(control).to_have_attribute('aria-checked', 'true' if control.get_attribute('aria-checked') == 'true' else 'false')
+            wanted = 'true' if person['id'] in identifiers else 'false'
+            before = control.get_attribute('aria-checked')
+            if before != wanted:
                 control.click()
+            expect(control).to_have_attribute('aria-checked', wanted)
+            self.report.setdefault('memberSelections', []).append({'member': person['id'], 'before': before,
+                'wanted': wanted, 'after': control.get_attribute('aria-checked')})
 
     def bridge(self, page, members=('member1', 'member2')):
         self.choose_members(page, members)
