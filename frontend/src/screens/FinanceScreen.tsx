@@ -86,14 +86,15 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     setError(message(caught));
   }
   async function guarded<T>(load: () => Promise<T>, ticket = epoch.current) { return fence.current.read(load, () => current() && ticket === epoch.current); }
-  async function fetchDetail(id: string, q = '') { return readReconciliation(await guarded(() => request<unknown>('/finance-hub/reconciliation?' + new URLSearchParams({ transactionId: id, q })))); }
+  async function fetchDetail(id: string, q = '', ticket = epoch.current) { return readReconciliation(await guarded(() => request<unknown>('/finance-hub/reconciliation?' + new URLSearchParams({ transactionId: id, q })), ticket)); }
   async function fetchFocus(id: string, q = ''): Promise<Reconciliation | null> {
-    try { return await fetchDetail(id, q); }
+    const ticket = epoch.current;
+    try { return await fetchDetail(id, q, ticket); }
     catch (caught) {
       if (!(caught instanceof ApiError && caught.status === 404)) throw caught;
       // A failed GET does not run the fence's post-read check. Verify the
       // complete session again before installing the already-read ledger.
-      await guarded(async () => true); return null;
+      await guarded(async () => true, ticket); return null;
     }
   }
   function installDetail(next: Reconciliation, reset = false) {
