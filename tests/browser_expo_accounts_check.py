@@ -1,0 +1,533 @@
+"""Frozen Expo accounts UI against real local Flask, member sessions and SQLite.
+
+Only the provider protocol is synthetic. OAuth account seeding uses actual
+bind/callback routes. Browser interceptions delay/drop genuine HTTP responses;
+they never fabricate a business response. No real cloud or production access.
+"""
+import argparse
+from contextlib import ExitStack, closing
+from datetime import datetime, timezone
+import hashlib
+import importlib
+import json
+from pathlib import Path
+import re
+import shutil
+import socket
+import sqlite3
+import subprocess
+import sys
+import tempfile
+import threading
+import traceback
+from unittest.mock import patch
+from urllib.parse import urlsplit
+
+import pytest
+from playwright.sync_api import expect, sync_playwright
+from werkzeug.serving import make_server, WSGIRequestHandler
+
+
+class Quiet(WSGIRequestHandler):
+    def log(self, *_args, **_kwargs):
+        pass
+
+
+def sha(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--source-root', required=True, type=Path)
+    parser.add_argument('--expected-head', required=True)
+    parser.add_argument('--bundle', required=True, type=Path)
+    parser.add_argument('--expected-build-evidence', required=True)
+    args = parser.parse_args()
+    root, bundle = args.source_root.resolve(), args.bundle.resolve()
+    head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
+    assert head == args.expected_head, 'Unexpected source commit'
+    evidence_path = bundle.parent / 'build-evidence.json'
+    assert sha(evidence_path) == args.expected_build_evidence
+    evidence = json.loads(evidence_path.read_text(encoding='utf-8'))
+    assert evidence['sourceHead'] == head
+    assert evidence['sourceTree'] == subprocess.check_output(['git', 'rev-parse', 'HEAD^{tree}'], cwd=root, text=True).strip()
+    assert not subprocess.check_output(['git', 'status', '--porcelain=v1', '--untracked-files=no'], cwd=root, text=True).strip()
+    names = subprocess.check_output(['git', 'ls-files'], cwd=root, text=True).splitlines()
+    hashes = lambda: {name: sha(root / name) for name in names}
+    bundle_hashes = lambda: {p.relative_to(bundle).as_posix(): sha(p) for p in bundle.rglob('*') if p.is_file()}
+    assert bundle_hashes() == evidence['files']
+    assert all(sha(root / name) == digest for name, digest in evidence['inputFiles'].items())
+    out = Path(__file__).resolve().parents[1] / 'test-results' / ('expo-accounts-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
+    out.mkdir(parents=True)
+    shutil.copyfile(__file__, out / 'executed-harness.py')
+    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], httpErrors=[], screenshots=[],
+        eventInjections=['document.hidden/visibilityState plus visibilitychange for background/foreground'],
+        head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
+        sourceHashesBefore=hashes(), bundleHashesBefore=bundle_hashes(), productionWrites=0, realCloud=False, physicalTelevision=False,
+        scope='Frozen Expo bundle, real Flask/SQLite/member CSRF and HTTP routes. Synthetic provider identity/discovery/snapshot protocol only.')
+    page = None
+
+    def passed(message):
+        report['checks'].append(message)
+        print('PASS ' + message, flush=True)
+
+    original_connect = socket.socket.connect
+
+    def local_connect(sock, address):
+        if isinstance(address, tuple) and address[0] not in ('127.0.0.1', '::1', 'localhost'):
+            report['externalRequests'].append('non-loopback socket')
+            raise AssertionError('External network forbidden')
+        return original_connect(sock, address)
+
+    try:
+        with ExitStack() as lifecycle:
+            lifecycle.enter_context(patch.object(socket.socket, 'connect', local_connect))
+            folder = Path(lifecycle.enter_context(tempfile.TemporaryDirectory(prefix='expo-accounts-')))
+            sys.path[:0] = [str(root), str(root / 'tests')]
+            source = importlib.import_module('app')
+            fixture = importlib.import_module('test_cloud_accounts')
+            provider_error = importlib.import_module('cloud_providers').ProviderError
+            shutil.copytree(root / 'static', folder / 'static', ignore=shutil.ignore_patterns('experience'))
+            shutil.copytree(bundle, folder / 'static' / 'experience')
+            lifecycle.enter_context(patch.object(source, 'ROOT', folder))
+            monkey = lifecycle.enter_context(pytest.MonkeyPatch.context())
+            for name in ('OPENAI_API_KEY', 'OPENAI_MODEL', 'NVIDIA_API_KEY', 'NVIDIA_MODEL'):
+                monkey.setenv(name, '')
+            remote = fixture.Remote()
+            control = {'discoveryError': None, 'discoveries': 0, 'snapshots': 0}
+            original_factory = remote.factory
+
+            def provider_factory(name, token, transport=None):
+                original = original_factory(name, token, transport)
+
+                class Provider:
+                    identity = original.identity
+                    write_task = original.write_task
+
+                    def list_sources(self):
+                        control['discoveries'] += 1
+                        if control['discoveryError']:
+                            raise control['discoveryError']
+                        return original.list_sources() + [
+                            {'id': 'read-only-tasks', 'kind': 'tasks', 'name': '只读归档清单', 'writable': False}]
+
+                    def snapshot(self, selected, start, end):
+                        control['snapshots'] += 1
+                        return original.snapshot(selected, start, end)
+
+                return Provider()
+
+            cfg = {'TESTING': True, 'SECRET_KEY': 'expo-accounts-synthetic-only', 'DATA_DIR': str(folder / 'data'),
+                'SESSION_COOKIE_SECURE': False, 'PUBLIC_ORIGIN': 'http://localhost',
+                'MEMBER1_PASSWORD': 'testing-password-one', 'MEMBER2_PASSWORD': 'testing-password-two',
+                'MICROSOFT_CLIENT_ID': 'test-ms-client', 'MICROSOFT_CLIENT_SECRET': 'synthetic-ms-secret',
+                'GOOGLE_CLIENT_ID': '', 'GOOGLE_CLIENT_SECRET': '',
+                'OPENAI_API_KEY': '', 'OPENAI_MODEL': '', 'NVIDIA_API_KEY': '', 'NVIDIA_MODEL': '',
+                'CLOUD_PROVIDER_FACTORY': provider_factory, 'OAUTH_TRANSPORT': remote.tokens}
+            application = source.create_app(cfg)
+            engine = application.extensions['cloud_accounts']
+            _, _, aid = fixture.bind(application, remote, 1, subject='owner-synthetic')
+            _, _, partner_aid = fixture.bind(application, remote, 2, subject='partner-synthetic')
+            owner_name, partner_name = '合成本人账户', '合成伴侣账户'
+            with engine.db() as con:
+                con.execute('UPDATE cloud_accounts SET name=?,email=? WHERE id=?', (owner_name, 'owner@example.test', aid))
+                con.execute('UPDATE cloud_accounts SET name=?,email=? WHERE id=?', (partner_name, 'partner@example.test', partner_aid))
+            server = make_server('127.0.0.1', 0, application, threaded=True, request_handler=Quiet, ssl_context='adhoc')
+            base = 'https://127.0.0.1:' + str(server.server_port)
+            application.config.update(PUBLIC_ORIGIN=base, SESSION_COOKIE_SECURE=True)
+            thread = threading.Thread(target=server.serve_forever, daemon=True)
+            thread.start()
+
+            def stop():
+                server.shutdown()
+                server.server_close()
+                thread.join(timeout=5)
+                assert not thread.is_alive()
+
+            lifecycle.callback(stop)
+            with sync_playwright() as pw, ExitStack() as browsers:
+                browser = pw.chromium.launch(channel='msedge', headless=True)
+                browsers.callback(browser.close)
+
+                def failure_capture():
+                    if not report['passed'] and page is not None and not page.is_closed():
+                        try:
+                            page.screenshot(path=str(out / 'failure.png'), full_page=True)
+                            (out / 'failure-aria.txt').write_text(page.locator('body').aria_snapshot(), encoding='utf-8')
+                        except Exception:
+                            pass
+
+                browsers.callback(failure_capture)
+
+                def context(number=None):
+                    ctx = browser.new_context(viewport={'width': 390, 'height': 844}, ignore_https_errors=True)
+
+                    def route(handler):
+                        if urlsplit(handler.request.url).hostname == '127.0.0.1':
+                            handler.continue_()
+                        else:
+                            report['externalRequests'].append(urlsplit(handler.request.url).hostname)
+                            handler.abort()
+
+                    ctx.route('**/*', route)
+                    ctx.on('page', lambda p: p.on('pageerror', lambda error: report['pageErrors'].append(str(error))))
+                    ctx.on('response', lambda response: report['httpErrors'].append({'method': response.request.method,
+                        'path': urlsplit(response.url).path, 'status': response.status}) if response.status >= 400 else None)
+                    if number:
+                        login(ctx, number)
+                    return ctx
+
+                def login(ctx, number=1):
+                    response = ctx.request.post(base + '/api/login', data={'username': f'member{number}',
+                        'password': 'testing-password-' + ('one' if number == 1 else 'two')})
+                    assert response.status == 200, response.text()
+
+                def get(ctx, path):
+                    response = ctx.request.get(base + path)
+                    assert response.status == 200, response.text()
+                    return response.json()
+
+                def write(ctx, method, path, body, status=200):
+                    response = ctx.request.fetch(base + path, method=method,
+                        headers={'X-CSRF-Token': get(ctx, '/api/me')['csrf'], 'Origin': base}, data=body)
+                    assert response.status == status, response.text()
+                    return response.json()
+
+                def account(ctx, uid=aid):
+                    return next(value for value in get(ctx, '/api/accounts')['accounts'] if value['id'] == uid)
+
+                def saved(ctx, uid=aid):
+                    return {(item['kind'], item['remoteId']): (item['owner'], item['primary']) for item in account(ctx, uid)['sources']}
+
+                def button(p, name):
+                    return p.get_by_role('button', name=re.compile(r'(?:^|\s)' + re.escape(name) + r'$'))
+
+                def checkbox(p, name):
+                    return p.get_by_role('checkbox', name=name, exact=True)
+
+                def visibility(p, hidden):
+                    p.evaluate('''hidden => {
+                      if (hidden) {
+                        Object.defineProperty(document,'hidden',{configurable:true,get:()=>true});
+                        Object.defineProperty(document,'visibilityState',{configurable:true,get:()=> 'hidden'});
+                      } else { delete document.hidden; delete document.visibilityState; }
+                      document.dispatchEvent(new Event('visibilitychange'));
+                    }''', hidden)
+
+                def assert_layout(p, width, name):
+                    p.evaluate('() => document.fonts.ready')
+                    metrics = p.evaluate('''() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,
+                      clipped:[...document.querySelectorAll('input,button,[role="button"],[role="checkbox"]')].filter(e=>{const r=e.getBoundingClientRect();
+                      return r.width>0&&r.height>0&&getComputedStyle(e).visibility!=='hidden'&&r.right>innerWidth+2&&r.left<innerWidth;})
+                      .map(e=>({label:e.getAttribute('aria-label')||e.innerText,left:e.getBoundingClientRect().left,right:e.getBoundingClientRect().right}))})''')
+                    assert metrics['scroll'] <= width + 2 and not metrics['clipped'], metrics
+                    filename = f'{name}-{width}.png'
+                    p.screenshot(path=str(out / filename), full_page=True)
+                    report['screenshots'].append(filename)
+
+                owner, partner = context(1), context(2)
+                page, partner_page = owner.new_page(), partner.new_page()
+                requests = []
+                page.on('request', lambda request: requests.append({'path': urlsplit(request.url).path,
+                    'method': request.method, 'body': request.post_data_json if request.method == 'POST' and request.post_data else None}))
+                source_path = '/api/accounts/' + aid + '/sources'
+
+                def source_posts():
+                    return [request for request in requests if request['path'] == source_path and request['method'] == 'POST']
+
+                def open_accounts(p):
+                    p.goto(base + '/app/connections')
+                    expect(p.get_by_role('heading', name='账户与同步', exact=True)).to_be_visible(timeout=15000)
+                    expect(button(p, '连接 Microsoft')).to_be_enabled()
+
+                def open_editor(p):
+                    button(p, '选择日历与清单').first.click()
+                    expect(p.get_by_text('选择共享内容', exact=True)).to_be_visible()
+                    expect(checkbox(p, '选择日历：私人日历')).to_be_visible()
+
+                def consent(p):
+                    value = checkbox(p, '我确认共享所选的完整日程标题、地点和任务')
+                    if not value.is_checked():
+                        value.focus()
+                        value.press('Space')
+                    expect(value).to_be_checked()
+
+                def review_save(p):
+                    consent(p)
+                    button(p, '查看变更').click()
+                    expect(button(p, '确认保存')).to_be_enabled()
+
+                open_accounts(page)
+                expect(page.get_by_text(owner_name, exact=True)).to_be_visible()
+                expect(page.locator('body')).not_to_contain_text(partner_name)
+                expect(button(page, '连接 Google')).to_be_disabled()
+                assert control['discoveries'] == 0, 'Opening accounts must not implicitly enumerate remote sources'
+                assert get(partner, '/api/accounts')['accounts'][0]['id'] == partner_aid
+                assert partner.request.get(base + source_path).status == 404
+                passed('configured/unconfigured providers are truthful; account cards are owner-only and opening does not discover cloud sources')
+
+                write(owner, 'POST', '/api/items/tasks', {'title': '合成本地待办保留', 'sourceId': ''}, 201)
+                open_editor(page)
+                checkbox(page, '选择日历：私人日历').focus()
+                checkbox(page, '选择日历：私人日历').press('Space')
+                checkbox(page, '选择清单：共同待办').click()
+                expect(checkbox(page, '选择清单：只读归档清单')).to_be_disabled()
+                button(page, '设为主清单：共同待办').click()
+                assert not source_posts() and saved(owner) == {}
+                review_save(page)
+                assert not source_posts()
+                button(page, '确认保存').click()
+                expect(button(page, '选择日历与清单').first).to_be_enabled()
+                assert saved(owner) == {('calendar', 'cal-1'): ('member1', False), ('tasks', 'list-1'): ('shared', True)}
+                assert len(source_posts()) == 1 and source_posts()[0]['body']['selectionVersion']
+                assert not any(item['lastSuccess'] for item in account(owner)['sources'])
+                passed('keyboard selection, explicit sharing consent and review persist chosen calendar/task/primary only; read-only task cannot be selected')
+
+                remote.records[('microsoft', 'list-1')] = {'t': {'id': 't', 'version': 'v1', 'data':
+                    {'title': '合成云清单事项', 'done': False, 'note': '', 'due': '', 'tripId': ''}}}
+                remote.records[('microsoft', 'cal-1')] = {'e': {'id': 'e', 'version': 'v1', 'data':
+                    {'title': '合成完整日程标题', 'start': '2026-10-01T10:00:00+08:00', 'end': '2026-10-01T11:00:00+08:00',
+                     'allDay': False, 'location': '合成公开会合地点'}}}
+                snapshots_before = control['snapshots']
+                button(page, '检查更新').first.click()
+                expect(page.get_by_text(re.compile('已.*排队|已.*提交|等待.*读取|已安排'))).to_be_visible()
+                assert control['snapshots'] == snapshots_before
+                assert not any(item['lastSuccess'] for item in account(owner)['sources'])
+                engine.tick()
+                assert all(item['lastSuccess'] and not item['error'] for item in account(owner)['sources'])
+                state = get(owner, '/api/state')
+                assert any(item['title'] == '合成云清单事项' for item in state['tasks'])
+                assert state['events'][0]['location'] == '合成公开会合地点'
+                open_accounts(page)
+                remote.fail_snapshot = True
+                fixture.due(engine)
+                engine.tick()
+                assert all(item['error'] and item['lastSuccess'] for item in account(owner)['sources'])
+                open_accounts(page)
+                expect(page.locator('body')).to_contain_text('同步暂时失败')
+                assert any(item['title'] == '合成云清单事项' for item in get(owner, '/api/state')['tasks'])
+                remote.fail_snapshot = False
+                fixture.due(engine)
+                engine.tick()
+                open_accounts(page)
+                passed('queue acknowledgement does not claim source success; actual worker snapshot records success, failure keeps prior mirror and visible error, retry recovers')
+
+                # The background poll must never replace a draft or its CAS baseline.
+                open_editor(page)
+                checkbox(page, '选择清单：可选清单').click()
+                search = page.get_by_role('textbox', name='搜索日历或清单', exact=True)
+                search.fill('共同')
+                reads_before = sum(r['method'] == 'GET' and r['path'] == '/api/accounts' for r in requests)
+                for _ in range(120):
+                    if sum(r['method'] == 'GET' and r['path'] == '/api/accounts' for r in requests) > reads_before:
+                        break
+                    page.wait_for_timeout(150)
+                assert sum(r['method'] == 'GET' and r['path'] == '/api/accounts' for r in requests) > reads_before
+                expect(search).to_have_value('共同')
+                search.fill('')
+                expect(checkbox(page, '选择清单：可选清单')).to_be_checked()
+                concurrent = account(owner)
+                write(owner, 'POST', source_path, {'selectionVersion': concurrent['selectionVersion'],
+                    'sources': [{'kind': 'calendar', 'remoteId': 'cal-1', 'owner': 'shared', 'primary': False}]})
+                review_save(page)
+                button(page, '确认保存').click()
+                expect(button(page, '已核对最新选择，继续编辑')).to_be_enabled()
+                assert saved(owner) == {('calendar', 'cal-1'): ('shared', False)}
+                button(page, '已核对最新选择，继续编辑').click()
+                expect(checkbox(page, '选择清单：可选清单')).to_be_checked()
+                review_save(page)
+                button(page, '确认保存').click()
+                expect(button(page, '选择日历与清单').first).to_be_enabled()
+                assert set(saved(owner)) == {('calendar', 'cal-1'), ('tasks', 'list-1'), ('tasks', 'list-2')}
+                assert any(e['path'] == source_path and e['status'] == 409 for e in report['httpErrors'])
+                passed('real 15s poll preserves typed search and unsaved choice; concurrent CAS409 preserves draft until explicit fresh-baseline review and save')
+
+                # Saving is not an idempotent route. A lost committed response must
+                # be reconciled by reading actual selections, never blind repetition.
+                open_editor(page)
+                checkbox(page, '选择日历：私人日历').click()
+                checkbox(page, '选择清单：共同待办').click()
+                review_save(page)
+                expect(page.locator('body')).to_contain_text('私人日历')
+                expect(page.locator('body')).to_contain_text('共同待办')
+                dropped = {}
+
+                def drop_save(handler):
+                    if handler.request.method == 'POST' and not dropped:
+                        dropped['body'] = handler.request.post_data_json
+                        response = handler.fetch()
+                        dropped['status'] = response.status
+                        assert response.status == 200
+                        handler.abort('failed')
+                    else:
+                        handler.continue_()
+
+                before_drop = len(source_posts())
+                page.route('**' + source_path, drop_save)
+                button(page, '确认保存').click()
+                expect(button(page, '选择日历与清单').first).to_be_enabled(timeout=15000)
+                page.unroute('**' + source_path, drop_save)
+                assert dropped and len(source_posts()) == before_drop + 1
+                assert saved(owner) == {('tasks', 'list-2'): ('shared', False)}
+                assert not get(owner, '/api/state')['events']
+                assert all(item['title'] != '合成云清单事项' for item in get(owner, '/api/state')['tasks'])
+                report['droppedResponse'] = {'realServerCommit': True, 'status': dropped['status'], 'postCount': 1}
+                passed('removal review names removed sources; full replacement removes their local mirrors; dropped committed save is confirmed by GET with exactly one POST')
+
+                # Concealment must be immediate, independent of the poll interval.
+                open_editor(page)
+                search = page.get_by_role('textbox', name='搜索日历或清单', exact=True)
+                search.fill('可选')
+                visibility(page, True)
+                expect(page.get_by_text(owner_name, exact=True)).not_to_be_visible()
+                expect(search).not_to_be_visible()
+                visibility(page, False)
+                expect(search).to_have_value('可选')
+                expect(checkbox(page, '选择清单：可选清单')).to_be_checked()
+                owner.set_offline(True)
+                expect(page.get_by_text(owner_name, exact=True)).not_to_be_visible()
+                expect(search).not_to_be_visible()
+                owner.set_offline(False)
+                expect(search).to_have_value('可选')
+                expect(checkbox(page, '选择清单：可选清单')).to_be_checked()
+                open_accounts(page)
+                passed('background and browser offline immediately conceal private account/source draft; foreground/online recheck identity before restoring same draft')
+
+                control['discoveryError'] = provider_error('合成来源读取暂时失败', 502)
+                button(page, '选择日历与清单').first.click()
+                expect(page.locator('body')).to_contain_text('合成来源读取暂时失败')
+                expect(checkbox(page, '选择日历：私人日历')).to_have_count(0)
+                control['discoveryError'] = None
+                open_accounts(page)
+                open_editor(page)
+                expect(checkbox(page, '选择清单：可选清单')).to_be_checked()
+                open_accounts(page)
+                control['discoveryError'] = provider_error('合成授权需要重新确认', 401, reauth=True)
+                button(page, '选择日历与清单').first.click()
+                expect(page.locator('body')).to_contain_text(re.compile('重新.*授权|重新.*绑定|重新.*连接'))
+                assert account(owner)['needsReauth']
+                control['discoveryError'] = None
+                with engine.db() as con:
+                    con.execute('UPDATE cloud_accounts SET needs_reauth=0 WHERE id=?', (aid,))
+                fixture.due(engine)
+                engine.tick()
+                open_accounts(page)
+                passed('provider discovery failure does not display invented sources; reauthorization error is persisted and shown, synthetic grant repair recovers')
+
+                for width in (320, 390, 1040, 1440):
+                    page.set_viewport_size({'width': width, 'height': 900 if width >= 1000 else 844})
+                    open_accounts(page)
+                    assert_layout(page, width, 'accounts-overview')
+                    open_editor(page)
+                    assert_layout(page, width, 'accounts-sources')
+                    checkbox(page, '选择日历：私人日历').click()
+                    review_save(page)
+                    assert_layout(page, width, 'accounts-review')
+                    open_accounts(page)
+                    button(page, '断开绑定').first.click()
+                    expect(button(page, '确认断开')).to_be_enabled()
+                    assert_layout(page, width, 'accounts-disconnect')
+                    passed(f'{width}px actual account overview/source selection/review/disconnect fit viewport')
+
+                open_accounts(page)
+                remote.records[('microsoft', 'list-2')] = {'u': {'id': 'u', 'version': 'v1', 'data':
+                    {'title': '合成待移除镜像', 'done': False, 'note': '', 'due': '', 'tripId': ''}}}
+                fixture.due(engine)
+                engine.tick()
+                assert any(item['title'] == '合成待移除镜像' for item in get(owner, '/api/state')['tasks'])
+                remote_before = json.dumps(list(remote.records.items()), sort_keys=True)
+                button(page, '断开绑定').first.click()
+                assert account(owner)['id'] == aid
+                button(page, '确认断开').click()
+                expect(page.get_by_text(owner_name, exact=True)).to_have_count(0)
+                assert get(owner, '/api/accounts')['accounts'] == []
+                assert {item['title'] for item in get(owner, '/api/state')['tasks']} == {'合成本地待办保留'}
+                assert json.dumps(list(remote.records.items()), sort_keys=True) == remote_before
+                assert len(get(partner, '/api/accounts')['accounts']) == 1
+                with closing(sqlite3.connect(folder / 'data' / 'household.sqlite3')) as con:
+                    assert con.execute('PRAGMA foreign_key_check').fetchall() == []
+                    assert con.execute('SELECT count(*) FROM cloud_sources WHERE account_id=?', (aid,)).fetchone()[0] == 0
+                passed('explicit disconnect deletes only owner binding/local source mirrors, preserves manual task, partner binding and original synthetic provider records')
+
+                # Restore a synthetic account through real OAuth routes for late
+                # response/session checks; never navigate to an external provider.
+                seed_client, seed_headers, new_aid = fixture.bind(application, remote, 1, subject='owner-final')
+                with engine.db() as con:
+                    con.execute('UPDATE cloud_accounts SET name=? WHERE id=?', ('合成迟到账户', new_aid))
+                open_accounts(page)
+                expect(page.get_by_text('合成迟到账户', exact=True)).to_be_visible()
+                held = []
+                hold = [True]
+
+                def hold_accounts(handler):
+                    if hold[0]:
+                        held.append((handler, handler.fetch()))
+                    else:
+                        handler.continue_()
+
+                page.route('**/api/accounts', hold_accounts)
+                for _ in range(130):
+                    if held:
+                        break
+                    page.wait_for_timeout(150)
+                assert held
+                visibility(page, True)
+                write(owner, 'POST', '/api/logout', {})
+                login(owner, 2)
+                hold[0] = False
+                for handler, response in held:
+                    handler.fulfill(response=response)
+                page.unroute('**/api/accounts', hold_accounts)
+                visibility(page, False)
+                expect(page.get_by_text('合成迟到账户', exact=True)).to_have_count(0)
+                open_accounts(page)
+                expect(page.get_by_text(partner_name, exact=True)).to_be_visible()
+                expect(page.get_by_text('合成迟到账户', exact=True)).to_have_count(0)
+                passed('held genuine owner account response cannot repaint private data or reinstall old session after logout/member switch')
+
+                write(owner, 'POST', '/api/logout', {})
+                login(owner, 1)
+                invitation = write(owner, 'POST', '/api/spaces/invitations', {}, 201)['invitation']
+                created = write(owner, 'POST', '/api/spaces/redeem', {'invitation': invitation, 'name': '合成账户第二家庭',
+                    'slug': 'expo-accounts-two', 'MEMBER1_PASSWORD': 'testing-password-one', 'MEMBER2_PASSWORD': 'testing-password-two'}, 201)
+                child = context()
+                child_page = child.new_page()
+                child_page.goto(base + created['entry'])
+                login(child)
+                open_accounts(child_page)
+                assert get(child, '/api/accounts')['accounts'] == []
+                assert child.request.get(base + '/api/accounts/' + new_aid + '/sources').status == 404
+                expect(child_page.locator('body')).not_to_contain_text('合成迟到账户')
+                expect(child_page.locator('body')).not_to_contain_text(partner_name)
+                tv = context()
+                pairing = tv.request.post(base + '/api/pair/start', data={}).json()
+                write(owner, 'POST', '/api/pair/approve', {'code': pairing['code'], 'name': '合成账户电视'})
+                assert tv.request.post(base + '/api/pair/poll', data={'secret': pairing['secret']}).json()['approved']
+                assert get(tv, '/api/me')['user']['role'] == 'tv'
+                assert tv.request.get(base + '/api/accounts').status == 403
+                tv_page = tv.new_page()
+                tv_reads = []
+                tv_page.on('request', lambda request: tv_reads.append(urlsplit(request.url).path))
+                tv_page.goto(base + '/app/connections')
+                tv_page.wait_for_load_state('networkidle')
+                assert not any(path == '/api/accounts' or path.startswith('/api/accounts/') for path in tv_reads)
+                passed('real second-household session cannot read first household account IDs; paired TV is server-denied and makes no private account reads')
+                assert not report['pageErrors'] and not report['externalRequests']
+                report['passed'] = True
+    except Exception:
+        report['failure'] = traceback.format_exc()
+        print(report['failure'], flush=True)
+    finally:
+        report['sourceHashesAfter'] = hashes()
+        report['bundleHashesAfter'] = bundle_hashes()
+        report['sourceUnchanged'] = report['sourceHashesBefore'] == report['sourceHashesAfter']
+        report['bundleUnchanged'] = report['bundleHashesBefore'] == report['bundleHashesAfter']
+        report['passed'] = report['passed'] and report['sourceUnchanged'] and report['bundleUnchanged']
+        (out / 'result.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+        print(json.dumps({'passed': report['passed'], 'checks': len(report['checks']), 'report': str(out / 'result.json')}, ensure_ascii=False), flush=True)
+    return 0 if report['passed'] else 1
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
