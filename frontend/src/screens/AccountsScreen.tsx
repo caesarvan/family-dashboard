@@ -141,6 +141,13 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
     catch (caught) {
       if (ticket !== generation.current || !current()) return;
       if (caught instanceof ApiError && caught.status > 0 && caught.status < 500) setPending(null);
+      if (caught instanceof ApiError && [401, 403].includes(caught.status)) {
+        // A provider can reject an expired cloud grant while the household
+        // session is still valid. Check the complete identity before deciding.
+        try { installSnapshot(await accountSnapshot()); if (current()) setError(errorMessage(caught)); }
+        catch (verification) { failed(verification); if (current()) { setVisible(false); setList(null); } }
+        return;
+      }
       failed(caught);
       if (current() && pendingRef.current) {
         try { installSnapshot(await accountSnapshot()); }
@@ -272,6 +279,10 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
         <View style={styles.stack}>
           <Text>{editingAccount.name || editingAccount.email} · {providerName(editingAccount.provider)}</Text>
           <Text variant="bodySmall" style={styles.muted}>所选日历的完整标题、地点与任务将展示给双方及已配对电视。日历归属仅用于区分安排，不改变共享范围。</Text>
+          {(editingAccount.needsReauth || !editingAccount.capabilities.sync) && <View style={styles.warning}>
+            <Text>此账户需要重新授权日历与清单。原输入仍保留；前往服务商授权会离开此页面。</Text>
+            <Button mode="contained" disabled={locked || !list.providers.find(p => p.id === editingAccount.provider)?.configured} onPress={() => void bind(editingAccount.provider)}>重新授权 {providerName(editingAccount.provider)}</Button>
+          </View>}
           {!!pending && <Text accessibilityRole="alert">保存结果尚未确认。请刷新核对，暂时不能再次提交。</Text>}
           {!!conflict && <View style={styles.warning}>
             <Text accessibilityRole="header" variant="titleSmall">共享范围已变化，请核对最新选择</Text>
