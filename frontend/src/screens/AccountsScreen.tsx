@@ -333,6 +333,7 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
         <Dialog.ScrollArea style={styles.dialogScroll}><ScrollView contentContainerStyle={styles.dialogContent}>
           <Text>{disconnect?.name || disconnect?.email}</Text>
           <Text>断开后，这个账户的同步来源和本地云端镜像会移除，原应用中的日历、任务和照片仍保留。已发布的本地待办会保留，但停止云端同步。相册来源的后续导入也将停止。</Text>
+          <Text>此前从该账户导入到看板的照片副本也会移除，家庭共享和电视展示一并撤销；Google Photos 中的原图保留。</Text>
           <Text>该账户将无法再用于登录此家庭，家庭密码登录仍可使用。</Text>
         </ScrollView></Dialog.ScrollArea>
         <Dialog.Actions style={styles.buttons}><Button disabled={busy} onPress={() => setDisconnect(null)}>保留绑定</Button><Button mode="contained" buttonColor={theme.colors.error} disabled={locked} onPress={() => void removeAccount()}>确认断开</Button></Dialog.Actions>
