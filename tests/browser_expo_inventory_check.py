@@ -332,12 +332,21 @@ def main():
                 button(page, '整理并预览').click()
                 expect(button(page, '查看物品 ' + title)).to_be_enabled()
                 expect(page.get_by_text('现有 7 节', exact=False).filter(visible=True)).to_be_visible()
+                # Another actual device changes stock between search and opening.
+                # Detail must refetch current quantity instead of trusting Match.
+                latest_batch = get(owner, '/api/inventory/acquisitions/' + bid)
+                write(owner, 'POST', movement_path, {'requestId': secrets.token_hex(16),
+                    'itemRevision': latest_batch['item']['revision'], 'revision': latest_batch['acquisition']['revision'],
+                    'data': {'kind': 'consume', 'quantity': 1, 'occurredOn': datetime.now(source.TZ).date().isoformat(), 'reason': '合成另一设备刚取用一节'},
+                    'confirmConsumed': True})
                 with page.expect_response(lambda response: '/api/inventory/items/' + uid in response.url and '/acquisitions' not in response.url and response.request.method == 'GET') as detail:
                     button(page, '查看物品 ' + title).click()
                 assert detail.value.status == 200
+                assert detail.value.json()['item']['onHandQty'] == 6
                 expect(button(page, '编辑物品')).to_be_enabled()
                 expect(page.get_by_text(title, exact=True).filter(visible=True)).to_be_visible()
-                passed('local assistant inventory search shows current quantity and opens matching detail through a fresh authorized GET')
+                expect(page.get_by_text('6 节', exact=True).filter(visible=True)).to_be_visible()
+                passed('local assistant search shows stock; opening exact item rereads changed quantity instead of trusting stale Match')
 
                 before_restart = get(owner, '/api/inventory/items/' + uid)['item']
                 page.reload()
@@ -345,7 +354,7 @@ def main():
                 server.app = source.create_app(config)
                 open_inventory(page)
                 assert get(owner, '/api/inventory/items/' + uid)['item'] == before_restart
-                assert get(owner, movement_path)['total'] == 6
+                assert get(owner, movement_path)['total'] == 7
                 with closing(sqlite3.connect(db_path)) as con:
                     assert con.execute('PRAGMA foreign_key_check').fetchall() == []
                     assert con.execute('SELECT count(*) FROM hub_transactions').fetchone()[0] == 0
