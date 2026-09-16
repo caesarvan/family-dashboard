@@ -3,6 +3,10 @@ import { AppState, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Button, Checkbox, Chip, Divider, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
 import { request } from '../lib/api';
+import { isJourneyRequest, journeySessionKey } from '../lib/assistantJourney';
+import type { Draft, Session } from '../lib/trips';
+import JourneyBriefPanel from './JourneyBriefPanel';
+import TripsScreen from './TripsScreen';
 import { AssistantFlow, AssistantState, memberKey, type Match } from '../lib/assistant';
 import { useHousehold } from '../lib/household';
 import type { ScreenProps } from '../lib/types';
@@ -14,11 +18,87 @@ function inventorySummary(item: Match) {
   return `现有 ${item.onHandQty} ${item.unit} · 在途 ${item.inTransitQty} ${item.unit} · 计划 ${item.plannedQty} ${item.unit}`;
 }
 
+type JourneyPanel = { kind: 'brief'; key: number; prompt: string; useModel: boolean; prepare: boolean }
+  | { kind: 'planning'; key: number; draft: Draft };
+
 export function AssistantScreen(props: ScreenProps) {
-  return <AssistantWorkspace key={memberKey(props.user)} {...props} />;
+  const household = useHousehold();
+  return <AssistantEntry key={household.identityKey} {...props} />;
 }
 
-function AssistantWorkspace(props: ScreenProps) {
+function AssistantEntry(props: ScreenProps) {
+  const household = useHousehold(), actor = household.identityKey;
+  const [panel, setPanel] = useState<JourneyPanel | null>(null), [sourcePrompt, setSourcePrompt] = useState('');
+  const [visible, setVisible] = useState(false), [gateError, setGateError] = useState('');
+  const sequence = useRef(0), focused = useRef(false), generation = useRef(0), ready = useRef(false);
+  const latest = useRef(household); latest.current = household;
+  const panelRef = useRef(panel); panelRef.current = panel;
+  const available = () => focused.current && latest.current.identityKey === actor
+    && latest.current.online && (typeof navigator === 'undefined' || navigator.onLine !== false)
+    && (typeof document === 'undefined' || !document.hidden);
+  const conceal = () => { ++generation.current; ready.current = false; setVisible(false); };
+  async function verify() {
+    conceal();
+    const ticket = generation.current;
+    if (!available()) return;
+    try {
+      const session = await request<Session>('/me');
+      if (ticket !== generation.current || !available()) return;
+      if (session.user?.role !== 'member' || journeySessionKey(session) !== actor) {
+        setPanel(null); setSourcePrompt(''); void latest.current.refresh(); return;
+      }
+      ready.current = true; setVisible(true); setGateError('');
+    } catch {
+      if (ticket === generation.current && available()) setGateError('连接暂时无法核对，旅行草稿已隐藏。请重试。');
+    }
+  }
+  useFocusEffect(useCallback(() => {
+    focused.current = true;
+    return () => { focused.current = false; conceal(); setPanel(null); setSourcePrompt(''); };
+  }, [actor]));
+  useEffect(() => {
+    if (!panel) return;
+    void verify();
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active') void verify(); else conceal(); });
+    const visibility = () => { if (document.hidden) conceal(); else void verify(); };
+    const offline = () => conceal(), online = () => void verify();
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visibility);
+    if (typeof window !== 'undefined') { window.addEventListener('offline', offline); window.addEventListener('online', online); }
+    return () => {
+      conceal(); subscription.remove();
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', visibility);
+      if (typeof window !== 'undefined') { window.removeEventListener('offline', offline); window.removeEventListener('online', online); }
+    };
+  }, [!!panel, actor]);
+  const begin = (prompt: string, useModel: boolean, prepare: boolean) => {
+    if (!available() || panelRef.current) return;
+    setSourcePrompt(prompt);
+    setPanel({ kind: 'brief', key: ++sequence.current, prompt, useModel, prepare });
+  };
+  if (!panel) return <AssistantWorkspace {...props} initialPrompt={sourcePrompt} onJourney={begin} />;
+  const allowed = visible && household.online;
+  return <View>
+    {!allowed && <SectionCard title="旅行草稿暂时隐藏">
+      <Text>{gateError || '返回前台并连接网络后，核对当前登录再继续。'}</Text>
+      <Button onPress={() => void verify()}>重新连接旅行</Button>
+    </SectionCard>}
+    <View style={allowed ? undefined : { display: 'none' }}>
+      {panel.kind === 'brief' ? <JourneyBriefPanel key={panel.key} user={props.user} people={props.state.people}
+        initialPrompt={panel.prompt} initialUseModel={panel.useModel} prepareOnOpen={panel.prepare}
+        onCancel={() => { if (ready.current && available()) setPanel(null); }}
+        onPrepared={draft => {
+          if (!ready.current || !available() || panelRef.current?.key !== panel.key || panelRef.current.kind !== 'brief') return;
+          setPanel({ kind: 'planning', key: ++sequence.current, draft });
+        }} />
+        : <TripsScreen {...props} key={panel.key} tripRequest={undefined} initialDraft={panel.draft}
+          onExitPlanning={() => { if (ready.current && available()) setPanel(null); }} />}
+    </View>
+  </View>;
+}
+
+function AssistantWorkspace(props: ScreenProps & {
+  initialPrompt?: string; onJourney: (prompt: string, useModel: boolean, prepare: boolean) => void;
+}) {
   const household = useHousehold(), theme = useTheme();
   const latest = useRef({ household, user: props.user }); latest.current = { household, user: props.user };
   const [flow, setFlow] = useState<AssistantFlow | null>(null);
@@ -28,7 +108,7 @@ function AssistantWorkspace(props: ScreenProps) {
   const actor = memberKey(props.user);
   useFocusEffect(useCallback(() => {
     let active = true;
-    setPrompt(''); setUseModel(false); setIncludeContext(false); setView(null);
+    setPrompt(props.initialPrompt || ''); setUseModel(false); setIncludeContext(false); setView(null);
     const current = new AssistantFlow(latest.current.user, {
       read: path => request(path),
       mutate: (path, method, body) => latest.current.household.mutate(path, method, body),
@@ -63,7 +143,7 @@ function AssistantWorkspace(props: ScreenProps) {
   const changedPrompt = !!draft && prompt.trim() !== view?.planPrompt;
   const people = props.state.people;
   return <View style={styles.page}>
-    <PageHeader title="家庭助理" description="把想法整理成清单，核对后再保存。" />
+    <PageHeader title="家庭助理" description="整理清单或规划旅行，核对后再保存。" />
     <SectionCard title="今天想处理什么？">
       <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} multiline label="告诉助理你的需求" accessibilityLabel="告诉助理你的需求" value={prompt}
         onChangeText={setPrompt} disabled={editingLocked} maxLength={2000} style={styles.input}
@@ -77,7 +157,11 @@ function AssistantWorkspace(props: ScreenProps) {
           onPress={() => { if (!editingLocked) setIncludeContext(!includeContext); }} /></>}
       {!view?.modelConfigured && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>可直接整理本地待办、采购或搜索已有记录。</Text>}
       <Button mode="contained" loading={!!view?.busy && !view?.pending} disabled={editingLocked || !prompt.trim()}
-        onPress={() => void flow?.plan(prompt, useModel, includeContext)}>整理并预览</Button>
+        onPress={() => {
+          if (editingLocked || !prompt.trim()) return;
+          if (isJourneyRequest(prompt)) props.onJourney(prompt, useModel, true);
+          else void flow?.plan(prompt, useModel, includeContext);
+        }}>整理并预览</Button>
       <Text variant="bodySmall">输入“搜索：关键词”可查找当前可见的日程、清单、旅行、家庭物品、照片说明及地点文字；搜索始终只在本地进行。</Text>
     </SectionCard>
     {!!view?.error && <HelperText type="error" accessibilityRole="alert">{view.error}</HelperText>}
@@ -122,7 +206,7 @@ function AssistantWorkspace(props: ScreenProps) {
         <Button disabled={locked || view.search.nextOffset === null} onPress={() => void flow?.search(view.search!.query, view.search!.nextOffset!)}>下一页</Button></View>
       <Text variant="bodySmall">仅显示当前可见的文字，权限变化后会重新读取。</Text>
     </SectionCard>}
-    <Button icon="airplane" disabled={locked || !!view?.pending} onPress={() => props.onLegacy('assistant')}>更多助理工具与旅行简报</Button>
+    <Button icon="airplane" mode="outlined" disabled={editingLocked} onPress={() => props.onJourney(prompt, useModel, false)}>规划一次旅行</Button>
     <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>草案只保留在本页。离开后不会自动执行；结果不明时，请先在本页核对。</Text>
   </View>;
 }
