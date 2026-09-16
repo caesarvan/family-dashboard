@@ -2,25 +2,16 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Banner, BottomNavigation, Button, Divider, Drawer, IconButton, Menu, Surface, Text, useTheme } from 'react-native-paper';
+import { Banner, BottomNavigation, Button, Divider, IconButton, Menu, Surface, Text, useTheme } from 'react-native-paper';
 import type { ItemKind, RouteName } from '../lib/types';
 
 type Action = () => void | Promise<void>;
 export type AppShellProps = {
-  route: RouteName;
-  title: string;
-  name: string;
-  householdName: string;
-  onNavigate: (route: RouteName) => void;
-  onCreate: (kind: ItemKind) => void;
-  onRefresh: Action;
-  onLogout: Action;
-  refreshing: boolean;
-  offline: boolean;
-  children: ReactNode;
-  onLegacy: (fragment: string) => void;
+  route: RouteName; title: string; name: string; householdName: string;
+  onNavigate: (route: RouteName) => void; onCreate: (kind: ItemKind) => void;
+  onRefresh: Action; onLogout: Action; refreshing: boolean; offline: boolean;
+  children: ReactNode; onLegacy: (fragment: string) => void;
 };
-
 const navigation: { key: RouteName; title: string; focusedIcon: string; unfocusedIcon: string }[] = [
   { key: 'home', title: '首页', focusedIcon: 'home', unfocusedIcon: 'home-outline' },
   { key: 'calendar', title: '日程', focusedIcon: 'calendar', unfocusedIcon: 'calendar-outline' },
@@ -28,128 +19,103 @@ const navigation: { key: RouteName; title: string; focusedIcon: string; unfocuse
   { key: 'shopping', title: '采购', focusedIcon: 'shopping', unfocusedIcon: 'shopping-outline' },
   { key: 'more', title: '更多', focusedIcon: 'dots-horizontal-circle', unfocusedIcon: 'dots-horizontal' },
 ];
+const desktopNavigation: { key: RouteName; title: string; label?: string }[] = [
+  ...navigation.filter(item => item.key !== 'more'),
+  { key: 'trips', title: '旅行' }, { key: 'photos', title: '相册' },
+  { key: 'assistant', title: '家庭助理', label: '助理' },
+];
 const creation: { kind: ItemKind; title: string; icon: string }[] = [
   { kind: 'tasks', title: '添加待办', icon: 'checkbox-marked-circle-plus-outline' },
   { kind: 'events', title: '添加安排', icon: 'calendar-plus' },
   { kind: 'shopping', title: '添加采购', icon: 'cart-plus' },
   { kind: 'trips', title: '计划旅行', icon: 'airplane' },
 ];
-/** Layout only. The parent owns identity, authorized data, forms and persistence. */
+/** Layout only. The parent owns identity, authorized data and persistence. */
 export default function AppShell(props: AppShellProps) {
   const { width } = useWindowDimensions();
-  const wide = width >= 960;
-  const theme = useTheme();
-  const insets = useSafeAreaInsets();
+  const wide = width >= 1040;
+  const theme = useTheme(); const insets = useSafeAreaInsets();
   const scroll = useRef<ScrollView>(null);
-  const [menu, setMenu] = useState<'create' | 'account' | null>(null);
+  const [menu, setMenu] = useState<'create' | 'account' | 'more' | null>(null);
   const { route, onNavigate, onLegacy } = props;
-  useEffect(() => {
-    setMenu(null);
-    scroll.current?.scrollTo({ y: 0, animated: false });
-  }, [route, props.name, props.householdName]);
+  useEffect(() => { setMenu(null); scroll.current?.scrollTo({ y: 0, animated: false }); }, [route, props.name, props.householdName]);
+  useEffect(() => { setMenu(null); }, [wide]);
   const navigate = (next: RouteName) => { setMenu(null); onNavigate(next); };
   const legacy = (fragment: string) => { setMenu(null); onLegacy(fragment); };
-  const border = { borderColor: theme.colors.outlineVariant };
   const tabIndex = navigation.findIndex(item => item.key === route);
-
   return (
     <View style={[styles.frame, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}>
-      {wide ? (
-        <Surface elevation={0} style={[styles.sidebar, border, { backgroundColor: theme.colors.surface }]}>
-          <View style={styles.brand}>
-            <MaterialCommunityIcons name="home-outline" size={26} color={theme.colors.onSurface} accessibilityElementsHidden />
-            <Text variant="titleLarge">家庭中枢</Text>
-          </View>
-          <View style={[styles.household, { backgroundColor: theme.colors.surfaceVariant }]}>
-            <Text variant="titleSmall" numberOfLines={2}>{props.householdName || '我们的家'}</Text>
-            <Text variant="bodySmall" numberOfLines={1} style={{ color: theme.colors.onSurfaceVariant }}>{props.name}</Text>
-          </View>
-          <ScrollView style={styles.navScroll} contentContainerStyle={styles.navContent} showsVerticalScrollIndicator={false}>
-            <Text variant="labelMedium" style={[styles.groupLabel, { color: theme.colors.onSurfaceVariant }]}>日常</Text>
-            {navigation.filter(item => item.key !== 'more').map(item => (
-              <Drawer.Item key={item.key} label={item.title} icon={item.unfocusedIcon} active={route === item.key}
-                onPress={() => navigate(item.key)} style={styles.drawerItem} accessibilityLabel={item.title} />
-            ))}
-            <Drawer.Item label="家庭物品" icon="package-variant-closed" onPress={() => legacy('inventory')} style={styles.drawerItem} />
-            <Divider style={styles.divider} />
-            <Text variant="labelMedium" style={[styles.groupLabel, { color: theme.colors.onSurfaceVariant }]}>计划与记录</Text>
-            <Drawer.Item label="旅行" icon="airplane" active={route === 'trips'} onPress={() => navigate('trips')} style={styles.drawerItem} />
-            <Drawer.Item label="相册" icon="image-multiple-outline" active={route === 'photos'} onPress={() => navigate('photos')} style={styles.drawerItem} />
-            <Drawer.Item label="足迹地图" icon="map-outline" onPress={() => legacy('map')} style={styles.drawerItem} />
-            <Drawer.Item label="家庭财务" icon="wallet-outline" active={route === 'finance'} onPress={() => navigate('finance')} style={styles.drawerItem} />
-          </ScrollView>
-          <Divider />
-          <Drawer.Item label="家庭助理" icon="creation-outline" active={route === 'assistant'} onPress={() => navigate('assistant')} style={styles.drawerItem} />
-          <Drawer.Item label="更多功能" icon="dots-horizontal" active={route === 'more'} onPress={() => navigate('more')} style={styles.drawerItem} />
-        </Surface>
-      ) : null}
-      <View style={styles.main}>
-        <Surface elevation={0} style={[styles.header, border, { backgroundColor: theme.colors.background, paddingHorizontal: wide ? 28 : 12 }]}>
-          {!wide && tabIndex < 0 ? <IconButton icon="arrow-left" size={22} onPress={() => navigate('more')} accessibilityLabel="返回更多功能" style={styles.iconButton} /> : null}
-          <View style={styles.headerCopy}>
-            {wide ? <Text variant="bodySmall" numberOfLines={1} style={{ color: theme.colors.onSurfaceVariant }}>{props.householdName || '我们的家'}</Text> : null}
-            <Text variant="titleSmall" numberOfLines={1}>{props.title}</Text>
-          </View>
+      <Surface elevation={0} style={[styles.headerSurface, { backgroundColor: theme.colors.background }]}>
+        <View style={[styles.header, { paddingHorizontal: wide ? 24 : 12, minHeight: wide ? 72 : 64 }]}>
+          {wide ? <Button mode="text" onPress={() => navigate('home')} accessibilityLabel="家庭中枢首页"
+            icon={({ color }) => <MaterialCommunityIcons name="home-outline" size={24} color={color} />}
+            textColor={theme.colors.onSurface} labelStyle={styles.brandLabel} style={styles.brand}>家庭中枢</Button> :
+            <View style={styles.mobileHeading}>
+              {tabIndex < 0 ? <IconButton icon="arrow-left" size={22} onPress={() => navigate('more')} accessibilityLabel="返回更多功能" style={styles.iconButton} /> :
+                <MaterialCommunityIcons name="home-outline" size={24} color={theme.colors.onSurface} accessibilityElementsHidden />}
+              <View style={styles.headerCopy}>
+                <Text variant="titleSmall" numberOfLines={1}>{route === 'home' ? props.householdName || '我们的家' : props.title}</Text>
+                {route === 'home' ? <Text variant="bodySmall" numberOfLines={1} style={{ color: theme.colors.onSurfaceVariant }}>家庭中枢</Text> : null}
+              </View>
+            </View>}
+          {wide ? <View style={styles.navigation}>
+            {desktopNavigation.map(item => <Button key={item.key} mode="text" compact onPress={() => navigate(item.key)} accessibilityLabel={item.title}
+              accessibilityState={{ selected: route === item.key }} textColor={route === item.key ? theme.colors.onSurface : theme.colors.onSurfaceVariant}
+              style={[styles.navButton, route === item.key && { backgroundColor: theme.colors.primaryContainer }]}
+              labelStyle={styles.navLabel}>{item.label || item.title}</Button>)}
+            <Menu visible={menu === 'more'} onDismiss={() => setMenu(null)} contentStyle={styles.menu}
+              anchor={<Button mode="text" compact icon="chevron-down" textColor={theme.colors.onSurfaceVariant}
+                accessibilityLabel="更多功能" accessibilityState={{ expanded: menu === 'more' }} style={styles.navButton}
+                contentStyle={styles.reverse} labelStyle={styles.navLabel} onPress={() => setMenu('more')}>更多</Button>}>
+              <Menu.Item title="家庭资金" leadingIcon="wallet-outline" onPress={() => navigate('finance')} />
+              <Menu.Item title="家庭物品" leadingIcon="package-variant-closed" onPress={() => legacy('inventory')} />
+              <Menu.Item title="足迹地图" leadingIcon="map-outline" onPress={() => legacy('map')} />
+              <Divider /><Menu.Item title="全部工具与设置" leadingIcon="view-grid-outline" onPress={() => navigate('more')} />
+            </Menu>
+          </View> : null}
           <View style={styles.headerActions}>
-            <IconButton icon="refresh" size={21} onPress={props.onRefresh} disabled={props.refreshing} loading={props.refreshing} accessibilityLabel="刷新家庭数据" style={styles.iconButton} />
+            <IconButton icon="refresh" size={20} onPress={props.onRefresh} disabled={props.refreshing} loading={props.refreshing} accessibilityLabel="刷新家庭数据" style={styles.iconButton} />
             <Menu visible={menu === 'create'} onDismiss={() => setMenu(null)} anchor={wide ? (
               <Button mode="contained" icon="plus" onPress={() => setMenu('create')} style={styles.button} contentStyle={styles.buttonContent}>新建</Button>
-            ) : (
-              <IconButton icon="plus" mode="contained" containerColor={theme.colors.primary} iconColor={theme.colors.onPrimary} size={22} onPress={() => setMenu('create')} accessibilityLabel="新建记录" style={[styles.iconButton, styles.button]} />
-            )} contentStyle={styles.menu}>
+            ) : <IconButton icon="plus" mode="contained" containerColor={theme.colors.primary} iconColor={theme.colors.onPrimary} size={21} onPress={() => setMenu('create')} accessibilityLabel="新建记录" style={[styles.iconButton, styles.button]} />} contentStyle={styles.menu}>
               {creation.map(item => <Menu.Item key={item.kind} title={item.title} leadingIcon={item.icon} onPress={() => { setMenu(null); props.onCreate(item.kind); }} />)}
             </Menu>
             <Menu visible={menu === 'account'} onDismiss={() => setMenu(null)} anchor={
-              <IconButton icon="account-circle-outline" size={24} onPress={() => setMenu('account')} accessibilityLabel={`${props.name}，账户菜单`} style={styles.iconButton} />
+              <IconButton icon="account-circle-outline" size={23} onPress={() => setMenu('account')} accessibilityLabel={`${props.name}，账户菜单`} style={styles.iconButton} />
             } contentStyle={styles.menu}>
-              <Menu.Item title={props.name || '我的账户'} disabled />
-              <Divider />
-              <Menu.Item title="连接与账户" leadingIcon="link-variant" onPress={() => legacy('connections')} />
+              <Menu.Item title={props.name || '我的账户'} disabled /><Menu.Item title={props.householdName || '我们的家'} disabled />
+              <Divider /><Menu.Item title="连接与账户" leadingIcon="link-variant" onPress={() => legacy('connections')} />
               <Menu.Item title="家庭设置" leadingIcon="cog-outline" onPress={() => legacy('settings')} />
-              <Divider />
-              <Menu.Item title="退出登录" leadingIcon="logout" onPress={() => { setMenu(null); void props.onLogout(); }} />
+              <Divider /><Menu.Item title="退出登录" leadingIcon="logout" onPress={() => { setMenu(null); void props.onLogout(); }} />
             </Menu>
           </View>
-        </Surface>
-        <Banner visible={props.offline} actions={[{ label: '重新读取', onPress: props.onRefresh, disabled: props.refreshing }]}>
-          连接暂时不可用。请刷新后核对最新内容。
-        </Banner>
-        <ScrollView ref={scroll} style={styles.contentScroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-          <View style={[styles.content, { paddingHorizontal: wide ? 28 : 16, paddingTop: wide ? 24 : 16 }]}>
-            {props.children}
-          </View>
-        </ScrollView>
-        {!wide ? <BottomNavigation.Bar navigationState={{ index: tabIndex >= 0 ? tabIndex : 4, routes: navigation }}
-          getAccessibilityLabel={({ route: item }) => item.title}
-          onTabPress={({ route: next }) => navigate(next.key)}
-          activeColor={theme.colors.onSurface} inactiveColor={theme.colors.onSurfaceVariant}
-          shifting={false} labeled safeAreaInsets={{ bottom: insets.bottom, left: insets.left, right: insets.right }}
-          style={[styles.bottomBar, border, { backgroundColor: theme.colors.surface }]} /> : null}
-      </View>
+        </View>
+      </Surface>
+      <Banner visible={props.offline} actions={[{ label: '重新读取', onPress: props.onRefresh, disabled: props.refreshing }]}>
+        连接暂时不可用。请刷新后核对最新内容。
+      </Banner>
+      <ScrollView ref={scroll} style={styles.contentScroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
+        <View style={[styles.content, { paddingHorizontal: wide ? 24 : 16, paddingTop: wide ? 32 : 20 }]}>{props.children}</View>
+      </ScrollView>
+      {!wide ? <BottomNavigation.Bar navigationState={{ index: tabIndex >= 0 ? tabIndex : 4, routes: navigation }}
+        getAccessibilityLabel={({ route: item }) => item.title} onTabPress={({ route: next }) => navigate(next.key)}
+        activeColor={theme.colors.onSurface} inactiveColor={theme.colors.onSurfaceVariant}
+        shifting={false} labeled safeAreaInsets={{ bottom: insets.bottom, left: insets.left, right: insets.right }}
+        style={[styles.bottomBar, { borderColor: theme.colors.outlineVariant, backgroundColor: theme.colors.surface }]} /> : null}
     </View>
   );
 }
-
 const styles = StyleSheet.create({
-  frame: { flex: 1, flexDirection: 'row', minHeight: 0 },
-  sidebar: { width: 232, paddingHorizontal: 10, paddingTop: 22, paddingBottom: 12, borderRightWidth: 1 },
-  brand: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 14, marginBottom: 24 },
-  household: { marginHorizontal: 8, padding: 12, borderRadius: 10, gap: 3, marginBottom: 18 },
-  navScroll: { flex: 1 },
-  navContent: { paddingBottom: 16 },
-  groupLabel: { marginHorizontal: 18, marginBottom: 8, marginTop: 4 },
-  drawerItem: { borderRadius: 8, marginHorizontal: 0, marginVertical: 2 },
-  divider: { marginVertical: 16, marginHorizontal: 8 },
-  main: { flex: 1, minWidth: 0, minHeight: 0 },
-  header: { minHeight: 64, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, borderBottomWidth: 1 },
-  headerCopy: { flex: 1, minWidth: 0, gap: 2 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
-  iconButton: { margin: 0 },
-  button: { borderRadius: 8 },
-  buttonContent: { minHeight: 42 },
-  menu: { borderRadius: 12, minWidth: 200 },
-  contentScroll: { flex: 1 },
-  scrollContent: { flexGrow: 1, alignItems: 'center' },
-  content: { width: '100%', maxWidth: 1200, paddingBottom: 28 },
-  bottomBar: { borderTopWidth: 1 },
+  frame: { flex: 1, minHeight: 0 }, headerSurface: { alignItems: 'center' },
+  header: { width: '100%', maxWidth: 1328, flexDirection: 'row', alignItems: 'center', gap: 14 },
+  brand: { borderRadius: 999, flexShrink: 0, marginLeft: -10 },
+  brandLabel: { fontSize: 20, lineHeight: 28, fontWeight: '600', letterSpacing: -0.5, marginHorizontal: 8 },
+  navigation: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 2 },
+  navButton: { borderRadius: 999, minWidth: 52 }, navLabel: { fontSize: 14, marginHorizontal: 12, marginVertical: 10 },
+  reverse: { flexDirection: 'row-reverse' },
+  mobileHeading: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }, headerCopy: { flex: 1, minWidth: 0, gap: 1 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 }, iconButton: { margin: 0 },
+  button: { borderRadius: 999 }, buttonContent: { minHeight: 40 }, menu: { borderRadius: 20, minWidth: 210 },
+  contentScroll: { flex: 1 }, scrollContent: { flexGrow: 1, alignItems: 'center' },
+  content: { width: '100%', maxWidth: 1328, paddingBottom: 40 }, bottomBar: { borderTopWidth: 1 },
 });
