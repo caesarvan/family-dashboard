@@ -315,8 +315,12 @@ def main():
                     # request alone fires before its route callback is handled.
                     # Wait for the actual abort and a loaded local document before
                     # unregistering, so no in-flight handler is displaced.
-                    with page.expect_event('requestfailed', predicate=lambda request: urlsplit(request.url).hostname == host):
-                        button(page, '连接 ' + provider).click()
+                    with page.expect_event('framenavigated', predicate=lambda frame: frame == page.main_frame):
+                        with page.expect_event('requestfailed', predicate=lambda request: urlsplit(request.url).hostname == host):
+                            button(page, '连接 ' + provider).click()
+                    # Chromium commits an error document after an aborted main
+                    # navigation. Let it finish before issuing the local return.
+                    page.wait_for_load_state('domcontentloaded')
                     open_accounts(page)
                     page.unroute('https://' + host + '/**', abort_authorization)
                     assert len(get(owner, '/api/accounts')['accounts']) == 1
