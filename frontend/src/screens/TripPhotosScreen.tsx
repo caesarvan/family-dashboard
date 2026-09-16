@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Image, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Button, Card, Dialog, Portal, Text, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Card, Dialog, Portal, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import { PhotoReadDiscarded, PhotoReadFence, isMediaId, previewPath } from '../lib/photos';
@@ -156,15 +156,17 @@ function TripPhotoWorkspace(props: Props & { identityKey: string }) {
     <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>这里只查看照片。照片与地点关联同一趟旅行，不代表照片拍摄于该地点。</Text>
     {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     {loading && <ActivityIndicator accessibilityLabel="正在读取旅行相册" />}
-    {!!page && (page.items.length ? <View style={styles.grid}>{page.items.map(item => <Card key={item.id} mode="contained"
-      accessibilityLabel={'查看照片：' + (item.caption || '未添加说明')} disabled={controlsDisabled}
+    {!!page && (page.items.length ? <View style={styles.grid}>{page.items.map(item => <TouchableRipple key={item.id}
+      accessible accessibilityRole="button" accessibilityLabel={'查看照片：' + (item.caption || '未添加说明')}
+      accessibilityState={{ disabled: controlsDisabled }} aria-disabled={controlsDisabled} disabled={controlsDisabled}
       onPress={() => { if (!working.current && current()) void reload({ ...view.current, detailId: item.id }); }}
-      style={[styles.photoCard, { width: cardWidth, backgroundColor: theme.colors.surfaceVariant }]}>
+      style={state => [styles.photoControl, { width: cardWidth, borderColor: state.focused ? theme.colors.primary : 'transparent' }]}>
+      <Card mode="contained" style={[styles.photoCard, { backgroundColor: theme.colors.surfaceVariant }]}>
       {renderPhoto(item)}<Card.Content style={styles.photoCopy}>
         <Text variant="bodyMedium">{item.caption || '未添加说明'}</Text>
         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.visibility === 'private' ? '仅我自己' : '家庭共享'}</Text>
-      </Card.Content>
-    </Card>)}</View> : <EmptyState title={page.total ? '这一页没有照片了' : '这次旅行还没有可见照片'}
+      </Card.Content></Card>
+    </TouchableRipple>)}</View> : <EmptyState title={page.total ? '这一页没有照片了' : '这次旅行还没有可见照片'}
       description={page.total ? '照片列表已变化，可以返回上一页或重新读取第一页。' : '已保存并关联这趟旅行的照片，会按各自的查看权限显示在这里。'}
       action={page.offset ? <Button onPress={() => void reload({ ...view.current, offset: 0, detailId: '' })}>回到第一页</Button> : undefined} />)}
     {!!page && <View style={styles.pagination}>
@@ -189,6 +191,7 @@ function TripPhotoWorkspace(props: Props & { identityKey: string }) {
 const styles = StyleSheet.create({
   page: { gap: 16 }, backRow: { alignItems: 'flex-start' }, scopeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 18 },
+  photoControl: { borderWidth: 2, borderRadius: 26 },
   photoCard: { borderRadius: 24, overflow: 'hidden' }, thumbnail: { width: '100%', aspectRatio: 1, backgroundColor: '#f0f0f3' },
   photoCopy: { paddingHorizontal: 12, paddingVertical: 14, gap: 6 },
   pagination: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', justifyContent: 'space-between' },
