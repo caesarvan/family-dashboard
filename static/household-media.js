@@ -4,7 +4,26 @@ window.HouseholdMedia = (() => {
   let current = null;
   const CONSENT = 'media-v1';
   const terminal = new Set(['confirmed','cancelled','expired','failed','create_unknown']);
-  const labels = {queued:'正在准备',creating:'正在连接 Google',waiting_selection:'等待你选择照片',staging:'正在准备预览',awaiting_confirmation:'等待你确认保存',confirmed:'已保存',cancelled:'已取消',expired:'选择已过期',failed:'导入未完成',create_unknown:'连接结果待确认'};
+  const labels = {queued:'正在准备',creating:'正在连接 Google',waiting_selection:'等待你选择照片',listing:'正在读取本次选择',staging:'正在准备预览',awaiting_confirmation:'等待你确认保存',confirmed:'保存结果',cancelled:'已取消',expired:'选择已过期',failed:'导入未完成',create_unknown:'连接结果待确认'};
+  // Only local fixed text is rendered for per-photo errors, never provider text.
+  const resultErrors = {
+    input_too_large:'输入图片超过 8 MiB 上限。',
+    unsupported_format:'图片格式不支持；当前支持内容与类型一致的 JPEG、PNG 和 WebP。',
+    invalid_image:'图片不完整或无法安全解码。', multiple_frames:'暂不支持动图或多帧图片。',
+    too_many_pixels:'图片像素超过 2000 万像素上限。', output_too_large:'净化后的展示图片超过 2 MiB 上限。',
+    unsafe_decoder_configuration:'当前解码配置无法安全处理图片。', invalid_input:'图片字节或媒体类型无效。',
+    unsupported_type:'本次仅处理照片，已跳过非照片媒体。', result_unknown:'旧记录未保存此项的具体处理原因。',
+    unsupported_media:'此媒体格式暂不支持。', unsupported_image:'这张照片无法安全生成展示副本，具体原因未记录。',
+    too_large:'所选媒体超过处理上限。', unavailable:'这张照片暂时无法读取。',
+    worker_error:'这张照片处理失败，具体原因未记录。', timeout:'处理这张照片时，媒体服务未及时响应。',
+    rate_limited:'媒体服务繁忙，这张照片未完成处理。', remote_error:'媒体服务暂时不可用。',
+    bad_response:'媒体服务返回的内容无法使用。', network:'处理这张照片时连接中断。',
+    redirect:'媒体服务返回了不支持的跳转。', not_selected:'这张照片不在本次可读取的选择范围内。',
+    not_found:'这张照片已无法读取。', expired:'本次照片选择已过期。',
+    selection_changed:'Google Photos 中的本次选择已变化。', quota:'照片数量或存储额度已达上限。',
+    reauth:'照片来源的授权已失效。', invalid_token:'照片来源的授权已失效。',
+    forbidden:'这张照片的读取权限不可用。'
+  };
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const id = value => typeof value === 'string' && /^[a-f0-9]{24}$/.test(value);
   const actor = () => JSON.stringify([user?.role,user?.householdId,user?.id,user?.auth_version,csrf,isTV,isDemo]);
@@ -149,24 +168,56 @@ window.HouseholdMedia = (() => {
     const node = f.node.querySelector('[data-hm-message]');
     if (node) node.innerHTML = `${!navigator.onLine ? '<p class="hm-warning">网络已断开，连接恢复后可继续。</p>' : ''}${f.error ? `<p class="hm-warning" role="alert">${escape(f.error)}</p>` : ''}${f.notice ? `<p class="hm-notice" role="status">${escape(f.notice)}</p>` : ''}`;
   }
+  const count = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
+  function savedSummary(item) {
+    const saved = count(item?.counts?.saved);
+    const text = saved === null ? '本次保存数量未记录' : `已保存 ${saved} 张`;
+    return item?.resultsState === 'known' ? text : `${text}；本次其他处理结果未记录`;
+  }
+  function selectionSummary(f) {
+    const selected = f.confirmPending ? f.confirmPending.itemIds.length : f.selection.size;
+    const available = (f.importResult?.items || []).length;
+    return `仅将当前勾选的 ${selected} 张保存到私密相册。可保存照片中还有 ${Math.max(0,available-selected)} 张未勾选，不会保存。`;
+  }
+  function resultsMarkup(item) {
+    const counts = item.counts || {}, known = item.resultsState === 'known';
+    if (!known) {
+      return `<p class="hm-warning" data-hm-results-summary>${escape(item.state === 'confirmed' ? savedSummary(item) : terminal.has(item.state) ? '本次处理结果未记录，无法确定成功、失败或未勾选的数量。' : '本次处理结果尚未取得，请等待状态更新。')}</p>`;
+    }
+    const selected = count(counts.selected), pending = count(counts.pending);
+    const display = value => count(value) === null ? '未记录' : `${value} 张`;
+    const stats = [['ready','处理成功'],['failed','处理失败'],['skipped','跳过'],['pending','待处理 / 处理中']];
+    if (item.state === 'confirmed') stats.push(['saved','已保存'],['unselected','成功但未勾选']);
+    const rows = (Array.isArray(item.results) ? item.results : []).slice(0,20);
+    const statuses = {pending:'待处理 / 处理中',successful:'处理成功',duplicate:'已在相册，可复用',skipped:'已跳过',failed:'处理失败'};
+    return `<div class="hm-results-summary" data-hm-results-summary role="status" aria-live="polite"><p><strong>${selected === null ? '本次选择数量未记录' : `本次选择 ${selected} 张`}${item.state === 'confirmed' ? ` · ${escape(savedSummary(item))}` : ''}</strong></p><dl class="hm-result-counts">${stats.map(([name,label]) => `<div data-hm-count="${name}"><dt>${label}</dt><dd>${display(counts[name])}</dd></div>`).join('')}</dl>${selected > 0 && pending !== null && pending <= selected ? `<label class="hm-progress">已处理 ${selected-pending} / ${selected} 张<progress max="${selected}" value="${selected-pending}"></progress></label>` : ''}</div>
+      ${item.state === 'confirmed' ? '<p class="hm-muted">处理成功不等于全部保存；仅本次勾选确认的照片会留下。已保存数量包含复用的照片，未勾选的已有照片也不会从相册删除。</p>' : '<p class="hm-muted">处理成功的照片（含已有照片的复用）仍需勾选并确认保存。</p>'}
+      ${rows.length ? `<section class="hm-results" aria-label="本次逐项处理结果"><h4>本次处理明细</h4><p class="hm-muted">序号仅对应本次返回的选片清单，不代表原图库顺序。</p><ol>${rows.map(row => {
+        const number = count(row.position);
+        const status = Object.hasOwn(statuses,row.status) ? row.status : 'unknown';
+        const problem = status === 'failed' || status === 'skipped';
+        const message = Object.hasOwn(resultErrors,row.error?.code) ? resultErrors[row.error.code] : '这张照片未能完成处理，具体原因未记录。';
+        return `<li class="hm-result ${problem ? 'hm-result-problem' : ''}"><strong>${number && number <= 20 ? `第 ${number} 张` : '本次照片'}</strong><span>${statuses[status] || '结果未记录'}</span>${problem ? `<p>${escape(message)}</p>` : ''}</li>`;
+      }).join('')}</ol></section>` : ''}`;
+  }
   function importMarkup(f) {
     const result = f.importResult, item = result?.import;
     if (!item) return '<div class="hm-import-idle"><strong>只挑选想留下的回忆</strong><p>在 Google Photos 中选择照片，再回到这里确认。不会自动读取你的整个图库。</p></div>';
     const link = providerLink(item.pickerUri,'https://photos.google.com');
-    const candidates = result.items || [], counts = item.counts || {};
+    const candidates = result.items || [];
     const busy = f.busy ? 'disabled' : '';
     if (item.state === 'confirmed') {
-      return `<div class="hm-import-heading"><h3>这次照片已保存</h3><span class="hm-badge">保存完成</span></div><p class="hm-muted">已确认的照片可以在下方相册查看；原图仍保留在 Google Photos。</p>${button('poll','刷新状态',busy)}`;
+      return `<div class="hm-import-heading"><h3>本次保存结果</h3></div>${resultsMarkup(item)}<p class="hm-muted">已确认的照片可以在下方相册查看；原图仍保留在 Google Photos。</p>${button('poll','刷新状态',busy)}`;
     }
     if (!terminal.has(item.state) && Date.parse(item.expiresAt) <= Date.now()) {
-      return `<h3>本次临时预览已过期</h3><p class="hm-muted">未确认的预览不再展示。可以从 Google Photos 重新选择。</p>${button('poll','刷新状态',busy)}`;
+      return `<h3>本次临时预览已过期</h3>${resultsMarkup(item)}<p class="hm-muted">未确认的预览不再展示。可以从 Google Photos 重新选择。</p>${button('poll','刷新状态',busy)}`;
     }
-    return `<div class="hm-import-heading"><div><span class="hm-kicker">本次选择</span><h3>${escape(labels[item.state] || '等待状态更新')}</h3></div><span class="hm-badge">${counts.ready || 0} 张${item.state === 'confirmed' ? '已处理' : '可保存'}</span></div>
-      <p class="hm-muted">已选 ${counts.selected || 0} · 跳过 ${counts.skipped || 0} · 未成功 ${counts.failed || 0}${item.expiresAt && !terminal.has(item.state) ? ` · 临时预览有效至 ${escape(new Date(item.expiresAt).toLocaleString('zh-CN'))}` : ''}</p>
+    return `<div class="hm-import-heading"><div><span class="hm-kicker">本次选择</span><h3>${escape(labels[item.state] || '等待状态更新')}</h3></div></div>
+      ${resultsMarkup(item)}${item.expiresAt && !terminal.has(item.state) ? `<p class="hm-muted">临时预览有效至 ${escape(new Date(item.expiresAt).toLocaleString('zh-CN'))}</p>` : ''}
       ${item.state === 'waiting_selection' && link ? `<a class="hm-button primary" href="${escape(link)}" target="_blank" rel="noopener noreferrer">打开 Google Photos 选片 ↗</a><p class="hm-muted">选完后回到此页，预览会自动更新。</p>` : ''}
       ${item.state === 'create_unknown' ? '<p class="hm-warning">Google 可能已创建选片页面，但连接中断，未取得结果。不会自动重复创建；可取消这次记录，再开始一次选择。</p>' : ''}
       ${item.error ? `<p class="hm-warning">${escape(item.error.message || '这次选择未能完整处理，请刷新核对。重新授权不一定能解决服务配置或会话问题。')}</p>` : ''}
-      ${item.state === 'awaiting_confirmation' ? `<div class="hm-candidates">${candidates.map(candidate => `<label class="hm-candidate">${imageMarkup(candidate.item)}<span><input type="checkbox" data-hm-candidate="${escape(candidate.id)}" ${f.selection.has(candidate.id) ? 'checked' : ''} ${f.confirmPending || f.busy ? 'disabled' : ''}>${candidate.status === 'duplicate' ? '已保存，可复用' : '保留这张'}</span></label>`).join('')}</div><label class="hm-consent"><input type="checkbox" data-hm-persist ${f.persist ? 'checked' : ''} ${f.confirmPending ? 'disabled' : ''}><span>将勾选照片的预览保存到我的私密相册。原图仍在 Google Photos，之后可分别设置家庭共享和电视展示。</span></label>${f.confirmConflict ? '<p class="hm-warning">本次选择已更新，原保存请求不能继续重试。请读取最新状态，重新核对后确认。</p>'+button('recheck-confirm','重新核对本次选择',busy) : button('confirm',f.confirmPending ? '重试同一次保存' : '保存选中照片',busy)}<p class="hm-muted">只保存你确认的照片；临时预览最迟 24 小时后清理。当前支持照片，不包含视频播放。</p>` : ''}
+      ${item.state === 'awaiting_confirmation' ? `<div class="hm-candidates">${candidates.map(candidate => `<label class="hm-candidate">${imageMarkup(candidate.item)}<span><input type="checkbox" data-hm-candidate="${escape(candidate.id)}" ${f.selection.has(candidate.id) ? 'checked' : ''} ${f.confirmPending || f.busy ? 'disabled' : ''}>${candidate.status === 'duplicate' ? '已保存，可复用' : '保留这张'}</span></label>`).join('')}</div><p class="hm-selection-summary" data-hm-selection-summary role="status" aria-live="polite">${selectionSummary(f)}</p><label class="hm-consent"><input type="checkbox" data-hm-persist ${f.persist ? 'checked' : ''} ${f.confirmPending ? 'disabled' : ''}><span>将勾选照片的预览保存到我的私密相册。原图仍在 Google Photos，之后可分别设置家庭共享和电视展示。</span></label>${f.confirmConflict ? '<p class="hm-warning">本次选择已更新，原保存请求不能继续重试。请读取最新状态，重新核对后确认。</p>'+button('recheck-confirm','重新核对本次选择',busy) : button('confirm',f.confirmPending ? '重试同一次保存' : '保存选中照片',busy)}<p class="hm-muted">只保存你确认的照片；临时预览最迟 24 小时后清理。当前支持照片，不包含视频播放。</p>` : ''}
       <div class="hm-actions">${button('poll','刷新状态',busy)}${['failed','cancelled','expired'].includes(item.state) ? button('new-selection','重新选片',`${busy} ${f.createPending ? 'disabled' : ''}`) : ''}${!terminal.has(item.state) || item.state === 'create_unknown' ? button('cancel-import','取消本次选择',busy) : ''}</div>`;
   }
   function renderImport(f) {
@@ -239,7 +290,7 @@ window.HouseholdMedia = (() => {
       await readImport(f,f.importResult.import.id,check);
       if (!await check()) return;
       f.confirmPending = null; f.confirmConflict = false; f.persist = false;
-      f.notice = f.importResult.import.state === 'confirmed' ? '这次照片已保存。' : '已读取最新状态，请重新核对照片并确认保存。';
+      f.notice = f.importResult.import.state === 'confirmed' ? savedSummary(f.importResult.import) : '已读取最新状态，请重新核对照片并确认保存。';
       await gallery(f,check);
     });
     if (action === 'next' || action === 'previous') {f.offset = Math.max(0,f.offset+(action === 'next' ? 24 : -24)); return job(f,check => gallery(f,check));}
@@ -281,8 +332,11 @@ window.HouseholdMedia = (() => {
         f.confirmPending = {revision:f.importResult.import.revision,confirmRequestId:key(),itemIds:[...f.selection],consentVersion:CONSENT,persistSelected:true};
       }
       return mutate(f,`/media/imports/${f.importResult.import.id}/confirm`,'POST',f.confirmPending,async (_,check) => {
-        f.confirmPending = null; f.confirmConflict = false; f.selection.clear(); f.persist = false; f.notice = '照片已保存到我的私密相册。';
-        await readImport(f,f.importResult.import.id,check); await gallery(f,check);
+        f.confirmPending = null; f.confirmConflict = false; f.selection.clear(); f.persist = false;
+        await readImport(f,f.importResult.import.id,check);
+        if (!await check()) return;
+        f.notice = f.importResult.import.state === 'confirmed' ? savedSummary(f.importResult.import) : '保存请求已返回，请核对本次处理结果。';
+        await gallery(f,check);
       });
     }
     if (action === 'cancel-import') {
@@ -323,6 +377,10 @@ window.HouseholdMedia = (() => {
       if (target.matches('[data-hm-temporary]')) f.temporary = target.checked;
       if (target.matches('[data-hm-persist]')) f.persist = target.checked;
       if (target.matches('[data-hm-candidate]')) {if (target.checked) f.selection.add(target.dataset.hmCandidate); else f.selection.delete(target.dataset.hmCandidate);}
+      if (target.matches('[data-hm-candidate]')) {
+        const summary = f.node.querySelector('[data-hm-selection-summary]');
+        if (summary) summary.textContent = selectionSummary(f);
+      }
       if (target.matches('[data-hm-tv-consent]') && f.editor) f.editor.tvConsent = target.checked;
       if (target.matches('[data-hm-device]') && f.editor) {const values = new Set(f.editor.grants); if (target.checked) values.add(target.dataset.hmDevice); else values.delete(target.dataset.hmDevice); f.editor.grants = [...values];}
       f.input(event);

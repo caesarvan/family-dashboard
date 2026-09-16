@@ -386,7 +386,7 @@ def test_duplicate_selection_reuses_private_copy_and_other_owner_does_not(env):
 def test_video_skipped_not_faked_as_photo(env):
     c,h,detail,_=stage(env,items=[selected(),selected('synthetic-video','VIDEO')])
     assert len(detail['items'])==1
-    assert detail['import']['counts']=={'selected':2,'ready':1,'skipped':1,'failed':0}
+    assert detail['import']['counts']=={'selected':2,'ready':1,'skipped':1,'failed':0,'pending':0,'saved':0,'unselected':None}
 
 
 def test_cross_household_isolation(env,tmp_path,monkeypatch):
