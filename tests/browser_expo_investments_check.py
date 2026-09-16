@@ -210,11 +210,67 @@ class Run(FinanceRun):
             assert len(self.holdings(ctx)) == 1
             self.passed('Lost real import success is recovered by source/digest receipt; no repeated holding write')
 
+    def invalid_and_workbook(self, browser):
+        with self.flow(browser) as (ctx, page):
+            invalid = csv_bytes([['bad-1', '合成错误金额', '合成机构', '基金', 'CNY', '', '1,23', '',
+                                  '2026-09-17', '', '']], COLUMNS)
+            self.open_holdings(page)
+            self.open_import(page, invalid)
+            expect(page.get_by_test_id('investment-import-errors')).to_be_visible()
+            expect(button(page, '确认导入持仓 · 仅本人')).to_be_disabled()
+            assert self.holdings(ctx) == []
+            book = self.workbook(rows=[COLUMNS, ['sheet-1', '合成工作表持仓', '合成机构', '基金', 'CNY',
+                                                  '2.5', '1,234.56', '1300.01', '2026-09-17', '', '']], second_sheet=True)
+            with page.expect_file_chooser() as chooser:
+                button(page, '选择持仓文件').click()
+            chooser.value.set_files({'name': 'synthetic-holdings.xlsx', 'mimeType': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', 'buffer': book})
+            button(page, '预览持仓文件').click()
+            expect(button(page, '选择持仓工作表')).to_be_enabled()
+            assert self.holdings(ctx) == []
+            button(page, '选择持仓工作表').click()
+            page.get_by_role('menuitem', name='支付账单', exact=True).click()
+            button(page, '读取所选工作表').click()
+            expect(button(page, '确认导入持仓 · 仅本人')).to_be_enabled()
+            assert self.holdings(ctx) == []
+            button(page, '确认导入持仓 · 仅本人').click()
+            expect(page.get_by_test_id('investment-import-receipt')).to_be_visible()
+            row = self.holdings(ctx)[0]
+            assert row['name'] == '合成工作表持仓' and row['costCents'] == 123456 and row['valueCents'] == 130001
+            self.passed('Invalid grouped amount blocks saving; actual XLSX sheet selection previews without holdings writes and confirms exact integer cents')
+
+    def version_conflict(self, browser):
+        with self.flow(browser) as (ctx, page):
+            payload = {'name': '合成版本冲突持仓', 'institution': '合成机构', 'assetType': '基金', 'currency': 'CNY',
+                       'quantity': '', 'cost': '100.00', 'value': '110.00', 'asOf': '2026-09-17', 'note': '原备注'}
+            original = self.write(ctx, 'POST', BASE, {**payload, 'requestId': 'a' * 32}, status=201)
+            self.open_holdings(page)
+            button(page, '查看持仓 合成版本冲突持仓').click()
+            button(page, '编辑这条持仓').click()
+            page.get_by_role('textbox', name='持仓备注', exact=True).fill('保留本页草稿')
+            self.write(ctx, 'PATCH', BASE + '/' + original['id'], {**payload, 'revision': 1, 'requestId': 'b' * 32, 'note': '另一个标签页已修改'})
+            with page.expect_response(lambda r: r.request.method == 'PATCH') as conflict:
+                button(page, '保存当前记录').click()
+            assert conflict.value.status == 409 and conflict.value.json()['code'] == 'revision_conflict'
+            expect(button(page, '读取最新版本')).to_be_enabled()
+            assert self.holdings(ctx)[0]['note'] == '另一个标签页已修改'
+            button(page, '读取最新版本').click()
+            expect(button(page, '保留草稿并使用最新版本')).to_be_enabled()
+            expect(page.get_by_role('textbox', name='持仓备注', exact=True)).to_have_value('保留本页草稿')
+            button(page, '保留草稿并使用最新版本').click()
+            with page.expect_response(lambda r: r.request.method == 'PATCH') as confirmed:
+                button(page, '保存当前记录').click()
+            assert confirmed.value.status == 200 and confirmed.value.json()['revision'] == 3
+            assert confirmed.value.request.post_data_json['requestId'] != conflict.value.request.post_data_json['requestId']
+            assert self.holdings(ctx)[0]['note'] == '保留本页草稿'
+            self.passed('Real concurrent version change rejects original edit; draft survives and only explicit comparison allows a new confirmed revision')
+
     def run_scenarios(self, browser):
         self.manual_crud(browser)
         self.unknown_create(browser)
         self.import_roundtrip(browser)
         self.unknown_import(browser)
+        self.invalid_and_workbook(browser)
+        self.version_conflict(browser)
         self.private_visibility(browser)
 
 def main():
