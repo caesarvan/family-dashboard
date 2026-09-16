@@ -179,6 +179,8 @@ def adapt(inputs, access, output, config=None):
         'complete 53-table': 'complete 54-table', 'migrated 54 tables': 'migrated 55 tables',
         'new_app_healthy_all_54_tables': 'new_app_healthy_all_55_tables', 'householdTables=54': 'householdTables=55',
     })
+    operators['activate.py'] = replace(operators['activate.py'],
+        "'originalTablesPreserved':53", "'originalTablesPreserved':54")
     # Use the whole independently reviewed r3 operator, keeping its fresh backup
     # service invocation binding and closed-snapshot-only immutable reads intact.
     post = inputs['expo-finance-post-r3-20260917/post_readback_r3.py'].decode('utf-8')
