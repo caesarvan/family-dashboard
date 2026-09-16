@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-16T04:28:05.645495+00:00",
+  "generatedAt": "2026-09-16T06:34:01.709696+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -385,6 +385,36 @@
       "path": "/api/journey-documents/<document_id>/file",
       "source": "journey_documents.py",
       "endpoint": "download_journey_document"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journey-places",
+      "source": "journey_places.py",
+      "endpoint": "list_journey_places"
+    },
+    {
+      "method": "POST",
+      "path": "/api/journey-places",
+      "source": "journey_places.py",
+      "endpoint": "create_journey_place"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/journey-places/<uid>",
+      "source": "journey_places.py",
+      "endpoint": "delete_journey_place"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journey-places/<uid>",
+      "source": "journey_places.py",
+      "endpoint": "get_journey_place"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/journey-places/<uid>",
+      "source": "journey_places.py",
+      "endpoint": "update_journey_place"
     },
     {
       "method": "GET",
@@ -2120,6 +2150,134 @@
         "name": "kind",
         "type": "TEXT",
         "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "journey_places": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "payload_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "country",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "city",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "latitude_e6",
+        "type": "INTEGER",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "longitude_e6",
+        "type": "INTEGER",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "journey_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "start_date",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "end_date",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "visibility",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "coordinate_disclosure",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "visited_confirmed_at",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "visited_confirmed_by",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "deleted_at",
+        "type": "TEXT",
+        "notNull": false,
         "primaryKey": false
       }
     ],
