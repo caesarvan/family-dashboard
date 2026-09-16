@@ -208,11 +208,13 @@ def sanitize_media_preview(raw: bytes, mime_type: str) -> Preview:
         if ImageFile.LOAD_TRUNCATED_IMAGES:
             raise MediaImageError('unsafe_decoder_configuration')
         return Preview(result, 'image/jpeg', width, height, sha256(result).hexdigest())
-    except MediaImageError:
-        raise
+    except MediaImageError as error:
+        code = error.code
     except (Image.DecompressionBombError, Image.DecompressionBombWarning):
-        raise MediaImageError('too_many_pixels') from None
+        code = 'too_many_pixels'
     except Exception:
         # Includes corrupt EXIF/chunks, codec failures and rejected warnings.
-        # No exception message, metadata or raw bytes cross this boundary.
-        raise MediaImageError('invalid_image') from None
+        code = 'invalid_image'
+    # Raising inside an except block, even with "from None", would retain
+    # the original exception object in __context__. Leave the handler first.
+    raise MediaImageError(code)

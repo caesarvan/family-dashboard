@@ -48,6 +48,8 @@ def rejected(raw, mime='image/png', code=None):
         assert failure.value.code == code
     assert failure.value.args == (failure.value.message,)
     assert SECRET.decode() not in str(failure.value) + repr(failure.value)
+    assert failure.value.__context__ is None
+    assert failure.value.__cause__ is None
     return failure.value
 
 
@@ -322,18 +324,24 @@ def test_parallel_calls_leave_warning_filters_and_pillow_flags_unchanged():
     assert (list(warnings.filters), Image.MAX_IMAGE_PIXELS, ImageFile.LOAD_TRUNCATED_IMAGES) == before
 
 
-@pytest.mark.parametrize('kind', ['warning', 'exception'])
+@pytest.mark.parametrize('kind', ['warning', 'exception', 'bomb-warning', 'bomb-error'])
 def test_decoder_exception_text_and_warning_metadata_are_sanitized(monkeypatch, capsys, kind):
     import warnings
     raw = encoded()
     def unsafe(*args, **kwargs):
         if kind == 'warning':
             warnings.warn(SECRET.decode())
+        if kind == 'bomb-warning':
+            warnings.warn(SECRET.decode(), Image.DecompressionBombWarning)
+        if kind == 'bomb-error':
+            raise Image.DecompressionBombError(SECRET.decode())
         raise OSError(SECRET.decode())
     monkeypatch.setattr(Image, 'open', unsafe)
     with pytest.raises(MediaImageError) as failure:
         sanitize_media_preview(raw, 'image/png')
-    assert failure.value.code == 'invalid_image'
+    assert failure.value.code == ('too_many_pixels' if kind.startswith('bomb-') else 'invalid_image')
+    assert failure.value.__context__ is None
+    assert failure.value.__cause__ is None
     rendered = ''.join(traceback.format_exception(failure.value))
     assert SECRET.decode() not in rendered
     output = capsys.readouterr()

@@ -37,7 +37,7 @@ preview = sanitize_media_preview(raw_bytes, 'image/png')
 
 ## 安全错误
 
-`MediaImageError` 只公开固定 `code` 与中文 `message`。常规 decoder 异常和警告转为固定错误，隐藏原始异常链，不把 metadata、原始字节、文件名或 decoder 文本写入日志。不会记录输入或返回原始异常。
+`MediaImageError` 只公开固定 `code` 与中文 `message`。常规 decoder 异常和警告转为固定错误，在离开原异常处理块后抛出，`__context__` 与 `__cause__` 均为 `None`，不把 metadata、原始字节、文件名或 decoder 文本写入日志。不会记录输入或返回原始异常。
 
 | code | 含义 |
 |---|---|
