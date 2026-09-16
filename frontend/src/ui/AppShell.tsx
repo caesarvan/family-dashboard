@@ -18,8 +18,6 @@ export type AppShellProps = {
   refreshing: boolean;
   offline: boolean;
   children: ReactNode;
-  themeMode: ThemeName;
-  onThemeChange: (name: ThemeName) => void | Promise<void>;
   onLegacy: (fragment: string) => void;
 };
 
