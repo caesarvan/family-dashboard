@@ -8,7 +8,8 @@ import { useHousehold } from '../lib/household';
 import { CalendarEvent, Entity, ItemKind, ListItem } from '../lib/types';
 
 function cents(value:string) {
-  if (!value.trim()) return null;
+  value=value.trim();
+  if (!value) return null;
   if (!/^\d{1,10}(\.\d{1,2})?$/.test(value.trim())) throw new Error('金额请填写到分，且不能为负数');
   const [whole,fraction='']=value.split('.'); const result=Number(whole)*100+Number(fraction.padEnd(2,'0'));
   if(result>100000000000) throw new Error('金额超出允许范围'); return result;
