@@ -496,3 +496,14 @@ HTTP 200 只表示名称列表已生成。列表包括隐藏的普通工作表�
 本次发布仅加强前端流程，不改变四条对账 API。页面绑定生成时的成员、家庭与 CSRF，候选／预览／确认／撤销在处理结果前重新核对身份和原页面。确认使用原 previewToken、撤销使用原 relation ID 和 revision；已发送操作不能由关闭页面取消。未知结果在原页面重试沿用服务端幂等，记录变化仍按既有 409 重新核对。缓存账本标签与账单／投资／预算编辑入口也先核对服务器身份，覆盖另一标签页登录后当前页面身份尚未刷新这一场景。不将凭据写入持久存储，不共享个人明细。此项不等同于所有财务缓存生命周期的全面加固。
 
 XLSX 工作表发现与助理旅行简报已于 2026-09-15 06:50:21 合入并发布，详情见 [验收记录](VALIDATION.md)。
+
+
+## 导入结果读取与首次来源（本地候选，尚未发布）
+
+新增 `GET /api/finance-hub/imports/results/<requestId>`，仅本人、当前家庭可读；TV 403、匿名 401、不存在 404（code 为 `import_result_not_found`），不接受任何查询参数。requestId 为 32–64 位小写十六进制字符串。HTTP 200 返回原导入确认的 imported、duplicates、conflicts、confirmedAt、resultMonths、note，以及 requestId、receiptId（64 位）、batchId（24 位或 null）、replayed:true。没有原文件内容、令牌或内部摘要。它是成功提交时的历史事实，不能用来证明交易现在仍存在；当前状态仍读取 overview／transactions。
+
+确认接口新增可选 requestId。相同编号的同完整负载与同原 previewToken 返回既有结果，即使该原令牌已经过期；不重复新增批次或审计，不恢复后来删除的交易。改内容或令牌为 409、code 为 `import_request_conflict`。新编号仍需有效签名，写入事务中再次核对当前成员会话，并原子提交交易／批次／回执。旧客户端省略编号的去重语义保持。完整异常恢复、配额与兼容说明见 [导入持久回执](FINANCE-IMPORT.md#expo-导入持久回执与来源追溯本地候选)。
+
+交易对象新增 `provenance`：历史无来源为 `{status:"unknown"}`；新记录为 `{status:"recorded",batchId,source,kind,fileName,format,sheet,lineStart,lineEnd,lineKind,importedAt}`。格式为 csv／xlsx，fileName 与 sheet 可为 null；行号为从 1 开始的整数，lineKind 为 csv_lines／worksheet_rows。预览行的 `sourceLocation` 提供三个行范围字段；普通 XLSX 的行范围不会受单元格换行影响。旧 line 字段及导入 fingerprint 保持原语义。后续改分类、方向或共享不改来源；重复／冲突不覆盖首次来源。所有来源字段仅在本人的交易、对账和数据副本中出现，不进入 shared 汇总、伙伴或电视。
+
+此增量新增第六张财务中枢表 `hub_import_receipts`，列 owner、request_id、payload_digest、token_digest、result、created_at，主键为 `(owner,request_id)`。独立迁移常量为 `finance_hub.FINANCE_IMPORT_RECEIPTS_SCHEMA_SQL`。既有 hub_imports 七列和概览 imports 列表不变，全重复确认只增加操作回执、不伪造新入账批次。每条新交易 data JSON 中保存首次 batchId，与 hub_imports.id 对应；历史缺失不回填。

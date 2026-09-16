@@ -26,6 +26,15 @@ FLOWS = {'expense', 'income', 'refund', 'transfer', 'unknown', 'excluded'}
 MAX_CSV_BYTES = 2 * 1024 * 1024
 MAX_ROWS = 5000
 MAX_RECORDS = 20_000
+MAX_IMPORT_RECEIPTS = 20_000
+MAX_IMPORT_RECEIPT_BYTES = 256 * 1024
+MAX_IMPORT_RECEIPT_STORAGE = 16 * 1024 * 1024
+FINANCE_IMPORT_RECEIPTS_SCHEMA_SQL = '''
+CREATE TABLE IF NOT EXISTS hub_import_receipts(
+  owner TEXT NOT NULL REFERENCES users(id), request_id TEXT NOT NULL,
+  payload_digest TEXT NOT NULL, token_digest TEXT NOT NULL, result TEXT NOT NULL,
+  created_at TEXT NOT NULL, PRIMARY KEY(owner,request_id));
+'''
 MAX_MONEY = 100_000_000_000_000
 ALIASES = {
     'date': ['date', '日期', '交易时间', '交易创建时间', '创建时间', '付款时间', '支付时间', '订单创建时间', '下单时间', '订单支付时间'],
@@ -369,7 +378,26 @@ def parse_import(payload):
         warnings.append('已按明确合并范围分组；每个订单只统计一次实付金额，商品标价、数量和运费不作付款分摊。')
     try:
         reader = csv.reader(io.StringIO('\n'.join(lines[start + 1:])), delimiter=delimiter, strict=True)
-        entries = grouped if grouped is not None else ((start + 1 + reader.line_num, row, None) for row in reader)
+        # Keep the legacy end-line used by fingerprints while separately retaining
+        # the actual source range. XLSX serialization emits one CSV record per
+        # physical worksheet row, including gaps and cells containing newlines.
+        worksheet_rows = {}
+        if file_info and file_info['format'] == 'xlsx':
+            full_reader = csv.reader(io.StringIO('\n'.join(lines)), delimiter=delimiter, strict=True)
+            for physical_row, _values in enumerate(full_reader, 1):
+                worksheet_rows[full_reader.line_num] = physical_row
+        locations = {}
+        def source_entries():
+            previous = 0
+            for values in reader:
+                end = start + 1 + reader.line_num
+                begin = start + 2 + previous
+                previous = reader.line_num
+                physical = worksheet_rows.get(end)
+                locations[end] = {'lineStart': physical or begin, 'lineEnd': physical or end,
+                                  'lineKind': 'worksheet_rows' if physical else 'csv_lines'}
+                yield end, values, None
+        entries = grouped if grouped is not None else source_entries()
         for line_number, row, order_metadata in entries:
             if not row or not any(value.strip() for value in row):
                 continue
@@ -423,7 +451,11 @@ def parse_import(payload):
                                'paymentId': clean(cell('paymentId'), 160),
                                'originalTransactionId': clean(cell('originalTransactionId'), 160),
                                'source': source, 'kind': kind, 'fingerprint': fingerprint,
-                               'visibility': 'private', 'line': line_number, **(order_metadata or {})})
+                               'visibility': 'private', 'line': line_number,
+                               'sourceLocation': ({'lineStart': line_number,
+                                   'lineEnd': order_metadata['orderGroup']['sourceRows'][-1],
+                                   'lineKind': 'worksheet_rows'} if order_metadata else locations[line_number]),
+                               **(order_metadata or {})})
             except FinanceHubError as exc:
                 errors.append({'line': line_number, 'message': str(exc)})
     except csv.Error:
@@ -467,10 +499,33 @@ def _schema(conn):
       UNIQUE(owner,kind,left_id,right_id));
     CREATE INDEX IF NOT EXISTS hub_reconciliations_owner ON hub_reconciliations(owner,status);
     ''')
+    conn.executescript(FINANCE_IMPORT_RECEIPTS_SCHEMA_SQL)
 
 
 def _row(row):
-    return {**json.loads(row['data']), 'id': row['id'], 'revision': row['revision']}
+    value = {**json.loads(row['data']), 'id': row['id'], 'revision': row['revision']}
+    if 'fingerprint' in row.keys():
+        value.setdefault('provenance', {'status': 'unknown'})
+    return value
+
+
+def export_import_receipts(con, uid):
+    """Business receipts only; never export token or internal payload digests."""
+    if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='hub_import_receipts'").fetchone():
+        return []
+    fields = {'requestId': str, 'receiptId': str, 'imported': int, 'duplicates': int,
+              'conflicts': int, 'confirmedAt': str, 'note': str}
+    exported = []
+    for row in con.execute('SELECT result FROM hub_import_receipts WHERE owner=? ORDER BY created_at,request_id', (uid,)):
+        result = json.loads(row['result'])
+        value = {key: result[key] for key, kind in fields.items() if type(result.get(key)) is kind}
+        if result.get('batchId') is None or type(result.get('batchId')) is str:
+            value['batchId'] = result.get('batchId')
+        value['resultMonths'] = [{'month': item['month'], 'recordCount': item['recordCount']}
+                                for item in result.get('resultMonths', [])
+                                if isinstance(item, dict) and type(item.get('month')) is str and type(item.get('recordCount')) is int]
+        exported.append(value)
+    return exported
 
 
 def transaction_totals(rows):
@@ -582,7 +637,36 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
             content['amountColumn'] = payload['amountColumn']
         if 'inspectSheets' in payload:
             content['inspectSheets'] = payload['inspectSheets']
-        return hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        try:
+            return hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
+        except (UnicodeError, ValueError, RecursionError):
+            raise FinanceHubError('导入内容编码或结构不正确') from None
+
+    def import_request_id(value):
+        if type(value) is not str or not re.fullmatch('[0-9a-f]{32,64}', value):
+            raise FinanceHubError('导入请求编号必须为 32 至 64 位小写十六进制字符')
+        return value
+
+    def import_identity(con):
+        uid = owner()
+        sessions = app.extensions.get('member_sessions')
+        if not sessions:
+            # Standalone module adapters supply their own require_member guard.
+            return (uid,)
+        current = sessions.current(con)
+        if (current['owner'] != uid or current['auth_version'] != g.actor.get('auth_version') or
+                g.actor.get('householdId') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+            raise Problem('登录成员或家庭已变化，请重新登录', 401)
+        return (uid, current['id'], current['credential_hash'], current['auth_version'])
+
+    def saved_import_result(con, uid, request_id, digest=None, token_digest=None):
+        row = con.execute('SELECT payload_digest,token_digest,result FROM hub_import_receipts WHERE owner=? AND request_id=?',
+                          (uid, request_id)).fetchone()
+        if not row:
+            return None
+        if digest is not None and (row['payload_digest'] != digest or row['token_digest'] != token_digest):
+            return jsonify(error='此请求编号已用于另一份内容或预览，请核对原导入结果', code='import_request_conflict'), 409
+        return jsonify(**json.loads(row['result']), replayed=True)
 
     def get_owned(table, rid):
         uid = owner()
@@ -832,8 +916,11 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
     @app.post('/api/finance-hub/imports/preview')
     def hub_preview():
         uid = owner()
+        identity = import_identity(db())
         payload = body()
         parsed = parse_import(payload)
+        if import_identity(db()) != identity:
+            raise Problem('登录状态已变化，请重新登录', 401)
         parsed.setdefault('requiresSheetSelection', False)
         seen = {r['fingerprint']: _row(r) for r in db().execute('SELECT * FROM hub_transactions WHERE owner=?', (uid,))}
         order_index = _index_order(seen)
@@ -857,6 +944,8 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
     def hub_confirm():
         uid = owner()
         payload = body()
+        identity = import_identity(db())
+        request_id = import_request_id(payload['requestId']) if 'requestId' in payload else None
         if 'inspectSheets' in payload and type(payload['inspectSheets']) is not bool:
             raise FinanceHubError('inspectSheets 必须为布尔值')
         if payload.get('inspectSheets'):
@@ -864,11 +953,30 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
         token = payload.get('previewToken')
         if not isinstance(token, str) or len(token) > 2000:
             raise FinanceHubError('请先预览文件')
+        digest = fingerprint_payload(payload)
+        try:
+            token_digest = hashlib.sha256(token.encode('ascii')).hexdigest()
+        except UnicodeError:
+            raise FinanceHubError('预览令牌格式不正确') from None
+        if request_id:
+            # A prior successful operation may be read after the preview expires,
+            # but only with its exact original signed token and complete payload.
+            con = db()
+            con.execute('BEGIN')
+            try:
+                if import_identity(con) != identity:
+                    raise Problem('登录状态已变化，请重新登录', 401)
+                previous = saved_import_result(con, uid, request_id, digest, token_digest)
+                con.commit()
+                if previous is not None:
+                    return previous
+            except Exception:
+                con.rollback()
+                raise
         try:
             signed = signer.loads(token, max_age=1200)
         except (BadSignature, SignatureExpired):
             raise FinanceHubError('预览已过期或无效，请重新预览') from None
-        digest = fingerprint_payload(payload)
         if signed != {'owner': uid, 'digest': digest}:
             raise FinanceHubError('文件或账户已变化，请重新预览')
         parsed = parse_import(payload)
@@ -879,10 +987,21 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
         conn = db()
         conn.execute('BEGIN IMMEDIATE')
         try:
+            if import_identity(conn) != identity:
+                raise Problem('登录状态已变化，请重新登录', 401)
+            if request_id:
+                previous = saved_import_result(conn, uid, request_id, digest, token_digest)
+                if previous is not None:
+                    conn.commit()
+                    return previous
+                capacity = conn.execute('SELECT count(*),coalesce(sum(length(CAST(result AS BLOB))),0) FROM hub_import_receipts WHERE owner=?', (uid,)).fetchone()
+                if capacity[0] >= MAX_IMPORT_RECEIPTS:
+                    raise FinanceHubError('本人导入回执已达到容量上限，请先导出并联系管理员扩容；原回执仍可查询')
             existing = {r['fingerprint']: _row(r) for r in conn.execute('SELECT * FROM hub_transactions WHERE owner=?', (uid,))}
             order_index = _index_order(existing)
             inserted, duplicates, conflicts = 0, 0, 0
             result_keys = set()
+            bid, confirmed_at = secrets.token_hex(12), stamp()
             for row in parsed['rows']:
                 key = row['fingerprint']
                 matches = _import_matches(row, existing, order_index)
@@ -895,7 +1014,13 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
                 if len(existing) >= MAX_RECORDS:
                     raise FinanceHubError('每位成员最多保存 20000 条流水，请先清理历史数据')
                 row.pop('line', None)
-                row['importedAt'] = stamp()
+                location = row.pop('sourceLocation')
+                info = parsed.get('fileInfo') or {}
+                row['importedAt'] = confirmed_at
+                row['provenance'] = {'status': 'recorded', 'batchId': bid, 'source': parsed['source'],
+                                     'kind': parsed['kind'], 'fileName': info.get('name'),
+                                     'format': info.get('format', 'csv'), 'sheet': info.get('sheet'),
+                                     **location, 'importedAt': confirmed_at}
                 row['checkedAt'] = None
                 rid = secrets.token_hex(12)
                 conn.execute('INSERT INTO hub_transactions(id,owner,fingerprint,data,created_at) VALUES(?,?,?,?,?)',
@@ -909,17 +1034,48 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
             result_counts = Counter(existing[key]['date'][:7] for key in result_keys)
             result_months = [{'month': value, 'recordCount': result_counts[value]} for value in sorted(result_counts, reverse=True)]
             if inserted:
-                bid = secrets.token_hex(12)
                 conn.execute('INSERT INTO hub_imports VALUES(?,?,?,?,?,?,?)',
-                             (bid, uid, digest, parsed['source'], parsed['kind'], inserted, stamp()))
+                             (bid, uid, digest, parsed['source'], parsed['kind'], inserted, confirmed_at))
                 audit('finance.import', bid)
+            result = {'imported': inserted, 'duplicates': duplicates, 'conflicts': conflicts,
+                      'confirmedAt': confirmed_at, 'resultMonths': result_months,
+                      'note': '导入仅保存到本人账本。未修改公共余额；编号冲突的旧记录保持原值，请在原文件核对。'}
+            if request_id:
+                scope = app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')
+                receipt_id = hashlib.sha256(json.dumps([scope, uid, request_id], separators=(',', ':')).encode()).hexdigest()
+                result.update(requestId=request_id, receiptId=receipt_id, batchId=bid if inserted else None)
+                stored = json.dumps(result, ensure_ascii=False, separators=(',', ':'))
+                stored_bytes = len(stored.encode())
+                if stored_bytes > MAX_IMPORT_RECEIPT_BYTES or capacity[1] + stored_bytes > MAX_IMPORT_RECEIPT_STORAGE:
+                    raise FinanceHubError('本人导入回执存储已达到容量上限，本次未入账；原回执仍可查询')
+                conn.execute('INSERT INTO hub_import_receipts VALUES(?,?,?,?,?,?)',
+                             (uid, request_id, digest, token_digest, stored, confirmed_at))
+                audit('finance.import.receipt', receipt_id)
+            if import_identity(conn) != identity:
+                raise Problem('登录状态已变化，请重新登录', 401)
             conn.commit()
         except Exception:
             conn.rollback()
             raise
-        return jsonify(imported=inserted, duplicates=duplicates, conflicts=conflicts,
-                       confirmedAt=stamp(), resultMonths=result_months,
-                       note='导入仅保存到本人账本。未修改公共余额；编号冲突的旧记录保持原值，请在原文件核对。')
+        return jsonify(**result, **({'replayed': False} if request_id else {}))
+
+    @app.get('/api/finance-hub/imports/results/<request_id>')
+    def hub_import_result(request_id):
+        uid = owner()
+        request_id = import_request_id(request_id)
+        if request.args:
+            raise FinanceHubError('导入结果查询不接受其他参数')
+        con = db()
+        con.execute('BEGIN')
+        try:
+            import_identity(con)
+            result = saved_import_result(con, uid, request_id)
+            con.commit()
+        except Exception:
+            con.rollback()
+            raise
+        return result if result is not None else (jsonify(error='尚未找到此请求的导入回执，请保留原请求并稍后核对',
+                                                        code='import_result_not_found'), 404)
 
     @app.get('/api/finance-hub/overview')
     def hub_overview():

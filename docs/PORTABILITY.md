@@ -157,3 +157,12 @@ JSON 金额保持原始整数分；CSV 的 amount/cost/value 是原币金额字�
 - receipts：id/operation/planId/createdAt/generatedId。排除确认者 owner、nonce_digest、签名、会话上下文及完整 result。
 
 完整管理员备份必须包含三表全部内容；成员副本只是业务数据，不是可直接还原 SQLite 的恢复包。恢复不得仅导入共享 JSON 重建相同 ID 或跳过旧会话失效要求。新模块阶段跨模块 17 项包括真实临时 ZIP 白名单验证；最终组合和各平台计数见 [VALIDATION](VALIDATION.md)，不据此声称真实家庭已经下载或恢复过。
+
+
+## 账单导入回执与来源（本地候选，尚未发布）
+
+本人 ZIP 新增 `personal.transactionImportReceipts`，仅从当前家庭的 hub_import_receipts 读取本人记录。导出字段白名单为 requestId、receiptId、batchId、imported、duplicates、conflicts、confirmedAt、resultMonths（仅 month／recordCount）、note；不导出预览令牌、token_digest、payload_digest 或扩展认证字段。旧 `personal.imports` 七列投影不变，不能将操作回执当作另一份交易重复计金额。
+
+`personal.transactions[].provenance` 保留首次来源批次、文件名／格式／工作表、物理行范围和导入时间；旧记录未保存来源时为 `{status:"unknown"}`。仅为索引与文本元数据，不含原文件字节、Base64、下载链接或任何平台凭据。共享部分不含交易来源或导入回执；即使勾选附带共同数据，伙伴和电视仍不读取这些私人字段。
+
+回执在交易删除后仍存在，供原编号精确读回和防止重试复建。完整数据库备份／恢复必须包含新表；个人 ZIP 是可读业务副本，不携带签名验证资料，不能单凭 ZIP 重建运行时幂等保障。受控迁移／恢复由本轮发布检查单独验收。本增量不改变旧导出 summary 的计数口径。
