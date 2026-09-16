@@ -58,6 +58,20 @@ ERRORS = {
     'invalid_token': (409, '照片来源需要重新授权'),
     'create_unknown': (409, '选择器可能已创建，未自动重试；可明确开始新的选择'),
 }
+IMAGE_FAILURES = {
+    'input_too_large': '输入图片超过 8 MiB 上限。',
+    'unsupported_format': '图片格式不支持；当前支持内容与类型一致的 JPEG、PNG 和 WebP。',
+    'invalid_image': '图片不完整或无法安全解码。',
+    'multiple_frames': '暂不支持动图或多帧图片。',
+    'too_many_pixels': '图片像素超过 2000 万像素上限。',
+    'output_too_large': '净化后的展示图片超过 2 MiB 上限。',
+    'unsafe_decoder_configuration': '当前解码配置无法安全处理图片。',
+}
+ERRORS.update({code:(422,message) for code,message in IMAGE_FAILURES.items()})
+RESULT_MESSAGES = {code:message for code,(_status,message) in ERRORS.items()}
+RESULT_MESSAGES.update(invalid_input='图片字节或媒体类型无效。',
+    unsupported_type='本次仅处理照片，已跳过非照片媒体。',
+    result_unknown='旧记录未保存此项的具体处理原因。')
 
 
 class MediaError(Exception):
@@ -332,14 +346,62 @@ class MediaLibrary:
     def _manifest(self, row):
         return self._open('picker-manifest', row, row['manifest_cipher']) if row['manifest_cipher'] else {'media': [], 'slots': []}
 
+    def _result_summary(self, row, saved=None):
+        records = None
+        if row['manifest_cipher']:
+            records = [{'status':slot['status'], 'error':{'code':slot.get('error_code')}}
+                       for slot in self._manifest(row)['slots']]
+            saved = 0 if saved is None else saved
+        elif row['context_cipher']:
+            context = self._open('import-context',row,row['context_cipher'])
+            summary = context.get('resultSummary')
+            if isinstance(summary,dict) and summary.get('resultsState')=='known':
+                records = summary.get('results')
+                saved = summary.get('counts',{}).get('saved')
+            elif row['state']=='confirmed':
+                ids=context.get('itemIds')
+                if (isinstance(ids,list) and len(ids)<=MAX_SELECTION and all(isinstance(i,str) and re.fullmatch(r'[a-f0-9]{24}',i) for i in ids)
+                        and len(set(ids))==len(ids)):
+                    saved=len(ids)  # Old receipt knows saved IDs, not why others were absent.
+        if records is None:
+            return {'resultsState':'unknown','results':[],
+                'counts':{**dict.fromkeys(('selected','ready','skipped','failed','pending','unselected')), 'saved':saved}}
+        if not isinstance(records,list) or len(records)>MAX_SELECTION:
+            raise MediaError('unavailable')
+        results=[]
+        for position,record in enumerate(records,1):
+            status=record.get('status')
+            if status not in ('pending','successful','duplicate','skipped','failed'):
+                raise MediaError('unavailable')
+            result={'position':position,'status':status}
+            if status in ('skipped','failed'):
+                code=(record.get('error') or {}).get('code')
+                code=code if isinstance(code,str) and code in RESULT_MESSAGES else 'unsupported_type' if status=='skipped' else 'result_unknown'
+                result['error']={'code':code,'message':RESULT_MESSAGES[code]}
+            results.append(result)
+        ready=sum(item['status'] in ('successful','duplicate') for item in results)
+        if saved is not None and (type(saved) is not int or not 0<=saved<=ready):
+            raise MediaError('unavailable')
+        return {'resultsState':'known','results':results,'counts':{'selected':len(results),'ready':ready,
+            'skipped':sum(item['status']=='skipped' for item in results),
+            'failed':sum(item['status']=='failed' for item in results),
+            'pending':sum(item['status']=='pending' for item in results),'saved':saved,
+            'unselected':ready-saved if row['state']=='confirmed' and saved is not None else None}}
+
+    def _terminal_receipt(self, row):
+        try:
+            summary=self._result_summary(row)
+            # Replace active authorization context with counts and fixed reasons only.
+            return self._seal('import-context',row,{'resultSummary':summary}) if summary['resultsState']=='known' else None
+        except (MediaError,MediaCryptoError,KeyError,TypeError,ValueError,AttributeError):
+            # Diagnostics must never prevent cancellation or privacy cleanup.
+            return None
+
     def _import_dto(self, row):
-        manifest = self._manifest(row)
-        slots = manifest['slots']
         result = {'id': row['id'], 'revision': row['revision'], 'state': row['state'],
             'createdAt': _iso(row['created_at']), 'expiresAt': _iso(row['expires_at']),
             'nextPollAt': _iso(row['next_attempt_at']) if row['next_attempt_at'] else None,
-            'counts': {'selected': len(manifest['media']), 'ready': sum(s['status'] in ('successful', 'duplicate') for s in slots),
-                       'skipped': sum(s['status'] == 'skipped' for s in slots), 'failed': sum(s['status'] == 'failed' for s in slots)},
+            **self._result_summary(row),
             'error': {'code': row['error_code'], 'message': ERRORS.get(row['error_code'], ERRORS['worker_error'])[1]} if row['error_code'] else None,
             'canConfirm': row['state'] == 'awaiting_confirmation' and row['expires_at'] > self.clock(),
             'cleanupPending': row['cleanup_state'] in ('pending', 'unknown', 'checking')}
@@ -399,11 +461,12 @@ class MediaLibrary:
           (self.clock(), self.clock(), row['id']))
 
     def _terminate(self, con, row, state, code=None):
+        receipt=self._terminal_receipt(row)
         for item in con.execute("SELECT id FROM media_items WHERE import_id=? AND state='staged'", (row['id'],)).fetchall():
             self._delete_item(con, item)
         con.execute('''UPDATE media_imports SET state=?,error_code=?,revision=revision+1,lease_token=NULL,lease_until=NULL,
-          reserved_bytes=0,manifest_cipher=NULL,context_cipher=NULL,
-          cleanup_state=CASE WHEN session_cipher IS NULL THEN 'done' ELSE 'pending' END WHERE id=?''', (state, code, row['id']))
+          reserved_bytes=0,manifest_cipher=NULL,context_cipher=?,
+          cleanup_state=CASE WHEN session_cipher IS NULL THEN 'done' ELSE 'pending' END WHERE id=?''', (state, code, receipt, row['id']))
 
     def maintenance(self):
         count = 0
@@ -561,7 +624,7 @@ class MediaLibrary:
             if action == 'cleanup':
                 con.execute("UPDATE media_imports SET cleanup_state='done',session_cipher=NULL,lease_token=NULL,lease_until=NULL,revision=revision+1 WHERE id=?", (row['id'],))
                 if row['state'] in ('failed','cancelled','expired','create_unknown'):
-                    con.execute('UPDATE media_imports SET context_cipher=NULL,manifest_cipher=NULL WHERE id=?',(row['id'],))
+                    con.execute('UPDATE media_imports SET context_cipher=?,manifest_cipher=NULL WHERE id=?',(self._terminal_receipt(row),row['id']))
                 return True
             if action in ('create','poll'):
                 session, due = self._session(row, result)
@@ -578,7 +641,8 @@ class MediaLibrary:
                     if existing and existing['state'] == 'staged':
                         raise MediaError('conflict')
                     slots.append({'mediaId':item['id'],'sourceKey':key,'itemId':existing['id'] if existing else secrets.token_hex(12),
-                        'status':'duplicate' if existing else 'pending' if item['type']=='PHOTO' else 'skipped'})
+                        'status':'duplicate' if existing else 'pending' if item['type']=='PHOTO' else 'skipped',
+                        'error_code':'unsupported_type' if not existing and item['type']!='PHOTO' else None})
                 self._finish_staging(con, row, {'media':list(media.values()), 'slots':slots})
             elif action == 'download':
                 manifest = self._manifest(row)
@@ -620,6 +684,8 @@ class MediaLibrary:
                 state = 'unavailable' if job['cleanupUnknown'] else 'unknown' if outcome_unknown else 'unavailable'
                 con.execute('''UPDATE media_imports SET cleanup_state=?,lease_token=NULL,lease_until=NULL,revision=revision+1,
                     session_cipher=CASE WHEN ?='unavailable' THEN NULL ELSE session_cipher END WHERE id=?''', (state,state,row['id']))
+                if row['state'] in ('failed','cancelled','expired','create_unknown'):
+                    con.execute('UPDATE media_imports SET context_cipher=?,manifest_cipher=NULL WHERE id=?',(self._terminal_receipt(row),row['id']))
             elif reauth or code in ('reauth','forbidden','invalid_token'):
                 if reauth or code in ('reauth','invalid_token'):
                     con.execute('UPDATE cloud_accounts SET needs_reauth=1 WHERE id=? AND owner=?',(row['account_id'],row['owner']))
@@ -630,9 +696,10 @@ class MediaLibrary:
                 delay = max(30, min(float(retry_after), 900), 30*2**row['attempts'])
                 con.execute('''UPDATE media_imports SET attempts=attempts+1,next_attempt_at=?,error_code=?,lease_token=NULL,lease_until=NULL,
                     revision=revision+1 WHERE id=?''', (self.clock()+delay,code,row['id']))
-            elif job['action']=='download' and code in ('unsupported_media','unsupported_image','too_large'):
+            elif job['action']=='download' and code in (set(IMAGE_FAILURES)|{'invalid_input','unsupported_media','unsupported_image','too_large'}):
                 manifest = self._manifest(row)
-                next(s for s in manifest['slots'] if s['status']=='pending')['status']='failed'
+                slot=next(s for s in manifest['slots'] if s['status']=='pending')
+                slot.update(status='failed',error_code=code)
                 self._finish_staging(con,row,manifest)
             else:
                 self._terminate(con,row,'expired' if code=='expired' else 'failed',code)
@@ -736,7 +803,10 @@ class MediaLibrary:
                                 (self.clock(),self._seal('media-metadata',item,meta),item['id']))
                 else:
                     self._delete_item(con,item)
-            receipt=self._seal('import-context',row,{'consentVersion':CONSENT_VERSION,'confirmedAt':self.clock(),'itemIds':ids})
+            summary=self._result_summary(row,saved=len(ids))
+            summary['counts']['unselected']=summary['counts']['ready']-len(ids)
+            receipt=self._seal('import-context',row,{'consentVersion':CONSENT_VERSION,'confirmedAt':self.clock(),
+                'itemIds':ids,'resultSummary':summary})
             con.execute("UPDATE media_imports SET state='confirmed',confirm_request_id=?,confirm_key=?,context_cipher=?,manifest_cipher=NULL,reserved_bytes=0,revision=revision+1 WHERE id=?",
                         (request_id,digest,receipt,uid))
             self._quota(con,owner)
