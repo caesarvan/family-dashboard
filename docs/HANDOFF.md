@@ -1,12 +1,22 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-17 01:47:27（北京时间）。** main `7ec8c305bbf0ab0e85aaf62d70e7c571881a964f`／integration `9c63f9da262d8c690a3554931f78c3b6824d971e` 同树 `adf7dfa10bbac51ceff95edbfbf9aff3adc3a032`。Expo 足迹地图与旅行相册往返已上线，01:47:42 正常 TLS 读回通过；完整身份见 [Expo 地图](EXPO-MAP.md)。此处为发布后本地文档，不改变已安装包或构建来源。
+> **线上版本：2026-09-17 03:01:51（北京时间）。** main `a6099c9c2e7d8e8c64aa7a8f911b00107945a6ab`／integration `549e23d842fab92569394cc2ba55efac219bf79f` 同树 `87f47c3414f7b663f64bdf3613d2e636d055edd9`。Expo 账户与同步已上线，03:02:05 正常 TLS 读回通过；完整身份见 [Expo 账户与同步](EXPO-ACCOUNTS.md)。此处为发布后本地文档，不改变已安装包或构建来源。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。此前 23:02 三模块与 21:59 首期身份分别保留于 [EXPO-NEXT-RELEASE](EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](EXPO-RELEASE.md)，历次证据见 [VALIDATION](VALIDATION.md)。
 
-## 当前交接：Expo 足迹地图与旅行相册
+## 当前交接：Expo 账户与同步
 
-实际 r4 构建来源为顶部 integration；全部 133 个构建输入和 23 个导出文件 SHA 与已通过最终浏览器的 r3 相同，仅随后修订了经典页测试入口。浏览器执行来源与最终安装来源分开记录，未声称对 r4 再跑浏览器。细节见 [VALIDATION](VALIDATION.md)。
+账户主入口为 `/app/connections`：更多页「账户与自动同步」和顶部「连接与账户」打开同一个现代界面。绑定后显式选择日历／清单、核对归属与共享；保存前完整预览取消项，冲突保留草稿并核对最新选择，响应未知只读回。逐来源成功／错误与排队状态分开。失效时可不重新授权而停止同步，保留绑定和照片；断开账户则会移除已导入照片副本并撤销家庭／电视展示，原平台原件保留。使用与版本契约见 [账户界面](EXPO-ACCOUNTS.md)、[来源版本](ACCOUNT-SOURCE-VERSION.md)。
+
+真实临时浏览器18项与18张截图完成，含四宽和稳定不透明确认窗；Node28项、Windows及新镜像Linux七模块各242项分别通过。第一次白屏、三次harness失败、动画中截图的前次交互通过以及第一次Linux临时空间耗尽均在 [VALIDATION](VALIDATION.md) 单独保留。最终r3构建136个输入和23个导出与受验r2完全相同；源码、构建、本人真实云授权与实际发布的范围分别记录。
+
+发布目录 `/opt/family-dashboard-releases/expo-accounts-53-20260916T190101969525Z`，manifest `11da3a4bd52d4233629b7df26884831ff19c314ea2a1f3f9c8da7310b967d718`，app／sync／media镜像 `sha256:7f2b301ccf9577c1ec8c61fd52dd152484809cbf1e8e612d81dd5d39887e8dcf`。实际1户两库完整备份，53张户内表与平台注册库的行、schema、序列在新app启动时保持；原配置保全。03:02:05正常TLS读回核对474源／112运行／75静态资源、24个内部资源及1个退役资源拒绝，包含 `/api/accounts` 的13个匿名API均401；四服务running／restart0，app healthy，备份service success／timer active。私有最终报告与索引在 `expo-accounts-package-20260917-r2/`，原目录保留未通过且未激活的第一次Linux候选；固定操作不可重放，后续须重新绑定实际53表基线。
+
+详细财务、家庭／成员、设备与布局、照片旅行推荐和复杂旅行操作仍有经典入口。视频、iCloud／NAS、路线、精选回顾、通用角色与多家庭成员关系、原生安装包及A／B／C／D完整场景仍未整体完成。新入口的真实云与实体电视没有在本轮重验。
+
+## 此前线上交接：Expo 足迹地图与旅行相册
+
+当次实际 r4 构建来源为 integration `9c63f9da262d8c690a3554931f78c3b6824d971e`；全部 133 个构建输入和 23 个导出文件 SHA 与已通过最终浏览器的 r3 相同，仅随后修订了经典页测试入口。浏览器执行来源与最终安装来源分开记录，未声称对 r4 再跑浏览器。细节见 [VALIDATION](VALIDATION.md)。
 
 `/app/map` 提供世界概览、每页 24 个地点、筛选、私有／共享坐标、明确到访和增删改；从地点打开旅行计划或只读相册仍在本路由内。返回只保留当前完整会话的筛选、页码和 ID，再读取最新权限；普通相册继续承担导入与编辑。模块与接口见 [Expo 地图](EXPO-MAP.md)。所有读取和写入仍沿用原成员／家庭、CSRF、revision 和幂等规则，没有数据库迁移、外部地图请求、新依赖或重新授权。
 
