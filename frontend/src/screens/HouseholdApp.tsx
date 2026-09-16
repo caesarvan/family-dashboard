@@ -13,7 +13,7 @@ import ListScreen from './ListScreen';
 import LoginScreen from './LoginScreen';
 import { FinanceScreen, MoreScreen } from './OtherScreens';
 import { TripsScreen } from './TripsScreen';
-import { PhotosScreen } from './PhotosScreen';
+import PhotosScreen from './PhotosScreen';
 import { AssistantScreen } from './AssistantScreen';
 
 const titles:Record<RouteName,string>={home:'首页',calendar:'日程',tasks:'待办',shopping:'采购',trips:'旅行',finance:'家庭资金',photos:'家庭相册',assistant:'家庭助理',more:'更多'};
