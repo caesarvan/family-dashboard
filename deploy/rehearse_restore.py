@@ -17,6 +17,7 @@ from pathlib import Path
 import re
 import secrets
 import sqlite3
+import stat
 import subprocess
 import sys
 import time
@@ -103,6 +104,7 @@ def documented_programs(root):
 
 
 def source_hashes(root):
+    require_clean_source_tree(root)
     runtime = sorted([*root.glob('*.py'), root / 'requirements.txt',
                       *(root / 'static').rglob('*')])
     runtime = [p for p in runtime if p.is_file()]
@@ -113,6 +115,33 @@ def source_hashes(root):
         raise ValueError('Unsafe source path')
     return ({p.relative_to(root).as_posix(): sha(p.read_bytes()) for p in files},
             [p.relative_to(root).as_posix() for p in runtime])
+
+
+def require_clean_source_tree(root):
+    """Reject importable caches and links before reading or executing fixtures.
+
+    -B prevents writes, not reads. Include untracked/ignored entries and reject
+    Windows junctions/reparse points without descending through them.
+    """
+    root = Path(root).absolute()
+    def linked(info):
+        return stat.S_ISLNK(info.st_mode) or bool(getattr(info, 'st_file_attributes', 0) & 0x400)
+    if any(linked(path.lstat()) for path in (root, *root.parents)):
+        raise ValueError('Source path contains a link or reparse point')
+    folders = [root]
+    while folders:
+        with os.scandir(folders.pop()) as entries:
+            for entry in entries:
+                info = entry.stat(follow_symlinks=False)
+                if linked(info) or entry.name.lower().endswith(('.pyc', '.pyo')):
+                    raise ValueError('Source tree contains a link, reparse point or bytecode cache')
+                if stat.S_ISDIR(info.st_mode):
+                    folders.append(Path(entry.path))
+
+
+def require_no_bytecode_mode():
+    if not sys.dont_write_bytecode or sys.pycache_prefix is not None:
+        raise ValueError('Run Python with -B and without a pycache prefix')
 
 
 def owned_resource(info, kind, run_id, name):
@@ -128,7 +157,9 @@ class Rehearsal:
     def __init__(self, root, image, output, profile='legacy43'):
         if not IMAGE_RE.fullmatch(image):
             raise ValueError('An immutable local image ID is required')
-        self.root, self.image, self.output = root.resolve(strict=True), image, output
+        self.root, self.image, self.output = root.absolute(), image, output
+        if not self.root.is_dir():
+            raise ValueError('Source root must be an existing directory')
         self.profile, _ = profile_definition(self.root, profile)
         self.run_id = uuid.uuid4().hex
         self.resources = []
@@ -151,6 +182,7 @@ class Rehearsal:
             'GOOGLE_CLIENT_SECRET': 'synthetic-rehearsal-secret',
             'OPENAI_API_KEY': '', 'OPENAI_MODEL': '',
             'ASSISTANT_PROVIDER': 'local', 'NVIDIA_API_KEY': '', 'NVIDIA_MODEL': '',
+            'PYTHONDONTWRITEBYTECODE': '1', 'PYTHONPYCACHEPREFIX': '',
             'FAMILY_DASHBOARD_SYNTHETIC_REHEARSAL': '1', 'REHEARSAL_RUN_ID': self.run_id,
         }
 
@@ -260,8 +292,11 @@ class Rehearsal:
 
     def fixture(self, name, phase):
         self.phase = 'fixture_' + phase
+        # Also used by an independently controlled parent-image migration run:
+        # validate source imports here, without comparing that image's runtime.
+        source_hashes(self.root)
         self.require_owned('container', name)
-        result = self.docker(['exec', name, 'python', '/rehearsal/tests/restore_rehearsal_fixture.py',
+        result = self.docker(['exec', name, 'python', '-B', '/rehearsal/tests/restore_rehearsal_fixture.py',
                               phase, '--proof-dir', '/proof', '--profile', self.profile['name']], timeout=180, check=False)
         try:
             value = json.loads(result.stdout.strip().splitlines()[-1])
@@ -284,6 +319,7 @@ class Rehearsal:
                    and bool(checks) and all(x['passed'] for x in checks))
 
     def run(self):
+        require_no_bytecode_mode()
         if os.name != 'posix':
             raise RuntimeError('Run on the Linux Docker host')
         # Existing output paths are rejected, including symlinks; no evidence overwrite.
@@ -428,6 +464,7 @@ print('Documented member invalidation completed for both synthetic households.')
 
 
 def main(argv=None):
+    require_no_bytecode_mode()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--image', required=True, help='Already local immutable sha256 image ID')
     parser.add_argument('--output', required=True, type=Path, help='New private report directory; parent must exist')

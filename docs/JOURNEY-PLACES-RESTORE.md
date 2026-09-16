@@ -40,10 +40,12 @@
 
 容器始终 `--network none`、无发布端口、只读根文件系统；仅新建并记录带本次 UUID label 的数据／proof 卷，清理逐次验证名称与 label。控制器不读取生产 Compose、`.env` 或既有卷。合成环境显式 `ASSISTANT_PROVIDER=local`，NVIDIA 与兼容 OpenAI 的 key／model 都为空。HTTP 夹具只允许 loopback，OAuth 控制请求使用 `error=access_denied`，不进行提供商 token 交换。`expected.json` 含合成 cookie／密文／记录，0600 写入私有 proof 卷，不应作为公开报告附件。
 
+调用控制器的 Python 必须启用 `-B` 且 `sys.pycache_prefix` 为空，否则 CLI 拒绝。`-B` 只禁止写入缓存，不能阻止读取旧缓存，因此在源码哈希检查及每次 fixture 执行之前，还递归检查完整候选目录（包括未跟踪／忽略项）：拒绝符号链接、Windows junction／reparse point，以及 `.pyc`／`.pyo`。不自动删除这些输入；应使用干净的已核验源码目录。合成容器环境显式 `PYTHONDONTWRITEBYTECODE=1`、`PYTHONPYCACHEPREFIX=`，fixture 也用 `python -B`。该 fixture 前置检查只绑定候选源码，不比较调用方父镜像的运行代码，保留独立迁移 runner 先用父镜像 seed 的契约；完整恢复 `run()` 仍单独核对其指定镜像的运行代码。
+
 独立审查后的 Linux Docker 命令（需使用实际已核验的候选镜像与不存在的证据目录）：
 
 ```sh
-python deploy/rehearse_restore.py --image sha256:<verified-immutable-image-id> \
+python -B deploy/rehearse_restore.py --image sha256:<verified-immutable-image-id> \
   --profile journey_places44 --source-root <verified-candidate-root> \
   --output <new-private-evidence-directory>
 ```
@@ -55,5 +57,7 @@ python deploy/rehearse_restore.py --image sha256:<verified-immutable-image-id> \
 ## 本地验证边界
 
 `tests/test_journey_places_restore.py` 校验明确 profile、错误表集合、缺失／漂移 DDL、参数传递和失败报告，并在临时目录启动当前真实应用工厂，通过真实 HTTP 执行 seed、原备份、文档恢复、文档失效 SQL 和 verify。测试仅把恢复／复制程序 AST 中固定容器根路径替换为测试临时目录；没有 Docker daemon、生产输入或远端请求，输出明确 `realDocker:false`。
+
+缓存边界回归使用真实编译缓存和临时目录链接（Windows 实际 junction），检查未列缓存与链接在任何 Docker 操作前被拒绝；另测未启用 `-B`／外部 cache prefix 的 CLI 拒绝。运行此组回归也使用 `python -B -m pytest`，生成物不进入发布源码树。
 
 既有 `tests/test_journey_documents_integration.py` 的恢复用例明确选择 legacy43，并仅在该测试作用域禁用新地点注册，以重建合成历史 43 表结构；原、子户和恢复工厂均受同一限制。这验证旧夹具回归，不能替代历史真实镜像验证。当前未改工厂的 44 表恢复由新测试负责。其余资源归属／不确定创建清理测试及旧会话恢复测试继续运行。

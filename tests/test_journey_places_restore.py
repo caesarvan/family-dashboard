@@ -4,7 +4,9 @@ from contextlib import closing, contextmanager
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
+import py_compile
 import sqlite3
 import subprocess
 import sys
@@ -84,6 +86,8 @@ def test_controller_passes_profile_and_rejects_mismatched_proof(tmp_path, monkey
     value = {'passed': True, 'checks': [{'name': 'synthetic', 'passed': True}], 'profile': obj.profile,
              'counts': {'householdTablesEach': 0 if wrong else obj.profile['householdTables']}}
     seen = []
+    guarded = []
+    monkeypatch.setattr(controller, 'source_hashes', lambda root: guarded.append(root) or ({}, []))
     monkeypatch.setattr(obj, 'require_owned', lambda *_: {})
     def fake(args, **kwargs):
         seen.append(args)
@@ -95,8 +99,77 @@ def test_controller_passes_profile_and_rejects_mismatched_proof(tmp_path, monkey
     else:
         obj.fixture('owned-synthetic', 'seed')
     assert seen[0][-2:] == ['--profile', profile]
+    assert seen[0][2:4] == ['python', '-B'] and guarded == [ROOT]
     assert obj.env['ASSISTANT_PROVIDER'] == 'local'
     assert obj.env['NVIDIA_API_KEY'] == obj.env['NVIDIA_MODEL'] == ''
+    assert obj.env['PYTHONDONTWRITEBYTECODE'] == '1' and obj.env['PYTHONPYCACHEPREFIX'] == ''
+
+
+def minimal_source(root):
+    for name in ('app.py', 'requirements.txt', 'deploy/backup.py', 'deploy/rehearse_restore.py',
+                 'tests/restore_rehearsal_fixture.py', 'docs/DEPLOYMENT.md', 'docs/MEMBER-SESSIONS.md'):
+        path = root / name
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text('# synthetic source\n', encoding='utf-8')
+    (root / 'static').mkdir()
+    return root
+
+
+@pytest.mark.parametrize('relative', ['unlisted.pyc', 'unlisted.PYO', 'tests/__pycache__/fixture.pyc',
+                                      'deploy/__pycache__/rehearse_restore.pyc', 'test-results/ignored.pyc'])
+def test_unlisted_bytecode_rejected_before_fixture_execution(tmp_path, monkeypatch, relative):
+    root = minimal_source(tmp_path / 'source')
+    assert controller.source_hashes(root)[0]
+    cache = root / relative
+    cache.parent.mkdir(parents=True, exist_ok=True)
+    # A real valid cache, even under -B: explicit py_compile still writes it.
+    py_compile.compile(str(root / 'app.py'), cfile=str(cache), doraise=True)
+    with pytest.raises(ValueError, match='bytecode cache'):
+        controller.source_hashes(root)
+    obj = controller.Rehearsal(root, IMAGE, tmp_path / 'report')
+    def forbidden(*_args, **_kwargs):
+        raise AssertionError('Cache must be rejected before any Docker operation')
+    monkeypatch.setattr(obj, 'docker', forbidden)
+    with pytest.raises(ValueError, match='bytecode cache'):
+        obj.fixture('synthetic', 'seed')
+
+
+@pytest.mark.parametrize('name', ['tests', 'deploy', 'unlisted-directory'])
+def test_directory_link_or_windows_junction_rejected(tmp_path, name):
+    root = minimal_source(tmp_path / 'source')
+    external = tmp_path / 'external'
+    external.mkdir()
+    marker = external / 'preserved.txt'
+    marker.write_text('preserve', encoding='utf-8')
+    link = root / name
+    if link.exists():
+        # Move only this test's temporary folder; preserve all input bytes.
+        retained = tmp_path / ('original-' + name)
+        assert link.resolve().is_relative_to(tmp_path.resolve())
+        assert retained.resolve().is_relative_to(tmp_path.resolve())
+        link.rename(retained)
+    if os.name == 'nt':
+        result = subprocess.run(['cmd', '/c', 'mklink', '/J', str(link), str(external)], capture_output=True)
+        assert result.returncode == 0
+    else:
+        link.symlink_to(external, target_is_directory=True)
+    with pytest.raises(ValueError, match='link|reparse'):
+        controller.source_hashes(root)
+    assert marker.read_text(encoding='utf-8') == 'preserve'
+
+
+@pytest.mark.parametrize('write_disabled,prefix', [(False, None), (True, '/outside-cache'), (False, '/outside-cache')])
+def test_cli_requires_no_write_mode_and_no_external_cache_prefix(monkeypatch, write_disabled, prefix):
+    monkeypatch.setattr(sys, 'dont_write_bytecode', write_disabled)
+    monkeypatch.setattr(sys, 'pycache_prefix', prefix)
+    with pytest.raises(ValueError, match='-B'):
+        controller.main([])
+
+
+def test_no_write_mode_with_no_prefix_is_accepted(monkeypatch):
+    monkeypatch.setattr(sys, 'dont_write_bytecode', True)
+    monkeypatch.setattr(sys, 'pycache_prefix', None)
+    controller.require_no_bytecode_mode()
 
 
 class QuietRequests(WSGIRequestHandler):
