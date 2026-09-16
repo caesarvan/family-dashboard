@@ -99,7 +99,8 @@ def validate_changes(base, candidate, changed):
                    or name.startswith('static/') or name in {'README.md', 'DESIGN.md', 'Dockerfile', 'docs/contract-inventory.json'}
                    or name.startswith('docs/') and name.endswith('.md')
                    or name.startswith('tests/') and name.endswith('.py')
-                   or name in TOOLS | DEVELOPMENT_TOOLS)
+                   or name in TOOLS | DEVELOPMENT_TOOLS
+                   or name == 'deploy/rehearse_restore.py' and name in base)
         need(allowed, 'protected_source_change')
     need(all(candidate.get(n) == base.get(n) for n in ('requirements.txt', 'compose.yaml', 'deploy/backup.py')), 'protected_runtime_change')
     need(all(candidate.get(n) == digest for n, digest in DEPENDENCIES.items()), 'dependency_changed')

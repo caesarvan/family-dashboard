@@ -205,7 +205,8 @@ class Fixture:
         self.root = path/'family-dashboard'; self.candidate = path/'family-dashboard-candidate-journey-places-synthetic'
         self.releases = path/'releases'; self.data = path/'fake-volume'; self.data.mkdir()
         self.previous = 'sha256:'+'7'*64; self.project = 'synthetic-places'; self.volume = self.project+'_household-data'
-        names = {*C.DEPENDENCIES, 'app.py','requirements.txt','Dockerfile','compose.yaml','journey_documents.py','deploy/backup.py'}
+        names = {*C.DEPENDENCIES, 'app.py','requirements.txt','Dockerfile','compose.yaml','journey_documents.py',
+                 'deploy/backup.py','deploy/rehearse_restore.py'}
         self.base = {n:(ROOT/n).read_bytes() for n in names}
         self.base.update({'static/index.html':b'<html>old</html>', 'static/example.js':b'/* old */',
                           'deploy/prepare_release.py':b'# previous explicit packaging list\n',
@@ -342,11 +343,28 @@ def test_raw_junit_failure_cannot_be_hidden_by_passing_envelope(f):
     assert not f.runner.calls
 
 
-@pytest.mark.parametrize('path',['compose.yaml','requirements.txt','deploy/backup.py','deploy/release_core.py','extra.py','tools/arbitrary.py'])
+@pytest.mark.parametrize('path',['compose.yaml','requirements.txt','deploy/backup.py','deploy/release_core.py',
+                                 'extra.py','tools/arbitrary.py','deploy/unreviewed_rehearsal.py'])
 def test_protected_paths_and_extra_backend_modules_are_not_allowed(f,path):
     f.values[path]=f.values.get(path,b'')+b'\n# change\n'; f.refreeze_source()
     with pytest.raises(RuntimeError): f.activate()
     assert not f.runner.calls
+
+
+def test_reviewed_existing_restore_controller_update_is_delivered(f):
+    name='deploy/rehearse_restore.py'
+    f.values[name]+=b'\n# synthetic independently reviewed 44-table profile\n'; f.refreeze_source()
+    result=f.activate()
+    assert result['status']=='published' and (f.root/name).read_bytes()==f.values[name]
+    assert name in f.ready['changedFiles']
+    assert name not in C.runtime_hashes(f.values)
+
+
+def test_restore_controller_allowance_requires_an_existing_base_path(f):
+    base=dict(f.ready['baseHashes']);del base['deploy/rehearse_restore.py']
+    changed=sorted(n for n,d in f.hashes.items() if base.get(n)!=d)
+    with pytest.raises(RuntimeError,match='protected_source_change'):
+        C.validate_changes(base,f.hashes,changed)
 
 
 def test_runtime_input_drift_after_stop_blocks_warm(f):

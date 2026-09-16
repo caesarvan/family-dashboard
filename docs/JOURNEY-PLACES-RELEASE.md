@@ -19,6 +19,8 @@
 
 固定哈希绑定复用 `release_core.py`、历史资料 controller/checker、静态 builder 的纯函数和容器检查片段。新控制器不调用历史 activate，不修改其全局常量。所有调用者继续共用 `.static-release.lock`，避免与已有发布控制器并行。
 
+为交付另行审查的 44 表恢复 profile，源码策略额外允许更新 **已存在于 BASE** 的准确路径 `deploy/rehearse_restore.py`。该程序仍不进入应用 runtime，也不由本发布控制器执行。新建同名路径或任意其他 deploy Python 文件不因此获准；其 fixture、测试和 Markdown 仍须在批准的完整候选 manifest 中。
+
 NVIDIA 适配位于既有根 Python 模块，因此可随批准的源码更新交付。迁移没有推理请求、地理编码、外站调用或模型工具执行。此控制器保持现有运行配置：如果生产原本没有 NVIDIA 配置，源码发布成功也不代表 NVIDIA 已配置或验证。凭据注入和真实模型验收另行实施，秘密不放进 READY、通用日志、源码包或浏览器。
 
 ## 检查器
