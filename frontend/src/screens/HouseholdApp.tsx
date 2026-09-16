@@ -38,7 +38,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
     const consume=()=>{if(!consumed&&navigation.isReady()){consumed=true;router.setParams({auth:undefined,reason:undefined});}};
     const unsubscribe=navigation.addListener('ready',consume);
     consume();
-    return unsubscribe;
+    return ()=>{consumed=true;unsubscribe();};
   },[route,params.auth,params.reason,router,navigation]);
   const household=useHousehold(); const {user,state,loading,online,error,refresh,preferences,notice,setNotice}=household;
   const [editor,setEditor]=useState<{kind:ItemKind;item?:Entity;key:number}|null>(null);
