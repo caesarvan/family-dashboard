@@ -25,15 +25,15 @@ def contract():
 
 
 def docker_pair():
-    old = b'FROM synthetic-pinned-image\nCOPY calendar_publish.py financial_files.py investment_import.py ./\nUSER dashboard\n'
-    return old, old.replace(b'investment_import.py ./', b'investment_import.py investment_operations.py ./')
+    old = b'FROM synthetic-pinned-image\r\n# mixed source\nCOPY calendar_publish.py financial_files.py investment_import.py ./\r\nUSER dashboard\r\n'
+    return old, old.replace(b'investment_import.py ./\r\n', b'investment_import.py investment_operations.py ./\n')
 
 
 def test_docker_delta_allows_only_the_single_new_runtime_module():
     contract()(*docker_pair())
 
 
-@pytest.mark.parametrize('change', ['unchanged', 'base', 'user', 'extra_module', 'other_line', 'duplicate_copy', 'missing_old_line'])
+@pytest.mark.parametrize('change', ['unchanged', 'base', 'user', 'extra_module', 'other_line', 'duplicate_copy', 'missing_old_line', 'normalize_all_lines'])
 def test_docker_contract_rejects_unreviewed_changes(change):
     old, new = docker_pair()
     if change == 'unchanged':
@@ -47,7 +47,9 @@ def test_docker_contract_rejects_unreviewed_changes(change):
     elif change == 'other_line':
         new += b'RUN arbitrary-command\n'
     elif change == 'duplicate_copy':
-        old += b'COPY calendar_publish.py financial_files.py investment_import.py ./\n'
+        old += b'COPY calendar_publish.py financial_files.py investment_import.py ./\r\n'
+    elif change == 'normalize_all_lines':
+        new = new.replace(b'\r\n', b'\n')
     else:
         old = old.replace(b'investment_import.py ./', b'investment_import.py old.py ./')
     with pytest.raises(RuntimeError):
@@ -169,11 +171,34 @@ def test_duplicate_freeze_keys_reject(tmp_path):
         adapter.freeze_config(path, tmp_path, {})
 
 
-def check_pinned_local_operators(source_root):
+def read_actual_docker_inputs(source_root, git_repo, git_revision):
+    """Read the fixed installed source archive and one explicit committed blob."""
+    import io
+    import re
+    import tarfile
+    archive = adapter.safe_path(source_root / 'expo-finance-package-20260917-r2/release.tar.gz')
+    adapter.need(archive.stat().st_size < 32_000_000, 'Bounded reviewed archive required')
+    raw = archive.read_bytes()
+    adapter.need(adapter.sha(raw) == '656b74fa4036113de41d7c800390835ba12062f52bbce2834f5545fae073966c', 'Reviewed old archive differs')
+    with tarfile.open(fileobj=io.BytesIO(raw), mode='r:gz') as source_archive:
+        matches = [member for member in source_archive if member.name == 'Dockerfile']
+        adapter.need(len(matches) == 1 and matches[0].isfile() and matches[0].size < 100_000, 'Unique regular Dockerfile required')
+        old = source_archive.extractfile(matches[0]).read(100_000)
+    adapter.need(adapter.sha(old) == '66dbd5cea915619c27779889c285a3d3633c8e88b715b6ef9895075ccf15d981', 'Reviewed old Dockerfile differs')
+    adapter.need(re.fullmatch('[0-9a-f]{40}', git_revision), 'Explicit full Git revision required')
+    repo = adapter.safe_path(git_repo)
+    new = subprocess.run(['git', '-C', str(repo), 'show', git_revision + ':Dockerfile'],
+                         check=True, capture_output=True).stdout
+    adapter.need(adapter.sha(new) == '3c1d6cf6e2e1f786ae0cb7d462e04d434256417e8c4020d80ce1312196fd8b67', 'Reviewed new Dockerfile differs')
+    return old, new
+
+
+def check_pinned_local_operators(source_root, git_repo, git_revision):
     """Explicit local integration check; external reviewed originals are not CI fixtures.
 
     Invoked separately with --source-root, never silently skipped by pytest.
-    It executes only generated entrypoints that must reject an absent binding;
+    One explicit Git blob is read before generated code executes. Generated
+    entrypoints must reject an absent binding;
     subprocess and network calls raise before they can perform any action.
     """
     import ast
@@ -182,6 +207,7 @@ def check_pinned_local_operators(source_root):
     import types
     from unittest.mock import patch
     original_sources = adapter.read_sources(source_root)
+    actual_old_docker, actual_new_docker = read_actual_docker_inputs(source_root, git_repo, git_revision)
     def deny(*_args, **_kwargs):
         raise AssertionError('Unbound operator attempted an external action')
     with tempfile.TemporaryDirectory(prefix='holdings-operator-guards-') as folder:
@@ -247,6 +273,7 @@ def check_pinned_local_operators(source_root):
                 exec(compile(raw, module.__file__, 'exec'), module.__dict__)
                 return module
             contract_module = load('expo_contract', 'expo_contract.py')
+            contract_module.verify_docker_delta(actual_old_docker, actual_new_docker)
             with patch.dict(sys.modules, {'expo_contract': contract_module}):
                 common = load('ops_common', 'ops_common.py')
                 common.CANDIDATE = directory
@@ -316,13 +343,17 @@ def check_pinned_local_operators(source_root):
                         raise AssertionError('Fresh backup guard accepted: ' + mode)
         assert adapter.read_sources(source_root) == original_sources
         return {'sourceHashes': adapter.PINNED, 'transformedPythonFiles': 9,
+                'actualDockerDelta': {'gitRevision': git_revision,
+                                      'oldSha256': adapter.sha(actual_old_docker),
+                                      'newSha256': adapter.sha(actual_new_docker),
+                                      'verifiedByGeneratedContract': True},
                 'generatedMigrationGuard': {'accepted': 'valid_54_two_households',
                                             'rejected': [mode for mode, _ in rejected_results]},
                 'oldTableCount53AbsentFromGeneratedSyntax': True,
                 'unboundEntrypointsRejected': blocked, 'unfrozenBindingRejected': True,
                 'syntheticJunitParserChecks': junit_checks, 'syntheticFreshBackupRejections': backup_checks,
                 'freshBackupR3SourceSha256': adapter.PINNED['expo-finance-post-r3-20260917/post_readback_r3.py'],
-                'externalActions': False, 'productionOperations': False,
+                'readOnlyGitBlobInput': True, 'externalActions': False, 'productionOperations': False,
                 'scope': 'Actual pinned-source transformation and unbound entrypoint rejection; no package/build/activation'}
 
 
@@ -331,11 +362,13 @@ if __name__ == '__main__':
     import sys
     parser = argparse.ArgumentParser(description='Check pinned local operators without external actions')
     parser.add_argument('--source-root', type=Path, required=True)
+    parser.add_argument('--git-repo', type=Path, required=True)
+    parser.add_argument('--git-revision', required=True)
     parser.add_argument('--report', type=Path, required=True)
     args = parser.parse_args()
     adapter.need(sys.dont_write_bytecode and not sys.flags.optimize, 'Run python -B')
     adapter.need(not args.report.exists(), 'Report exists; preserve previous evidence')
-    result = check_pinned_local_operators(args.source_root)
+    result = check_pinned_local_operators(args.source_root, args.git_repo, args.git_revision)
     args.report.parent.mkdir(parents=True, exist_ok=True)
     with args.report.open('x', encoding='utf-8') as stream:
         json.dump(result, stream, indent=2)
