@@ -43,7 +43,7 @@ export default function WorldMap({ places, selected, disabled, picking, picked, 
       <title>世界足迹概览</title>
       {[125, 250, 375].map(y => <line key={'h' + y} x1="0" x2="1000" y1={y} y2={y} stroke={theme.colors.outlineVariant} strokeWidth="0.6" />)}
       {[250, 500, 750].map(x => <line key={'v' + x} x1={x} x2={x} y1="0" y2="500" stroke={theme.colors.outlineVariant} strokeWidth="0.6" />)}
-      {paths?.map((path, index) => <path key={index} d={path} fill={theme.colors.surfaceVariant} stroke={theme.colors.outlineVariant} strokeWidth="0.6" fillRule="evenodd" />)}
+      {paths?.map((path, index) => <path key={index} d={path} fill={theme.dark ? theme.colors.surfaceVariant : '#e1e4e9'} stroke={theme.dark ? theme.colors.outlineVariant : '#cdd2da'} strokeWidth="0.6" fillRule="evenodd" />)}
       {places.filter(place => place.coordinates).map(place => {
         const point = project(place.coordinates!), active = place.id === selected;
         return <g key={place.id} role="button" aria-label={`${place.name}，${placeLabels[place.status]}${place.coordinatePrecision === 'approximate' ? '，大致位置' : ''}`} aria-disabled={!!disabled || !!picking} tabIndex={disabled || picking ? -1 : 0}

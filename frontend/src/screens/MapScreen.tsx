@@ -20,6 +20,7 @@ const message = (error: unknown) => error instanceof Error ? error.message : '�
 const scopeLabels: Record<string, string> = { visible: '全部可见', mine: '仅我的', shared: '已共享' };
 const disclosureLabels = { hidden: '隐藏坐标', coarse: '大致位置（约 0.1°）', exact: '精确坐标' };
 const browserOnline = () => typeof navigator === 'undefined' || navigator.onLine !== false;
+const offlineNotice = '网络已断开，地点已隐藏。重新联网后会重新读取。';
 
 function VisitConfirmation({ checked, disabled, onPress }: { checked: boolean; disabled: boolean; onPress: () => void }) {
   const theme = useTheme();
@@ -132,8 +133,8 @@ function MapWorkspace(props: Props & { identityKey: string }) {
   useFocusEffect(useCallback(() => { focused.current = true; enter(); return () => { focused.current = false; conceal(true); }; }, [props.identityKey]));
   useEffect(() => {
     const visibility = () => { if (document.hidden) conceal(); else enter(); };
-    const offline = () => { conceal(); setError('网络已断开，地点已隐藏。重新联网后会重新读取。'); };
-    const online = () => enter();
+    const offline = () => { conceal(); setError(offlineNotice); };
+    const online = () => { setError(previous => previous === offlineNotice ? '' : previous); enter(); };
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visibility);
     if (typeof window !== 'undefined') { window.addEventListener('offline', offline); window.addEventListener('online', online); }
     const subscription = AppState.addEventListener('change', value => { appActive.current = value === 'active'; if (appActive.current) enter(); else conceal(); });
