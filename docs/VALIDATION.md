@@ -1,6 +1,22 @@
 # 验证记录
 
-> **线上版本：2026-09-16 18:05:30（北京时间），镜像 `sha256:87c1513e52c4188a27e324e8e02fb674e32c3fa8ce91015ba703fe14e5a02b39`。** 相册与电视照片轮播已完成 44→48 迁移发布；340 源文件、130 个方法／路径模板、48 张户内表及 2 张平台表。安装源码对应 main `2c2332d`／integration `8607b14` 的同一文件树；本次交接文档更新仅在本地，不改服务器安装清单。本人 Google Photos 全流程与实体电视仍待验收。
+> **线上版本：2026-09-16 18:57:14（北京时间），镜像 `sha256:43e8214c5241f0b94271d19503c3f4d26c398bb4a18596258bbf4f1e75db17bd`。** 相册逐项处理原因、历史未知提示和确切保存数已上线；344 源文件、70 Markdown、51 静态资源、130 个方法／路径模板、48 张户内表及 2 张平台表，无数据迁移。安装源码对应 main `d9c51b9`／integration `2aac0007` 同树；本次文档仅本地交接，不改已发布 manifest。本人已授权并完成一次十选三保存，其余七项原因未记录；新诊断的本人选片验证及实体电视仍待验收。
+
+## 相册结果诊断发布：2026-09-16 18:57:14
+
+main `d9c51b9`／integration `2aac0007` 同树 `db0949c2d1b55bb53351d4c352740edc9ac34a7c`，安装 manifest `76b8bc77ba786be3069ca477facd7ecb7d9b6d2d61a10c8df0388994a886b45d`。补丁保留逐项白名单原因、确认后的统计和准确勾选保存数，旧记录明确未知；不修改解码器、配额、依赖或 schema。以下各轮分别记录，不相加为一次全套测试。
+
+| 范围 | 实际结果与边界 |
+|---|---|
+| Windows 后端 | 三个受影响模块 105 passed；非作者另有 4 项真实 SQLite／worker 合成边界检查通过 |
+| 界面 | 非作者 Edge 新结果 10 组、既有相册 15 组分别通过；明确合成 HTTP DTO，非真实 Google |
+| 最终组合 | Edge 10 组及真实后端→UI 桥接 1 pytest／4 组通过；含十选三可用、仅勾两张保存、一个未勾选和旧回执未知；Google 输入为合成 |
+| 实际 Linux | 新不可变镜像三个受影响模块 **105 passed / 93.97s**，不与 Windows 或浏览器计数混合 |
+| 生产与读回 | 实际 1 户两库完整备份，无迁移；原 48+2 表全部行、schema、序列及配置保持。18:58:16 全 344 源／84 运行／51 HTTPS 静态文件匹配，70 Markdown；四服务重启计数 0、app healthy、六个匿名接口 401、备份 service 成功且 timer active |
+
+私有原件为 `photos-results-20260916/` 下的 `build.json`、`validation.json`、`activation.json`、`post-readback.json`；发布目录 `/opt/family-dashboard-releases/photos-results-20260916T105630Z-20260916`。完整备份 manifest SHA256 `caa4bded81a99574df0750fca1fdf9801808f13bd6187e5103a4adddf602c0a0`。
+
+本人已完成 Google 授权与真实选片：历史 10 张普通照片只保存 3 张，其余 7 项原因没有保留，不能以合成格式调查替代真实原因。补丁不补写历史，新诊断仍待下一次本人选片验证；真实 Google 全流程完整成功、长期配额／网络行为和实体电视均不据此宣称完成。
 
 ## 实际媒体发布：2026-09-16 18:05:30
 
@@ -17,7 +33,7 @@
 
 私有原件分别位于 `media-release-25c9f20/linux-tests-retry2.json`（exit 1 原轮）、`media-release-f9f7301/recovery.json`（exit 0 恢复）与 `media-release-36bd770/` 下的 `validation.json`、`activation.json`、`post-readback.json`。后面三份 SHA256 依次为 `c54602f0fe54d95237452ee0fab83bfce764085e894b575e6ac69d9e2af1dd84`、`518c8b7d1c44579c116c6e5d194d426971d93f5570aa8879bf193b592dcb4051`、`256f68ec4937c777a87cc18ee78ffcbbfb0202acc948ed7a735b67eb9f03f4b9`。`validation.json` 记录 exit 0 与运行字节保持，不含逐项计数；单项 1 passed／1.48s 来自实际 Linux 日志。测试阶段 Git HEAD 与最终安装身份分别保留；恢复阶段只新增测试和说明，原 338 文件字节保持、运行镜像不变。不得改写失败原件或把多轮结果拼成一次全套。
 
-本人 Google Photos 授权、照片导入和实体电视尚待用户实际反馈；目前没有据此认定真实 Google 配额／网络行为已验证。视频、iCloud／NAS、自动旅行关联和回忆精选尚未实现。库存的独立候选测试也不计入本次媒体发布。
+该 18:05 发布时本人 Google Photos 授权、照片导入和实体电视尚待反馈；后续真实授权与十选三情况见顶部，不据此认定真实 Google 配额／网络行为已完整验证。视频、iCloud／NAS、自动旅行关联和回忆精选尚未实现。库存的独立候选测试也不计入本次媒体发布。
 
 ## 实际地点发布：2026-09-16 16:33:32
 

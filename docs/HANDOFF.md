@@ -1,16 +1,16 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-16 18:05:30（北京时间），镜像 `sha256:87c1513e52c4188a27e324e8e02fb674e32c3fa8ce91015ba703fe14e5a02b39`。** 相册与电视照片轮播已完成 44→48 迁移发布；340 源文件、130 个方法／路径模板、48 张户内表及 2 张平台表。安装源码对应 main `2c2332d`／integration `8607b14` 的同一文件树；本次交接文档更新仅在本地，不改服务器安装清单。本人 Google Photos 全流程与实体电视仍待验收。
+> **线上版本：2026-09-16 18:57:14（北京时间），镜像 `sha256:43e8214c5241f0b94271d19503c3f4d26c398bb4a18596258bbf4f1e75db17bd`。** 相册逐项处理原因、历史未知提示和确切保存数已上线；344 源文件、70 Markdown、51 静态资源、130 个方法／路径模板、48 张户内表及 2 张平台表，无数据迁移。安装源码对应 main `d9c51b9`／integration `2aac0007` 同树；本次文档仅本地交接，不改已发布 manifest。本人已授权并完成一次十选三保存，其余七项原因未记录；新诊断的本人选片验证及实体电视仍待验收。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
 ## 当前接手基线：相册 48 表已上线
 
-本次 main `2c2332d8820e7a7f43d8c2e9fb63a885c03293ef`、integration `8607b14500b21158f74e6c0876b6778ced34169e` 与候选 `36bd770ecb014fde32004747cb95fdd2d4c06ab0` 同树 `421ed257d55ca6a83659de0465b9094cc3e8103e`。安装目录 `/opt/family-dashboard-releases/media-20260916T100305Z-36bd770`，manifest `7b9c7dcb4f734a619b6acef1f92c83cb57f1cd522fc6f54ca1b773bb605d0b32`。实际 1 户从 44 表增至 48 表，平台 2 表保持；两库组备份完成，旧行、schema 和序列保持，新四表在迁移核对时为空。
+安装源码 main `d9c51b9847e8ea9e0640c1da6d2e9f1c49dd5819`／integration `2aac0007b689a40d45fd36ed40fb75a1a64f8a3c` 同树 `db0949c2d1b55bb53351d4c352740edc9ac34a7c`。发布目录 `/opt/family-dashboard-releases/photos-results-20260916T105630Z-20260916`，manifest `76b8bc77ba786be3069ca477facd7ecb7d9b6d2d61a10c8df0388994a886b45d`。本次是 48 表内诊断补丁，无 schema 迁移；实际 1 户两库完整备份，停写至新 app 启动前后全部 48 表与平台 2 表的行、schema、序列保持，原配置保持。
 
-`app`／`sync`／`media` 使用同一新镜像，`web` 保持原镜像；四服务运行、重启计数 0，公开 HTTPS health 为 200。原 AI／Google／Microsoft 配置与密钥保持。完整使用、模块和当前恢复边界见 [媒体交付](MEDIA-DELIVERY.md)，分段测试、失败修订及发布证据见 [VALIDATION](VALIDATION.md)。不要在当前 48 表上重放历史 43→43、43→44 或本轮 44→48 迁移。
+18:58:16 正常 TLS 读回确认全 344 源文件、84 运行文件和 51 静态文件匹配；四服务 running、重启计数 0，app healthy，六个匿名接口 401；发布后备份 service 成功、timer active。分段验证与原件见 [VALIDATION](VALIDATION.md)。不要在当前 48 表重放历史 43→43、43→44 或 44→48 迁移。
 
-库存仍在独立候选：核心、API、界面和真实临时 Flask／SQLite／Edge 闭环已验证，正式工厂、导航、五表迁移与发布另行推进，不属于本次媒体镜像。未经本人完成实际 Photos 授权与选片，不能把合成 Google 传输测试写成真实账号验收；实体电视、视频、iCloud／NAS 和更多成员角色的状态分别见 [媒体交付](MEDIA-DELIVERY.md)。后续仍按独立分支／worktree→非作者审查→integration→组合验证→main，生产另行验收。
+本人 Google Photos 已授权并完成选片；历史选择 10 张普通照片、保存 3 张，另外 7 项原因无法还原。新选择才会生成逐项诊断，旧回执显示已知保存数及其余未知；不扩展解码格式／限额，不自动重新下载。使用见 [媒体交付](MEDIA-DELIVERY.md)、[结果契约](MEDIA-IMPORT-RESULTS.md)。新诊断仍待下一次本人选片反馈，实体电视另验；库存仍是独立候选，不属于此生产镜像。后续按独立分支／worktree→非作者审查→integration→组合验证→main，生产另行验收。
 
 <a id="当前接手基线地点-44-表已上线"></a>
 ## 历史接手基线：地点 44 表（16:33）
