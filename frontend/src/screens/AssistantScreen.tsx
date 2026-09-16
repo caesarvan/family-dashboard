@@ -3,10 +3,16 @@ import { AppState, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Button, Checkbox, Chip, Divider, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
 import { request } from '../lib/api';
-import { AssistantFlow, AssistantState, memberKey } from '../lib/assistant';
+import { AssistantFlow, AssistantState, memberKey, type Match } from '../lib/assistant';
 import { useHousehold } from '../lib/household';
 import type { ScreenProps } from '../lib/types';
 import { PageHeader, SectionCard } from '../ui/components';
+
+function inventorySummary(item: Match) {
+  const quantities = [item.onHandQty, item.inTransitQty, item.plannedQty];
+  if (!item.unit || !quantities.every(value => Number.isSafeInteger(value) && value! >= 0)) return '打开物品，查看最新库存和到货情况。';
+  return `现有 ${item.onHandQty} ${item.unit} · 在途 ${item.inTransitQty} ${item.unit} · 计划 ${item.plannedQty} ${item.unit}`;
+}
 
 export function AssistantScreen(props: ScreenProps) {
   return <AssistantWorkspace key={memberKey(props.user)} {...props} />;
@@ -62,8 +68,8 @@ function AssistantWorkspace(props: ScreenProps) {
       <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} multiline label="告诉助理你的需求" accessibilityLabel="告诉助理你的需求" value={prompt}
         onChangeText={setPrompt} disabled={editingLocked} maxLength={2000} style={styles.input}
         placeholder="待办：明天预约保洁；确认酒店" />
-      <View style={styles.choices}>{['待办：明天预约保洁；确认酒店', '采购：收纳袋；转换插头', '看看这周安排'].map(text =>
-        <Chip key={text} disabled={editingLocked} onPress={() => { if (!editingLocked) setPrompt(text); }}>{text.startsWith('待办') ? '整理待办' : text.startsWith('采购') ? '准备采购' : '本周概览'}</Chip>)}</View>
+      <View style={styles.choices}>{['待办：明天预约保洁；确认酒店', '采购：收纳袋；转换插头', '搜索：电池', '看看这周安排'].map(text =>
+        <Chip key={text} disabled={editingLocked} onPress={() => { if (!editingLocked) setPrompt(text); }}>{text.startsWith('待办') ? '整理待办' : text.startsWith('采购') ? '准备采购' : text.startsWith('搜索') ? '查找家里物品' : '本周概览'}</Chip>)}</View>
       <Checkbox.Item label="使用已配置的 AI 整理" status={useModel ? 'checked' : 'unchecked'} disabled={editingLocked || !view?.modelConfigured}
         onPress={() => { if (!editingLocked && view?.modelConfigured) { setUseModel(!useModel); setIncludeContext(false); } }} />
       {useModel && <><Text variant="bodySmall">本次文字会发送给已配置的 AI 服务。结果是建议，尚未执行。</Text>
@@ -72,7 +78,7 @@ function AssistantWorkspace(props: ScreenProps) {
       {!view?.modelConfigured && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>可直接整理本地待办、采购或搜索已有记录。</Text>}
       <Button mode="contained" loading={!!view?.busy && !view?.pending} disabled={editingLocked || !prompt.trim()}
         onPress={() => void flow?.plan(prompt, useModel, includeContext)}>整理并预览</Button>
-      <Text variant="bodySmall">输入“搜索：关键词”可查找当前可见的日程、清单、旅行、照片说明及地点文字；搜索始终只在本地进行。</Text>
+      <Text variant="bodySmall">输入“搜索：关键词”可查找当前可见的日程、清单、旅行、家庭物品、照片说明及地点文字；搜索始终只在本地进行。</Text>
     </SectionCard>
     {!!view?.error && <HelperText type="error" accessibilityRole="alert">{view.error}</HelperText>}
     {!!view?.notice && <Text accessibilityLiveRegion="polite">{view.notice}</Text>}
@@ -104,7 +110,12 @@ function AssistantWorkspace(props: ScreenProps) {
     {view?.search && foreground && household.online && !view.expired && <SectionCard title={`搜索结果 · ${view.search.total} 条`}>
       {!view.search.matches.length && <Text>没有找到当前可见的匹配记录。</Text>}
       {view.search.matches.map(item => <View key={item.kind + ':' + item.id} style={styles.result}>
-        <Text variant="titleMedium">{item.title}</Text><Text variant="bodySmall">{({ tasks: '待办', shopping: '采购', events: '日程', trips: '旅行', media: '照片', places: '地点' })[item.kind]}</Text>
+        <Text variant="titleMedium">{item.title}</Text><Text variant="bodySmall">{({ tasks: '待办', shopping: '采购', events: '日程', trips: '旅行', media: '照片', places: '地点', inventory: '家庭物品' })[item.kind]}</Text>
+        {item.kind === 'inventory' && <>
+          <Text variant="bodySmall">{inventorySummary(item)}</Text>
+          {!!item.location && <Text variant="bodySmall">存放位置：{item.location}</Text>}
+          <Button mode="outlined" disabled={locked || !!view.pending} accessibilityLabel={'查看物品 ' + item.title} onPress={() => props.onInventory(item.id)}>查看物品</Button>
+        </>}
       </View>)}
       <View style={styles.choices}><Button disabled={locked || view.search.offset === 0} onPress={() => void flow?.search(view.search!.query, Math.max(0, view.search!.offset - 20))}>上一页</Button>
         <Text style={styles.pageNumber}>第 {Math.floor(view.search.offset / 20) + 1} 页</Text>

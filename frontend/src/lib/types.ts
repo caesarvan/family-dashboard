@@ -1,6 +1,6 @@
 export type CalendarMode = 'today' | 'week' | 'around';
 export type ThemeName = 'light' | 'forest' | 'ocean';
-export type RouteName = 'home' | 'calendar' | 'tasks' | 'shopping' | 'trips' | 'finance' | 'photos' | 'assistant' | 'more';
+export type RouteName = 'home' | 'calendar' | 'tasks' | 'shopping' | 'trips' | 'finance' | 'photos' | 'assistant' | 'inventory' | 'more';
 export type ItemKind = 'events' | 'tasks' | 'shopping' | 'trips';
 export type Person = { id: string; name: string };
 export type Member = Person & { role: 'member' | 'tv'; householdId?: string; auth_version?: number };
@@ -22,4 +22,6 @@ export type ScreenProps = {
   onToggle: (kind: 'tasks' | 'shopping', item: ListItem) => Promise<void>;
   pendingId?: string; onLegacy: (fragment: string) => void;
   tripRequest?: { key: number; id?: string };
+  inventoryRequest?: { key: number; id?: string };
+  onInventory: (id?: string) => void;
 };

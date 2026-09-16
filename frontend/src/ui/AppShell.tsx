@@ -70,7 +70,7 @@ export default function AppShell(props: AppShellProps) {
                 accessibilityLabel="更多功能" accessibilityState={{ expanded: menu === 'more' }} style={styles.navButton}
                 contentStyle={styles.reverse} labelStyle={styles.navLabel} onPress={() => setMenu('more')}>更多</Button>}>
               <Menu.Item title="家庭资金" leadingIcon="wallet-outline" onPress={() => navigate('finance')} />
-              <Menu.Item title="家庭物品" leadingIcon="package-variant-closed" onPress={() => legacy('inventory')} />
+              <Menu.Item title="家庭物品" leadingIcon="package-variant-closed" onPress={() => navigate('inventory')} />
               <Menu.Item title="足迹地图" leadingIcon="map-outline" onPress={() => legacy('map')} />
               <Divider /><Menu.Item title="全部工具与设置" leadingIcon="view-grid-outline" onPress={() => navigate('more')} />
             </Menu>
