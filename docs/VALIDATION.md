@@ -1,5 +1,95 @@
 # 验证记录
 
+## Expo 财务发布：2026-09-17 04:26:46
+
+本轮将共同资金、本人完整账本、账单／订单导入、来源追溯、付款／退款／重复核对和月预算迁入 `/app/finance`。主页面、导入、后端回执、迁移、浏览器和文档由独立分支／worktree 作者实现，经非作者审查、修订和组合验证后合入 main。本机打包／绑定助手与服务器操作脚本也经非作者审查。北京时间 04:26:46 实际激活，生产为 54 张户内表和两张平台注册表；04:41:46 正常 TLS 最终读回通过。发布后的本地文档不改变已安装源码、构建或 manifest。
+
+### 冻结来源与构建
+
+| 项目 | 实际身份 |
+| --- | --- |
+| main | `a2081051657647564345a54b61662682ff4dd663` |
+| integration／最终受验应用 | `2d08258fc67388e4de237747eb35db3fe3b0d8cf` |
+| 同一文件树 | `9508cddb1b4cdde1caf70c268673110a0bd50194` |
+| 本机最终构建目录 | 私有 `family-dashboard-access/expo-finance-build-20260917-r3/` |
+| build-evidence SHA256 | `ffa4afc01046ed577cc43204a09350497531e22a6ba5fbb61a49ff3052b76694` |
+| Expo 入口 | `entry-08fd53f0b66e839ec2d8ea5fc7d55b6d.js`，共 23 个导出文件 |
+| manifest SHA256 | `f5a49949e6d868533392f64fa46c4042a85df635b2f8123b3f05076a7d619976` |
+| 源码包 SHA256 | `656b74fa4036113de41d7c800390835ba12062f52bbce2834f5545fae073966c` |
+| app／sync／media 镜像 | `sha256:4433d1d5c97ec4ed4a1336c2402b0fae121a04e092050ff9eb2821ac61fa4798` |
+| 固定父镜像 | `sha256:7f2b301ccf9577c1ec8c61fd52dd152484809cbf1e8e612d81dd5d39887e8dcf` |
+| 原 manifest SHA256 | `11da3a4bd52d4233629b7df26884831ff19c314ea2a1f3f9c8da7310b967d718` |
+| 发布目录 | `/opt/family-dashboard-releases/expo-finance-54-20260916T202549009688Z` |
+
+完整 typecheck 通过。Node 两模块 `test_expo_finance.mjs`／`test_expo_finance_import.mjs` **19 项通过**，覆盖严格金额解析、八字段整数分与百分比契约、逐笔来源、导入预览及同请求恢复。Node、Windows、浏览器各自记录，不相加为一次全套。
+
+### Windows 后端与迁移
+
+Windows 16 个后端／迁移／运行模块 **418 passed，0 failed／error／skipped，86.11 秒**。实际执行来源 `9ed5d19e035ab40d9ba3a56b4913c73c6e1935c5`；到最终候选仅两份前端 TSX 和浏览器脚本改变，后端及这些受验模块字节保持。JUnit 原件在私有 `worktrees/integration/test-results/expo-finance-combined-r1.xml`，SHA256 `4053714ac748616d8420eda5002ffd6b9e172bc29d13ae531490853e8f76d3a1`。
+
+53→54 迁移、文档完整恢复及历史迁移的独立组合 **45 项通过**；该 45 项也包含在上述 418 项中，不重复累计。JUnit 在私有 `worktrees/expo-finance-migration-test/test-results/finance-receipt-migration-r1.xml`，SHA256 `c2fda9190568380009129347f3c23c5365709a0dc3241d75eddc66d5e0cf48ab`。迁移只新增 `hub_import_receipts`，既有 `hub_imports` 七列不变，旧记录不回填来源；实际生产备份与迁移必须另按 [回执迁移和完整恢复](FINANCE-RECEIPTS-RELEASE.md) 执行。
+
+### Linux 首轮拒绝与精确平台例外
+
+第一轮同镜像实际执行 418 项：**417 passed、1 skipped、0 failure／error、0 deselected，130.16 秒**，JUnit 计时 130.125 秒。唯一跳过为 `tests.test_frontend_runtime.test_windows_junction_rejected`，原因精确为 `Windows junction semantics`。pytest exit0，但当时发布检查要求零跳过，因此 `allPassed=false`，在 validate 阶段拒绝，没有 stage、激活或生产数据／配置变更。加载的运行代码与测试支持文件前后核对通过，不能把测试 exit0 写成首轮发布检查成功。
+
+首轮私有原件保留在 `expo-finance-linux-r1-proof/`：`validation.json` SHA256 `53850fb4b73b202d2891135237e8ba64d40db850d7d734f1a64e72da3bd696f0`，`results.xml` `b1c2ed47186dd963b1ed7518c7920687df7883b2eb7e6aa62944b1f16006432e`，`validation.log` `5cf5db14f880fe51b99f2cb4858c97f0662a96b3923ab46dcbcfb72d47abb9b7`，`runtime.json` `c873bc00a23ea8f103a30f30edc910b094e7d36be2011116ec097505dbda80d5`。原 `expo-finance-package-20260917/` 保留该未激活尝试，不覆盖失败记录。
+
+修订在新的私有 `expo-finance-package-20260917-r2/` 与操作目录进行；应用源码、归档、manifest、Expo 构建和实际镜像保持同一身份。发布验证经非作者审查后只接受上述完整测试身份及精确原因的一项平台跳过，仍拒绝其他跳过、失败、错误、少跑或取消选择；不是忽略任意 skipped。重新完整执行后实际仍是 **417 passed、1 项精确平台 skipped、0 failure／error、0 deselected**，总计 418 项，JUnit 125.980 秒，`allPassed=true`。Windows 418 项全部通过仍独立记录，不能把 Linux 写成 418 passed，不能累计两轮或两平台数量。
+
+r2 原件在私有 `expo-finance-package-20260917-r2/`：`validation.json` SHA256 `3e676a7035011cb946ff647d8db4634bb8bd03be7c7ccbfe33121e2c438f4a9f`；`validation/results.xml` `b8adef5afad6a0c825594520941e185381b05915fce6f7b3159b03a046c34e01`，`validation/validation.log` `3993f4c5966b817791efe7912b7a0e43878675a1f771b803288c7e996b019c38`，`validation/runtime.json` 与首轮运行来源报告相同。三份验证原件已下载并按报告逐 SHA 核对，实际 XML 的数量与唯一 skip 也已读取。
+
+### 实际生产迁移与激活
+
+北京时间 **2026-09-17 04:26:46.943695**，`activation.json` 报告 `completed=true`，SHA256 `04cc60cc4e91217696616f42dbfeb84d10dd12ec54665b7ea7d9c3bcc7a80221`。实际源码 486 文件、运行输入 112 文件、Expo 导出 23 文件，安装身份见上表。原源码、环境和固定镜像已保留；停止 web、备份定时器及全部数据卷写者后，对实际 **1 户、2 库**完成组备份，`backupCheck.groupVerified=true`。
+
+迁移前核对原 53 表与平台注册库，迁移仅新增空 `hub_import_receipts`，全部既有行、schema、序列与平台注册库保持。安装新源码且原配置保持，新 app healthy 后完整 54 表组再次核对，`allExistingDataPreservedAtAppStartup=true`；`after-migration.json` 和 `after-app.json` SHA256 均为 `854f1a065d592c027a5516ca93c71b930fb1d95199cc19b433ffb2b55e15ebad`。随后才启动 worker、web 和备份定时器。数据相等限于这些核对时点，后台恢复后的正常更新不属于永久不变保证。
+
+该激活确实执行了生产 DDL 迁移。报告继承的 `productionWrites:0` 是准备阶段字段，不能据此说激活没有生产写入。后续发布必须重新绑定实际 54 表基线，不能重放本次 53→54 或固定旧 manifest／镜像的操作；包含后续真实回执的完整恢复按 [恢复指导](FINANCE-RECEIPTS-RELEASE.md) 核对。
+
+### 首次读回失败与最终独立 r3 读回
+
+原 r2 `post_readback` 在入口资源、TLS 与匿名检查后，对 live `/data:ro` 作结构快照／核对时报 `unable to open database file`，未形成完整通过报告，该次备份 service 尚未运行。诊断为运行库采用 WAL、缺少侧车时只读挂载无法完成该打开方式；这是读回工具失败，不是已完成的业务迁移失败。原七份操作绑定、激活报告与失败现场保留，不覆盖或重放原激活。
+
+独立 r3 工具位于私有 `expo-finance-post-r3-20260917/post_readback_r3.py`，SHA256 `09c32314b68f1a135bc9f613daa3a02bbc74b8cd4aa35486c5abbb8335383d35`，经非作者审查后执行。作者合成检查最终 27 项通过、exit0；首次测试驱动因连接未关闭导致临时目录清理失败，显式关闭后重跑通过，原失败不作为完整通过。既有真实备份清单格式另经只读核对。r3 使用同一源码、运行文件、归档与构建，不再部署或迁移，只执行原计划的新一次备份 service 并读取证据。
+
+北京时间 **2026-09-17 04:41:46.934850** 正常 TLS 最终读回通过：486 源文件、112 运行文件、75 项 HTTPS 静态资源匹配；24 个内部生成路径及 1 个退役资源拒绝，19 个匿名 API 均 401，包含本人导入回执。四服务 running／restarts 0、app healthy，`envPreserved=true`；新版与经典入口均已核对。原件 `expo-finance-package-20260917-r2/post-readback-r3.json` SHA256 `02a9104725599554a103acce5ff653867212f763d5133b3905bae7c296339332`，本地已按 SHA 下载读回。
+
+本次备份 service 新 InvocationID 为 `43b2057bf08547f5bd5736eaaafb810d`，结果 success、exit0，timer active。只核对该次产生的 `manifest-20260916T204143327693Z.json`，SHA256 `d3bbdb40cf48dce4ac591ff945066b0ccd05ad9bb78ff9fce989d40f7d100bdb`：完整 1 户、2 库，家庭 54 表、平台注册库两表，组映射、不可变备份文件散列及结构可读性通过。**每个数据库分别进行在线备份，不是跨库全局原子事务，也不是正在运行的多库全组快照**；报告明确 `liveGroupSnapshotRechecked=false`。启动时 54 表组保全与当前备份核验是两个不同证据，不把它们写成运行数据自激活以来始终未变。
+
+集成人还用已安装源码的 `verify_addition` 对下载的迁移前快照与 after-app 原件独立复核，结果与原迁移报告一致；after-app／after-migration 相同，原件哈希与绑定匹配。私有同目录 `publication-index.json` 列出 22 份发布原件，SHA256 `cfbf26db8f29ff1ac0266869f21e6f72e86d1e4d31f3a93322e7f97be8392d60`。本人真实财务、真实云和实体电视验收仍为 false，不由服务器正常 TLS、匿名拒绝和备份通过替代。
+
+### 最终真实本地浏览器
+
+真实临时 Flask／SQLite／Edge **21 项全部通过，19 张截图**，包含 320／390／1040／1440 四宽。报告在私有 `worktrees/integration/test-results/expo-finance-20260916T195435212799Z/result.json`，SHA256 `4f6bc3364398e6bd13c57d1b22a9ca6e9fe21ac6a84b85f80e42e301ce01d56a`；实际执行 harness SHA256 `4bcb31d3a4acf329569f8db1f51ba4e898dd2031625c1badb30c4e718bd92e95`。应用来源为上表最终 integration，源码和构建前后保持；`pageErrors` 与 `externalRequests` 均为空。
+
+实际覆盖：
+
+- CSV 与 XLSX 选工作表、金额列，读取新文件时立即清除旧确认令牌，空文件替换，错误行整份拒绝，跨月入口，以及重复／冲突保留原值和首次来源。
+- 导入服务重启、已提交和未提交响应丢失；GET 暂无回执后，真实预览过期重试仍保留原编号，迟到的原请求实际提交后再次 GET 恢复。不以模拟成功响应替代业务保存。
+- 551 条完整账本的月份／搜索／分页及快照 409；真实订单／付款／退款／重复关系预览、确认、撤销，净支出 170→70→170；预算、八字段共同资金整数分与 409；撤销活动关系后删除当前详情，再刷新回到账本。
+- 本人成员、另一成员、独立家庭与配对电视隔离；后台／离线隐藏、恢复重验，以及迟到私有响应不能跨身份显示。
+
+财务文件、家庭和凭据均为虚构，业务操作落在独立临时数据库，未连接实际金融平台或写生产。四宽截图不是四台物理设备；浏览器隐藏事件与断网场景也不代表所有真实浏览器生命周期已穷尽。
+
+### 保留的失败与修订
+
+前期主页面 `f3a1498` 的非作者审查发现共同资金将分当元且漏八字段中的两项，以及当前详情已删除后 GET 404 无法恢复。`fb977c6` 修正完整整数分 DTO 与账本恢复，`792e396` 再补回 404 身份重验的原 epoch，避免迟到旧请求关闭新详情；修复后重新审查。真实共享资金验证确认 1,000,000 分显示为 10,000.00，输入 123.45 提交为 12,345 分，其余字段与比例保持。
+
+以下三次未完成浏览器运行保留原件，不把其部分通过项重复加到最终 21 项中：
+
+| 私有目录 | 结果与修订 |
+| --- | --- |
+| `worktrees/integration/test-results/expo-finance-20260916T194525271556Z/` | 第一轮应用 `9ed5d19`、无 r 后缀构建，共同资金通过；图标字符进入按钮 accessible name，随后导入定位失败。按钮补明确可访问标签后重新构建 r2，应用 `2a6206c` |
+| `worktrees/integration/test-results/expo-finance-20260916T194851287829Z/` | r2 前 4 项通过；harness 使用文本 `.last` 误点同名支付类型段选，改为明确 `menuitem` 选择 |
+| `worktrees/expo-finance-browser-fixes/test-results/expo-finance-20260916T195035371030Z/` | r2 修订 harness 前 4 项通过；Paper Menu 真实选项稳定前被卸载，工作表选择无法完成。未确定底层触发原因；改用标准 Paper Dialog／ScrollArea，保留身份与禁用检查，重新 typecheck、构建 r3 并跑完整最终浏览器 |
+
+### 视觉与交付边界
+
+本轮查看最终 19 张截图中的 15 张，集成人另查看手机导入确认和桌面账本。所见区域无阻断性水平裁切或不可读内容；手机导入记录、金额、原编号与确认按钮完整，四宽退款确认窗稳定不透明且关键操作可见。AppShell 的内部滚动使 `full_page` 截图未必覆盖整个内部页面；部分手机账本／预算下部没有被截图展示，不宣称全区域视觉验收。
+
+资产、投资与来源报告仍有经典入口；当前支持工作表和金额列选择，任意日期／标题／币种字段映射尚未实现。本次没有验收真实平台账单、新的本人云操作或实体电视。新镜像 Linux 验收、生产 53→54 激活、正常 TLS 最终读回和逐库在线备份分别记录；本地通过、服务器检查与本人真实操作验收不互相替代。
+
 ## Expo 账户与同步发布：2026-09-17 03:01:51
 
 本轮按用户再次指定的当前 [Expo 官网](https://expo.dev/) 风格，将账户主入口迁入 `/app/connections`，包括两家授权、来源搜索／分页、共享范围预览、主清单、逐来源状态、失效同步单独停止及断开确认。前端、后端、浏览器和接线分别使用独立分支，由非作者审查后组合；发布工具放在独立私有目录，并经非作者审查。
