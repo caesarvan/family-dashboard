@@ -145,6 +145,7 @@ def validate_source_changes(base, candidate, changed):
     need(python and all(n in base for n in python), 'existing_python_change_required')
     for name in changed:
         allowed = (name in python or name.startswith('static/') or name == 'README.md'
+                   or name == 'docs/contract-inventory.json'
                    or name.startswith('docs/') and name.endswith('.md')
                    or name.startswith('tests/') and name.endswith('.py')
                    or name in TOOLS | {SOURCE_ENTRY})
