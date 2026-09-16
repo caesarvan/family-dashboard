@@ -81,7 +81,7 @@ async function boot(){
   if(isDemo){user={id:'member1',role:'demo'};data=demoData();renderBoard();return}
   try{
     const me=await api('/me');
-    if(JSON.stringify([user?.role,user?.householdId,user?.id,user?.auth_version,csrf])!==JSON.stringify([me.user?.role,me.user?.householdId,me.user?.id,me.user?.auth_version,me.csrf||''])){window.JourneyMap?.notifyIdentityChanged();window.HouseholdMedia?.notifyIdentityChanged();window.MediaTV?.notifyIdentityChanged();}
+    if(JSON.stringify([user?.role,user?.householdId,user?.id,user?.auth_version,csrf])!==JSON.stringify([me.user?.role,me.user?.householdId,me.user?.id,me.user?.auth_version,me.csrf||''])){window.JourneyMap?.notifyIdentityChanged();window.HouseholdMedia?.notifyIdentityChanged();window.MediaTV?.notifyIdentityChanged();window.InventoryUI?.notifyIdentityChanged();}
     user=me.user;csrf=me.csrf||'';
     if(!user){if(isTV){await startPair()}else renderLogin();showAccountAuthResult();return}
     if(user.role==='tv'){isTV=true;focus=user.focus||'member1'}else if(!localStorage.getItem('household_focus'))focus=user.id;
@@ -90,7 +90,7 @@ async function boot(){
 }
 async function refresh(force=false){
   if(document.hidden&&!force)return;
-  try{const next=await api('/state');const changed=force||!data||next.revision!==data.revision;data=next;online=true;lastFetch=displayTime(new Date());if(changed)renderBoard();else {updateFooter();window.JourneyMap?.notifyStateChanged();window.HouseholdMedia?.notifyStateChanged()}}
+  try{const next=await api('/state');const changed=force||!data||next.revision!==data.revision;data=next;online=true;lastFetch=displayTime(new Date());if(changed)renderBoard();else {updateFooter();window.JourneyMap?.notifyStateChanged();window.HouseholdMedia?.notifyStateChanged();window.InventoryUI?.notifyStateChanged()}}
   catch(e){online=false;if(e.status===401){await boot();return}updateFooter();if(force)throw e}
 }
 function clockMarkup(){const d=new Date();return `<strong>${displayTime(d)}</strong><span>${new Intl.DateTimeFormat('zh-CN',{month:'long',day:'numeric',weekday:'long',timeZone:'Asia/Shanghai'}).format(d)}</span>`}

@@ -74,7 +74,7 @@ def test_factory_registers_exact_four_media_tables_and_real_vertical(configured)
     assert client.get(photo['previewUrl']).status_code==200
     with app.extensions['member_sessions'].db() as con:
         tables={r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        assert len(tables)==48
+        assert len(tables)==53
         assert {name for name in tables if name.startswith('media_')}=={'media_imports','media_items','media_tv_grants','media_playback'}
 
 
@@ -102,7 +102,7 @@ def test_real_household_invite_child_four_members_and_namespace_isolation(config
         member2,_=login(application,2)
         assert member2.get('/api/media/items?scope=visible').json['total']==0
     with child.extensions['member_sessions'].db() as con:
-        assert con.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone()[0]==48
+        assert con.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone()[0]==53
     seen=[]
     class OnlyRecord:
         def __init__(self,engine): self.engine=engine
