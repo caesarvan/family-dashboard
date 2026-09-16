@@ -65,8 +65,11 @@ def create_app(config=None):
         SESSION_REFRESH_EACH_REQUEST=False,
         PERMANENT_SESSION_LIFETIME=timedelta(days=30), MAX_CONTENT_LENGTH=600_000,
     )
-    for key in ('PUBLIC_ORIGIN', 'MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'OPENAI_API_KEY', 'OPENAI_MODEL'):
+    for key in ('PUBLIC_ORIGIN', 'MICROSOFT_CLIENT_ID', 'MICROSOFT_CLIENT_SECRET', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'):
         if os.environ.get(key):
+            app.config[key] = os.environ[key]
+    for key in ('ASSISTANT_PROVIDER', 'NVIDIA_API_KEY', 'NVIDIA_MODEL', 'OPENAI_API_KEY', 'OPENAI_MODEL'):
+        if key in os.environ:
             app.config[key] = os.environ[key]
     if config:
         app.config.update(config)
