@@ -54,9 +54,10 @@ window.HouseholdMedia = (() => {
     if (message) {const p = document.createElement('p'); p.setAttribute('role','alert'); p.textContent = message; f.node.append(p);}
     f.items = []; f.accounts = []; f.journeys = []; f.devices = []; f.imports = [];
     f.importResult = null; f.editor = null; f.createPending = null; f.confirmPending = null; f.confirmConflict = false;
-    f.selection.clear();
+    f.selection.clear(); f.returnToMap = null; f.onIdentityChanged = null;
   }
-  const notifyIdentityChanged = () => unmount('登录成员或家庭已变化，相册已收起。请重新打开。');
+  const notifyIdentityChanged = () => {current?.onIdentityChanged?.(); unmount('登录成员或家庭已变化，相册已收起。请重新打开。');};
+  function concealGallery(f) {f.items = []; f.editor = null; f.total = 0; f.hasMore = false;}
   function alive(f) {
     if (current !== f || f.dead || !f.node.isConnected) return false;
     if (!permitted() || actor() !== f.actor) {notifyIdentityChanged(); return false;}
@@ -64,6 +65,7 @@ window.HouseholdMedia = (() => {
   }
   async function verify(f, epoch) {
     if (!alive(f) || epoch !== f.epoch) return false;
+    if (f.mapVisit && !navigator.onLine) throw new Error('网络已断开，照片已收起。恢复连接后重新读取。');
     const me = await api('/me');
     if (!alive(f) || epoch !== f.epoch) return false;
     const value = JSON.stringify([me.user?.role,me.user?.householdId,me.user?.id,me.user?.auth_version,me.csrf,isTV,isDemo]);
@@ -80,6 +82,7 @@ window.HouseholdMedia = (() => {
     catch (error) {
       if (!valid()) return;
       if (error.status === 401) {notifyIdentityChanged(); return;}
+      if (f.mapVisit) {concealGallery(f); render(f);}
       try {if (!await check()) return;}
       catch (_) {if (valid()) f.error = '暂时无法核对连接，草稿仍保留。恢复网络后再试。';}
       if (valid() && [403,404].includes(error.status)) {
@@ -131,6 +134,15 @@ window.HouseholdMedia = (() => {
   }
   async function refresh(f) {
     await job(f, async check => {
+      if (f.mapVisit) {
+        concealGallery(f); render(f);
+        const journeys = await api('/journeys');
+        if (!await check()) return;
+        f.journeys = journeys.journeys || [];
+        await visibleState(f,check);
+        if (await check()) f.loaded = true;
+        return;
+      }
       const [accounts,journeys,devices,imports] = await Promise.all([
         api('/accounts'),api('/journeys'),api('/devices'),api('/media/imports?limit=10&offset=0')]);
       if (!await check()) return;
@@ -228,11 +240,11 @@ window.HouseholdMedia = (() => {
     const editor = f.editor;
     if (!editor) return '';
     const item = editor.item, draft = editor.draft, busy = f.busy ? 'disabled' : '';
-    const grantIds = editor.grants || [];
+    const grantIds = editor.grants || [], canManage = item.canManage && !f.mapVisit;
     return `<aside class="hm-detail" aria-label="照片详情"><div class="hm-detail-head"><h2>这一刻</h2>${button('close-detail','关闭')}</div><div class="hm-detail-image">${imageMarkup(item)}</div>
-      ${item.canManage ? `<form data-hm-editor><label>照片说明<input name="caption" ${busy} maxlength="200" value="${escape(draft.caption)}" placeholder="给这段回忆写一句话"></label><label>关联旅行<select name="journeyId" ${busy}>${option('','暂不关联',draft.journeyId)}${f.journeys.map(journey => option(journey.id,journey.trip?.title || journey.plan?.title || '旅行',draft.journeyId)).join('')}</select></label><label>谁能查看<select name="visibility" ${busy}>${option('private','仅我自己',draft.visibility)}${option('shared','家庭成员',draft.visibility)}</select></label><p class="hm-muted">共享后，家庭成员可查看照片和说明。取消旅行关联会收回共享与电视展示。</p>${editor.conflict ? `<p class="hm-warning">照片已在其他设备上更新，你的修改仍保留。先读取最新状态，再核对并保存。</p>${button('reload-detail','读取最新状态，保留我的修改',busy)}` : ''}<button class="hm-button primary" type="submit" ${busy}>保存修改</button></form>` : `<h3>${escape(item.caption || '家庭共享照片')}</h3><p class="hm-muted">共享照片由上传者管理。</p>`}
+      ${canManage ? `<form data-hm-editor><label>照片说明<input name="caption" ${busy} maxlength="200" value="${escape(draft.caption)}" placeholder="给这段回忆写一句话"></label><label>关联旅行<select name="journeyId" ${busy}>${option('','暂不关联',draft.journeyId)}${f.journeys.map(journey => option(journey.id,journey.trip?.title || journey.plan?.title || '旅行',draft.journeyId)).join('')}</select></label><label>谁能查看<select name="visibility" ${busy}>${option('private','仅我自己',draft.visibility)}${option('shared','家庭成员',draft.visibility)}</select></label><p class="hm-muted">共享后，家庭成员可查看照片和说明。取消旅行关联会收回共享与电视展示。</p>${editor.conflict ? `<p class="hm-warning">照片已在其他设备上更新，你的修改仍保留。先读取最新状态，再核对并保存。</p>${button('reload-detail','读取最新状态，保留我的修改',busy)}` : ''}<button class="hm-button primary" type="submit" ${busy}>保存修改</button></form>` : `<h3>${escape(item.caption || '家庭共享照片')}</h3><p class="hm-muted">${item.visibility === 'private' ? '仅你自己可见。' : '家庭共享照片，由上传者管理。'}</p>`}
       ${item.journey ? `<div class="hm-travel-link"><span>关联旅行 · ${escape(item.journey.title)}</span>${button('open-journey','查看行程 →')}</div>` : ''}
-      ${item.canManage ? `<section class="hm-tv-settings"><h3>在家里的电视上展示</h3><p class="hm-muted">先保存为家庭共享，再明确选择屏幕。未勾选的电视无法播放这张照片。</p>${f.devices.length ? f.devices.map(device => `<label class="hm-consent"><input type="checkbox" data-hm-device="${escape(device.id)}" ${grantIds.includes(device.id) ? 'checked' : ''} ${item.visibility !== 'shared' || f.busy ? 'disabled' : ''}><span>${escape(device.name || '家庭电视')}</span></label>`).join('') : '<p>还没有配对的电视。请在设置中连接设备。</p>'}<label class="hm-consent"><input type="checkbox" data-hm-tv-consent ${editor.tvConsent ? 'checked' : ''} ${item.visibility !== 'shared' ? 'disabled' : ''}><span>允许选中的电视展示这张照片。</span></label>${button('save-grants','保存电视范围',`${busy} ${item.visibility !== 'shared' ? 'disabled' : ''}`)}${button('revoke-grants','收回全部电视展示',busy)}</section><div class="hm-danger-zone">${button('delete','从看板移除这张照片',busy)}<p class="hm-muted">只移除看板副本，Google Photos 原图保留。</p></div>` : ''}</aside>`;
+      ${canManage ? `<section class="hm-tv-settings"><h3>在家里的电视上展示</h3><p class="hm-muted">先保存为家庭共享，再明确选择屏幕。未勾选的电视无法播放这张照片。</p>${f.devices.length ? f.devices.map(device => `<label class="hm-consent"><input type="checkbox" data-hm-device="${escape(device.id)}" ${grantIds.includes(device.id) ? 'checked' : ''} ${item.visibility !== 'shared' || f.busy ? 'disabled' : ''}><span>${escape(device.name || '家庭电视')}</span></label>`).join('') : '<p>还没有配对的电视。请在设置中连接设备。</p>'}<label class="hm-consent"><input type="checkbox" data-hm-tv-consent ${editor.tvConsent ? 'checked' : ''} ${item.visibility !== 'shared' ? 'disabled' : ''}><span>允许选中的电视展示这张照片。</span></label>${button('save-grants','保存电视范围',`${busy} ${item.visibility !== 'shared' ? 'disabled' : ''}`)}${button('revoke-grants','收回全部电视展示',busy)}</section><div class="hm-danger-zone">${button('delete','从看板移除这张照片',busy)}<p class="hm-muted">只移除看板副本，Google Photos 原图保留。</p></div>` : ''}</aside>`;
   }
   function render(f) {
     if (!alive(f)) return;
@@ -241,11 +253,11 @@ window.HouseholdMedia = (() => {
     const selection = focused && typeof focused.selectionStart === 'number' ? [focused.selectionStart,focused.selectionEnd] : null;
     const busy = f.busy ? 'disabled' : '';
     f.node.classList.add('hm-workspace');
-    f.node.innerHTML = `<div data-hm-message aria-live="polite"></div><section class="hm-source"><div><span class="hm-kicker">FAMILY MEMORIES</span><h2>把值得回看的日子，留在一起。</h2><p>你选择哪些照片留下，也决定与谁分享。</p></div><div class="hm-source-actions"><label>照片来源<select data-hm-account ${busy} ${f.createPending ? 'disabled' : ''}>${f.accounts.length ? f.accounts.map(account => option(account.id,`${account.name || account.email || 'Google 账户'}${account.capabilities?.photos && !account.needsReauth ? ' · 已连接' : ' · 需授权照片'}`,f.accountId)).join('') : option('','尚未连接 Google Photos','')}</select></label>${button('connect','连接 / 更新 Google Photos 授权',busy)}</div><label class="hm-consent"><input type="checkbox" data-hm-temporary ${f.temporary ? 'checked' : ''} ${f.createPending ? 'disabled' : ''}><span>允许临时处理我在 Google 选择的照片，供我预览确认；未确认内容会在 24 小时内清理。</span></label>${button('create',f.createPending ? '重试本次选择请求' : '从 Google Photos 选择照片',busy)}</section>
+    f.node.innerHTML = `<div data-hm-message aria-live="polite"></div>${f.mapVisit ? `<section class="hm-source"><div><h2>这次旅行的照片</h2><p>只查看已确认保存、当前对你可见的照片。照片关联不代表到访，不会改变共享或电视许可。</p></div>${button('return-map','← 返回地图')}</section>` : `<section class="hm-source"><div><span class="hm-kicker">FAMILY MEMORIES</span><h2>把值得回看的日子，留在一起。</h2><p>你选择哪些照片留下，也决定与谁分享。</p></div><div class="hm-source-actions"><label>照片来源<select data-hm-account ${busy} ${f.createPending ? 'disabled' : ''}>${f.accounts.length ? f.accounts.map(account => option(account.id,`${account.name || account.email || 'Google 账户'}${account.capabilities?.photos && !account.needsReauth ? ' · 已连接' : ' · 需授权照片'}`,f.accountId)).join('') : option('','尚未连接 Google Photos','')}</select></label>${button('connect','连接 / 更新 Google Photos 授权',busy)}</div><label class="hm-consent"><input type="checkbox" data-hm-temporary ${f.temporary ? 'checked' : ''} ${f.createPending ? 'disabled' : ''}><span>允许临时处理我在 Google 选择的照片，供我预览确认；未确认内容会在 24 小时内清理。</span></label>${button('create',f.createPending ? '重试本次选择请求' : '从 Google Photos 选择照片',busy)}</section>
       <section class="hm-import" data-hm-import aria-label="照片导入进度"></section>
-      ${f.imports.length ? `<details class="hm-history"><summary>最近的选择记录</summary>${f.imports.map(item => button('resume',`${escape(labels[item.state] || item.state)} · ${escape(new Date(item.createdAt).toLocaleString('zh-CN'))}`,`data-id="${escape(item.id)}" ${busy}`)).join('')}</details>` : ''}
-      <div class="hm-library-head"><div><span class="hm-kicker">YOUR COLLECTION</span><h2>我们的相册 <small>${f.total} 张</small></h2></div>${button('refresh','刷新',busy)}</div><form class="hm-filters" data-hm-filters><label>查看范围<select name="scope">${option('mine','我的照片',f.scope)}${option('visible','我能查看的',f.scope)}${option('shared','家人分享给我',f.scope)}</select></label><label>旅行<select name="journeyId">${option('','全部旅行',f.journeyId)}${f.journeys.map(journey => option(journey.id,journey.trip?.title || journey.plan?.title || '旅行',f.journeyId)).join('')}</select></label><button class="hm-button" type="submit" ${busy}>查看</button></form>
-      <div class="hm-library-layout ${f.editor ? 'has-detail' : ''}"><div><div class="hm-grid">${f.items.length ? f.items.map(item => `<button type="button" class="hm-card" data-hm="detail" data-id="${escape(item.id)}">${imageMarkup(item)}<span class="hm-card-caption"><strong>${escape(item.caption || item.journey?.title || '一段生活的片刻')}</strong><span>${item.visibility === 'shared' ? '家庭共享' : '仅我自己'}${item.journey ? ' · '+escape(item.journey.title) : ''}</span></span></button>`).join('') : `<div class="hm-empty"><span aria-hidden="true">▧</span><h3>${f.loaded ? '回忆，从你挑选的第一张开始' : '正在打开相册…'}</h3><p>${f.loaded ? '从 Google Photos 选择照片，确认保存后会出现在这里。也可以换个范围查看家庭共享照片。' : '正在核对照片和连接状态。'}</p></div>`}</div><div class="hm-pagination">${button('previous','上一页',`${busy} ${f.offset === 0 ? 'disabled' : ''}`)}<span>第 ${Math.floor(f.offset/24)+1} 页</span>${button('next','下一页',`${busy} ${!f.hasMore ? 'disabled' : ''}`)}</div></div>${editorMarkup(f)}</div>`;
+      ${f.imports.length ? `<details class="hm-history"><summary>最近的选择记录</summary>${f.imports.map(item => button('resume',`${escape(labels[item.state] || item.state)} · ${escape(new Date(item.createdAt).toLocaleString('zh-CN'))}`,`data-id="${escape(item.id)}" ${busy}`)).join('')}</details>` : ''}`}
+      <div class="hm-library-head"><div><span class="hm-kicker">YOUR COLLECTION</span><h2>我们的相册 <small>${f.total} 张</small></h2></div>${button('refresh','刷新',busy)}</div><form class="hm-filters" data-hm-filters><label>查看范围<select name="scope">${option('mine','我的照片',f.scope)}${option('visible','我能查看的',f.scope)}${option('shared','家人分享给我',f.scope)}</select></label><label>旅行<select name="journeyId" ${f.mapVisit ? 'disabled' : ''}>${f.journeyId && !f.journeys.some(journey => journey.id === f.journeyId) ? option(f.journeyId,'关联旅行（选项暂不可用）',f.journeyId) : ''}${option('','全部旅行',f.journeyId)}${f.journeys.map(journey => option(journey.id,journey.trip?.title || journey.plan?.title || '旅行',f.journeyId)).join('')}</select></label><button class="hm-button" type="submit" ${busy}>查看</button></form>
+      <div class="hm-library-layout ${f.editor ? 'has-detail' : ''}"><div><div class="hm-grid">${f.items.length ? f.items.map(item => `<button type="button" class="hm-card" data-hm="detail" data-id="${escape(item.id)}">${imageMarkup(item)}<span class="hm-card-caption"><strong>${escape(item.caption || item.journey?.title || '一段生活的片刻')}</strong><span>${item.visibility === 'shared' ? '家庭共享' : '仅我自己'}${item.journey ? ' · '+escape(item.journey.title) : ''}</span></span></button>`).join('') : `<div class="hm-empty"><span aria-hidden="true">▧</span><h3>${f.loaded ? (f.journeyId ? '这次旅行还没有可见照片' : '回忆，从你挑选的第一张开始') : '正在打开相册…'}</h3><p>${f.loaded ? (f.journeyId ? '只有已确认保存并关联这次旅行、且你有权查看的照片会出现在这里。' : '从 Google Photos 选择照片，确认保存后会出现在这里。也可以换个范围查看家庭共享照片。') : '正在核对照片和连接状态。'}</p></div>`}</div><div class="hm-pagination">${button('previous','上一页',`${busy} ${f.offset === 0 ? 'disabled' : ''}`)}<span>第 ${Math.floor(f.offset/24)+1} 页</span>${button('next','下一页',`${busy} ${!f.hasMore ? 'disabled' : ''}`)}</div></div>${editorMarkup(f)}</div>`;
     renderImport(f); renderMessage(f);
     if (focusName) {
       const input = [...f.node.querySelectorAll('[name]')].find(node => node.name === focusName && (focused.closest('[data-hm-editor]') ? node.closest('[data-hm-editor]') : !node.closest('[data-hm-editor]')));
@@ -257,7 +269,7 @@ window.HouseholdMedia = (() => {
     await job(f,async check => {
       const {item} = await api('/media/items/' + encodeURIComponent(itemId));
       if (!await check()) return;
-      const result = item.canManage ? await api(`/media/items/${encodeURIComponent(itemId)}/tv-grants`) : {deviceIds:[]};
+      const result = item.canManage && !f.mapVisit ? await api(`/media/items/${encodeURIComponent(itemId)}/tv-grants`) : {deviceIds:[]};
       if (!await check()) return;
       const draft = preserve && f.editor?.item.id === itemId ? f.editor.draft : {caption:item.caption || '',visibility:item.visibility,journeyId:item.journey?.id || ''};
       f.editor = {item,draft,grants:result.deviceIds || [],tvConsent:false,conflict:false};
@@ -277,7 +289,9 @@ window.HouseholdMedia = (() => {
     });
   }
   async function act(f,action,target) {
-    if (!alive(f) || f.busy) return;
+    if (!alive(f)) return;
+    if (action === 'return-map' && f.mapVisit) {f.returnToMap?.(); return;}
+    if (f.busy) return;
     f.notice = '';
     if (action === 'refresh') return refresh(f);
     if (action === 'detail') return detail(f,target.dataset.id);
@@ -347,7 +361,7 @@ window.HouseholdMedia = (() => {
       });
     }
     const editor = f.editor;
-    if (!editor?.item.canManage) return;
+    if (f.mapVisit || !editor?.item.canManage) return;
     if (action === 'save-grants' || action === 'revoke-grants') {
       const deviceIds = action === 'revoke-grants' ? [] : editor.grants;
       if (deviceIds.length && !editor.tvConsent) {f.error = '请确认允许选中的电视展示这张照片。'; renderMessage(f); return;}
@@ -363,10 +377,13 @@ window.HouseholdMedia = (() => {
       return mutate(f,`/media/items/${editor.item.id}`,'DELETE',{revision:editor.item.revision},async (_,check) => {f.editor = null; f.notice = '已移除看板副本。'; await gallery(f,check);});
     }
   }
-  async function mount(node,{openJourney} = {}) {
+  async function mount(node,{openJourney,initialJourneyId,returnToMap,onIdentityChanged} = {}) {
     unmount();
     if (!permitted()) {node.textContent = '请在手机或电脑上登录，管理自己的相册。'; return;}
     const f = {node,openJourney,actor:actor(),dead:false,epoch:0,busy:false,loaded:false,freshAt:Date.now(),error:'',notice:'',scope:'mine',journeyId:'',offset:0,total:0,hasMore:false,items:[],accounts:[],journeys:[],devices:[],imports:[],accountId:'',temporary:false,persist:false,selection:new Set(),importResult:null,editor:null,createPending:null,confirmPending:null,confirmConflict:false};
+    f.mapVisit = id(initialJourneyId) && typeof returnToMap === 'function';
+    f.returnToMap = returnToMap; f.onIdentityChanged = onIdentityChanged;
+    if (f.mapVisit) {f.journeyId = initialJourneyId; f.scope = 'visible';}
     current = f;
     f.click = event => {const target = event.target.closest('[data-hm]'); if (target) {event.preventDefault(); void act(f,target.dataset.hm,target);}};
     f.input = event => {if (event.target.closest('[data-hm-editor]') && f.editor && event.target.name) f.editor.draft[event.target.name] = event.target.value;};
@@ -387,8 +404,8 @@ window.HouseholdMedia = (() => {
     };
     f.submit = event => {
       event.preventDefault(); if (!alive(f) || f.busy) return;
-      if (event.target.matches('[data-hm-filters]')) {const values = new FormData(event.target); f.scope = values.get('scope'); f.journeyId = values.get('journeyId'); f.offset = 0; void job(f,check => gallery(f,check));}
-      if (event.target.matches('[data-hm-editor]') && f.editor?.item.canManage) {
+      if (event.target.matches('[data-hm-filters]')) {const values = new FormData(event.target); f.scope = values.get('scope'); if (!f.mapVisit) f.journeyId = values.get('journeyId'); f.offset = 0; void job(f,check => gallery(f,check));}
+      if (!f.mapVisit && event.target.matches('[data-hm-editor]') && f.editor?.item.canManage) {
         const editor = f.editor;
         const payload = {revision:editor.item.revision,caption:editor.draft.caption,visibility:editor.draft.visibility,journeyId:editor.draft.journeyId || null};
         void mutate(f,`/media/items/${editor.item.id}`,'PATCH',payload,async (_,check) => {
@@ -402,8 +419,8 @@ window.HouseholdMedia = (() => {
       }
     };
     f.visibility = () => {if (document.hidden) clearTimeout(f.timer); else if (alive(f)) void job(f,async check => {if (f.importResult) await readImport(f,f.importResult.import.id,check); await visibleState(f,check);});};
-    f.online = () => {if (alive(f)) {f.error = ''; renderMessage(f); schedule(f);}};
-    f.offline = () => {if (alive(f)) renderMessage(f);};
+    f.online = () => {if (alive(f)) {if (f.mapVisit) {void refresh(f); return;} f.error = ''; renderMessage(f); schedule(f);}};
+    f.offline = () => {if (!alive(f)) return; if (f.mapVisit) {f.epoch++; f.busy = false; clearTimeout(f.timer); concealGallery(f); f.journeys = []; f.error = '网络已断开，照片已收起。恢复连接后重新读取。'; render(f);} else renderMessage(f);};
     f.observer = new MutationObserver(() => {if (current === f && !f.node.isConnected) unmount();});
     f.observer.observe(document.body,{childList:true,subtree:true});
     node.addEventListener('click',f.click); node.addEventListener('input',f.input); node.addEventListener('change',f.change); node.addEventListener('submit',f.submit);
