@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { PhotoReadFence, PhotoReadDiscarded, confirmPhotos, countText, newPhotoRequestId, photoError, photoSignature, previewPath, savedSummary, validateImport } from '../frontend/src/lib/photos.ts';
+import { PhotoReadFence, PhotoReadDiscarded, confirmPhotos, countText, finishPhotoCreate, newPhotoRequestId, photoError, photoSignature, previewPath, savedSummary, validateImport } from '../frontend/src/lib/photos.ts';
 
 const id = 'a'.repeat(24);
 const session = { user: { role: 'member', id: 'member1', householdId: 'home1', auth_version: 1 }, csrf: 'synthetic-browser-csrf' };
@@ -69,4 +69,21 @@ test('fallback fence pins the first full signature including CSRF', async () => 
   await fence.read(async () => photo, () => true);
   next = { ...session, csrf: 'rotated' };
   await assert.rejects(fence.read(async () => photo, () => true), PhotoReadDiscarded);
+});
+test('202 then failed detail or account GET retains the original creation receipt', async () => {
+  for (const failingRead of ['detail', 'sources']) {
+    const original = { requestId: newPhotoRequestId(), accountId: 'b'.repeat(32) };
+    let pending = original;
+    const readDetail = async () => { if (failingRead === 'detail') throw new Error('synthetic lost GET'); };
+    const readSources = async () => { if (failingRead === 'sources') throw new Error('synthetic failed sources'); };
+    await assert.rejects(finishPhotoCreate(id, readDetail, readSources, () => { pending = null; }));
+    assert.equal(pending, original, 'retry must use the exact original creation request');
+    await finishPhotoCreate(id, async () => {}, async () => {}, () => { pending = null; });
+    assert.equal(pending, null);
+  }
+});
+test('malformed creation success cannot release the receipt', async () => {
+  let released = false;
+  await assert.rejects(finishPhotoCreate('../accounts', async () => {}, async () => {}, () => { released = true; }));
+  assert.equal(released, false);
 });

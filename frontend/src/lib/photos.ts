@@ -85,6 +85,13 @@ export function confirmPhotos(row: PhotoImport, ids: string[], requestId: string
   if (!row.canConfirm || row.state !== 'awaiting_confirmation' || !ids.length || ids.length > 20 || ids.some(id => !isMediaId(id)) || new Set(ids).size !== ids.length) throw new Error('请重新核对要保存的照片。');
   return { revision: row.revision, confirmRequestId: requestId, itemIds: [...ids], consentVersion: CONSENT, persistSelected: true };
 }
+// HTTP 202 followed by a lost GET must not unlock a new Picker request ID.
+export async function finishPhotoCreate(id: string, readImport: (id: string) => Promise<void>, readSources: () => Promise<void>, releaseReceipt: () => void) {
+  if (!isMediaId(id)) throw new Error('选片记录无法核对，请保留原请求重试。');
+  await readImport(id);
+  await readSources();
+  releaseReceipt();
+}
 export const photoSignature = (session: PhotoSession) => JSON.stringify([session.user?.role, session.user?.householdId, session.user?.id, session.user?.auth_version, session.csrf]);
 export class PhotoReadDiscarded extends Error {}
 // GET permissions are checked separately from component lifetime. Injected I/O

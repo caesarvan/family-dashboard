@@ -6,7 +6,7 @@ import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import { openPhotosProvider } from '../lib/navigation';
 import type { ScreenProps } from '../lib/types';
-import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto } from '../lib/photos';
+import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, finishPhotoCreate, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto } from '../lib/photos';
 import type { ImportDetail, Photo, PhotoAccount, PhotoDevice, PhotoImport, PhotoJourney, PhotoPage, PhotoSession } from '../lib/photos';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 
@@ -41,6 +41,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   const [devices, setDevices] = useState<PhotoDevice[]>([]); const [journeys, setJourneys] = useState<PhotoJourney[]>([]);
   const [imports, setImports] = useState<PhotoImport[]>([]); const [importDetail, setImportDetail] = useState<ImportDetail | null>(null);
   const importRef = useRef(importDetail); importRef.current = importDetail;
+  const importReadAt = useRef(0);
   const [selected, setSelected] = useState<string[]>([]); const [temporary, setTemporary] = useState(false); const [persist, setPersist] = useState(false);
   const [importOpen, setImportOpen] = useState(false); const [accountMenu, setAccountMenu] = useState(false);
   const [createReceipt, setCreateReceipt] = useState<Receipt | null>(null); const [confirmReceipt, setConfirmReceipt] = useState<Receipt | null>(null);
@@ -90,7 +91,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
     const ticket = ++serial.current.imports;
     const data = await checked(async () => validateImport(await request<ImportDetail>(`/media/imports/${id}`)), () => ticket === serial.current.imports);
     const changed = importRef.current?.import.id !== id;
-    importRef.current = data; setImportDetail(data);
+    importRef.current = data; importReadAt.current = Date.now(); setImportDetail(data);
     if (changed || reset) { setSelected(data.items.map(item => item.id)); setPersist(false); setConfirmReceipt(null); setConfirmReview(false); }
     else setSelected(previous => previous.filter(id => data.items.some(item => item.id === id)));
     if (data.import.state === 'confirmed') { setConfirmReceipt(null); setConfirmReview(false); setPersist(false); }
@@ -116,15 +117,17 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   async function write(path: string, method: string, body: Record<string, unknown>, done: (data: any) => Promise<void>, category: 'create' | 'confirm' | 'editor' | 'other' = 'other') {
     if (locked.current || !current()) return;
     locked.current = true; setBusy(true); setError(''); setNotice('');
+    let writeReturned = false;
     try {
       const result = await latest.current.mutate(path, method, body);
+      writeReturned = true;
       await checked(async () => result);
       await done(result);
       void latest.current.refresh();
     } catch (caught) {
       if (!current()) return;
       if (caught instanceof PhotoReadDiscarded || caught instanceof ApiError && [401, 403].includes(caught.status)) { failure(caught); return; }
-      const unknown = !(caught instanceof ApiError) || caught.status === 0 || caught.status >= 500;
+      const unknown = writeReturned || !(caught instanceof ApiError) || caught.status === 0 || caught.status >= 500;
       if (category === 'editor') setEditor(value => value ? { ...value, blocked: true, message: unknown ? '提交结果尚不明确。草稿仍保留，请读取最新版本核对，不会自动重发。' : '修改未保存。草稿仍保留，请读取最新版本核对。' } : null);
       if (category === 'confirm' && !unknown) { setConfirmReview(true); }
       if (category === 'create' && !unknown) setCreateReceipt(null);
@@ -178,7 +181,9 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
       receipt = { path: '/media/imports', body: { requestId: newPhotoRequestId(), accountId, consentVersion: CONSENT, allowTemporaryProcessing: true } };
       setCreateReceipt(receipt);
     }
-    void write(receipt.path, 'POST', receipt.body, async data => { setCreateReceipt(null); setTemporary(false); await readImport(data.import.id, true); await support(); }, 'create');
+    void write(receipt.path, 'POST', receipt.body, async data => {
+      await finishPhotoCreate(data.import.id, id => readImport(id, true), support, () => { setCreateReceipt(null); setTemporary(false); });
+    }, 'create');
   }
   function saveSelection() {
     if (!importDetail || confirmReview || !persist) return;
@@ -250,7 +255,13 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
             {row.results.filter(result => ['failed', 'skipped'].includes(result.status)).map(result => <Text key={result.position}>第 {result.position} 张：{photoError(result.error?.code)}</Text>)}
           </>}
           {!!row.error && <Text style={{ color: theme.colors.error }}>{photoError(row.error.code)}</Text>}
-          {row.state === 'waiting_selection' && !expired && <><Button mode="contained" icon="open-in-new" disabled={busy} onPress={() => void readAction(async () => { const url = await checked(async () => row.pickerUri || '', () => importRef.current?.import.id === row.id); if (!openPhotosProvider(url, 'picker')) setError('选片链接无法安全打开，请刷新状态。'); })}>打开 Google Photos 选片页</Button><Text variant="bodySmall">选完后回到这里。未打开新页面时，可再次点击同一个按钮；不会创建新的选片会话。</Text></>}
+          {row.state === 'waiting_selection' && !expired && <><Button mode="contained" icon="open-in-new" disabled={busy || clock - importReadAt.current > 15000} onPress={() => {
+            if (!current() || importRef.current?.import.id !== row.id || importRef.current.import.state !== 'waiting_selection' || Date.parse(row.expiresAt) <= Date.now() || Date.now() - importReadAt.current > 15000) { setError('请先刷新本次选择的状态，再打开选片页。'); return; }
+            // Keep window.open in the user gesture; refresh after opening this
+            // already identity-checked, short-lived session (no new POST).
+            if (!openPhotosProvider(row.pickerUri || '', 'picker')) setError('选片链接无法安全打开，请刷新状态。');
+            else void readAction(() => readImport(row.id));
+          }}>打开 Google Photos 选片页</Button><Text variant="bodySmall">选完后回到这里。未打开新页面时，可再次点击同一个按钮；不会创建新的选片会话。</Text></>}
           {row.state === 'create_unknown' && <Text>Google 可能已创建选片页，但未取得结果。不会自动新建；请取消本记录，再明确开始一次选择。</Text>}
           {expired && <Text>临时预览已过期，请刷新后重新选择。</Text>}
           {canSelect && <>
