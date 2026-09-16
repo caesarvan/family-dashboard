@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { accountId, selectionVersion, readAccounts, readDiscovery, selectionDraft, sourcePayload, sameSelection, selectionChanges, reviewSelection, accountTime } from '../frontend/src/lib/accounts.ts';
+import { accountId, selectionVersion, readAccounts, readDiscovery, selectionDraft, sourcePayload, sameSelection, selectionChanges, reviewSelection, accountTime, stopSyncDraft } from '../frontend/src/lib/accounts.ts';
 
 const id = 'a'.repeat(32), version = 'a'.repeat(64), newer = 'b'.repeat(64);
 const calendar = { id: 'remote-calendar', kind: 'calendar', name: '合成工作安排', writable: false };
@@ -96,4 +96,15 @@ test('explicit conflict review adopts fresh version but preserves user changes a
 test('empty success time is distinct from failed or malformed timestamps', () => {
   assert.equal(accountTime(''), '尚无成功记录'); assert.equal(accountTime('not-time'), '成功时间无法识别');
   assert.notEqual(accountTime('2026-09-16T01:00:00Z'), '尚无成功记录');
+});
+
+test('stopping expired sync uses the saved version and lists all removals without discovery or account deletion', () => {
+  const primary = { ...saved, id: 'c'.repeat(32), remoteId: task.id, kind: 'tasks', owner: 'shared', primary: true };
+  const expired = { ...account, needsReauth: true, sources: [saved, primary], capabilities: { sync: false, photos: true } };
+  const value = stopSyncDraft(expired, 'member1');
+  assert.deepEqual(sourcePayload(value), { sources: [], selectionVersion: version });
+  assert.deepEqual(selectionChanges(value).removed, expired.sources);
+  assert.equal(expired.sources.length, 2); assert.equal(value.accountId, expired.id);
+  const reviewed = reviewSelection(value, { ...expired, selectionVersion: newer });
+  assert.deepEqual(sourcePayload(reviewed), { sources: [], selectionVersion: newer });
 });

@@ -7,7 +7,7 @@ import { useHousehold } from '../lib/household';
 import { openSyncProvider } from '../lib/navigation';
 import { syncAuthMessage } from '../lib/authNavigation';
 import { PhotoReadDiscarded, PhotoReadFence, type PhotoSession } from '../lib/photos';
-import { accountTime, providerName, readAccounts, readDiscovery, reviewSelection, sameSelection, selectionChanges, selectionDraft, sourceKey, sourcePayload,
+import { accountTime, providerName, readAccounts, readDiscovery, reviewSelection, sameSelection, selectionChanges, selectionDraft, sourceKey, sourcePayload, stopSyncDraft,
   type AccountList, type CloudAccount, type DraftSource, type ProviderId, type SelectionDraft, type SourceChoice, type SourceOwner } from '../lib/accounts';
 import type { ScreenProps } from '../lib/types';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
@@ -54,13 +54,14 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
   const [conflict, setConflictState] = useState<CloudAccount | null>(null), conflictRef = useRef<CloudAccount | null>(null);
   const [pending, setPendingState] = useState<Pending | null>(null), pendingRef = useRef<Pending | null>(null);
   const [query, setQuery] = useState(''), [offset, setOffset] = useState(0), [consent, setConsent] = useState(false);
+  const [stopMode, setStopMode] = useState(false);
   const [reviewing, setReviewing] = useState(false), [disconnect, setDisconnect] = useState<CloudAccount | null>(null), [discard, setDiscard] = useState(false);
   const current = () => alive.current && active.current && focused.current && appActive.current && !denied.current
     && latest.current.identityKey === props.identityKey && latest.current.online && online() && inForeground();
   const setDraft = (next: SelectionDraft | null) => { draftRef.current = next; setDraftState(next); };
   const setConflict = (next: CloudAccount | null) => { conflictRef.current = next; setConflictState(next); };
   const setPending = (next: Pending | null) => { pendingRef.current = next; setPendingState(next); };
-  function clearEditor() { setDraft(null); setConflict(null); setQuery(''); setOffset(0); setConsent(false); setReviewing(false); setDiscard(false); }
+  function clearEditor() { setDraft(null); setConflict(null); setQuery(''); setOffset(0); setConsent(false); setStopMode(false); setReviewing(false); setDiscard(false); }
   function conceal(clear = false) {
     active.current = false; ++generation.current; fence.current.invalidate(); setVisible(false); setBusy(false);
     reading.current = false; writing.current = false; setList(null); setReviewing(false); setDisconnect(null); setDiscard(false);
@@ -174,9 +175,13 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
         for (const r of old.rows) if (!present.has(sourceKey(r)) && r.selected) rows.push({ ...r, available: false, writable: false });
         setDraft({ ...old, rows });
         if (old.version !== result.selectionVersion) setConflict({ ...account, sources: result.selected, selectionVersion: result.selectionVersion });
-      } else { setDraft(next); setConflict(null); setQuery(''); setOffset(0); }
+      } else { setDraft(next); setConflict(null); setQuery(''); setOffset(0); setStopMode(false); }
       setConsent(false); setReviewing(false); setNotice('请选择准备与家人共享的内容。未选择的日历和清单不会同步。');
     });
+  }
+  function stopSync(account: CloudAccount) {
+    if (!current() || busy || pendingRef.current || !account.sources.length) return;
+    clearEditor(); setDraft(stopSyncDraft(account, props.user.id)); setStopMode(true); setError(''); setNotice('');
   }
   function changeRow(row: DraftSource, patch: Partial<DraftSource>) {
     if (busy || pending || !current() || conflictRef.current) return;
@@ -267,6 +272,7 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
             <View style={styles.buttons}>
               <Button mode="outlined" accessibilityLabel={'选择日历与清单：' + (account.name || account.email)} disabled={locked || account.needsReauth || !account.capabilities.sync} onPress={() => void discover(account)}>选择日历与清单</Button>
               {(account.needsReauth || !account.capabilities.sync) && <Button mode="contained" disabled={locked || !list.providers.find(p => p.id === account.provider)?.configured} onPress={() => void bind(account.provider)}>重新授权 {providerName(account.provider)}</Button>}
+              {!!account.sources.length && (account.needsReauth || !account.capabilities.sync) && <Button accessibilityLabel={'停止日历与清单同步：' + (account.name || account.email)} disabled={locked} onPress={() => stopSync(account)}>停止日历与清单同步</Button>}
               <Button accessibilityLabel={'检查更新：' + (account.name || account.email)} disabled={locked || account.needsReauth || !account.sources.length} onPress={() => void sync(account)}>检查更新</Button>
               {account.capabilities.photos && <Button disabled={locked} onPress={() => props.onNavigate('photos')}>管理相册</Button>}
               <Button accessibilityLabel={'断开绑定：' + (account.name || account.email)} textColor={theme.colors.error} disabled={locked} onPress={() => { setDisconnect(account); setError(''); }}>断开绑定</Button>
@@ -275,11 +281,11 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
         </SectionCard>)}
         <Text variant="bodySmall" style={styles.muted}>任务约每 30 秒、日历约每 60 秒由后台检查；此页每 15 秒读取最新状态。网络、限流或重新授权可能延长等待。日历在原应用编辑；共同清单支持完成状态回写。</Text>
       </>}
-      {!!draft && !!editingAccount && <SectionCard title="选择共享内容">
+      {!!draft && !!editingAccount && <SectionCard title={stopMode ? '停止日历与清单同步' : '选择共享内容'}>
         <View style={styles.stack}>
           <Text>{editingAccount.name || editingAccount.email} · {providerName(editingAccount.provider)}</Text>
-          <Text variant="bodySmall" style={styles.muted}>所选日历的完整标题、地点与任务将展示给双方及已配对电视。日历归属仅用于区分安排，不改变共享范围。</Text>
-          {(editingAccount.needsReauth || !editingAccount.capabilities.sync) && <View style={styles.warning}>
+          <Text variant="bodySmall" style={styles.muted}>{stopMode ? '取消此账户的全部日历和清单来源，移除看板中的同步镜像并释放家庭主清单。账户绑定和已导入照片保留，原平台记录保留；不需要重新授权。' : '所选日历的完整标题、地点与任务将展示给双方及已配对电视。日历归属仅用于区分安排，不改变共享范围。'}</Text>
+          {!stopMode && (editingAccount.needsReauth || !editingAccount.capabilities.sync) && <View style={styles.warning}>
             <Text>此账户需要重新授权日历与清单。原输入仍保留；前往服务商授权会离开此页面。</Text>
             <Button mode="contained" disabled={locked || !list.providers.find(p => p.id === editingAccount.provider)?.configured} onPress={() => void bind(editingAccount.provider)}>重新授权 {providerName(editingAccount.provider)}</Button>
           </View>}
@@ -290,6 +296,8 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
             {conflict.sources.length ? conflict.sources.map(row => <Text key={row.id}>{summary(row)}</Text>) : <Text>未选择任何来源</Text>}
             <Button mode="outlined" disabled={locked} onPress={() => { const currentDraft = draftRef.current, fresh = conflictRef.current; if (!currentDraft || !fresh) return; setDraft(reviewSelection(currentDraft, fresh)); setConflict(null); setConsent(false); setError(''); setReviewing(false); }}>已核对最新选择，继续编辑</Button>
           </View>}
+          {stopMode ? <><Button icon="arrow-left" disabled={locked} onPress={clearEditor}>取消停止</Button>
+            {draft.saved.map(row => <Text key={row.id}>{summary(row)}</Text>)}</> : <>
           <View style={styles.buttons}><Button icon="arrow-left" disabled={locked} onPress={() => setDiscard(true)}>返回账户</Button>
             <Button icon="refresh" disabled={locked} onPress={() => void discover(editingAccount, true)}>重新读取来源</Button></View>
           <TextInput mode="outlined" label="搜索日历或清单" accessibilityLabel="搜索日历或清单" value={query} maxLength={200} disabled={!!pending || !current()} onChangeText={text => { setQuery(text); setOffset(0); }} outlineStyle={styles.inputOutline} style={styles.input} />
@@ -308,9 +316,10 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
           {!pageRows.length && <Text style={styles.muted}>没有匹配的日历或清单。可以换个关键词或重新读取来源。</Text>}
           {filtered.length > 24 && <View style={styles.pagination}><Text variant="bodySmall">第 {Math.floor(offset / 24) + 1} / {Math.max(1, Math.ceil(filtered.length / 24))} 页</Text>
             <View style={styles.buttons}><Button disabled={offset === 0 || locked} onPress={() => setOffset(Math.max(0, offset - 24))}>上一页</Button><Button disabled={offset + 24 >= filtered.length || locked} onPress={() => setOffset(offset + 24)}>下一页</Button></View></View>}
+          </>}
           <Divider />
-          <Text variant="bodySmall" style={styles.muted}>家庭最多设置一份主清单，也可以暂不设置。设为主清单，表示允许家人将明确确认的本地待办发布到此清单；不会自动迁移已有待办。</Text>
-          <Check label={consentLabel} checked={consent} disabled={locked || !!conflict} onPress={() => setConsent(!consent)} />
+          {!stopMode && <Text variant="bodySmall" style={styles.muted}>家庭最多设置一份主清单，也可以暂不设置。设为主清单，表示允许家人将明确确认的本地待办发布到此清单；不会自动迁移已有待办。</Text>}
+          <Check label={stopMode ? '我确认停止此账户的日历与清单同步' : consentLabel} checked={consent} disabled={locked || !!conflict} onPress={() => setConsent(!consent)} />
           <Text variant="bodySmall" style={styles.muted}>保存会替换此账户的全部共享范围。取消选择会移除看板中的同步内容，原应用记录保留。</Text>
           <Button mode="contained" disabled={locked || !!conflict || !consent} onPress={startReview}>查看变更</Button>
         </View>
@@ -318,15 +327,15 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
     </>}
     <Portal>{privateVisible && <>
       <Dialog visible={privateVisible && reviewing && !!draft} onDismiss={() => !busy && setReviewing(false)} style={dialogStyle}>
-        <Dialog.Title>确认共享范围</Dialog.Title>
+        <Dialog.Title>{stopMode ? '停止日历与清单同步？' : '确认共享范围'}</Dialog.Title>
         <Dialog.ScrollArea style={styles.dialogScroll}><ScrollView contentContainerStyle={styles.dialogContent}>
-          <Text>将保存以下完整选择，并向双方及已配对电视共享：</Text>
+          <Text>{stopMode ? '将取消全部日历与清单同步，只移除其看板镜像。账户绑定、此前导入的照片及其家庭和电视展示许可保持；Google Photos 和其他原应用中的原件保留。' : '将保存以下完整选择，并向双方及已配对电视共享：'}</Text>
           {draft && (selectionChanges(draft).selected.length ? selectionChanges(draft).selected.map(row => <Text key={sourceKey(row)}>{summary(row)}</Text>) : <Text>不共享任何日历或清单</Text>)}
           {draft && selectionChanges(draft).removed.length > 0 && <><Text variant="titleSmall">将取消以下来源</Text>
             {selectionChanges(draft).removed.map(row => <Text key={row.id}>{row.name}</Text>)}<Text>这些来源在看板中的同步内容会移除，原应用中的记录不会删除。</Text></>}
           {draft?.rows.some(row => row.selected && row.primary) && <Text>家庭主清单允许家人将逐项确认的本地待办发布到该账户。</Text>}
         </ScrollView></Dialog.ScrollArea>
-        <Dialog.Actions style={styles.buttons}><Button disabled={busy} onPress={() => setReviewing(false)}>继续编辑</Button><Button mode="contained" disabled={locked || !!conflict} onPress={() => void save()}>确认保存</Button></Dialog.Actions>
+        <Dialog.Actions style={styles.buttons}><Button disabled={busy} onPress={() => stopMode ? clearEditor() : setReviewing(false)}>{stopMode ? '取消停止' : '继续编辑'}</Button><Button mode="contained" disabled={locked || !!conflict} onPress={() => void save()}>{stopMode ? '确认停止' : '确认保存'}</Button></Dialog.Actions>
       </Dialog>
       <Dialog visible={privateVisible && !!disconnect} onDismiss={() => !busy && setDisconnect(null)} style={dialogStyle}>
         <Dialog.Title>断开账户绑定</Dialog.Title>

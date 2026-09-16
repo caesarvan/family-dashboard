@@ -69,6 +69,10 @@ export function selectionDraft(id: string, discovery: SourceDiscovery, member: s
   for (const s of discovery.selected) if (!known.has(sourceKey(s))) rows.push({ id: s.remoteId, kind: s.kind, name: s.name, writable: false, owner: s.owner, primary: s.primary, selected: true, available: false });
   return { accountId: id, rows, saved: discovery.selected, version: discovery.selectionVersion };
 }
+export function stopSyncDraft(account: CloudAccount, member: string): SelectionDraft {
+  const draft = selectionDraft(account.id, { sources: [], selected: account.sources, selectionVersion: account.selectionVersion }, member);
+  return { ...draft, rows: draft.rows.map(row => ({ ...row, selected: false, primary: false })) };
+}
 export function sourcePayload(draft: SelectionDraft) {
   if (!selectionVersion(draft.version) || !accountId(draft.accountId)) return bad();
   const selected = draft.rows.filter(row => row.selected);
