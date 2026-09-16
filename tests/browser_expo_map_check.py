@@ -369,7 +369,7 @@ def main():
                 server.app = source.create_app(config)
                 open_map(page)
                 assert get(owner, '/api/journey-places/' + uid)['place'] == before_restart
-                assert get(owner, '/api/media/items?journeyId=' + journey['id'])['total'] == 26
+                assert get(owner, '/api/media/items?scope=visible&journeyId=' + journey['id'])['total'] == 26
                 with closing(sqlite3.connect(db_path)) as con:
                     assert con.execute('PRAGMA foreign_key_check').fetchall() == []
                     assert con.execute('SELECT count(*) FROM media_tv_grants').fetchone()[0] == 0
