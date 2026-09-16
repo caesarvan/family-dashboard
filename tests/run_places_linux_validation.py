@@ -125,7 +125,7 @@ def copy_support(root, target, files):
 
 
 PROGRAM = r'''
-import hashlib,json,platform,sys,sysconfig
+import hashlib,json,os,platform,sys,sysconfig
 from pathlib import Path
 cfg=json.loads(sys.argv[1]); root=Path('/app')
 def identity():
@@ -148,6 +148,11 @@ else:
  try:
   proof['before']=verify()
   if cfg['mode']=='tests':
+   # Docker masks inherited credentials; remove those masks before tests so
+   # their explicit synthetic app configuration controls provider selection.
+   for key in ('ASSISTANT_PROVIDER','NVIDIA_API_KEY','NVIDIA_MODEL','OPENAI_API_KEY','OPENAI_MODEL',
+               'MICROSOFT_CLIENT_ID','MICROSOFT_CLIENT_SECRET','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET'):
+    os.environ.pop(key,None)
    import pytest
    proof['pytestVersion']=pytest.__version__
    code=int(pytest.main(['-q','-r','a','-p','no:cacheprovider','--junitxml=/tmp/targeted.xml',*cfg['scripts']]))

@@ -43,6 +43,8 @@ SHA256 25da3126006089256813b118850ad07c3ca31cf6ae2c19cc25dc9a115f820979
 
 容器使用新 UUID 名称与专用 label、明确不可变镜像、`network none`、只读 rootfs、UID/GID 10001、去除能力、no-new-privileges、内存/PID/CPU 限制、禁用镜像 healthcheck；只写本组全新临时目录。创建后核对 image/name/label/network/user、挂载全集、无端口与无特权，再启动。不开 worker，不传真实账户或模型配置。
 
+容器创建时仍以空值屏蔽镜像可能继承的凭据，但测试进程在导入 pytest 前移除这些 provider 配置键，包括 `ASSISTANT_PROVIDER` 及 NVIDIA／OpenAI／Microsoft／Google 的 key、model、client ID 和 secret。应用测试随后使用自己的显式虚构配置；runner 不强制选择 local，也不以空 NVIDIA 键覆盖测试中的假 OpenAI 配置。网络隔离仍由 Docker `network none` 保持。本地专项实际运行嵌入程序的子进程，仅替换三个容器路径，检查模块收集时配置键已不存在，并验证两种假模型配置均可选择；该子进程禁用网络连接。
+
 ## 原件、失败与清理
 
 每组保存 `targeted.log`、真实 `targeted.xml`、`runtime-proof.json`；两份 Python 探针日志与实际组 JSON 也列入最终 `result.json` 的 SHA 引用。JUnit 用实际 testcase 计数，核对所有指定脚本都有用例且无其他脚本；失败、错误、跳过或计数不符均不能通过。两组分开记录，不与 Windows 或旧发布相加为一次全套。
