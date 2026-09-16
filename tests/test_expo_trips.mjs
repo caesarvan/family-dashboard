@@ -1,6 +1,6 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {toCents,amountText,validDay,tripDays,newDraft,editDraft,upgradeDraft,previewPayload,newKey,recordVersions,eventDates,readForMember,memberKey,SessionChangedError,validateReceipt} from '../frontend/src/lib/trips.ts';
+import {toCents,amountText,validDay,tripDays,newDraft,initialPlanningDraft,purchaseBudgetText,editDraft,upgradeDraft,previewPayload,newKey,recordVersions,eventDates,readForMember,memberKey,SessionChangedError,validateReceipt} from '../frontend/src/lib/trips.ts';
 
 const people=[{id:'member1',name:'甲'},{id:'member2',name:'乙'}];
 const plan={schemaVersion:2,referenceTimezone:'Europe/Paris',title:'原计划',start:'2026-10-24',end:'2026-10-26',international:true,memberIds:['member1'],budget:20001,saved:10000,paid:9999,note:'原备注',destinations:[{key:'paris',country:'法国',city:'巴黎',arrival:'2026-10-24',departure:'2026-10-26',timeZone:'Europe/Paris'}],checklist:[{key:'prepare',title:'原准备',owner:'shared',due:'2026-10-20',dueOffsetDays:-4,note:'',category:'preparation'}],shopping:[{key:'bag',title:'背包',owner:'shared',quantity:'1 件',budget:100,note:''}],segments:[{key:'stay',title:'住宿',kind:'stay',propertyName:'合成住宿',timeZone:'Europe/Paris',checkInDate:'2026-10-24',checkOutDate:'2026-10-26',bookingState:'booked',datePolicy:'fixed',unknownExtension:{preserved:true}}]};
@@ -53,4 +53,42 @@ test('member reads reject TV before data and csrf, household, auth, or owner cha
 });
 test('late reads from a disposed screen are discarded',async()=>{
   let current=true;await assert.rejects(readForMember('/journeys',memberKey(user),async path=>{if(path!=='/me'){current=false;return {journeys:[]};}return session;},()=>current),SessionChangedError);
+});
+const briefDraft=()=>({plan:{...structuredClone(plan),schemaVersion:1,segments:[{key:'paris-stop',title:'巴黎停留',start:plan.start,end:plan.end,location:'巴黎',note:''}]},budget:'200.01',saved:'100.00',paid:'99.99'});
+test('initial planning handoff rejects every existing target and non-v1 seed',()=>{
+  for(const field of ['id','journeyId','revision','tripId','tripRevision','observed']){
+    assert.throws(()=>initialPlanningDraft({...briefDraft(),[field]:'existing'},people),/只能新建/);
+    const draft=briefDraft();draft.plan[field]='existing';assert.throws(()=>initialPlanningDraft(draft,people),/只能新建/);
+  }
+  const draft=briefDraft();draft.plan.schemaVersion=2;assert.throws(()=>initialPlanningDraft(draft,people),/日期级/);
+});
+test('initial draft projects only plan fields, is independent and cannot forward an old preview',()=>{
+  const seed=briefDraft();seed.previewToken='old-token';seed.idempotencyKey='old-key';seed.purchaseBudgets={bag:'900.00'};seed.plan.actions=[{delete:'existing'}];seed.plan.shopping[0].id='old-purchase';seed.budget='999.00';
+  const draft=initialPlanningDraft(seed,people),payload=previewPayload(draft,people);
+  assert.deepEqual(Object.keys(payload),['plan']);assert.deepEqual(Object.keys(draft).sort(),['budget','paid','plan','saved']);assert.equal(draft.budget,'200.01');
+  assert.equal(Object.hasOwn(draft.plan,'actions'),false);assert.equal(Object.hasOwn(draft.plan.shopping[0],'id'),false);assert.equal(Object.hasOwn(draft.plan,'referenceTimezone'),false);
+  assert.equal(payload.plan.shopping[0].budget,100);assert.equal(payload.plan.checklist[0].key,'prepare');assert.equal(payload.plan.segments[0].key,'paris-stop');
+  seed.plan.checklist[0].title='changed after handoff';assert.equal(draft.plan.checklist[0].title,'原准备');
+  const unicode=briefDraft();unicode.plan.title='😀'.repeat(100);unicode.plan.note='😀'.repeat(2000);assert.equal(initialPlanningDraft(unicode,people).plan.title,unicode.plan.title);
+  unicode.plan.title+='😀';assert.throws(()=>initialPlanningDraft(unicode,people),/字段/);
+});
+test('initial draft rejects malformed member, amount and repeated row keys before rendering',()=>{
+  for(const modify of [draft=>{draft.plan.memberIds=['stranger'];},draft=>{draft.plan.shopping[0].budget=true;},draft=>{draft.plan.destinations=null;},draft=>{draft.plan.checklist.push(structuredClone(draft.plan.checklist[0]));}]){
+    const draft=briefDraft();modify(draft);assert.throws(()=>initialPlanningDraft(draft,people));
+  }
+});
+test('preparation and purchases may use together or real household owners only',()=>{
+  const draft=initialPlanningDraft(briefDraft(),people);draft.plan.checklist[0].owner='member2';draft.plan.shopping[0].owner='member1';
+  assert.equal(previewPayload(draft,people).plan.checklist[0].owner,'member2'); // owner need not travel
+  for(const [collection,owner] of [['checklist','other-household'],['shopping','']]){const other=structuredClone(draft);other.plan[collection][0].owner=owner;assert.throws(()=>previewPayload(other,people),/负责人/);}
+});
+test('purchase budget drafts preserve empty versus zero and cents by stable row key',()=>{
+  const draft=initialPlanningDraft(briefDraft(),people);draft.plan.shopping.push({key:'new',title:'车票',owner:'shared',quantity:'1 张',budget:null,note:''});
+  assert.equal(purchaseBudgetText(draft,draft.plan.shopping[1]),'');draft.purchaseBudgets={bag:'123.45',new:'0'};
+  draft.plan.shopping.reverse();let payload=previewPayload(draft,people);
+  assert.deepEqual(payload.plan.shopping.map(row=>[row.key,row.budget]),[['new',0],['bag',12345]]);assert.equal(draft.plan.shopping[1].budget,100);
+  draft.purchaseBudgets.bag=' ';payload=previewPayload(draft,people);assert.equal(payload.plan.shopping[1].budget,null);
+  draft.purchaseBudgets.bag='1.005';assert.throws(()=>previewPayload(draft,people),/两位小数/);
+  draft.plan.shopping=draft.plan.shopping.filter(row=>row.key!=='bag');assert.equal(previewPayload(draft,people).plan.shopping.length,1);
+  draft.plan.shopping[0].key='constructor';assert.equal(previewPayload(draft,people).plan.shopping[0].budget,null);
 });
