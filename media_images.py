@@ -55,7 +55,7 @@ def _invalid():
     raise MediaImageError('invalid_image')
 
 
-def _jpeg_segments(raw):
+def _jpeg_segments(raw, *, first_image=False):
     """Walk marker lengths and scan boundaries, not the JPEG entropy codec."""
     if not raw.startswith(b'\xff\xd8'):
         raise MediaImageError('unsupported_format')
@@ -71,7 +71,7 @@ def _jpeg_segments(raw):
         marker = raw[pos]
         pos += 1
         if marker == 0xD9:
-            if pos != len(raw) or not saw_scan:
+            if (not first_image and pos != len(raw)) or not saw_scan:
                 _invalid()
             yield marker, start, pos
             return
@@ -101,6 +101,75 @@ def _jpeg_segments(raw):
                 yield None, entropy_start, pos
                 break
     _invalid()
+
+
+def _exif_orientation(payload):
+    """Read only a bounded IFD0 inline SHORT, never follow metadata pointers."""
+    if not payload.startswith(b'Exif\0\0'):
+        return None
+    tiff = payload[6:]
+    order = {'little': b'II', 'big': b'MM'}
+    endian = next((key for key, value in order.items() if tiff[:2] == value), None)
+    if endian is None or len(tiff) < 8 or int.from_bytes(tiff[2:4], endian) != 42:
+        return None
+    offset = int.from_bytes(tiff[4:8], endian)
+    if offset < 8 or offset + 2 > len(tiff):
+        return None
+    count = int.from_bytes(tiff[offset:offset+2], endian)
+    if offset + 2 + count * 12 + 4 > len(tiff):
+        return None
+    values = []
+    for pos in range(offset + 2, offset + 2 + count * 12, 12):
+        if int.from_bytes(tiff[pos:pos+2], endian) != 274:
+            continue
+        if (int.from_bytes(tiff[pos+2:pos+4], endian) != 3 or
+                int.from_bytes(tiff[pos+4:pos+8], endian) != 1):
+            return None
+        value = int.from_bytes(tiff[pos+8:pos+10], endian)
+        if not 1 <= value <= 8:
+            return None
+        values.append(value)
+    return values[0] if len(values) == 1 else None
+
+
+def _jpeg_primary(raw):
+    """Keep the complete primary codestream; discard secondary data/metadata.
+
+    MPF must be removed before Pillow opens the JPEG, otherwise its factory can
+    switch to an MPO decoder. Keep only generated color markers and, if valid,
+    a generated orientation-only EXIF block. Malformed unused EXIF is never
+    passed to Pillow; its pixel warning/error policy is unchanged.
+    """
+    clean = bytearray(b'\xff\xd8')
+    orientations = []
+    for marker, start, end in _jpeg_segments(raw, first_image=True):
+        if marker is None or not (0xE0 <= marker <= 0xEF or marker == 0xFE):
+            clean.extend(raw[start:end])
+            continue
+        # Skip optional FF marker fill bytes; the walker checked the length.
+        pos = start
+        while raw[pos] == 255:
+            pos += 1
+        payload = raw[pos+3:end]
+        replacement = None
+        if marker == 0xE1:
+            orientation = _exif_orientation(payload)
+            if orientation is not None:
+                orientations.append(orientation)
+        elif marker == 0xE0 and payload.startswith(b'JFIF\0') and len(payload) >= 14:
+            replacement = b'JFIF\0\x01\x01\0\0\x01\0\x01\0\0'
+        elif marker == 0xEE and payload.startswith(b'Adobe'):
+            if len(payload) < 12 or payload[11] not in (0, 1, 2):
+                _invalid()
+            replacement = b'Adobe\0\x64\0\0\0\0' + payload[11:12]
+        if replacement is not None:
+            clean.extend(bytes((255, marker)) + (len(replacement)+2).to_bytes(2, 'big') + replacement)
+    if len(orientations) == 1:
+        # IFD0 has one inline SHORT and no next IFD. No source bytes survive.
+        exif = (b'Exif\0\0II\x2a\0\x08\0\0\0\x01\0\x12\x01\x03\0\x01\0\0\0' +
+                orientations[0].to_bytes(2, 'little') + b'\0' * 6)
+        clean[2:2] = b'\xff\xe1' + (len(exif)+2).to_bytes(2, 'big') + exif
+    return bytes(clean)
 
 
 def _container(raw, fmt):
@@ -185,6 +254,8 @@ def sanitize_media_preview(raw: bytes, mime_type: str) -> Preview:
         raise MediaImageError('unsafe_decoder_configuration')
     fmt = FORMATS[mime_type]
     try:
+        if fmt == 'JPEG':
+            raw = _jpeg_primary(raw)
         _container(raw, fmt)
         # Decoder warnings may contain source metadata. Convert them to fixed
         # errors rather than forwarding their text to logs or the caller.
