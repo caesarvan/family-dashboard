@@ -472,13 +472,34 @@ def main():
                 expect(page.locator('body')).not_to_contain_text('本次未发现，已保留')
                 expect(checkbox(page, '选择清单：可选清单')).to_be_checked()
                 open_accounts(page)
+                write(owner, 'POST', source_path, {'selectionVersion': account(owner)['selectionVersion'],
+                    'sources': [{'kind': 'tasks', 'remoteId': 'list-2', 'owner': 'shared', 'primary': True}]})
+                open_accounts(page)
                 control['discoveryError'] = provider_error('合成授权需要重新确认', 401, reauth=True)
                 button(page, '选择日历与清单').first.click()
                 expect(page.locator('body')).to_contain_text(re.compile('重新.*授权|重新.*绑定|重新.*连接'))
                 assert account(owner)['needsReauth']
+                assert account(owner)['sources'][0]['primary']
+                before_stop_discovery = control['discoveries']
+                button(page, '停止日历与清单同步').click()
+                stop_consent = checkbox(page, '我确认停止此账户的日历与清单同步')
+                stop_consent.focus()
+                stop_consent.press('Space')
+                expect(stop_consent).to_be_checked()
+                button(page, '查看变更').click()
+                expect(page.get_by_text('停止日历与清单同步？', exact=True)).to_be_visible()
+                button(page, '确认停止').click()
+                expect(button(page, '选择日历与清单').first).to_be_visible()
+                assert account(owner)['needsReauth'] and account(owner)['sources'] == []
+                assert control['discoveries'] == before_stop_discovery
+                assert source_posts()[-1]['body']['sources'] == [] and source_posts()[-1]['body']['selectionVersion']
+                assert get(owner, '/api/state')['sync']['primaryTaskSource'] is None
+                passed('expired account can explicitly stop with CAS empty selection and no provider discovery; binding remains while selected sources and primary are released')
                 control['discoveryError'] = None
                 with engine.db() as con:
                     con.execute('UPDATE cloud_accounts SET needs_reauth=0 WHERE id=?', (aid,))
+                write(owner, 'POST', source_path, {'selectionVersion': account(owner)['selectionVersion'],
+                    'sources': [{'kind': 'tasks', 'remoteId': 'list-2', 'owner': 'shared', 'primary': False}]})
                 fixture.due(engine)
                 engine.tick()
                 open_accounts(page)
