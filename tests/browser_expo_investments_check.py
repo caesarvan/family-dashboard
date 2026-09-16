@@ -67,8 +67,7 @@ class Run(FinanceRun):
             assert response.value.status == 201, response.value.text()
             created = response.value.json()
             assert created['valueCents'] is None and created['costCents'] == 12345
-            expect(button(page, '查看持仓 合成私人持仓')).to_be_visible()
-            button(page, '查看持仓 合成私人持仓').click()
+            expect(page.get_by_test_id('investment-detail-' + created['id'])).to_be_visible()
             button(page, '编辑这条持仓').click()
             page.get_by_role('textbox', name='持仓估值', exact=True).fill('0')
             with page.expect_response(lambda r: r.request.method == 'PATCH' and urlsplit(r.url).path == BASE + '/' + created['id']) as updated:
@@ -103,20 +102,26 @@ class Run(FinanceRun):
                 route.abort('failed')
             page.route(self.base + BASE, lose_reply)
             button(page, '保存当前记录').click()
-            expect(button(page, '核对操作结果')).to_be_enabled()
+            expect(button(page, '编辑这条持仓')).to_be_enabled(timeout=15000)
             page.unroute(self.base + BASE, lose_reply)
             assert len(captured) == 1 and len(self.holdings(ctx)) == 1
-            button(page, '核对操作结果').click()
-            expect(button(page, '查看持仓 合成响应丢失持仓')).to_be_visible()
+            expect(page.get_by_role('heading', name='合成响应丢失持仓', exact=True)).to_be_visible()
             assert len(self.holdings(ctx)) == 1
             read = self.get(ctx, BASE + '/operations/' + captured[0]['requestId'])
             assert read['recordId'] == self.holdings(ctx)[0]['id']
+            assert self.count_requests('GET', BASE + '/operations/' + captured[0]['requestId']) >= 1
             self.passed('Lost successful POST response is recovered by its original durable operation receipt without duplicate creation')
 
     def open_import(self, page, content, name='synthetic-holdings.csv'):
         button(page, '导入持仓').click()
         expect(page.get_by_test_id('investment-import-panel')).to_be_visible()
-        page.get_by_role('textbox', name='持仓来源名称', exact=True).fill('合成稳定来源')
+        button(page, '选择持仓来源').click()
+        existing = page.get_by_role('menuitem', name='合成稳定来源', exact=True)
+        if existing.count():
+            existing.click()
+        else:
+            page.get_by_role('menuitem', name='新增来源名称', exact=True).click()
+            page.get_by_role('textbox', name='持仓来源名称', exact=True).fill('合成稳定来源')
         with page.expect_file_chooser() as chooser:
             button(page, '选择持仓文件').click()
         chooser.value.set_files({'name': name, 'mimeType': 'text/csv', 'buffer': content})
@@ -157,6 +162,8 @@ class Run(FinanceRun):
             button(page, '新增持仓').click()
             self.edit_fields(page, 'PRIVATE_MARKER_甲')
             button(page, '保存当前记录').click()
+            expect(button(page, '返回持仓列表')).to_be_enabled()
+            button(page, '返回持仓列表').click()
             expect(button(page, '查看持仓 PRIVATE_MARKER_甲')).to_be_visible()
             ctx.set_offline(True)
             expect(button(page, '查看持仓 PRIVATE_MARKER_甲')).not_to_be_visible()
