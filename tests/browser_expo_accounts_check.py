@@ -684,6 +684,7 @@ def main():
                 assert not report['pageErrors'] and not report['externalRequests']
                 report['passed'] = True
     except Exception:
+        report['passed'] = False
         report['failure'] = traceback.format_exc()
         print(report['failure'], flush=True)
     finally:
