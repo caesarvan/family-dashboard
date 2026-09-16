@@ -1,10 +1,20 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-16 19:16:22（北京时间），镜像 `sha256:6688c51fed543794a393bf397b49ccb0c36dee8c24e19efbdb0a3715c2ebd86c`。** JPEG 主图兼容补丁已上线；346 源文件、71 Markdown、51 静态资源、130 个方法／路径模板、48 张户内表及 2 张平台表，无数据迁移。安装源码对应 main `f603151`／integration `e2087e0` 同树；本次文档仅本地交接，不改已发布 manifest。发布后本人重试并经服务器读回确认：本批 5 张均出现预览并成功保存，0 失败。原失败的具体原因仍未确定，实体电视及长期行为另验。
+> **线上版本：2026-09-16 19:48:57（北京时间），镜像 `sha256:b82d0cdc1a594be661beed949fc317ddd7adaf2d2c53981f6403f667d31d0426`。** 家庭物品与助理本地照片／地点搜索已上线；367 源文件、80 份 README/docs Markdown、53 静态资源、144 个方法／路径模板、53 张户内表及 2 张平台表。安装 main `cf036908`／integration `0c7c783` 同树，48→53 迁移及发布后读回通过。本文档增量只作本地交接，不修改已发布 manifest。本人 Photos 此前实际 5／5 预览与保存成功；真实库存、新增搜索体验和实体电视尚待本人反馈。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
-## 当前接手基线：相册 48 表已上线
+## 当前接手基线：库存 53 表已上线
+
+2026-09-16 **19:48:57（北京时间）** 发布完成。main `cf0369084fb34ca24aa31777779d29e8487206fd`／integration `0c7c783985ef78e8391e874e0b00dbf38f536520` 同树 `8e8fb21c6a357340fd31bf2f98450e3c1e8464c9`；367 源文件、80 份 README/docs Markdown、53 静态资源、144 路由及 53+2 表。发布目录 `/opt/family-dashboard-releases/inventory-53-20260916T114808119918Z`。实际 1 户两库完整备份，旧 48 表全部行、schema、序列与平台目录保持，新五表在 app 启动后仍为空；通过后才启动 worker／web，原环境配置保持。
+
+19:49:16 全源／88 运行文件／53 HTTPS 静态资源核对通过，九个匿名接口 401；四服务 running、重启 0、app healthy，发布后备份 service success、timer active。Linux domain 177 passed／135.14s 与 recovery 42 passed／95.01s 是两次独立执行，完整证据见 [VALIDATION](VALIDATION.md)。当前 53 表不能重放 48→53 或更早迁移。
+
+最终安装包 manifest `c3c718d35ba43fd4b67505a6116264b709a90a7a9dd3d524e74f8e7a091a815c`。不可变镜像 `sha256:b82d0cdc1a594be661beed949fc317ddd7adaf2d2c53981f6403f667d31d0426` 来自 build source `9f5f5db`／tree `4173cb7`；最终源码相对构建来源只改变四份发布文档的精确字节，88 个实际运行文件相同，镜像无需因这些文档变化重新构建。
+
+家庭物品入口、手工数量与纠正、共享和导出见 [交付说明](INVENTORY-DELIVERY.md)；[AI 搜索](ASSISTANT-SEARCH.md) 只增加当前授权的照片／地点文字，不含库存，不自动写金融或云端。本人实际库存操作、新增搜索体验与实体电视尚未验收。Photos 此前本人真实 5／5 预览、保存成功；本轮未重做 Google 验收。
+
+## 历史接手基线：相册 48 表（19:16）
 
 安装源码 main `f603151c28677da5b59fc004b62759a45fde5fb3`／integration `e2087e06649f3b5b80409992e255511a79240e94` 同树 `dc8e805e22914b701c2e2e0b6d888bd047d66f36`。发布目录 `/opt/family-dashboard-releases/photos-jpeg-20260916T111536Z-20260916`，manifest `a48831b101ab78f5b4cc61ea29e8b1cb5204af70a13885886fcda47cd36635eb`。本次是 48 表内 JPEG 兼容补丁，无 schema 迁移；实际 1 户两库完整备份，停写至新 app 启动前后全部 48 表与平台 2 表的行、schema、序列保持，原配置保持。
 
@@ -15,7 +25,7 @@
 <a id="当前接手基线地点-44-表已上线"></a>
 ## 历史接手基线：地点 44 表（16:33）
 
-本节保留地点发布当时的状态，不能代替顶部媒体 48 表基线。
+本节保留地点发布当时的状态，不能代替顶部当前基线。
 
 2026-09-16 16:33:32 发布 main `6f3d97855613e9b8ff78df5850652180e083ea76` 与 integration `cd857f525e5bf9127b1338e17a1a003e58f4916e` 的同树 `5581c3fb16852afaf0455bff991c8560dbcdbf19`。安装 manifest `1a5990e0b7e500ed44986b979e413a8ba26c92bd6cf4c7757be429bed17e51d8`，目录 `/opt/family-dashboard-releases/journey-places-20260916T083232752975Z`。精确 READY 经非作者核对后才执行，实际证据见 [VALIDATION](VALIDATION.md)。
 
@@ -173,6 +183,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 
 | 负责功能 | 核心文件 | 先读的契约与关键边界 |
 |---|---|---|
+| 家庭物品 | `inventory_core.py`、`inventory_api.py`、`static/inventory-ui.js/.css` | [交付](INVENTORY-DELIVERY.md)、[API](INVENTORY-API.md)、[迁移](INVENTORY-MIGRATION.md)、[恢复](INVENTORY-RECOVERY.md)；当前成员、双 revision、明确数量确认、幂等、共享撤回和本人导出 |
 | 家庭例行计划 | `household_routines.py`、`static/household-routines.js/.css` | [例行计划契约](ROUTINES.md)；固定起始日、单个自动当前项、十分钟签名预览、原子回执、缺失与容量提示、只读助理及共享导出 |
 | 基础应用与共享数据 | `app.py`、`static/app.js` | [基础 API](API.md)；身份、CSRF/同源、共享实体 revision、模块注册和通用弹窗。原生 JS，无前端构建服务 |
 | 家庭隔离与登录会话 | `household_spaces.py`、`member_sessions.py`、对应 UI | [平台架构](PLATFORM.md)、[成员会话](MEMBER-SESSIONS.md)；每户独立 DB/密钥、两成员、邀请、撤销和认证代次。缺库不得初始化空身份 |
@@ -192,7 +203,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | 本人数据副本 | `data_portability.py`、`static/data-portability.js` | [导出契约](PORTABILITY.md)；仅本人私密与显式勾选的共同记录。排除令牌、会话/设备认证表和暂存预览；不是数据库恢复包 |
 | 部署与备份 | `Dockerfile`、`compose.yaml`、`deploy/` | [部署指导](DEPLOYMENT.md)、[运维说明](OPERATIONS.md)；源码白名单、现有配置、全部家庭、停止写入、成组备份及相配恢复 |
 
-当前路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md) 和 [contract-inventory.json](contract-inventory.json)，结构为 130 个方法/路径模板、48 张户内表与 2 张平台表，须与最终源码实例化一致。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
+当前路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md) 和 [contract-inventory.json](contract-inventory.json)，当前结构为 144 个方法/路径模板、53 张户内表与 2 张平台表，须与最终源码实例化一致。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
 
 ## 例行计划公共接缝
 
@@ -200,7 +211,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 
 `data_portability.py` 只在 `includeShared=true` 时加入 `shared.routines`。`home_assistant.py` 调用只读 `brief(con)`；`static/home-assistant.js` 按存在的数据显示例行计划待处理组。`static/product-shell.js` 提供三个入口并在共享状态刷新时通知例行模块；通知不发送请求、不重置草稿。新模块在 `product-shell.js` 之前加载。公开接口为 `HouseholdRoutines.open({planId?})`、`refresh()` 和 `notifyStateChanged()`。返回桥支持原待办／采购编辑器与 TaskPublish 初始选择页；保留未保存字段、图片和写中保护，显式返回重新核对原计划，不接管助理外层的关闭返回处理。Docker COPY 和 `deploy/prepare_release.py` 白名单都包含新后端。
 
-当前完整结构为 130 路由／48 户内表／2 平台表；资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
+当前完整结构为 144 路由／53 户内表／2 平台表；资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
 
 ## 已开发与待真实验证
 
@@ -256,9 +267,9 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 5. 明确接口/迁移/隐私变化后再编码。公共 API、数据模型、用户步骤、错误行为和相应测试一起交付；金额是整数分、不同币种分别计算，日期语义按旅行契约。
 6. 由集成人检查合并结果，完成对应组合测试、冻结、打包及发布。源码打包只收白名单，不生成凭据，也不是内容脱敏器；不能把私人文件临时放到 `docs/tests/static/deploy`。
 
-部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已是媒体 48 表，历史 42→43、43→43、43→44 以及本轮一次性 44→48 工具均不能重放；不能只改表数或照搬 DEPLOYMENT 的历史算法。下一次更新须绑定实际 48 表基线，恢复边界见 [媒体交付](MEDIA-DELIVERY.md)。
+部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已是库存 53 表，历史 42→43、43→43、43→44、44→48 及本次 48→53 工具均不能重放；不能只改表数或照搬 DEPLOYMENT 的历史算法。下一次更新须绑定实际 53 表基线，完整恢复边界见 [库存与媒体恢复](INVENTORY-RECOVERY.md)。
 
-更新保留 `.env` 和主密钥，先关闭 web，再停止 sync/app，核对注册目录、全部家庭与完整备份组后串行初始化。app 启动读回通过才开放 sync/web；本次控制器任何失败均停止并保全现场，不自动恢复数据库。需要恢复时另行确定相配源码、密钥、注册目录与家庭映射，不能让旧镜像盲接未知库；已有业务写入时不能用旧快照覆盖。**恢复后先使目标家庭旧成员登录失效，再启动 app/web 核对，最后才恢复 sync**。具体步骤见 [部署与恢复](DEPLOYMENT.md#6-备份恢复与回滚)、[运维](OPERATIONS.md) 和 [会话恢复要求](MEMBER-SESSIONS.md#恢复后使旧成员登录失效)。上一财务版本的 165／119 项离线激活／控制器恢复、79 项文档零结构检查均不是生产恢复演练。
+更新保留 `.env` 和主密钥，先关闭 web 并停止备份定时器，再停止 media／sync／app，核对注册目录、全部家庭与完整备份组后执行受审迁移。app 启动读回通过才开放 media／sync／web；本次控制器任何失败均停止并保全现场，不自动恢复数据库。需要恢复时另行确定相配源码、密钥、注册目录与家庭映射，不能让旧镜像盲接未知库；已有业务写入时不能用旧快照覆盖。**恢复后先使目标家庭旧成员登录失效并重新核对或撤回旧电视许可，再开放入口及 worker**。具体步骤见 [部署与恢复](DEPLOYMENT.md#6-备份恢复与回滚)、[运维](OPERATIONS.md) 和 [会话恢复要求](MEMBER-SESSIONS.md#恢复后使旧成员登录失效)。上一财务版本的 165／119 项离线激活／控制器恢复、79 项文档零结构检查均不是生产恢复演练。
 
 ## 后续工作
 
