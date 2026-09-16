@@ -235,7 +235,7 @@ class Run:
         expect(button(page, '选择账单文件')).to_be_visible()
         if source != 'generic':
             button(page, '文件来源：通用表格').click()
-            page.get_by_text({'alipay': '支付宝', 'wechat': '微信', 'taobao': '淘宝', 'pinduoduo': '拼多多'}[source], exact=True).click()
+            page.get_by_role('menuitem', name={'alipay': '支付宝', 'wechat': '微信', 'taobao': '淘宝', 'pinduoduo': '拼多多'}[source], exact=True).click()
         if kind == 'orders':
             button(page, '订单记录').click()
         self.choose_file(page, content, name)
@@ -409,6 +409,9 @@ class Run:
             assert self.snapshot() == before, 'Import preview wrote to business or audit tables'
             for width in (320, 390, 1040, 1440):
                 self.screenshot(page, 'import-preview', width)
+            page.set_viewport_size({'width': 390, 'height': 844})
+            button(page, '确认导入 · 仅本人').scroll_into_view_if_needed()
+            self.screenshot(page, 'import-confirm-visible', 390)
             # Picking another file invalidates the old signed preview immediately.
             page.evaluate('''() => {
               const original = File.prototype.arrayBuffer;
@@ -508,12 +511,12 @@ class Run:
             sheets = self.preview_file(page)
             assert sheets['requiresSheetSelection'] and not sheets['previewToken']
             button(page, '选择账单工作表').click()
-            page.get_by_text('支付账单', exact=True).last.click()
+            page.get_by_role('menuitem', name='支付账单', exact=True).click()
             amounts = self.preview_file(page, '读取所选工作表')
             assert amounts['requiresAmountSelection'] and not amounts['previewToken']
             assert self.snapshot() == before
             button(page, '选择入账金额列').click()
-            page.get_by_text(re.compile(r'^D 列')).click()
+            page.get_by_role('menuitem', name=re.compile(r'^D 列')).click()
             parsed = self.preview_file(page, '按所选金额预览')
             assert parsed['rows'][0]['amountCents'] == 123456 and parsed['previewToken']
             assert self.snapshot() == before
