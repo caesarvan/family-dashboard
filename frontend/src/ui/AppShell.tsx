@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Banner, BottomNavigation, Button, Divider, Drawer, IconButton, Menu, Surface, Text, useTheme } from 'react-native-paper';
 import type { ItemKind, RouteName, ThemeName } from '../lib/types';
