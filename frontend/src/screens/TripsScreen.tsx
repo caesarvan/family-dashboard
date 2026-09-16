@@ -56,7 +56,7 @@ export default function TripsScreen(props:Props) {
     requestKey.current=incoming.key;
     if(editing.current||writing.current){setNotice('请先完成或取消当前旅行编辑，再打开另一趟旅行。');return;}
     if(!incoming.id)startNew();
-    else void openTrip(incoming.id,true);
+    else void openTrip(incoming.id);
   },[props.tripRequest?.key]);
 
   function clearEditor(){setDraft(null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setError('');}
@@ -162,7 +162,7 @@ export default function TripsScreen(props:Props) {
       {journeys===null?<EmptyState title={reading?'正在读取旅行':'旅行暂时无法读取'} action={!reading?<Button onPress={()=>void load()}>重试</Button>:undefined}/>:props.state.trips.filter(trip=>[trip.title,trip.destination||''].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).sort((a,b)=>a.start.localeCompare(b.start)).map(trip=><SectionCard key={trip.id} title={trip.title} action={<Button disabled={reading} onPress={()=>void openTrip(trip.id)}>查看</Button>}><Text>{trip.destination}</Text><Text>{trip.start} — {trip.end}</Text><Text variant="bodySmall">预算 {money(trip.budget)} · 已付 {money(trip.paid)}</Text></SectionCard>)}
       {journeys!==null&&!props.state.trips.length&&<EmptyState title="下一站，想去哪里？" description="先定日期和目的地，其余慢慢安排。" action={<Button mode="contained" disabled={!online} onPress={startNew}>计划第一趟旅行</Button>}/>}
     </>}
-    <Portal><Dialog visible={discard} style={{borderRadius:12}} onDismiss={()=>setDiscard(false)}><Dialog.Title>{uncertain?'关闭并核对保存结果？':'放弃这次编辑？'}</Dialog.Title><Dialog.Content><Text>{uncertain?'原保存可能已经成功。关闭后先检查旅行列表，确认前不要重新创建；当前操作凭证不会跨页面保存。':'未保存的修改会丢弃，原旅行保持不变。'}</Text></Dialog.Content><Dialog.Actions><Button onPress={()=>setDiscard(false)}>继续编辑</Button><Button onPress={()=>{setDiscard(false);const wasUnknown=uncertain;clearEditor();if(wasUnknown){setDetail(null);setLegacy(null);void refresh();void load();}else void load(detail?.id);}}>{uncertain?'关闭并核对':'放弃修改'}</Button></Dialog.Actions></Dialog></Portal>
+    <Portal><Dialog visible={discard} style={{borderRadius:12,maxWidth:520,width:'92%',alignSelf:'center'}} onDismiss={()=>setDiscard(false)}><Dialog.Title>{uncertain?'关闭并核对保存结果？':'放弃这次编辑？'}</Dialog.Title><Dialog.Content><Text>{uncertain?'原保存可能已经成功。关闭后先检查旅行列表，确认前不要重新创建；当前操作凭证不会跨页面保存。':'未保存的修改会丢弃，原旅行保持不变。'}</Text></Dialog.Content><Dialog.Actions><Button onPress={()=>setDiscard(false)}>继续编辑</Button><Button onPress={()=>{setDiscard(false);const wasUnknown=uncertain;clearEditor();if(wasUnknown){setDetail(null);setLegacy(null);void refresh();void load();}else void load(detail?.id);}}>{uncertain?'关闭并核对':'放弃修改'}</Button></Dialog.Actions></Dialog></Portal>
   </View>;
 }
 export {TripsScreen};
