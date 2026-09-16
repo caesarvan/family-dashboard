@@ -1,6 +1,6 @@
 # 无 schema 变化的源码更新（43→43）
 
-此入口用于经过逐文件审查的既有根 Python 与静态文件更新。工具固定提交 `4c05e50` 已通过非作者代码审查，并在集成版本 `e0769e3` 完成 Windows 269 项组合；本页不代表已经完成新镜像 Linux 测试、Docker 演练或生产发布。当前运行版本及实际记录仍以 [VALIDATION](VALIDATION.md) 为准。纯静态更新继续使用 [STATIC-RELEASE](STATIC-RELEASE.md)，不能修改 READY.mode 来提升原静态入口的权限。
+此入口用于经过逐文件审查的既有根 Python 与静态文件更新。工具固定提交 `4c05e50` 已通过非作者审查，发布源码 integration `ecc3edc` 与 main `54c0854` 同树。镜像 `f82bc0fc…` 在完成 Linux 受影响后端 406 项、工具 269 项及真实双户 Docker SOURCE 升级演练后，已于 **2026-09-16 11:39:20（北京时间）** 实际发布；生产单户／2 库备份、三阶段数据保持与发布后读回均有原件。精确范围及保留的首次失败见 [VALIDATION](VALIDATION.md)。本页后续文档修订不表示已同步服务器。纯静态更新继续使用 [STATIC-RELEASE](STATIC-RELEASE.md)，不能修改 READY.mode 来提升原静态入口的权限。
 
 ## 范围与共同安全流程
 
@@ -64,6 +64,8 @@ build 读取候选旁的 BASE-MANIFEST 并核对独立传入的 SHA。实际父�
 approvedRuntimeChanges 按路径排序，恰为真实 root Python/static 差异；static 的 kind 为 `static`，新增静态文件 beforeSha256 为 null。缺少、多出或旧 SHA 不同均拒绝。changedFiles 还包含已审 docs/tests/工具差异，不能省略。gitReview 必须包含同一批准列表及 compatibility，不能拿另一棵树的审查代替。
 
 五 envelope 均有 `verified:true`、完整当前 sourceHashes 和非空 `records:[{path,sha256}]` 原始记录；引用只能位于候选 evidence 下、不能自引用。外部原件不改写成新时间、新镜像或新测试结果。
+
+本地归一化先生成 `READY.draft.json`，顶层保持 `verified:false`。每份原件按原始字节核验 SHA 后保存，历史源码前后映射、失败记录和适用性依据一并保留；envelope 的当前源码身份不能替换原报告里的旧依赖。草稿须经独立审查再形成激活输入，本地生成、Git 合并与生产激活分别记录。
 
 | envelope | 附加约束 |
 |---|---|
