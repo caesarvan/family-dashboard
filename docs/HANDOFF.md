@@ -4,6 +4,24 @@
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
+## 后续候选：完整账本与金额校验
+
+共同 base 为 `fa72df437af8e97315e04d019a2f110b6cf69938`。它包含上一轮发布后的纯文档合并，不能用作服务器已安装清单；生产源码仍为 `54c0854`，当前镜像和 manifest 见下一节。
+
+| 分支 | 独立 worktree | 允许范围 |
+|---|---|---|
+| `codex/finance-ledger-api` | finance-ledger-api | `finance_hub.py`、新分页／金额测试、FINANCE-API 与 FINANCE-IMPORT |
+| `codex/product-ledger-navigation` | product-ledger-navigation | `static/finance-hub.js/.css`、财务 demo 的 product-shell 入口、新账本浏览器测试 |
+| `codex/root-ledger-handoff` | root-ledger-handoff | README、HANDOFF、VALIDATION、路由索引两文件；SOURCE 精确路由文档路径策略、测试与指导 |
+
+新增 `GET /api/finance-hub/transactions` 提供本人全月记录的有界分页与搜索；原 overview 仍保留最多 500 条兼容数据和完整月度汇总。前端分页不再依赖这 500 条。`snapshot` 只检测账本变化，不是可查询历史版本；翻页时遇到变更返回 409，刷新获取新结果。没有新表、迁移、运行依赖或环境变量。账单文件的金额歧义检查只作用于新导入，历史记录和手工金额接口保持。
+
+作者分别提交固定 head，由非作者在独立 detached worktree 审查，再由 root 合入 integration；组合验证与再次审查通过后才合入 main。候选验收见 [VALIDATION](VALIDATION.md)，不复用上轮 406 项或浏览器计数宣称新行为通过。此候选尚未构建或部署到生产；后续发布须重新冻结实际 BASE，并走 [SOURCE 更新流程](SOURCE-RELEASE.md)。
+
+已审模块为后端 `1e83821`、界面 `85ce24d`、SOURCE 文档路径策略 `fd0a128`；无冲突合入固定运行组合 `98fb73904667a55e92c13db76d65b94aab158ed8`，树 `22e73f65f307570e05b638156a9c4bfe838f10e8`。非作者核对该树精确等于三份已审提交的文件并集。其上实际执行 Windows 后端 435 项、实际新 GET 浏览器 17 项、投资浏览器 15 项和五组既有财务浏览器 183 项，均通过。258 跟踪文件在各次验证前后保持；根文档与路由索引另经审查合入，不改变运行文件或重写这些原件。
+
+本地候选共 258 文件、43 Markdown、44 静态资源、107 方法／路径模板；每户 43 表、平台 2 表。生产仍是前节所述的 255 文件／106 路由版本。下一步发布需要新的 Linux 受影响验证、真实 SOURCE 演练及生产准入，不能把上轮 `f82bc0fc…` 的发布回执用于本候选。
+
 ## 本次 SOURCE 发布与接手基线
 
 发布源码为已审 integration `ecc3edce9f714edbd830fcde796e2bb903878b06` 合入的 main `54c08547e965ba9dd2bea1c8e8e8f34c1b0dabbe`，同树 `08c13778d26ab8cb7a68bcbb9f22ed72f9434ec3`。业务与源码发布工具均经独立审查，工具固定提交为 `4c05e5019aeb182f5ae23d183ec525dffc72ac60`。每个任务仍使用自己的分支与 worktree，已结束的业务分支保留为历史，不重放补丁。
