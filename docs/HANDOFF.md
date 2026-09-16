@@ -1,10 +1,18 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-16 23:48:34（北京时间）。** main `d94f7ce746bfbc45de328c516ac9c24d640f2d40`／integration `5ebfd2d6db408128f8137de288f300900794b1bb` 同树 `f57a232684180d72a0254d04bdbf3f1d15ae6f89`。Expo 官网风格已上线，23:48:49 发布后正常 TLS 读回通过；完整身份见 [官网风格交付](EXPO-SITE-STYLE.md)。本次交接文档不改变已安装源码包。
+> **线上版本：2026-09-17 00:40:16（北京时间）。** main `2925be09d09a4b6e1eab2d6633c1cf5bdebfc8ad`／integration `c1ca0e14acc44d61afe08641fd237e19705dd750` 同树 `3d28f16a7036f84bc2bfbe326a5eb0e34eee3c43`。Expo 家庭物品、采购查库存与助理本地库存搜索已上线，00:40:31 正常 TLS 读回通过；完整身份见 [家庭物品交付](INVENTORY-DELIVERY.md)。此处为发布后本地文档，不改变已安装包。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。此前 23:02 三模块与 21:59 首期身份分别保留于 [EXPO-NEXT-RELEASE](EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](EXPO-RELEASE.md)，历次证据见 [VALIDATION](VALIDATION.md)。
 
-## 当前交接：Expo 官网风格与简化导航
+## 当前交接：Expo 家庭物品与库存搜索
+
+`/app/inventory` 提供物品、批次、实物变化、历史纠正、共享与归档；更多菜单、采购查看家中物品和助理命中均进入原生页面。复用原库存 API 和 53+2 表，写入使用当前版本与明确确认，未知结果保留原 requestId 核对回执。助理库存搜索仅查当前权限内本地数据，不调用模型；详情重新读取，不能直接用搜索快照写入。契约见 [Expo 家庭物品](EXPO-INVENTORY.md)、[库存搜索](ASSISTANT-INVENTORY-SEARCH.md)。
+
+本轮真实临时浏览器 14 项（含四宽）和新镜像 Linux 86 项分别通过，初轮可访问性及测试环境失败保留于 [VALIDATION](VALIDATION.md)。安装镜像 `sha256:450be86cae0a393931af192792ef3d60a3404cb615aabf44c141bf931f4fb6dd`，453 源／112 运行／23 导出文件。实际 1 户两库完整备份，全部 53 表和平台注册库在新 app 启动时保持，原配置保全；随后核对 75 项 HTTPS 资源、24 个内部路径及 1 个退役资源 404、十个匿名 API 401，四服务 running／restart 0、app healthy，备份 service success／timer active。
+
+发布目录 `/opt/family-dashboard-releases/expo-inventory-53-20260916T163929637519Z`，manifest `0de82ce1b50ffdcc2d8865b84b0e0f0b70e5f5f21f30f3c65678decf26f25a94`。最终包与证据在私有 `expo-inventory-package-20260917-r2/`；旧目录保留第一次 Linux 84／2 失败，不作为通过证据。发布操作绑定旧 manifest／镜像，成功后不可重放。本人真实库存、云操作、实体电视和原生安装包仍另验，完整目标缺口见 [产品计划](PRODUCT-PLAN.md)。
+
+## 此前线上交接：Expo 官网风格与简化导航
 
 网页采用白底、黑色胶囊、浅灰大圆角区块；桌面 1040px 起使用顶部横向导航，窄屏保留五项底导航，登录页去除天空渐变。首页优先呈现日程和家庭资金；三处 Paper Menu 局部关闭动画，修复初次打开不完整显示。当前 [expo.dev 实页参考](EXPO-SITE-STYLE.md) 优先于较早生成的 `expo/DESIGN.md` 视觉描述；实际仍使用 Expo／React Native Web／Paper，按 [前端 README](../frontend/README.md) 的锁文件构建和 [同源托管契约](EXPO-WEB.md) 交付。
 
