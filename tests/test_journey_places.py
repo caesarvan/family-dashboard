@@ -28,15 +28,7 @@ def no_network(monkeypatch):
 def app(tmp_path, monkeypatch):
     monkeypatch.setenv('MEMBER1_PASSWORD', PASSWORD)
     monkeypatch.setenv('MEMBER2_PASSWORD', PASSWORD)
-    original = app_module.register_assistant
-
-    def fixture_registration(app, db, Problem, body, require_member, audit, *rest):
-        original(app, db, Problem, body, require_member, audit, *rest)
-        places.register_journey_places(app, db, Problem, body, require_member, audit)
-
-    # Test-only explicit registration. Production app.py remains unchanged;
-    # the child household factory passes through this same fixture wrapper.
-    monkeypatch.setattr(app_module, 'register_assistant', fixture_registration)
+    # Exercise production registration, including the child household factory.
     return app_module.create_app({'TESTING': True, 'DATA_DIR': str(tmp_path / 'data'),
         'SECRET_KEY': 'synthetic-place-test-secret', 'SESSION_COOKIE_SECURE': False,
         'PUBLIC_ORIGIN': 'http://localhost', 'OPENAI_API_KEY': '', 'OPENAI_MODEL': '',
@@ -480,13 +472,14 @@ def test_schema_initialization_is_explicit_repeatable_and_preserves_receipts(app
     assert client.get(path(active)).status_code == 200
 
 
-def test_module_is_not_registered_or_initialized_by_production_factory(tmp_path):
+def test_module_is_registered_and_initialized_by_production_factory(tmp_path):
     application = app_module.create_app({'TESTING': True, 'DATA_DIR': str(tmp_path / 'unwired'),
         'SECRET_KEY': 'synthetic-unwired-place-secret', 'SESSION_COOKIE_SECURE': False,
         'MEMBER1_PASSWORD': PASSWORD, 'MEMBER2_PASSWORD': PASSWORD})
-    assert not any(rule.rule.startswith(PREFIX) for rule in application.url_map.iter_rules())
+    assert sum(rule.rule.startswith(PREFIX) for rule in application.url_map.iter_rules()) == 5
     with connection(application) as con:
-        assert con.execute("SELECT 1 FROM sqlite_master WHERE name='journey_places'").fetchone() is None
+        assert con.execute("SELECT 1 FROM sqlite_master WHERE name='journey_places'").fetchone() is not None
+        assert con.execute("SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone()[0] == 44
 
 
 def test_initializer_requires_foreign_keys_and_existing_parent_schema():

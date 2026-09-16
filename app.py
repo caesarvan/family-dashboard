@@ -22,6 +22,7 @@ from household_spaces import register_preferences, register_spaces
 from home_assistant import register_assistant
 from journey_workflows import register_journeys
 from journey_documents import register_journey_documents
+from journey_places import register_journey_places
 from finance_hub import register_finance_hub
 from calendar_publish import register_calendar_publish
 from dashboard_preferences import register_dashboard_layout
@@ -632,6 +633,7 @@ def create_app(config=None):
     register_dashboard_layout(app, db, Problem, body, require_member, audit)
     register_journeys(app, db, Problem, body, require_member, audit)
     register_journey_documents(app, db, Problem, body, require_member, limited, audit)
+    register_journey_places(app, db, Problem, body, require_member, audit)
     register_calendar_publish(app, db, Problem, body, require_member, audit)
     register_task_publish(app, db, Problem, body, require_member, audit)
     register_sync_health(app, db, require_member)
