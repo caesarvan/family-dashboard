@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import importlib
 import json
 from pathlib import Path
+import re
 import shutil
 import socket
 import sqlite3
@@ -42,6 +43,12 @@ PROMPT = '''旅行名称：合成东京京都旅行
 
 def textfield(page, name):
     return page.get_by_role('textbox', name=name, exact=True)
+
+
+def icon_button(page, name):
+    # Paper may include its decorative icon glyph in the accessible name.
+    # Keep the real button role and strict single-match actionability checks.
+    return page.get_by_role('button', name=re.compile(r'(?:^|\s)' + re.escape(name) + r'$'))
 
 
 class Run(FinanceRun):
@@ -148,13 +155,13 @@ class Run(FinanceRun):
         assert result.status in (200, 201), result.text()
         value = result.json()
         expect(page.get_by_role('heading', name='旅行详情', exact=True)).to_be_visible()
-        expect(page.get_by_text('编辑旅行', exact=True)).to_be_visible()
+        expect(icon_button(page, '编辑旅行')).to_be_enabled()
         return value
 
     def show_saved(self, page, trip_id):
         page.goto(self.base + '/app/trips?request=1001&item=' + trip_id)
         expect(page.get_by_role('heading', name='旅行详情', exact=True)).to_be_visible(timeout=15000)
-        expect(page.get_by_text('编辑旅行', exact=True)).to_be_visible()
+        expect(icon_button(page, '编辑旅行')).to_be_enabled()
 
     def ordinary_task(self, browser):
         with self.flow(browser) as (ctx, page):
@@ -227,12 +234,12 @@ class Run(FinanceRun):
             page.get_by_text('准备清单与采购', exact=True).click()
             textfield(page, '准备事项 1').fill('合成核对证件')
             page.get_by_label('准备负责人 1：' + people['member1'], exact=True).click()
-            page.get_by_text('增加采购', exact=True).click()
+            icon_button(page, '增加采购').click()
             textfield(page, '采购名称 1').fill('合成转换插头')
             textfield(page, '采购数量 1').fill('2 件')
             page.get_by_label('采购负责人 1：' + people['member2'], exact=True).click()
             textfield(page, '采购预算（元，可不填） 1').fill('123.45')
-            page.get_by_text('增加采购', exact=True).click()
+            icon_button(page, '增加采购').click()
             textfield(page, '采购名称 2').fill('合成未定预算收纳袋')
             expect(textfield(page, '采购预算（元，可不填） 2')).to_have_value('')
             normalized = self.preview(page)
