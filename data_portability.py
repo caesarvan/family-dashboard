@@ -15,6 +15,7 @@ from shopping_settlement import export_owned_settlements
 from household_routines import export_shared_routines
 from spending_observations import export_owned_spending_observations
 from journey_documents import exported_documents
+from journey_places import coordinate_projection
 
 EXPORT_SLOT = BoundedSemaphore(1)
 MAX_EXPORT_BYTES = 64 * 1024 * 1024
@@ -37,6 +38,31 @@ def cell(value):
 
 def decimal_amount(value):
     return '' if value is None else format(Decimal(value) / Decimal(100), '.2f')
+
+
+def exported_places(con, owner, include_shared=False):
+    """Only live places, with the same coordinate projection as their API.
+
+    Receipts/tombstones remain in database backups, not in personal downloads.
+    Explicit fields prevent later internal/credential columns from leaking.
+    """
+    result = {'personal': [], 'shared': []}
+    if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='journey_places'").fetchone():
+        return result
+    rows = con.execute("SELECT * FROM journey_places WHERE deleted_at IS NULL AND (owner=? OR (? AND visibility='shared')) ORDER BY id",
+                       (owner, bool(include_shared))).fetchall()
+    for row in rows:
+        own = row['owner'] == owner
+        point, precision, grid = coordinate_projection(row, 'exact' if own else row['coordinate_disclosure'])
+        fields = {'id': 'id', 'owner': 'owner', 'name': 'name', 'country': 'country', 'city': 'city',
+                  'status': 'status', 'journeyId': 'journey_id', 'startDate': 'start_date', 'endDate': 'end_date',
+                  'visibility': 'visibility', 'coordinateDisclosure': 'coordinate_disclosure',
+                  'visitedConfirmedAt': 'visited_confirmed_at', 'visitedConfirmedBy': 'visited_confirmed_by',
+                  'revision': 'revision', 'createdAt': 'created_at', 'updatedAt': 'updated_at'}
+        item = {public: row[stored] for public, stored in fields.items()}
+        item.update(coordinates=point, coordinatePrecision=precision, coordinateGridDegrees=grid)
+        result['personal' if own else 'shared'].append(item)
+    return result
 
 
 def register_portability(app, db, Problem, body, require_member, audit, limited):
@@ -62,6 +88,9 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
         documents = exported_documents(con, uid, include_shared=True) if 'journey_documents' in tables(con) else {'personal': [], 'shared': []}
         counts['journeyDocuments'] = len(documents['personal'])
         shared['journeyDocuments'] = len(documents['shared'])
+        places = exported_places(con, uid, include_shared=True)
+        counts['journeyPlaces'] = len(places['personal'])
+        shared['journeyPlaces'] = len(places['shared'])
         return jsonify(personal=counts, shared=shared, format='zip',
                        note='导出的是当前保存的记录，并非已覆盖全部金融账户。采购图片和旅行资料仅含元数据，不包含文件；旅行文件请在资料夹逐份下载。账号连接需要重新授权。')
 
@@ -77,6 +106,10 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
         try:
             con, uid = db(), g.actor['id']
             con.execute('BEGIN')
+            current = app.extensions['member_sessions'].current(con)
+            if (current['owner'] != uid or current['auth_version'] != g.actor.get('auth_version')
+                    or g.actor.get('householdId') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+                raise Problem('登录或家庭已变化，请重新打开', 401)
             available = tables(con)
             exported = datetime.now(timezone.utc)
             snapshot = {'schemaVersion': 1, 'exportedAt': exported.isoformat(),
@@ -88,6 +121,8 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
             personal = snapshot['personal']
             documents = exported_documents(con, uid, include_shared=value.get('includeShared', False)) if 'journey_documents' in available else {'personal': [], 'shared': []}
             personal['journeyDocuments'] = documents['personal']
+            places = exported_places(con, uid, include_shared=value.get('includeShared', False))
+            personal['journeyPlaces'] = places['personal']
             personal['transactions'] = decoded_rows(con, 'hub_transactions')
             personal['investments'] = decoded_rows(con, 'hub_investments')
             if 'hub_investment_sources' in available:
@@ -156,6 +191,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                 if {'household_routines', 'routine_occurrences', 'routine_receipts'}.issubset(available):
                     shared['routines'] = export_shared_routines(con)
                 snapshot['shared'] = shared
+                shared['journeyPlaces'] = places['shared']
             personal['photoMetadata'] = [dict(r) for r in con.execute('SELECT id,size,width,height FROM photos WHERE created_by=? ORDER BY id',(uid,))]
             con.commit()
             output, digests = BytesIO(), {}
@@ -198,6 +234,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     'CSV 的公式危险前缀加了单引号，JSON 保留原文。估值未知保持空白，不作为零。\n',
                     '勾选共同记录时含双方已共享的日程、待办、采购、旅行和资金汇总；不含伴侣私人账本。采购图片与旅行资料仅含元数据，不含文件。旅行资料夹可逐份下载文件。\n',
                     '本人旅行资料只在 personal.journeyDocuments 出现一次，含旅行已删除后保留的本人资料；shared.journeyDocuments 仅含仍关联有效旅行的伙伴共享资料，不含内容、文件网址、请求标识或内容散列。\n',
+                    'personal.journeyPlaces 含本人未删除地点及精确坐标；shared.journeyPlaces 仅含伙伴明确共享地点，坐标按其隐藏、粗化或精确设置导出。地点创建回执与已删除记录不在本副本内，整库备份另行保留。\n',
                     '不含登录密码、令牌、应用密钥；迁移后须重新绑定第三方。此文件不是可直接覆盖 SQLite 的灾难恢复备份，当前没有一键还原此文件的接口。\n',
                     '本文件含个人资料和财务内容，请保存在你控制的设备上。\n'])
                 entry('manifest.json', [json.dumps({'schemaVersion':1,'files':dict(digests),'exportedAt':exported.isoformat()},ensure_ascii=False,indent=2)])
