@@ -170,13 +170,13 @@ def test_create_transport_failure_unknown_safe(error,code):
 @pytest.mark.parametrize('status,code',[(400,'invalid_input'),(401,'reauth'),(403,'forbidden'),(404,'not_found'),
                                      (409,'not_ready'),(429,'rate_limited'),(500,'unavailable'),(503,'unavailable'),
                                      (301,'redirect'),(302,'redirect'),(307,'redirect'),(308,'redirect')])
-def test_http_errors_never_read_or_expose_remote_body_headers(status,code):
+def test_http_errors_expose_no_remote_body_headers(status,code):
     response=Response(TOKEN.encode(),status=status,headers={'Retry-After':TOKEN,'Location':'https://evil.invalid/'+TOKEN})
     transport=Transport(response)
     client=picker.GooglePhotosPicker(TOKEN,transport=transport)
     error=assert_error(code,client.create_session)
     assert error.outcome_unknown==(status>=500 or 300<=status<400)
-    assert response.closed and response.read_calls==0 and len(transport.calls)==1
+    assert response.closed and (response.read_calls>0 if status==403 else response.read_calls==0) and len(transport.calls)==1
     assert not hasattr(error,'headers') and not hasattr(error,'body')
 
 
@@ -184,6 +184,66 @@ def test_urllib_http_error_context_is_suppressed():
     transport=Transport(HTTPError('https://secret.invalid/'+TOKEN,403,TOKEN,{},BytesIO(TOKEN.encode())))
     client=picker.GooglePhotosPicker(TOKEN,transport=transport)
     assert_error('forbidden',lambda:client.get_session(SESSION))
+
+
+def disabled_service_body():
+    return {'error':{'code':403,'status':'PERMISSION_DENIED','message':'untrusted-provider-message',
+        'details':[{'@type':'type.googleapis.com/google.rpc.ErrorInfo','reason':'SERVICE_DISABLED',
+                    'domain':'googleapis.com','metadata':{'service':'photospicker.googleapis.com',
+                    'consumer':'projects/synthetic-private-project','activationUrl':'https://untrusted.invalid/activate'}}]}}
+
+
+@pytest.mark.parametrize('method',['create','get','delete'])
+@pytest.mark.parametrize('http_error',[False,True])
+def test_service_disabled_is_fixed_safe_error_without_retry(method,http_error):
+    body=disabled_service_body()
+    suffix='/v1/sessions' if method=='create' else '/v1/sessions/'+SESSION
+    headers=Message();headers['Content-Type']='application/json; charset=UTF-8'
+    response=(HTTPError(picker.API_ORIGIN+suffix,403,'untrusted-http-message',headers,BytesIO(json.dumps(body).encode()))
+              if http_error else Response(body,status=403,chunk=23))
+    transport=Transport(response);client=picker.GooglePhotosPicker(TOKEN,transport=transport)
+    call={'create':client.create_session,'get':lambda:client.get_session(SESSION),'delete':lambda:client.delete_session(SESSION)}[method]
+    error=assert_error('api_disabled',call)
+    assert not error.reauth and not error.retryable and not error.outcome_unknown
+    assert len(transport.calls)==1
+    public=str(error)+repr(vars(error))+''.join(traceback.format_exception(error))
+    assert all(value not in public for value in ['untrusted-provider-message','untrusted-http-message','synthetic-private-project','untrusted.invalid'])
+
+
+@pytest.mark.parametrize('field,value',[
+    ('@type','type.googleapis.com/other.ErrorInfo'),('@type',None),('reason','ACCESS_TOKEN_SCOPE_INSUFFICIENT'),
+    ('domain','untrusted.invalid'),('service','photoslibrary.googleapis.com'),('service',None)])
+def test_service_disabled_rejects_wrong_errorinfo_identity(field,value):
+    body=disabled_service_body();detail=body['error']['details'][0]
+    (detail['metadata'] if field=='service' else detail)[field]=value
+    client=picker.GooglePhotosPicker(TOKEN,transport=Transport(Response(body,status=403)))
+    assert_error('forbidden',client.create_session)
+
+
+@pytest.mark.parametrize('case',['invalid-json','oversize','duplicate-key','wrong-status','wrong-code','token-echo','compressed','wrong-mime'])
+def test_service_disabled_untrusted_body_fails_closed(case):
+    body=disabled_service_body();kwargs={}
+    if case=='invalid-json':body=b'not json'
+    elif case=='oversize':body=b' '*(64*1024)+json.dumps(body).encode()
+    elif case=='duplicate-key':body=json.dumps(body).replace('"code": 403','"code": 403, "code": 403').encode()
+    elif case=='wrong-status':body['error']['status']='OTHER'
+    elif case=='wrong-code':body['error']['code']='403'
+    elif case=='token-echo':body['error']['message']=TOKEN
+    elif case=='compressed':kwargs={'headers':{'Content-Encoding':'gzip'}}
+    elif case=='wrong-mime':kwargs={'mime':'text/html'}
+    response=Response(body,status=403,**kwargs)
+    client=picker.GooglePhotosPicker(TOKEN,transport=Transport(response))
+    assert_error('forbidden',client.create_session)
+    assert response.cursor<=64*1024+1 and response.closed
+
+
+def test_service_disabled_body_does_not_override_401_or_media_403():
+    response=Response(disabled_service_body(),status=401)
+    client=picker.GooglePhotosPicker(TOKEN,transport=Transport(response))
+    assert assert_error('reauth',client.create_session).reauth and response.read_calls==0
+    client,_,_=selected(Response(disabled_service_body(),status=403))
+    assert_error('forbidden',lambda:client.download_media(SESSION,'media-1'))
+    assert not client._selected
 
 
 @pytest.mark.parametrize('mutation',[

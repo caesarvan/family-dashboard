@@ -272,6 +272,22 @@ def main():
             expect(page.locator('.hm-card')).to_have_count(2)
             expect(page.locator('img[src^="https:"]')).to_have_count(0)
             results.append('only exact same-origin local preview URLs are loaded')
+            before_posts=len([r for r in fixture.records if r['path']=='media/imports' and r['method']=='POST'])
+            fixture.imports[IMPORT].update(state='failed',error={'code':'api_disabled','message':'Google Photos Picker API 尚未启用。请联系应用维护者启用后，再重新选片；无需重复授权。'})
+            page.locator('[data-hm=poll]').click()
+            expect(page.locator('[data-hm-import]')).to_contain_text('Picker API 尚未启用')
+            expect(page.locator('[data-hm-import]')).to_contain_text('无需重复授权')
+            page.locator('[data-hm=new-selection]').click()
+            expect(page.locator('[data-hm-temporary]')).not_to_be_checked()
+            assert len([r for r in fixture.records if r['path']=='media/imports' and r['method']=='POST'])==before_posts
+            page.locator('[data-hm=create]').click()
+            expect(page.locator('[data-hm-message]')).to_contain_text('请先确认临时处理')
+            page.locator('[data-hm-temporary]').check();page.locator('[data-hm=create]').click()
+            expect(page.locator('[data-hm-import]')).to_contain_text('等待你确认保存')
+            after_posts=[r for r in fixture.records if r['path']=='media/imports' and r['method']=='POST']
+            assert len(after_posts)==before_posts+1 and after_posts[-1]['body']['requestId']!=after_posts[0]['body']['requestId']
+            assert not any(r['path']=='accounts/google-photos/bind' for r in fixture.records)
+            results.append('disabled Picker API shows safe reason; new selection requires explicit fresh consent and a new request')
             fixture.hold_gallery=True
             page.locator('[data-hm=refresh]').click()
             assert fixture.started.wait(3)

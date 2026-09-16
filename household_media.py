@@ -37,6 +37,7 @@ ERRORS = {
     'quota': (429, '媒体数量或存储额度已达上限，请清理后重试'),
     'consent_required': (400, '请明确同意本次媒体用途'),
     'reauth': (409, '照片来源需要重新授权'),
+    'api_disabled': (503, 'Google Photos Picker API 尚未启用。请联系应用维护者启用后，再重新选片；无需重复授权。'),
     'unavailable': (503, '媒体暂时无法读取，请稍后重试'),
     'worker_error': (503, '媒体处理暂时失败'),
     'timeout': (503, '媒体服务暂时未响应'),
