@@ -233,7 +233,7 @@ window.JourneyMap = (() => {
     if (d.endDate && (!d.startDate || d.endDate < d.startDate)) throw new Error('结束日期不能早于开始日期，且需要先填写开始日期。');
     const value = {name:d.name.trim(),country:d.country.trim(),city:d.city.trim(),status:d.status,
       startDate:d.startDate || null,endDate:d.endDate || null,journeyId:d.journeyId || null,coordinates:c,
-      visibility:d.visibility,coordinateDisclosure:d.coordinateDisclosure,confirmVisited:d.confirmVisited === true};
+      visibility:d.visibility,coordinateDisclosure:d.coordinateDisclosure,confirmVisited:d.status === 'visited' && d.confirmVisited === true};
     const changedVisit = !e.original || e.original.status !== 'visited' || ['name','country','city','startDate','endDate','journeyId','coordinates'].some(key => JSON.stringify(value[key]) !== JSON.stringify(e.original[key] ?? null));
     if (value.status === 'visited' && changedVisit && !value.confirmVisited) throw new Error('请明确确认已经到访，不能仅凭日期或预订认定。');
     return value;
@@ -342,7 +342,18 @@ window.JourneyMap = (() => {
     current = f;
     f.dialog = node.closest('dialog'); f.close = () => {if (current === f) unmount();}; f.dialog?.addEventListener('close',f.close);
     f.click = event => {void click(f,event);};
-    f.input = event => {if (!local(f) || !f.editor || f.editor.busy || f.editor.pending || !event.target.closest('[data-jm-editor]')) return; const name = event.target.name; if (Object.hasOwn(f.editor.draft,name)) {f.editor.draft[name] = event.target.type === 'checkbox' ? event.target.checked : event.target.value; f.editor.dirty = true; sharedPreview(f);}};
+    f.input = event => {
+      if (!local(f) || !f.editor || f.editor.busy || f.editor.pending || !event.target.closest('[data-jm-editor]')) return;
+      const name = event.target.name;
+      if (Object.hasOwn(f.editor.draft,name)) {
+        f.editor.draft[name] = event.target.type === 'checkbox' ? event.target.checked : event.target.value;
+        if (name === 'status' && f.editor.draft.status !== 'visited') {
+          f.editor.draft.confirmVisited = false;
+          f.node.querySelector('[name=confirmVisited]').checked = false;
+        }
+        f.editor.dirty = true; sharedPreview(f);
+      }
+    };
     f.change = f.input;
     f.submit = event => {
       if (!local(f)) return;

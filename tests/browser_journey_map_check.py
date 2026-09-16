@@ -171,6 +171,8 @@ class Fixture:
                     self.wait()
                 return jsonify(result)
             data = request.get_json()
+            if data.get('confirmVisited') and data['status']!='visited':
+                return jsonify(error='只有已到访状态才能确认到访'),400
             receipt = (self.actor,data['requestId'])
             if receipt in self.receipts:
                 identifier, original = self.receipts[receipt]
@@ -222,6 +224,8 @@ class Fixture:
                     self.fail_delete_after_commit=False
                     return jsonify(error='合成删除响应中断'),503
                 return jsonify(deleted=True,id=identifier,revision=data['revision']+1,replayed=False)
+            if data.get('confirmVisited') and data.get('status',p['status'])!='visited':
+                return jsonify(error='只有已到访状态才能确认到访'),400
             p.update({k:v for k,v in data.items() if k not in ('revision','confirmVisited')})
             p['revision'] += 1
             if self.fail_patch_after_commit:
@@ -343,6 +347,22 @@ def main():
             assert created['coordinates']=={'latitude':1,'longitude':1}
             page.reload();ready();expect(page.locator('.jm-list')).to_contain_text('合成新增已到访')
             passed('private/hidden defaults; keyboard point picking; explicit visited confirmation; API write survives browser reload')
+
+            for next_status in ('wish','planned'):
+                new('合成取消到访确认 '+next_status)
+                form.locator('[name=status]').select_option('visited')
+                form.locator('[name=confirmVisited]').check()
+                form.locator('[name=status]').select_option(next_status)
+                expect(form.locator('[name=confirmVisited]')).not_to_be_checked()
+                expect(form.locator('[data-jm-visited]')).to_be_hidden()
+                # Switching back must require a fresh explicit confirmation.
+                form.locator('[name=status]').select_option('visited')
+                expect(form.locator('[name=confirmVisited]')).not_to_be_checked()
+                form.locator('[name=status]').select_option(next_status)
+                save();expect(page.locator('[data-jm-editor]')).to_have_count(0);ready()
+                assert writes('POST')[-1]['body']['status']==next_status
+                assert writes('POST')[-1]['body']['confirmVisited'] is False
+                passed('visited confirmation clears when switching to '+next_status+'; real-API-equivalent fixture accepts false only')
 
             fixture.fail_post_after_commit=True
             new('合成创建未知结果');save()
