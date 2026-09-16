@@ -5,7 +5,7 @@
 ## 页面接缝
 
 - 由已有 `HouseholdProvider`、`PaperProvider` 和外层滚动容器包裹，组件本身不重复创建纵向滚动容器。
-- 可选 `tripRequest: {key:number,id?:string}`：新 key 打开新建；id 为实体 `trip.id`，重新读取后进入编辑。不能用工作流 `journey.id` 代替。已有未结束编辑时不接受另一新建请求，不会静默销毁草稿。
+- 可选 `tripRequest: {key:number,id?:string}`：新 key 且无 id 时打开新建；id 为实体 `trip.id`，重新读取后进入详情，再由“编辑旅行”显式进入编辑。不能用工作流 `journey.id` 代替。已有未结束编辑时不接受另一新建请求，不会静默销毁草稿。
 - `onEdit('tasks'|'shopping', item)` 打开现有 Paper 单项编辑器；完成动作使用 `useHousehold().mutate`，成功后刷新家庭状态和旅行详情。
 - 父组件应按完整 session identity（含 CSRF、auth_version）重新挂载所有屏幕。组件同时检测角色、户、成员、auth_version，并对额外读取执行 `/me → 数据 → /me`，确认 CSRF 与身份均未变化。组件卸载、选择变化后的迟到结果不更新界面。
 - 标准 Paper 主题，没有旧绿蓝色、HTML 拼串或独立 CSS；输入框 8px、确认对话框 12px。界面通过真实标题、地点和备注呈现详情，不省略关键文本。
