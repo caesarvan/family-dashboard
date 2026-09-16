@@ -3,6 +3,7 @@
 Model access is optional and explicit per request. No financial records, tokens,
 account identities or emails are ever included in model context.
 """
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from http.client import HTTPException
@@ -14,7 +15,7 @@ import time
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, build_opener, HTTPRedirectHandler
 
-from flask import g, jsonify
+from flask import g, jsonify, request
 
 
 class NoModelRedirect(HTTPRedirectHandler):
@@ -346,6 +347,86 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
           created_at REAL NOT NULL, applied_at REAL, result TEXT)''')
         db().commit()
 
+    @contextmanager
+    def authorized(context=None, *, write=False):
+        # The global guard ran earlier. Resolve the real cookie again in the same
+        # database transaction as the read/write, including completed-plan replay.
+        require_member()
+        con = db()
+        con.execute('BEGIN IMMEDIATE' if write else 'BEGIN')
+        try:
+            sessions = app.extensions['member_sessions']
+            member = sessions.current(con)
+            if (member['owner'] != g.actor['id'] or member['auth_version'] != g.actor['auth_version']
+                    or g.actor.get('householdId', 'default') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+                raise Problem('登录状态已变化，请重新登录', 401)
+            if context is not None:
+                sessions.validate_context(con, context, member=True)
+            yield con
+            con.commit()
+        except BaseException:
+            con.rollback()
+            raise
+
+    def capture_context():
+        context, _ = app.extensions['member_sessions'].capture(member=True)
+        with authorized(context):
+            pass
+        return context
+
+    def search_records(query, limit=20, offset=0):
+        if not isinstance(query, str) or not 1 <= len(query.strip()) <= 100:
+            raise Problem('搜索词须为 1～100 字')
+        query = query.strip()
+        term = query.casefold()
+        matches = []
+        with authorized() as con:
+            owner = g.actor['id']
+            for item in records():
+                if item['kind'] in {'tasks', 'shopping', 'events', 'trips'} and term in (item.get('title', '') + ' ' + item.get('location', '')).casefold():
+                    matches.append({k: item.get(k) for k in ('id', 'kind', 'title', 'start', 'due', 'owner')})
+            library = app.extensions.get('household_media')
+            if library is not None:
+                from household_media import ITEM_VIEW
+                library._member(con)
+                rows = con.execute("SELECT " + ITEM_VIEW + " FROM media_items WHERE state='ready' AND (owner=? OR visibility='shared') ORDER BY id", (owner,))
+                for row in rows:
+                    if row['owner'] != owner and not library._authority(con, row['account_id'], row['owner']):
+                        continue
+                    projected = library._item_dto(con, row, owner)
+                    journey = projected.get('journey')
+                    caption = projected['caption']
+                    if term in (caption + ' ' + (journey['title'] if journey else '')).casefold():
+                        matches.append({'id': projected['id'], 'kind': 'media', 'title': caption or '精选照片',
+                                        'journey': journey, 'visibility': projected['visibility'], 'revision': projected['revision']})
+            # The places route owns coordinate projection. Search deliberately reads
+            # no coordinate columns and returns only this smaller text allowlist.
+            rows = con.execute("SELECT id,name,country,city,status,journey_id,visibility,revision FROM journey_places WHERE deleted_at IS NULL AND (owner=? OR visibility='shared') ORDER BY id", (owner,))
+            for row in rows:
+                linked = con.execute("SELECT j.id,j.trip_id,e.data FROM journey_workflows j JOIN entities e ON e.id=j.trip_id AND e.kind='trips' WHERE j.id=?", (row['journey_id'],)).fetchone() if row['journey_id'] else None
+                journey = {'id': linked['id'], 'tripId': linked['trip_id'], 'title': json.loads(linked['data'])['title']} if linked else None
+                if term in (' '.join(row[k] or '' for k in ('name', 'country', 'city')) + ' ' + (journey['title'] if journey else '')).casefold():
+                    matches.append({'id': row['id'], 'kind': 'places', 'title': row['name'], 'country': row['country'],
+                                    'city': row['city'], 'status': row['status'], 'journey': journey,
+                                    'visibility': row['visibility'], 'revision': row['revision']})
+            matches.sort(key=lambda item: (item['kind'], item['id']))
+            page = matches[offset:offset + limit]
+            return {'query': query, 'matches': page, 'total': len(matches), 'limit': limit, 'offset': offset,
+                    'nextOffset': offset + len(page) if offset + len(page) < len(matches) else None}
+
+    @app.get('/api/assistant/search')
+    def search():
+        require_member()
+        if set(request.args) - {'q', 'limit', 'offset'} or any(len(request.args.getlist(k)) != 1 for k in request.args):
+            raise Problem('搜索参数不正确')
+        pagination = {}
+        for key, default, low, high in (('limit', '20', 1, 30), ('offset', '0', 0, 20000)):
+            value = request.args.get(key, default)
+            if not re.fullmatch(r'0|[1-9]\d{0,5}', value) or not low <= int(value) <= high:
+                raise Problem('搜索分页参数不正确')
+            pagination[key] = int(value)
+        return jsonify(search_records(request.args.get('q'), **pagination))
+
     def records():
         return [{**json.loads(row['data']), 'id': row['id'], 'kind': row['kind'], 'revision': row['revision']}
                 for row in db().execute('SELECT * FROM entities ORDER BY updated_at DESC')]
@@ -382,12 +463,14 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
     @app.get('/api/assistant/brief')
     def get_brief():
         require_member()
-        return jsonify(brief())
+        with authorized():
+            return jsonify(brief())
 
     @app.post('/api/assistant/journey-brief')
     def journey_brief():
         require_member()
         limited('assistant_plan', 30, 3600)
+        context_snapshot = capture_context()
         value = body()
         prompt = value.get('prompt')
         if not isinstance(prompt, str) or len(prompt) > 2000:
@@ -411,21 +494,29 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
                 cleaned = local_journey_brief(prompt.strip())
             except ValueError:
                 raise Problem('已标注字段的格式无效，请核对日期、金额和长度；未创建旅行', 400)
-        return jsonify({'mode': 'model' if use_model else 'local', 'brief': cleaned,
-                        'missingFields': journey_missing(cleaned),
-                        'notice': 'AI 整理的字段均为待核对建议，未核实预订、时刻或价格。' if use_model else
-                                  '本地仅提取明确标注的字段；自由描述和未确定信息请在下面逐项补齐。'})
+        with authorized(context_snapshot):
+            return jsonify({'mode': 'model' if use_model else 'local', 'brief': cleaned,
+                            'missingFields': journey_missing(cleaned),
+                            'notice': 'AI 整理的字段均为待核对建议，未核实预订、时刻或价格。' if use_model else
+                                      '本地仅提取明确标注的字段；自由描述和未确定信息请在下面逐项补齐。'})
 
     @app.post('/api/assistant/plan')
     def plan():
         require_member()
         limited('assistant_plan', 30, 3600)
+        context_snapshot = capture_context()
         value = body()
         prompt = value.get('prompt')
         if not isinstance(prompt, str) or not 1 <= len(prompt.strip()) <= 2000:
             raise Problem('请填写 1～2000 字的请求')
         prompt = prompt.strip()
-        current = brief()
+        found = re.match(r'^(?:搜索|查找|找一下)\s*[：:]?\s*(.*)$', prompt, re.S)
+        if found:
+            result = search_records(found[1])
+            return jsonify(id=None, summary=f"找到 {result['total']} 条当前可见记录。搜索仅在本地进行。",
+                           actions=[], mode='local', matches=result.pop('matches'), search=result)
+        with authorized(context_snapshot):
+            current = brief()
         actions = []
         mode = 'local'
         summary = ''
@@ -473,30 +564,24 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
                 summary += ' 可以输入“待办：明天预约保洁；确认酒店”或“采购：旅行转换插头；收纳袋”生成可执行草案。'
         if len(actions) > 12:
             raise Problem('一次最多规划 12 项，请拆分请求')
-        normalized = []
-        for action in actions:
-            if not isinstance(action, dict) or not isinstance(action.get('kind'), str) or action['kind'] not in {'tasks', 'shopping'}:
-                raise Problem('计划包含暂不支持的动作，未执行任何操作', 400)
-            kind = action['kind']
-            # Do not carry hidden model fields, identifiers or remote write targets.
-            clean = {'title': action.get('title'), 'owner': action.get('owner', g.actor['id']), 'done': False}
-            clean.update({'due': action.get('due', '')} if kind == 'tasks' else {'quantity': action.get('quantity', '1 件')})
-            normalized.append({'kind': kind, 'data': validate(kind, clean, db)})
-        matches = []
-        search = re.sub(r'^(?:搜索|查找|找一下)\s*[：:]?\s*', '', prompt)
-        if search != prompt and search:
-            matches = [{k: item.get(k) for k in ('id', 'kind', 'title', 'start', 'due', 'owner')} for item in records()
-                       if search.casefold() in (item.get('title', '') + ' ' + item.get('location', '')).casefold()][:30]
-            summary = f'找到 {len(matches)} 条匹配记录。'
-        uid = secrets.token_hex(16)
-        result = {'id': uid, 'summary': summary, 'actions': normalized, 'mode': mode, 'matches': matches}
-        con = db()
-        con.execute('DELETE FROM assistant_plans WHERE created_at<?', (time.time() - 7 * 86400,))
-        if con.execute('SELECT count(*) FROM assistant_plans WHERE owner=?', (g.actor['id'],)).fetchone()[0] >= 200:
-            raise Problem('计划历史已达上限，请稍后再试', 429)
-        con.execute('INSERT INTO assistant_plans VALUES(?,?,?,?,NULL,NULL)', (uid, g.actor['id'], json.dumps(result), time.time()))
-        con.commit()
-        return jsonify(result)
+        with authorized(context_snapshot, write=True):
+            normalized = []
+            for action in actions:
+                if not isinstance(action, dict) or not isinstance(action.get('kind'), str) or action['kind'] not in {'tasks', 'shopping'}:
+                    raise Problem('计划包含暂不支持的动作，未执行任何操作', 400)
+                kind = action['kind']
+                # Do not carry hidden model fields, identifiers or remote write targets.
+                clean = {'title': action.get('title'), 'owner': action.get('owner', g.actor['id']), 'done': False}
+                clean.update({'due': action.get('due', '')} if kind == 'tasks' else {'quantity': action.get('quantity', '1 件')})
+                normalized.append({'kind': kind, 'data': validate(kind, clean, db)})
+            uid = secrets.token_hex(16)
+            result = {'id': uid, 'summary': summary, 'actions': normalized, 'mode': mode, 'matches': []}
+            con = db()
+            con.execute('DELETE FROM assistant_plans WHERE created_at<?', (time.time() - 7 * 86400,))
+            if con.execute('SELECT count(*) FROM assistant_plans WHERE owner=?', (g.actor['id'],)).fetchone()[0] >= 200:
+                raise Problem('计划历史已达上限，请稍后再试', 429)
+            con.execute('INSERT INTO assistant_plans VALUES(?,?,?,?,NULL,NULL)', (uid, g.actor['id'], json.dumps(result), time.time()))
+            return jsonify(result)
 
     @app.post('/api/assistant/plans/<uid>/apply')
     def apply_plan(uid):
@@ -505,30 +590,29 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
         selected = incoming.get('selected')
         if not isinstance(selected, list) or not selected or len(selected) > 12 or any(type(i) is not int for i in selected) or len(set(selected)) != len(selected):
             raise Problem('请选择要创建的事项')
-        con = db()
-        con.execute('BEGIN IMMEDIATE')
-        row = con.execute('SELECT * FROM assistant_plans WHERE id=? AND owner=?', (uid, g.actor['id'])).fetchone()
-        if not row:
-            raise Problem('计划不存在', 404)
-        if row['applied_at']:
-            return jsonify(json.loads(row['result']))
-        if row['created_at'] < time.time() - 86400:
-            raise Problem('计划已过期，请重新生成', 409)
-        actions = json.loads(row['data'])['actions']
-        if any(i < 0 or i >= len(actions) for i in selected):
-            raise Problem('事项选择无效')
-        created = []
-        for index in selected:
-            action = actions[index]
-            kind = action['kind']
-            if con.execute('SELECT count(*) FROM entities WHERE kind=?', (kind,)).fetchone()[0] >= 2500:
-                raise Problem('记录数量已达上限，请先整理旧记录', 409)
-            clean = validate(kind, action['data'], db)
-            item_id = secrets.token_hex(12)
-            con.execute('INSERT INTO entities(id,kind,data,updated_at) VALUES(?,?,?,?)', (item_id, kind, json.dumps(clean), now()))
-            created.append({'id': item_id, 'kind': kind, 'title': clean['title']})
-        result = {'ok': True, 'created': created, 'destination': 'household'}
-        con.execute('UPDATE assistant_plans SET applied_at=?,result=? WHERE id=?', (time.time(), json.dumps(result), uid))
-        audit('assistant_plan_applied', uid)
-        con.commit()
-        return jsonify(result)
+        context_snapshot = capture_context()
+        with authorized(context_snapshot, write=True) as con:
+            row = con.execute('SELECT * FROM assistant_plans WHERE id=? AND owner=?', (uid, g.actor['id'])).fetchone()
+            if not row:
+                raise Problem('计划不存在', 404)
+            if row['applied_at']:
+                return jsonify(json.loads(row['result']))
+            if row['created_at'] < time.time() - 86400:
+                raise Problem('计划已过期，请重新生成', 409)
+            actions = json.loads(row['data'])['actions']
+            if any(i < 0 or i >= len(actions) for i in selected):
+                raise Problem('事项选择无效')
+            created = []
+            for index in selected:
+                action = actions[index]
+                kind = action['kind']
+                if con.execute('SELECT count(*) FROM entities WHERE kind=?', (kind,)).fetchone()[0] >= 2500:
+                    raise Problem('记录数量已达上限，请先整理旧记录', 409)
+                clean = validate(kind, action['data'], db)
+                item_id = secrets.token_hex(12)
+                con.execute('INSERT INTO entities(id,kind,data,updated_at) VALUES(?,?,?,?)', (item_id, kind, json.dumps(clean), now()))
+                created.append({'id': item_id, 'kind': kind, 'title': clean['title']})
+            result = {'ok': True, 'created': created, 'destination': 'household'}
+            con.execute('UPDATE assistant_plans SET applied_at=?,result=? WHERE id=?', (time.time(), json.dumps(result), uid))
+            audit('assistant_plan_applied', uid)
+            return jsonify(result)

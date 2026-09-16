@@ -35,6 +35,7 @@ from shopping_settlement import register_shopping_settlement
 from household_routines import register_routines
 from household_media import register_media_library
 from media_playback import register_media_playback
+from inventory_api import register_inventory
 
 TZ = ZoneInfo("Asia/Shanghai")
 ROOT = Path(__file__).parent
@@ -643,6 +644,7 @@ def create_app(config=None):
     register_journey_places(app, db, Problem, body, require_member, audit)
     register_media_library(app, db, Problem, body, require_member, audit)
     register_media_playback(app)
+    register_inventory(app, db, Problem)
     register_calendar_publish(app, db, Problem, body, require_member, audit)
     register_task_publish(app, db, Problem, body, require_member, audit)
     register_sync_health(app, db, require_member)

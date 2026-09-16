@@ -26,6 +26,9 @@ from test_journey_documents import PASSWORD, connection, create_journey, login
 
 ROOT = Path(__file__).resolve().parents[1]
 MEDIA_TABLES = ('media_imports', 'media_items', 'media_tv_grants', 'media_playback')
+INVENTORY_TABLES = ('inventory_items', 'inventory_acquisitions', 'inventory_movements',
+                    'inventory_source_links', 'inventory_operations')
+HOUSEHOLD_TABLES = 53
 
 
 @pytest.fixture(autouse=True)
@@ -78,8 +81,8 @@ def media_rows(path):
         assert con.execute('PRAGMA quick_check').fetchone()[0] == 'ok'
         assert not con.execute('PRAGMA foreign_key_check').fetchall()
         names = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        assert len(names) == 48 and set(MEDIA_TABLES) <= names
-        return {table: sorted(con.execute('SELECT * FROM '+table).fetchall()) for table in MEDIA_TABLES}
+        assert len(names) == HOUSEHOLD_TABLES and set(MEDIA_TABLES+INVENTORY_TABLES) <= names
+        return {table: sorted(con.execute('SELECT * FROM '+table).fetchall()) for table in MEDIA_TABLES+INVENTORY_TABLES}
 
 
 def seed_household(app):
@@ -226,5 +229,5 @@ def test_two_household_media_backup_restore_and_authorization(tmp_path, monkeypa
         assert tv.get(state['item']['previewUrl']).status_code == 404
         assert c.get(private['previewUrl']).status_code == 200
     print(json.dumps({'kind':'synthetic-local-sqlite-restore','realDocker':False,'productionWrites':0,
-        'households':2,'databases':3,'householdTables':48,'oldCookiesRejected':4,'factoryFallback':fallback,
+        'households':2,'databases':3,'householdTables':HOUSEHOLD_TABLES,'oldCookiesRejected':4,'factoryFallback':fallback,
         'restoredTvGrantsRequireReview':True,'mediaWorkerStarted':False}))

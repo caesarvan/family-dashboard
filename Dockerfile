@@ -10,6 +10,7 @@ COPY shopping_media.py shopping_settlement.py finance_baseline.py spending_obser
 COPY finance_source_bridge.py journey_time.py ./
 COPY household_spaces.py journey_workflows.py finance_hub.py home_assistant.py ./
 COPY journey_documents.py journey_places.py ./
+COPY inventory_core.py inventory_api.py ./
 COPY calendar_publish.py financial_files.py investment_import.py ./
 COPY dashboard_preferences.py data_portability.py ./
 COPY task_publish.py household_routines.py ./
