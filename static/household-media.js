@@ -165,9 +165,9 @@ window.HouseholdMedia = (() => {
       <p class="hm-muted">已选 ${counts.selected || 0} · 跳过 ${counts.skipped || 0} · 未成功 ${counts.failed || 0}${item.expiresAt && !terminal.has(item.state) ? ` · 临时预览有效至 ${escape(new Date(item.expiresAt).toLocaleString('zh-CN'))}` : ''}</p>
       ${item.state === 'waiting_selection' && link ? `<a class="hm-button primary" href="${escape(link)}" target="_blank" rel="noopener noreferrer">打开 Google Photos 选片 ↗</a><p class="hm-muted">选完后回到此页，预览会自动更新。</p>` : ''}
       ${item.state === 'create_unknown' ? '<p class="hm-warning">Google 可能已创建选片页面，但连接中断，未取得结果。不会自动重复创建；可取消这次记录，再开始一次选择。</p>' : ''}
-      ${item.error ? '<p class="hm-warning">这次选择未能完整处理。可刷新状态；如需重新授权，请使用上方的连接按钮。</p>' : ''}
+      ${item.error ? `<p class="hm-warning">${escape(item.error.message || '这次选择未能完整处理，请刷新核对。重新授权不一定能解决服务配置或会话问题。')}</p>` : ''}
       ${item.state === 'awaiting_confirmation' ? `<div class="hm-candidates">${candidates.map(candidate => `<label class="hm-candidate">${imageMarkup(candidate.item)}<span><input type="checkbox" data-hm-candidate="${escape(candidate.id)}" ${f.selection.has(candidate.id) ? 'checked' : ''} ${f.confirmPending || f.busy ? 'disabled' : ''}>${candidate.status === 'duplicate' ? '已保存，可复用' : '保留这张'}</span></label>`).join('')}</div><label class="hm-consent"><input type="checkbox" data-hm-persist ${f.persist ? 'checked' : ''} ${f.confirmPending ? 'disabled' : ''}><span>将勾选照片的预览保存到我的私密相册。原图仍在 Google Photos，之后可分别设置家庭共享和电视展示。</span></label>${f.confirmConflict ? '<p class="hm-warning">本次选择已更新，原保存请求不能继续重试。请读取最新状态，重新核对后确认。</p>'+button('recheck-confirm','重新核对本次选择',busy) : button('confirm',f.confirmPending ? '重试同一次保存' : '保存选中照片',busy)}<p class="hm-muted">只保存你确认的照片；临时预览最迟 24 小时后清理。当前支持照片，不包含视频播放。</p>` : ''}
-      <div class="hm-actions">${button('poll','刷新状态',busy)}${!terminal.has(item.state) || item.state === 'create_unknown' ? button('cancel-import','取消本次选择',busy) : ''}</div>`;
+      <div class="hm-actions">${button('poll','刷新状态',busy)}${['failed','cancelled','expired'].includes(item.state) ? button('new-selection','重新选片',`${busy} ${f.createPending ? 'disabled' : ''}`) : ''}${!terminal.has(item.state) || item.state === 'create_unknown' ? button('cancel-import','取消本次选择',busy) : ''}</div>`;
   }
   function renderImport(f) {
     const node = f.node.querySelector('[data-hm-import]');
@@ -250,6 +250,12 @@ window.HouseholdMedia = (() => {
       if (!url) throw new Error('授权链接不可用，请刷新后重试。');
       location.assign(url);
     });
+    if (action === 'new-selection') {
+      if (f.createPending) return;
+      f.importResult = null; f.selection.clear(); f.persist = false; f.temporary = false;
+      f.confirmPending = null; f.confirmConflict = false; f.notice = '请重新确认临时处理，再点击“从 Google Photos 选择照片”。';
+      render(f); f.node.querySelector('[data-hm-temporary]')?.focus(); return;
+    }
     if (action === 'create') {
       if (!f.createPending) {
         const account = f.accounts.find(value => value.id === f.accountId);

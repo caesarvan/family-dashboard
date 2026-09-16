@@ -79,7 +79,9 @@ VIDEO 的 preview 取得图片缩略图，不是视频文件；即使原视频�
 
 所有请求禁止重定向，包括同域跳转；默认 urllib TLS 证书验证保留，Authorization 仅在经过 URL 验证的请求中发送。JSON 和字节响应禁压缩并逐块限制大小。元数据每次 30 秒分块 deadline，分页总 120 秒；媒体 120 秒分块 deadline；socket timeout 最大 30 秒。正在阻塞的读取可能继续等待至 socket timeout，因此不是硬实时取消；它仍能终止持续慢滴流。未知写入不会自动重试，读取也由上层决定重试。
 
-错误不读取远端错误正文，不返回远端 headers、敏感 URL 或异常原文；成功 JSON 解码后也检查当前 token 的字面回显，包括 Unicode 转义形式。字节响应拒绝当前 token 的直接字节回显。不要记录 transport 参数、pickerUri、会话原始响应或实例内部清单。
+仅 API 的 403 错误会有界读取至多 64 KiB JSON，严格匹配 `error.code=403`、`status=PERMISSION_DENIED` 和 `google.rpc.ErrorInfo` 的完整类型、`domain=googleapis.com`、`reason=SERVICE_DISABLED`、`metadata.service=photospicker.googleapis.com` 后返回固定 `api_disabled`。不返回远端 message、headers、项目标识、activation URL 或异常原文；错误类型、domain、service 不符或正文无效时仍为普通 `forbidden`，媒体下载的 403 不应用此分类。成功 JSON 解码后也检查当前 token 的字面回显，包括 Unicode 转义形式。字节响应拒绝当前 token 的直接字节回显。不要记录 transport 参数、pickerUri、会话原始响应或实例内部清单。
+
+`api_disabled` 只将本次导入记为失败，不重发创建 POST，也不把有效账户标为需要重新授权、不撤回既有家庭共享或电视许可。界面展示固定启用提示；维护者确认启用对应 API 后，用户需明确“重新选片”、重新同意临时处理，才能创建新选择。普通未知 403 仍沿原保守权限处理，401／无效令牌及实际 scope 丢失的保护保持；不能把重新授权当成所有 403 的解决方法。这一故障修订的合成回归不等于用户真实选片成功。
 
 ## 可注入 transport 与测试
 
