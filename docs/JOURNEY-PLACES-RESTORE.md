@@ -45,9 +45,9 @@
 独立审查后的 Linux Docker 命令（需使用实际已核验的候选镜像与不存在的证据目录）：
 
 ```sh
-python -B deploy/rehearse_restore.py --image sha256:<verified-immutable-image-id> \
-  --profile journey_places44 --source-root <verified-candidate-root> \
-  --output <new-private-evidence-directory>
+python -B deploy/rehearse_restore.py --image 'sha256:<verified-immutable-image-id>' \
+  --profile journey_places44 --source-root '<verified-candidate-root>' \
+  --output '<new-private-evidence-directory>'
 ```
 
 报告保留原 `passed`、检查列表、镜像、容器隔离和 cleanup；增加顶层 `profile`、`schemaSha256`、`householdTables`。seed／verify 分别报告同一 profile、schema 指纹、检查和 HTTP 次数，计数包含 `householdTablesEach`、`journeyPlaces`、`placeTombstones`、`oldCookiesRejected`。不能把某个阶段通过或清理失败称为完整成功。
