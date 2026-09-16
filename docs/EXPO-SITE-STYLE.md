@@ -24,10 +24,26 @@
 - `PageHeader` 同一断点选择 28／32 或 36／40 的 600 字重标题；描述仍为 14px，长标题和操作继续允许换行，不设置截断。
 - 新增 `buttonRadius: 999` 供较高的独立 CTA 明确使用；`cardRadius: 32`、`cardRadiusCompact: 24`、`contentMaxWidth: 1280` 和 `compactBreakpoint: 768` 供其他作者保持一致。
 - 全局 Paper `roundness: 5`：当前已安装 Paper 的 MD3 Button 乘 5 得到 25px，在默认 40px 高按钮上形成胶囊；普通 Card 乘 3 为 15px，TextInput 默认 5px。不会把所有控件都变成 999px 圆角。共享 SectionCard 显式设置 32／24；业务输入框继续显式 `outlineStyle={{borderRadius:8}}`，对话框继续按各自约定控制。
-- 保留旧 `skyLight/skyMid` token 以保持调用兼容；本轮首页／登录作者独立移除旧天空视觉。共享控件不引入渐变、图片或远程请求。
+- 保留旧 `skyLight/skyMid` token 以保持调用兼容；首页和登录页不再显示旧天空视觉。共享控件不引入渐变、图片或远程请求。
 
 ## 适用范围与验证边界
 
-改变只涉及 `frontend/src/ui/theme.ts`、`components.tsx` 和本文。所有采用 SectionCard/PageHeader 的 Expo 页面会获得共享风格；首页、登录、AppShell 的具体布局由各自独立分支负责。未改业务请求、权限、数据、路由、表单行为、经典页面或电视，也未构建 bundle。
+组合实现覆盖 `frontend/src/ui/theme.ts`、`components.tsx`、`AppShell.tsx`、首页和登录页。所有采用 SectionCard/PageHeader 的 Expo 页面获得共享风格；桌面宽度达到 1040px 时使用横向顶部导航，窄屏保留五项底导航，正文可用宽度最大 1280px。首页保留日程范围与真实数据操作，登录保留原认证流程。经典页面与电视样式未在本轮改动。
 
-本分支用已安装的 `expo-n2` 依赖仅执行 TypeScript 检查。不会将依赖 junction 用于 Metro 构建。实际组合外观与手机／电脑浏览器行为，须在合并候选中另验；单独类型检查不代表视觉验收或已发布。
+各作者使用独立分支和 worktree，经非作者审查后组合；实际构建使用独立安装的依赖，禁止以 node_modules junction 代替受验构建来源。类型检查、浏览器视觉与操作验证、生产发布分别记录，具体结果和固定身份见 [验证记录](VALIDATION.md)、[交接说明](HANDOFF.md)。
+
+## 已安装版本
+
+北京时间 **2026-09-16 23:48:34** 激活，**23:48:49** 正常 TLS 读回通过。本表绑定已安装包；随后文档修订不改写该 manifest。
+
+| 项目 | 固定身份 |
+| --- | --- |
+| main／integration | `d94f7ce746bfbc45de328c516ac9c24d640f2d40`／`5ebfd2d6db408128f8137de288f300900794b1bb` |
+| 同一文件树 | `f57a232684180d72a0254d04bdbf3f1d15ae6f89` |
+| 运行镜像 | `sha256:befe93434119bf8bb5a58423895174ed7093b9a1b8ae8f1e41be06f2ab87c0bc` |
+| manifest SHA256 | `b598f920c49a07b9b9bebbbaa32f53e62b6e2110f33a4cf75c061962900cdf04` |
+| 源码包 SHA256 | `f387fb26b5762ca8febd3328cff8b4b18079fc10c86a8b721a8af67118f742f4` |
+| Expo 入口 | `entry-a0ac451d56b8db645808c1e5a9436b32.js`，23 个导出文件 |
+| 发布目录 | `/opt/family-dashboard-releases/expo-site-53-20260916T154748616831Z` |
+
+四种宽度 320／390／1040／1440 的真实临时浏览器验证及独立视觉审查通过，镜像内 Linux 63 项通过；447 源／112 运行／75 公开静态文件读回匹配。实际 1 户两库完整备份，53+2 表和配置保持。原件、计数和边界见 [验证记录](VALIDATION.md)。未以本次样式发布代替真实云账户、原生安装包或实体电视验收。
