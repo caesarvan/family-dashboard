@@ -1,5 +1,7 @@
 # 联合开发接手说明
 
+> **Expo 前端候选（待部署）：** 已按 `npx getdesign@latest add expo` 创建 React Native／Expo Router／React Native Paper 前端。新版 `/app` 覆盖首页、日程、待办、采购与登录；详细财务、旅行、相册、地图等继续通过 `/classic` 使用。构建与协作见 [前端说明](../frontend/README.md)，托管见 [Expo Web](EXPO-WEB.md)。本段描述已实现候选；下方线上身份仍为此前媒体发布，不能当作 Expo 已上线。
+
 > **线上版本：2026-09-16 20:38:46（北京时间），镜像 `sha256:132dde7dc47567a27c3faa532c4a8bf447c4ef499c66aabbc956b38dffad7524`。** 地图旅行相册与本人照片时间建议已上线；373 源文件、83 份 README/docs Markdown、53 静态资源、145 个方法／路径模板、53 张户内表及 2 张平台表。安装 main `e20c269`／integration `c716e4d` 同树，53→53 无迁移发布与 20:39:27 读回通过。本文档增量只作本地交接，不修改已发布 manifest。此前本人 Photos 5／5 预览与保存事实保留；本轮旅行关联、地图新入口及实体电视尚待本人验收。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。

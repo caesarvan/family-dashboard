@@ -1,0 +1,25 @@
+{
+  "expo": {
+    "name": "家庭中枢",
+    "slug": "family-dashboard",
+    "version": "1.0.0",
+    "scheme": "family-dashboard",
+    "userInterfaceStyle": "automatic",
+    "platforms": [
+      "ios",
+      "android",
+      "web"
+    ],
+    "web": {
+      "output": "single",
+      "bundler": "metro"
+    },
+    "plugins": [
+      "expo-router"
+    ],
+    "experiments": {
+      "typedRoutes": true,
+      "baseUrl": "/app"
+    }
+  }
+}

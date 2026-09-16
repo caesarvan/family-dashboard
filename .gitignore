@@ -13,3 +13,6 @@ test-results/
 *.pfx
 *.bundle
 release*.tar.gz
+
+# Expo export is published with a separately verified build manifest.
+static/experience/
