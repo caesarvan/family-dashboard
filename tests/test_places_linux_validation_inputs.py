@@ -1,11 +1,13 @@
 """Synthetic inputs and Docker command/state doubles only; never Docker or SSH."""
-from copy import deepcopy
+import ast
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 import subprocess
+import sys
 
 import pytest
 
@@ -14,6 +16,7 @@ M = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(M)
 IMAGE = 'sha256:'+'b'*64
 FILES = {'tests/test_alpha.py':'a'*64, 'tests/test_beta.py':'b'*64}
+LOCAL_PYTHON = subprocess.run
 
 
 @pytest.fixture(autouse=True)
@@ -169,3 +172,45 @@ def test_runtime_program_compiles_and_uses_full_runtime_collection():
     assert "actual==cfg['runtime']" in M.PROGRAM
     assert "root.glob('*.py')" in M.PROGRAM and "root/'static'" in M.PROGRAM
     assert "proof['after']=verify()" in M.PROGRAM
+
+
+def test_real_program_clears_provider_masks_before_pytest_import(tmp_path):
+    """Run the actual embedded program locally; adapt only container paths."""
+    root, output = tmp_path/'app', tmp_path/'output'
+    root.mkdir(); output.mkdir(); (root/'tests').mkdir(); (root/'static').mkdir()
+    (root/'requirements.txt').write_bytes(b'')
+    (root/'home_assistant.py').write_bytes((Path(__file__).resolve().parents[1]/'home_assistant.py').read_bytes())
+    script = root/'tests/test_synthetic_provider.py'
+    script.write_text('''import os
+from home_assistant import model_settings
+KEYS = ('ASSISTANT_PROVIDER','NVIDIA_API_KEY','NVIDIA_MODEL','OPENAI_API_KEY','OPENAI_MODEL',
+        'MICROSOFT_CLIENT_ID','MICROSOFT_CLIENT_SECRET','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET')
+# Collection imports this module before running any testcase.
+assert not any(key in os.environ for key in KEYS)
+def test_explicit_synthetic_configuration_selects_each_provider():
+    assert model_settings({'OPENAI_API_KEY':'synthetic-key','OPENAI_MODEL':'synthetic-model'}) == ('openai','synthetic-key','synthetic-model')
+    assert model_settings({'ASSISTANT_PROVIDER':'nvidia','NVIDIA_API_KEY':'synthetic-key','NVIDIA_MODEL':'synthetic-model'}) == ('nvidia','synthetic-key','synthetic-model')
+''', encoding='utf-8')
+    replacements = {'/app':str(root), '/tmp/runtime-proof.json':str(output/'runtime-proof.json'),
+                    '--junitxml=/tmp/targeted.xml':'--junitxml='+str(output/'targeted.xml')}
+    class Paths(ast.NodeTransformer):
+        def visit_Constant(self, node):
+            if isinstance(node.value,str) and node.value in replacements:
+                return ast.copy_location(ast.Constant(replacements[node.value]),node)
+            return node
+    program = ast.unparse(Paths().visit(ast.parse(M.PROGRAM)))
+    # No network access is needed or permitted by this local subprocess test.
+    program = "import socket\ndef denied(*a,**k): raise AssertionError('network forbidden')\nsocket.socket.connect=denied\nsocket.create_connection=denied\n" + program
+    environment = {k:v for k,v in os.environ.items() if k.upper() in ('SYSTEMROOT','WINDIR','TEMP','TMP','PATH','COMSPEC','HOME','USERPROFILE')}
+    for key in ('ASSISTANT_PROVIDER','NVIDIA_API_KEY','NVIDIA_MODEL','OPENAI_API_KEY','OPENAI_MODEL',
+                'MICROSOFT_CLIENT_ID','MICROSOFT_CLIENT_SECRET','GOOGLE_CLIENT_ID','GOOGLE_CLIENT_SECRET'):
+        environment[key] = 'local' if key=='ASSISTANT_PROVIDER' else ''
+    environment.update(PYTHONPATH=str(root),PYTHONDONTWRITEBYTECODE='1',PYTEST_DISABLE_PLUGIN_AUTOLOAD='1')
+    config = {'mode':'tests','runtime':M.runtime(M.tree(root)),
+              'support':{'tests/test_synthetic_provider.py':M.sha(script)},'scripts':['tests/test_synthetic_provider.py']}
+    result = LOCAL_PYTHON([sys.executable,'-B','-X','utf8','-c',program,json.dumps(config)],cwd=root,
+                          env=environment,capture_output=True,text=True,encoding='utf-8',timeout=60)
+    assert result.returncode==0, result.stdout+result.stderr
+    proof = json.loads((output/'runtime-proof.json').read_bytes())
+    assert proof['verified'] and proof['before']==proof['after']==config['runtime']
+    assert M.junit(output/'targeted.xml',{'scripts':config['scripts']}) == dict(tests=1,passed=1,failures=0,errors=0,skipped=0,scriptsMatched=True)
