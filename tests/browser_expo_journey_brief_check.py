@@ -57,8 +57,8 @@ class Run(FinanceRun):
         self.lifecycle.enter_context(patch.object(self.assistant, 'model_plan', self.unexpected_model))
         # Synthetic credentials permit the explicit model UI; fake_model is the
         # sole provider implementation and the socket guard also forbids egress.
-        self.cfg.update(OPENAI_API_KEY='synthetic-key-never-sent', OPENAI_MODEL='synthetic-model')
-        self.application.config.update(OPENAI_API_KEY='synthetic-key-never-sent', OPENAI_MODEL='synthetic-model')
+        self.cfg.update(ASSISTANT_PROVIDER='openai', OPENAI_API_KEY='synthetic-key-never-sent', OPENAI_MODEL='synthetic-model')
+        self.application.config.update(ASSISTANT_PROVIDER='openai', OPENAI_API_KEY='synthetic-key-never-sent', OPENAI_MODEL='synthetic-model')
 
     def fake_model(self, config, prompt):
         assert config['OPENAI_API_KEY'] == 'synthetic-key-never-sent'
