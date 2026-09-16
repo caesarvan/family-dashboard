@@ -381,7 +381,7 @@
     if (isDemo && ['JourneyUI','HomeAssistant'].includes(moduleName) && typeof root[moduleName]?.open==='function') {await root[moduleName].open(id || undefined);return;}
     if (isDemo) {
       if (moduleName==='JourneyUI') { manage('trips');return; }
-      if (moduleName==='FinanceHub') { openModal('财务工作台 · 演示',`<div class="ps-empty-state">${glyph('wallet')}<h2>把账单、账户和预算放在一起</h2><p>登录家庭后，可以导入自己的账单、管理投资账户。演示不会读取任何真实财务信息。</p><a href="/" class="ps-button primary">登录家庭空间</a></div>`);return; }
+      if (moduleName==='FinanceHub') {if(!isTV&&window.FinanceHub)await FinanceHub.open(id||'ledger');return; }
       if (moduleName==='HomeAssistant') { openModal('家庭助理 · 演示',`<div class="ps-empty-state">${glyph('spark')}<h2>从想法，走到下一步</h2><p>登录后，把日程、旅行和采购的想法告诉助理，先审阅计划，再确认执行。</p><a href="/" class="ps-button primary">登录并开始</a></div>`);return; }
       if (moduleName==='HouseholdSpaces') {openModal('家庭空间 · 演示','<p class="help">演示使用虚构的双成员家庭。登录后可管理自己的家庭空间。</p>');return;}
     }
