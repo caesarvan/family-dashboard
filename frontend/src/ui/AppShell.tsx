@@ -93,9 +93,9 @@ export default function AppShell(props: AppShellProps) {
           </View>
         </View>
       </Surface>
-      <Banner visible={props.offline} actions={[{ label: '重新读取', onPress: props.onRefresh, disabled: props.refreshing }]}>
+      {props.offline ? <Banner visible actions={[{ label: '重新读取', onPress: props.onRefresh, disabled: props.refreshing }]}>
         连接暂时不可用。请刷新后核对最新内容。
-      </Banner>
+      </Banner> : null}
       <ScrollView ref={scroll} style={styles.contentScroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
         <View style={[styles.content, { paddingHorizontal: wide ? 24 : 16, paddingTop: wide ? 32 : 20 }]}>{props.children}</View>
       </ScrollView>
