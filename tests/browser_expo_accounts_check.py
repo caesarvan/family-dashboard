@@ -61,7 +61,7 @@ def main():
     out = Path(__file__).resolve().parents[1] / 'test-results' / ('expo-accounts-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
     out.mkdir(parents=True)
     shutil.copyfile(__file__, out / 'executed-harness.py')
-    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], providerNavigationsIntercepted204=[], httpErrors=[], screenshots=[],
+    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], providerNavigationsIntercepted204=[], httpErrors=[], screenshots=[], dialogVisuals=[],
         eventInjections=['document.hidden/visibilityState plus visibilitychange for background/foreground'],
         head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
         sourceHashesBefore=hashes(), bundleHashesBefore=bundle_hashes(), productionWrites=0, realCloud=False, physicalTelevision=False,
@@ -221,6 +221,24 @@ def main():
 
                 def assert_layout(p, width, name):
                     p.evaluate('() => document.fonts.ready')
+                    if name in ('accounts-review', 'accounts-disconnect'):
+                        # Installed Paper Modal animates opacity over 220ms.
+                        # Enabled buttons alone do not prove its surface is opaque.
+                        p.wait_for_function('''() => {
+                          const nodes=[...document.querySelectorAll('[data-testid="modal-surface"]')]
+                            .filter(e=>e.getBoundingClientRect().width>0&&e.getBoundingClientRect().height>0);
+                          return nodes.length===1&&nodes.every(e=>{
+                            for(let node=e;node;node=node.parentElement)if(Number(getComputedStyle(node).opacity)!==1)return false;
+                            return true;
+                          });
+                        }''')
+                        p.evaluate('() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))')
+                        surface = p.get_by_test_id('modal-surface')
+                        expect(surface).to_have_css('opacity', '1')
+                        visual = surface.evaluate('''e => ({opacity:getComputedStyle(e).opacity,
+                          background:getComputedStyle(e).backgroundColor,radius:getComputedStyle(e).borderRadius})''')
+                        assert visual['background'].startswith('rgb(') or visual['background'].endswith(', 1)'), visual
+                        report['dialogVisuals'].append({'screenshot': f'{name}-{width}.png', **visual})
                     metrics = p.evaluate('''() => ({width:innerWidth,scroll:document.documentElement.scrollWidth,
                       clipped:[...document.querySelectorAll('input,button,[role="button"],[role="checkbox"]')].filter(e=>{const r=e.getBoundingClientRect();
                       return r.width>0&&r.height>0&&getComputedStyle(e).visibility!=='hidden'&&r.right>innerWidth+2&&r.left<innerWidth;})
