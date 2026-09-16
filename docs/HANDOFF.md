@@ -64,15 +64,17 @@
 
 新入口不增加后端 API、表或自动云写入。接口见 [TRAVEL-ENTRY](TRAVEL-ENTRY.md)，部署见 [STATIC-RELEASE](STATIC-RELEASE.md)，两次不同阶段的失败和实际重试见 [VALIDATION](VALIDATION.md)。
 
-## 当前候选与文件占用
+<a id="当前候选与文件占用"></a>
+
+## 历史旅行资料与分支记录
 
 旅行资料 API、导出、UI、接入、迁移与发布工具已经分模块审查，完成组合验收并于 20:23:00 发布。以下分支保留作者与审查历史，不代表还有待重放的补丁或永久文件占用；新的任务需重新登记独立分支、base 与允许路径。
 
-仓库基线为 `ad667bf2b744d707db080964c662249c7cd8b056`，标签 `baseline/2026-09-15-handoff`。当前主仓为项目根目录，各工作树位于维护者本机 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/worktrees/` 下；换机器后按 [Git 指导](GIT-WORKFLOW.md) 从 bundle 创建自己的工作树，不复用这些机器绝对路径。
+最初 Git 基线为 `ad667bf2b744d707db080964c662249c7cd8b056`，标签 `baseline/2026-09-15-handoff`。当前主仓为项目根目录，各工作树位于维护者本机 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/worktrees/` 下；换机器后按 [Git 指导](GIT-WORKFLOW.md) 从 bundle 创建自己的工作树，不复用这些机器绝对路径。
 
 | 分支 | 本轮负责人 / worktree 目录名 | 已保存范围与状态 |
 |---|---|---|
-| `main` | 集成人 / 项目根目录 | 本轮已发布运行基线 `cd75b0b`，248 文件、106 路由、43 户内表；后续纯文档提交另记，不改变镜像 |
+| `main` | 集成人 / 项目根目录 | 2026-09-15 22:32 历史发布基线 `cd75b0b`，248 文件、106 路由、43 户内表；当前 SOURCE 发布基线见本页顶部，后续纯文档提交另记 |
 | `codex/integration` | 集成人专用 | 仅合并审查通过的提交，不供模块 agent 直接开发 |
 | `codex/journey-documents-api` | journey_workflows / journey-documents-api | `90292c7`；product_interface 独立审查功能，root 复核末尾空行修正，已合入 integration |
 | `codex/journey-documents-ui` | product_interface / journey-documents-ui | `a9dd519`；journey_workflows 审查提出三项修复，作者修复后由 root 复核，已合入 integration |
