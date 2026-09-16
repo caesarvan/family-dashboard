@@ -11,6 +11,7 @@ import hashlib
 import importlib
 import json
 from pathlib import Path
+import re
 import secrets
 import shutil
 import socket
@@ -42,6 +43,7 @@ def main():
     parser.add_argument('--expected-head', required=True)
     parser.add_argument('--bundle', required=True, type=Path)
     parser.add_argument('--expected-build-evidence', required=True)
+    parser.add_argument('--diagnostic-a11y', action='store_true', help='Explore business behavior only; missing checked semantics remains a failed acceptance gate')
     args = parser.parse_args()
     root, bundle = args.source_root.resolve(), args.bundle.resolve()
     head = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=root, text=True).strip()
@@ -63,6 +65,7 @@ def main():
     shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], httpErrors=[], screenshots=[],
                   eventInjections=['document.hidden/visibilityState and visibilitychange for background/foreground; real business API unchanged'],
+                  diagnosticA11y=args.diagnostic_a11y, accessibilityPassed=not args.diagnostic_a11y,
                   head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path),
                   harnessSha256=sha(out / 'executed-harness.py'), sourceHashesBefore=hashes(), bundleHashesBefore=bundle_hashes(),
                   scope='Real frozen Expo bundle, factory, member cookies, CSRF, household routing and SQLite; synthetic input only. One committed response deliberately dropped.', productionWrites=0)
@@ -158,10 +161,20 @@ def main():
                     return response.json()
 
                 def button(p, name):
-                    return p.get_by_role('button', name=name, exact=True)
+                    # Paper buttons without explicit labels include the decorative
+                    # Material glyph in their computed accessible name.
+                    return p.get_by_role('button', name=re.compile(r'(?:^|\s)' + re.escape(name) + r'$'))
 
                 def fill(p, name, value):
                     p.get_by_role('textbox', name=name, exact=True).fill(str(value))
+
+                def confirm_physical(p):
+                    checkbox = p.get_by_role('checkbox', name='我已核对实际物品和数量', exact=True)
+                    if args.diagnostic_a11y:
+                        checkbox.click()
+                    else:
+                        checkbox.check()
+                        expect(checkbox).to_be_checked()
 
                 def visibility(p, hidden):
                     p.evaluate('''hidden => {
@@ -175,6 +188,8 @@ def main():
                 def open_inventory(p):
                     p.goto(base + '/app/inventory')
                     expect(button(p, '新增物品')).to_be_enabled(timeout=15000)
+                    if not args.diagnostic_a11y:
+                        expect(p.get_by_text('连接暂时不可用。请刷新后核对最新内容。', exact=True)).to_have_count(0)
 
                 def open_item(p, title):
                     button(p, '查看物品 ' + title).click()
@@ -192,7 +207,7 @@ def main():
                         button(p, {'consume': '记录使用', 'return': '记录退回', 'dispose': '记录报损'}[kind]).click()
                     fill(p, '本次数量', qty)
                     fill(p, '操作原因', '合成已核对实物动作')
-                    p.get_by_role('checkbox', name='我已核对实际物品和数量', exact=True).check()
+                    confirm_physical(p)
                     button(p, '确认实物变动').click()
                     if saved:
                         expect(button(p, '收货')).to_be_enabled()
@@ -225,7 +240,8 @@ def main():
                 fill(page, '存放位置', '合成家庭玄关收纳柜第二层靠左备用品抽屉')
                 page.get_by_text('补货提醒', exact=True).click()
                 fill(page, '补货提醒数量', 3)
-                expect(page.get_by_role('radio', name='仅本人可见', exact=True)).to_be_checked()
+                if not args.diagnostic_a11y:
+                    expect(page.get_by_role('radio', name='仅本人可见', exact=True)).to_be_checked()
                 button(page, '保存物品').click()
                 expect(button(page, '编辑物品')).to_be_enabled()
                 item = get(owner, '/api/inventory/items')['items'][0]
@@ -278,7 +294,7 @@ def main():
                 button(page, '查看变动历史').click()
                 button(page, '撤销这条记录 ' + returned['id']).click()
                 fill(page, '操作原因', '合成原退回尚未实际发生')
-                page.get_by_role('checkbox', name='我已核对实际物品和数量', exact=True).check()
+                confirm_physical(page)
                 button(page, '确认撤销原记录').click()
                 expect(button(page, '收货')).to_be_enabled()
                 assert get(owner, '/api/inventory/items/' + uid)['item']['onHandQty'] == 4
@@ -430,10 +446,13 @@ def main():
                     assert_layout(page, width, 'inventory-detail')
                     open_batch(page, bid)
                     assert_layout(page, width, 'inventory-batch')
+                    button(page, '查看变动历史').scroll_into_view_if_needed()
+                    assert_layout(page, width, 'inventory-batch-actions')
                     if width >= 1040:
                         button(page, '更多功能').click()
-                        expect(page.get_by_role('menuitem', name='家庭物品', exact=True)).to_be_visible()
-                        page.get_by_role('menuitem', name='家庭物品', exact=True).click()
+                        entry = page.get_by_role('menuitem', name=re.compile(r'(?:^|\s)家庭物品$'))
+                        expect(entry).to_be_visible()
+                        entry.click()
                         expect(button(page, '新增物品')).to_be_enabled()
                     else:
                         button(page, '返回更多功能').click()
@@ -442,7 +461,8 @@ def main():
                         expect(button(page, '新增物品')).to_be_enabled()
                     passed(f'{width}px list/detail/batch fit viewport and the navigation menu opens native inventory')
                 assert not report['pageErrors'] and not report['externalRequests']
-                report['passed'] = True
+                report['businessChecksPassed'] = True
+                report['passed'] = not args.diagnostic_a11y
     except Exception:
         report['failure'] = traceback.format_exc()
         print(report['failure'], flush=True)
