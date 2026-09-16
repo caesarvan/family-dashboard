@@ -395,6 +395,16 @@ def main():
                 expect(partner_page.locator('body')).not_to_contain_text('121.456789')
                 passed('shared native detail is read-only and uses hidden/coarse server projection without exposing owner precision')
 
+                open_map(page)
+                open_place(page, title)
+                owner.set_offline(True)
+                expect(page.get_by_role('button', name=re.compile('^打开地点：'))).to_have_count(0)
+                expect(page.get_by_text(title, exact=True)).to_have_count(0)
+                expect(page.get_by_text(re.compile('31\\.234567'))).to_have_count(0)
+                owner.set_offline(False)
+                expect(button(page, '编辑地点')).to_be_enabled()
+                passed('offline event immediately conceals visible map names and exact coordinates; online rechecks current selection before reveal')
+
                 for number in range(25):
                     place_create(owner, name='合成地图回忆 ' + str(number), journeyId=journey['id'], status='planned',
                         startDate='2026-12-01', endDate='2026-12-04', country='合成地区', city='合成海滨城市',
@@ -451,7 +461,27 @@ def main():
                 button(page, '返回足迹地图').click()
                 expect(button(page, '查看旅行照片')).to_be_enabled()
                 assert urlsplit(page.url).path == '/app/map'
-                passed('both photo and travel child returns freshly recheck the selected place and preserve all five filters plus page offset without URL private data')
+                pending_travel = []
+
+                def hold_travel(handler):
+                    pending_travel.append((handler, handler.fetch()))
+
+                page.route('**/api/journeys', hold_travel)
+                button(page, '查看旅行').click()
+                for _ in range(100):
+                    if pending_travel:
+                        break
+                    page.wait_for_timeout(30)
+                assert pending_travel
+                expect(button(page, '返回足迹地图')).to_be_enabled()
+                page.unroute('**/api/journeys', hold_travel)
+                button(page, '返回足迹地图').click()
+                expect(button(page, '查看旅行照片')).to_be_enabled()
+                for handler, response in pending_travel:
+                    handler.fulfill(response=response)
+                expect(page.get_by_text('旅行详情', exact=True)).to_have_count(0)
+                expect(button(page, '查看旅行照片')).to_be_enabled()
+                passed('photo/travel returns preserve all filters and selected ID with fresh reads; returning during held genuine travel read remains available and fences late response')
 
                 # Background/offline reveal gates must clear data and recheck,
                 # independently of a successful earlier gallery read.
@@ -501,12 +531,14 @@ def main():
 
                 # Width checks use the actual land asset and business views, not a
                 # static mock. All screenshots are retained for visual review.
+                screenshot_place = next(item for item in get(owner, '/api/journey-places?limit=24&offset=0')['items']
+                    if item['name'].startswith('合成地图回忆 ') and item['journeyId'] == journey['id'])
                 for width in (320, 390, 1040, 1440):
                     page.set_viewport_size({'width': width, 'height': 900 if width >= 1000 else 844})
                     open_map(page)
                     expect(page.locator('svg path').first).to_be_visible()
                     assert_layout(page, width, 'map-overview')
-                    button(page, '打开地点：合成地图回忆 24').click()
+                    button(page, '打开地点：' + screenshot_place['name']).click()
                     expect(button(page, '查看旅行照片')).to_be_enabled()
                     assert_layout(page, width, 'map-detail')
                     button(page, '编辑地点').click()
