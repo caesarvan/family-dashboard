@@ -13,6 +13,7 @@ import ListScreen from './ListScreen';
 import LoginScreen from './LoginScreen';
 import { MoreScreen } from './OtherScreens';
 import FinanceScreen from './FinanceScreen';
+import InvestmentsScreen from './InvestmentsScreen';
 import { TripsScreen } from './TripsScreen';
 import PhotosScreen from './PhotosScreen';
 import { AssistantScreen } from './AssistantScreen';
@@ -21,7 +22,7 @@ import MapWorkspace from './MapWorkspace';
 import AccountsScreen from './AccountsScreen';
 import { readSyncAuthResult, syncAuthMessage, type SyncAuthResult } from '../lib/authNavigation';
 
-const titles:Record<RouteName,string>={home:'首页',calendar:'日程',tasks:'待办',shopping:'采购',trips:'旅行',finance:'家庭资金',photos:'家庭相册',assistant:'家庭助理',inventory:'家庭物品',map:'足迹地图',connections:'账户与自动同步',more:'更多'};
+const titles:Record<RouteName,string>={home:'首页',calendar:'日程',tasks:'待办',shopping:'采购',trips:'旅行',finance:'家庭资金',investments:'我的持仓',photos:'家庭相册',assistant:'家庭助理',inventory:'家庭物品',map:'足迹地图',connections:'账户与自动同步',more:'更多'};
 const legacyRoutes=new Set(['home','calendar','tasks','shopping','trips','map','photos','finance','assistant','connections','household','settings','inventory']);
 export default function HouseholdApp({screen='home'}:{screen?:string}) {
   const route=Object.hasOwn(titles,screen)?screen as RouteName:'home', router=useRouter();
@@ -79,7 +80,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
     }};
   return <><AppShell route={route} title={titles[route]} name={user.name} householdName={state.household?.name||'我们的家'} onNavigate={onNavigate} onCreate={kind=>props.onEdit(kind)} onRefresh={()=>void refresh()} onLogout={()=>handle(household.logout)} refreshing={household.refreshing} offline={!online} onLegacy={onLegacy}>
     <View key={actor}>
-      {route==='home'?<HomeScreen {...props}/>:route==='calendar'?<CalendarScreen {...props}/>:route==='tasks'||route==='shopping'?<ListScreen key={route} kind={route} {...props}/>:route==='finance'?<FinanceScreen {...props}/>:route==='trips'?<TripsScreen {...props}/>:route==='photos'?<PhotosScreen {...props}/>:route==='assistant'?<AssistantScreen {...props}/>:route==='inventory'?<InventoryScreen {...props}/>:route==='map'?<MapWorkspace {...props}/>:route==='connections'?<AccountsScreen {...props} authResult={authResult}/>:<MoreScreen {...props}/>}
+      {route==='home'?<HomeScreen {...props}/>:route==='calendar'?<CalendarScreen {...props}/>:route==='tasks'||route==='shopping'?<ListScreen key={route} kind={route} {...props}/>:route==='finance'?<FinanceScreen {...props}/>:route==='investments'?<InvestmentsScreen {...props}/>:route==='trips'?<TripsScreen {...props}/>:route==='photos'?<PhotosScreen {...props}/>:route==='assistant'?<AssistantScreen {...props}/>:route==='inventory'?<InventoryScreen {...props}/>:route==='map'?<MapWorkspace {...props}/>:route==='connections'?<AccountsScreen {...props} authResult={authResult}/>:<MoreScreen {...props}/>}
     </View>
   </AppShell>{editor&&<ItemEditor key={actor+':'+editor.key} kind={editor.kind} item={editor.item} onDismiss={()=>setEditor(current=>current?.key===editor.key?null:current)}/>}<Snackbar visible={!!notice} onDismiss={()=>setNotice('')} duration={5000} action={{label:'知道了',onPress:()=>setNotice('')}}>{notice}</Snackbar></>;
 }

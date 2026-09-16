@@ -498,7 +498,7 @@ HTTP 200 只表示名称列表已生成。列表包括隐藏的普通工作表�
 XLSX 工作表发现与助理旅行简报已于 2026-09-15 06:50:21 合入并发布，详情见 [验收记录](VALIDATION.md)。
 
 
-## 导入结果读取与首次来源（本地候选，尚未发布）
+## 导入结果读取与首次来源（已于 2026-09-17 财务版发布）
 
 新增 `GET /api/finance-hub/imports/results/<requestId>`，仅本人、当前家庭可读；TV 403、匿名 401、不存在 404（code 为 `import_result_not_found`），不接受任何查询参数。requestId 为 32–64 位小写十六进制字符串。HTTP 200 返回原导入确认的 imported、duplicates、conflicts、confirmedAt、resultMonths、note，以及 requestId、receiptId（64 位）、batchId（24 位或 null）、replayed:true。没有原文件内容、令牌或内部摘要。它是成功提交时的历史事实，不能用来证明交易现在仍存在；当前状态仍读取 overview／transactions。
 
