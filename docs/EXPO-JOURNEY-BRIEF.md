@@ -1,6 +1,6 @@
 # Expo 旅行简报
 
-本页描述源码候选，尚未构建、部署或由真实用户验收；当前线上版本见 [README](../README.md)。沿用 [原简报 API](ASSISTANT-JOURNEY-BRIEF.md) 和 `/api/journeys/preview`，不新增后端、schema、环境配置或依赖。
+本页描述源码候选；组合构建与验收见 [旅行协作验收](EXPO-TRAVEL-ACCEPTANCE.md)，实际线上身份见 [README](../README.md)。沿用 [原简报 API](ASSISTANT-JOURNEY-BRIEF.md) 和 `/api/journeys/preview`，不新增后端、schema、环境配置或依赖。
 
 ## 使用
 
