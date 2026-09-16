@@ -59,7 +59,11 @@ class Fixture:
         self.grants = {OWN:[]}
         self.fail_create = True
         self.fail_confirm = True
+        self.conflict_confirm = True
         self.conflict_patch = False
+        self.hold_patch = False
+        self.patch_started = threading.Event()
+        self.patch_release = threading.Event()
         self.hold_gallery = False
         self.started = threading.Event()
         self.release = threading.Event()
@@ -101,7 +105,11 @@ class Fixture:
                 return jsonify({'import':self.imports[IMPORT], 'items':[dict(id=CANDIDATE,status='successful',item=photo(CANDIDATE,caption='待确认合成照片'))]})
             if path==f'media/imports/{IMPORT}/confirm':
                 assert body['persistSelected'] and body['itemIds']==[CANDIDATE]
+                if self.conflict_confirm:
+                    self.conflict_confirm=False;self.imports[IMPORT]['revision']+=1
+                    return jsonify(error='合成测试：选择状态已更新。'),409
                 if body['confirmRequestId'] not in self.confirm_receipts:
+                    assert body['revision']==self.imports[IMPORT]['revision']
                     self.items[CANDIDATE]=photo(CANDIDATE,caption='已保存合成照片')
                     self.grants[CANDIDATE]=[]
                     self.confirm_receipts[body['confirmRequestId']]=deepcopy(body)
@@ -133,6 +141,8 @@ class Fixture:
                         self.grants[uid]=body['deviceIds'];item['revision']+=1
                     return jsonify(deviceIds=self.grants.get(uid,[]),revision=item['revision'])
                 if request.method=='PATCH':
+                    if self.hold_patch:
+                        self.patch_started.set();self.patch_release.wait(10)
                     if self.conflict_patch:
                         self.conflict_patch=False;item['revision']+=1
                         return jsonify(error='合成测试：其他设备已修改。'),409
@@ -167,6 +177,8 @@ def main():
             results.append('temporary consent required before creating selection')
             page.locator('[data-hm-temporary]').check();page.locator('[data-hm=create]').click()
             expect(page.locator('[data-hm-message]')).to_contain_text('创建结果未收到')
+            expect(page.locator('[data-hm-account]')).to_be_disabled()
+            results.append('account selection is locked while the create outcome is unknown')
             page.locator('[data-hm=create]').click()
             expect(page.locator('[data-hm-import]')).to_contain_text('等待你确认保存')
             posts=[r for r in fixture.records if r['path']=='media/imports' and r['method']=='POST']
@@ -176,13 +188,24 @@ def main():
             expect(page.locator('[data-hm-message]')).to_contain_text('确认保存到私密相册')
             assert not fixture.confirm_receipts
             page.locator('[data-hm-persist]').check();page.locator('[data-hm=confirm]').click()
+            expect(page.locator('[data-hm=recheck-confirm]')).to_be_visible()
+            page.locator('[data-hm=poll]').click()
+            expect(page.locator('[data-hm=recheck-confirm]')).to_be_visible()
+            page.locator('[data-hm=recheck-confirm]').click()
+            expect(page.locator('[data-hm-persist]')).not_to_be_checked()
+            expect(page.locator('[data-hm-candidate]')).to_be_enabled()
+            expect(page.locator('[data-hm-candidate]')).to_be_checked()
+            results.append('definite confirmation conflict requires explicit fresh review and consent')
+            page.locator('[data-hm-persist]').check();page.locator('[data-hm=confirm]').click()
             expect(page.locator('[data-hm-message]')).to_contain_text('保存结果未收到')
             expect(page.locator('[data-hm-candidate]')).to_be_disabled()
             page.locator('[data-hm=confirm]').click()
             expect(page.locator('.hm-card')).to_have_count(2)
             assert len(fixture.confirm_receipts)==1
             confirms=[r for r in fixture.records if r['path'].endswith('/confirm')]
-            assert len(confirms)==2 and confirms[0]['body']==confirms[1]['body']
+            assert len(confirms)==3 and confirms[1]['body']==confirms[2]['body']
+            assert confirms[0]['body']['revision']==1 and confirms[1]['body']['revision']==2
+            assert confirms[0]['body']['confirmRequestId']!=confirms[1]['body']['confirmRequestId']
             results.append('persist consent and same confirmation receipt after lost response')
             page.locator(f'[data-hm=detail][data-id="{OWN}"]').click()
             expect(page.locator('[data-hm-editor]')).to_be_visible()
@@ -196,8 +219,15 @@ def main():
             expect(page.locator('[data-hm-editor] [name=caption]')).to_have_value('<img src=x onerror=alert(1)> 我的草稿')
             page.locator('[data-hm-editor] [name=journeyId]').select_option(JOURNEY)
             page.locator('[data-hm-editor] [name=visibility]').select_option('shared')
+            fixture.hold_patch=True
             page.locator('[data-hm-editor] [type=submit]').click()
+            assert fixture.patch_started.wait(3)
+            expect(page.locator('[data-hm-editor] [name=caption]')).to_be_disabled()
+            expect(page.locator('[data-hm-editor] [name=journeyId]')).to_be_disabled()
+            expect(page.locator('[data-hm-editor] [name=visibility]')).to_be_disabled()
+            fixture.hold_patch=False;fixture.patch_release.set()
             expect(page.locator('[data-hm-message]')).to_contain_text('照片信息已保存')
+            results.append('pending photo update locks fields until its result is known')
             assert fixture.items[OWN]['visibility']=='shared' and fixture.items[OWN]['journey']['id']==JOURNEY
             assert not page.locator('img[onerror]').count()
             results.append('409 keeps draft; explicit reload preserves input and escapes caption')
@@ -253,7 +283,7 @@ def main():
             assert not errors,errors
             browser.close()
     finally:
-        fixture.release.set();server.shutdown();thread.join(timeout=3)
+        fixture.release.set();fixture.patch_release.set();server.shutdown();thread.join(timeout=3)
         (out/'result.json').write_text(json.dumps(dict(checks=results,pageErrors=errors,coverage='Synthetic API contract in real Edge; no actual backend, Google grant or television.'),ensure_ascii=False,indent=2),encoding='utf-8')
     print(json.dumps(dict(passed=len(results),checks=results),ensure_ascii=False))
 

@@ -28,7 +28,7 @@
 | 编辑／移除 | PATCH／DELETE `/api/media/items/<id>` | 修改后读回详情 |
 | 电视许可 | GET／PUT `/api/media/items/<id>/tv-grants` | `{revision,deviceIds}` |
 
-三个同意步骤使用同一版本 `media-v1`，但分别提交 `allowTemporaryProcessing`、`persistSelected`、`allowTvDisplay`，不能相互替代。创建和保存发生响应丢失时保留原请求 ID 和完整载荷重试；修改冲突保留草稿，由用户明确读取最新版本再确认。未知创建结果再次新建需本人确认。
+三个同意步骤使用同一版本 `media-v1`，但分别提交 `allowTemporaryProcessing`、`persistSelected`、`allowTvDisplay`，不能相互替代。创建和保存发生响应丢失时保留原请求 ID 和完整载荷重试；明确的保存冲突（409/410）要求本人点击“重新核对本次选择”，读取最新状态并重新同意后建立新的保存请求；普通状态刷新不会自行覆盖原请求。照片修改冲突保留草稿，由用户明确读取最新版本再确认。请求结果未知时锁定创建账户，保存期间锁定编辑字段，避免显示账户与实际载荷不符或丢失新输入。未知创建结果再次新建需本人确认。
 
 只允许精确同源 `/api/media/items/<24hex>/preview` 成为图片地址。OAuth 仅导航到 `https://accounts.google.com`，选片链接仅接受 `https://photos.google.com`，不嵌入 Google 页面；文本均转义。浏览器不保存 provider token、远端媒体下载地址或私密相册到 localStorage。
 
