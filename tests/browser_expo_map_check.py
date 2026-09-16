@@ -501,12 +501,14 @@ def main():
 
                 # Width checks use the actual land asset and business views, not a
                 # static mock. All screenshots are retained for visual review.
+                screenshot_place = next(item for item in get(owner, '/api/journey-places?limit=24&offset=0')['items']
+                    if item['name'].startswith('合成地图回忆 ') and item['journeyId'] == journey['id'])
                 for width in (320, 390, 1040, 1440):
                     page.set_viewport_size({'width': width, 'height': 900 if width >= 1000 else 844})
                     open_map(page)
                     expect(page.locator('svg path').first).to_be_visible()
                     assert_layout(page, width, 'map-overview')
-                    button(page, '打开地点：合成地图回忆 24').click()
+                    button(page, '打开地点：' + screenshot_place['name']).click()
                     expect(button(page, '查看旅行照片')).to_be_enabled()
                     assert_layout(page, width, 'map-detail')
                     button(page, '编辑地点').click()
