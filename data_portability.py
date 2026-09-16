@@ -90,7 +90,7 @@ def exported_household_media(con, engine, owner, include_shared=False):
         if not own and not engine._authority(con,row['account_id'],row['owner']):
             continue
         item = engine._item_dto(con,row,owner)
-        allowed = fields | ({'source','displayFilename'} if own else set())
+        allowed = fields | ({'source','displayFilename','sourceCreatedAt','sourceTimeState'} if own else set())
         result['personal' if own else 'shared'].append({k:v for k,v in item.items() if k in allowed})
     return result
 
