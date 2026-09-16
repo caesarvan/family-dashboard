@@ -1,6 +1,27 @@
 # 验证记录
 
-> **线上版本：2026-09-16 19:16:22（北京时间），镜像 `sha256:6688c51fed543794a393bf397b49ccb0c36dee8c24e19efbdb0a3715c2ebd86c`。** JPEG 主图兼容补丁已上线；346 源文件、71 Markdown、51 静态资源、130 个方法／路径模板、48 张户内表及 2 张平台表，无数据迁移。安装源码对应 main `f603151`／integration `e2087e0` 同树；本次文档仅本地交接，不改已发布 manifest。发布后本人重试并经服务器读回确认：本批 5 张均出现预览并成功保存，0 失败。原失败的具体原因仍未确定，实体电视及长期行为另验。
+> **线上版本：2026-09-16 19:48:57（北京时间），镜像 `sha256:b82d0cdc1a594be661beed949fc317ddd7adaf2d2c53981f6403f667d31d0426`。** 家庭物品与助理本地照片／地点搜索已上线；367 源文件、80 份 README/docs Markdown、53 静态资源、144 个方法／路径模板、53 张户内表及 2 张平台表。安装 main `cf036908`／integration `0c7c783` 同树，48→53 迁移及发布后读回通过。本文档增量只作本地交接，不修改已发布 manifest。本人 Photos 此前实际 5／5 预览与保存成功；真实库存、新增搜索体验和实体电视尚待本人反馈。
+
+## 库存与本地搜索发布：2026-09-16 19:48:57
+
+最终 main `cf0369084fb34ca24aa31777779d29e8487206fd`／integration `0c7c783985ef78e8391e874e0b00dbf38f536520` 同树 `8e8fb21c6a357340fd31bf2f98450e3c1e8464c9`。安装包 367 源文件、80 份 README/docs Markdown、53 静态资源；源码实际索引 144 方法／路径模板、53 户内表及 2 平台表。已完成生产 48→53 激活和 19:49:16 发布后读回；这不代表本人实际库存或新增搜索体验验收完成。
+
+| 范围 | 实际结果与边界 |
+|---|---|
+| Windows 最终组合 | 助理搜索 30 项、库存严格工厂／原 HTML 浏览器 8 组、53 表恢复 1 项分别通过；真实临时 Flask／SQLite／Edge与虚构输入，不是本人真实库存或实体 TV |
+| 实际 Linux domain | **177 passed／135.14s**；库存核心、HTTP、运行接线、个人导出，在固定不可变镜像内使用合成数据 |
+| 实际 Linux recovery | **42 passed／95.01s**；库存迁移／完整恢复和媒体运行／恢复／迁移，另一次独立容器执行 |
+| 包与来源 | 367 源文件、88 运行文件核验；最终树相对 build source `9f5f5db` 只改变 README、HANDOFF、MEDIA-DELIVERY、VALIDATION 四份文档；两个 Linux 报告各自 allPassed、JUnit、日志及实际 `/app` 模块路径均绑定原镜像 |
+| 生产迁移 | 实际 1 户两库完整组备份；旧 48 表全部行、schema、序列及平台目录保持，新增五表在新 app 启动后仍为空；随后启动 worker／web，原环境配置与密钥保持 |
+| 19:49:16 读回 | 全 367 源／88 运行／53 HTTPS 静态文件 SHA 匹配，九个匿名接口 401；四服务 running、重启计数 0、app healthy；发布后完整备份 service success、timer active |
+
+两组 Linux 测试分别执行，结果按各自原件记录。构建镜像为 `sha256:b82d0cdc1a594be661beed949fc317ddd7adaf2d2c53981f6403f667d31d0426`，build manifest `2b946250361e44f0f9624757ec125ed939ed824bfbd7ce1f4f9b0ad93ed7c1b1`；最终包 manifest `c3c718d35ba43fd4b67505a6116264b709a90a7a9dd3d524e74f8e7a091a815c`。最终发布文档不改变实际镜像运行文件。部署后本轮交接文档也只在本地更新，不改写原发布 manifest 或验证原件。
+
+Linux 原件分别在私有候选 `inventory-release-9f5f5db/validation-domain-20260916T113033068044Z-bb6c1ced/` 与 `validation-recovery-20260916T113033094742Z-c8d9fd28/`，各含 report.json、results.xml、validation.log、runtime.json。最终包非作者核对报告 SHA256 `49ce43f389fd49bc577f1e3ab3ca1abc12b4acf2db0e679e94fcca9cd401cd3e`。阶段性作者测试、原失败和修订按对应 [库存浏览器](INVENTORY-INTEGRATION.md)、[迁移](INVENTORY-MIGRATION.md) 与 [恢复](INVENTORY-RECOVERY.md) 保留，不重写为一次全部通过。
+
+生产原件在私有候选 `inventory-package-final-20260916/activation.json` 与 `post-readback.json`，SHA256 分别为 `f60da08b1de36c2ab20b651afe665f884048c7c7d51cf71684d3e19a553710e2`、`3a7f57aeb66554675644776cd88c111c601b9c53d28b706e4791c5e6cf7ae378`。发布目录 `/opt/family-dashboard-releases/inventory-53-20260916T114808119918Z`；完整两库备份 manifest SHA256 `a3799fed9c6780a2f24034004056960da0bae8488a4f5c47cd116a3666eaea47`，另保留原源码、配置、镜像和独立备份组副本。数据保持结论截至仅启动 app 后的检查；开放 worker／web 后允许正常业务变化。控制器由 root 审查并在 stage 实际通过后执行，另一次非作者静态／语法审查报告 SHA256 `44f3c9210b406547719faf403e7354616dff3333edae0429c99ecf2924e98a15`，该次审查仅覆盖静态代码与语法。
+
+此前本人 Google Photos 真实 5／5 预览与明确保存通过的证据仍成立，见下一节。库存分段验证不重新执行真实云操作；本人真实库存数据录入、新增搜索体验、实体电视、长期 Google 配额／网络和生产覆盖恢复仍未验收。
 
 ## JPEG 主图兼容发布：2026-09-16 19:16:22
 
