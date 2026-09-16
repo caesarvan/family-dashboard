@@ -67,6 +67,22 @@ test('local filters include all holdings and respect independent name institutio
   assert.equal(filterInvestments([first, second], { name: '基金', institution: 'Bank', currency: '' }).length, 0);
 });
 
+test('Unicode code point limits match the backend for existing records, sources and edit payloads', () => {
+  const name = '😀'.repeat(120), sourceName = '📁'.repeat(80), holdingKey = '🔑'.repeat(120);
+  const row = holding({ name, institution: name, assetType: '📈'.repeat(60), note: '📝'.repeat(1000),
+    source: { sourceName, holdingKey }, valuationSource: 'file_import' });
+  const source = { sourceName, revision: 1, updatedAt: row.updatedAt, holdingCount: 1, deletedCount: 0 };
+  const result = readInvestmentList(list([row], [source]));
+  assert.deepEqual(result, list([row], [source]));
+  const payload = investmentPayload(investmentDraft(result.investments[0]), operationId);
+  assert.equal(payload.name, name); assert.equal(payload.institution, name);
+  assert.equal(payload.assetType, row.assetType); assert.equal(payload.note, row.note);
+  assert.throws(() => readInvestmentList(list([{ ...row, name: name + '😀' }], [source])));
+  assert.throws(() => readInvestmentList(list([row], [{ ...source, sourceName: sourceName + '📁' }])));
+  assert.throws(() => readInvestmentList(list([{ ...row, source: { sourceName, holdingKey: holdingKey + '🔑' } }], [source])));
+  assert.throws(() => investmentPayload({ ...investmentDraft(row), name: name + '😀' }, operationId));
+});
+
 test('immutable operation intent binds exact id revision payload and same-request replay', () => {
   const input = draft(), intent = investmentIntent('update', input, operationId, holding());
   input.name = 'later draft';

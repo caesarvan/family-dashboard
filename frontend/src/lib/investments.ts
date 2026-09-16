@@ -13,7 +13,7 @@ export type InvestmentReceipt = { requestId: string; kind: InvestmentIntent['kin
 export type InvestmentTotals = { currency: string; count: number; knownCount: number; unknownCount: number; costCents: bigint; knownCostCents: bigint; knownValueCents: bigint; knownGainCents: bigint };
 const invalid = (): never => { throw new Error('持仓数据无法安全核对，请重新读取。'); };
 const object = (v: unknown): Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : invalid();
-const text = (v: unknown, max: number, required = false): string => typeof v === 'string' && v.length <= max && (!required || v.trim().length > 0) ? v : invalid();
+const text = (v: unknown, max: number, required = false): string => typeof v === 'string' && Array.from(v).length <= max && (!required || v.trim().length > 0) ? v : invalid();
 const int = (v: unknown, min = 0): number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min ? v : invalid();
 const rows = (v: unknown, max: number): unknown[] => Array.isArray(v) && v.length <= max ? v : invalid();
 const code = (v: unknown): string => typeof v === 'string' && /^[A-Z]{3}$/.test(v) ? v : invalid();
@@ -97,7 +97,7 @@ export function investmentDraft(row?: InvestmentRecord): InvestmentDraft {
     : { name: '', institution: '', assetType: '', currency: 'CNY', quantity: '', cost: '', value: '', asOf: new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()), note: '' };
 }
 function input(value: string, label: string, max: number, required = false): string {
-  if (typeof value !== 'string' || value.trim().length > max || required && !value.trim() || value.includes('\u0000')) throw new Error(`${label}${required ? '不能为空，' : ''}请检查长度和不可见字符。`);
+  if (typeof value !== 'string' || Array.from(value.trim()).length > max || required && !value.trim() || value.includes('\u0000')) throw new Error(`${label}${required ? '不能为空，' : ''}请检查长度和不可见字符。`);
   return value.trim();
 }
 export function investmentPayload(draft: InvestmentDraft, operationId: string, revision?: number): InvestmentPayload {
