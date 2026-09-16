@@ -12,8 +12,7 @@
     ],
     "web": {
       "output": "single",
-      "bundler": "metro",
-      "favicon": "./public/home.svg"
+      "bundler": "metro"
     },
     "plugins": [
       "expo-router"

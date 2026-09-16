@@ -12,7 +12,7 @@ import tarfile
 
 
 ROOT = Path(__file__).resolve().parents[1]
-FILES = ['app.py','member_sessions.py','tv_display.py','sync_health.py','cloud_accounts.py','cloud_providers.py','sync_worker.py','shopping_media.py','shopping_settlement.py','household_routines.py','spending_observations.py',
+FILES = ['app.py','frontend_runtime.py','member_sessions.py','tv_display.py','sync_health.py','cloud_accounts.py','cloud_providers.py','sync_worker.py','shopping_media.py','shopping_settlement.py','household_routines.py','spending_observations.py',
          'finance_baseline.py','finance_source_bridge.py','journey_time.py','household_spaces.py','journey_workflows.py','journey_documents.py','journey_places.py','finance_hub.py',
          'home_assistant.py','calendar_publish.py','task_publish.py','financial_files.py','investment_import.py','dashboard_preferences.py','data_portability.py','requirements.txt',
          'google_photos_picker.py','media_crypto.py','media_images.py','household_media.py','media_import_worker.py','media_playback.py','inventory_core.py','inventory_api.py',
@@ -32,6 +32,11 @@ def prepare(root=ROOT, access=None):
         if not (root / folder).is_dir():
             raise RuntimeError('Required source directory missing: ' + folder)
         paths.extend(p for p in (root / folder).rglob('*') if p.is_file() and '__pycache__' not in p.parts and p.suffix != '.pyc')
+    frontend = root / 'frontend'
+    if frontend.is_dir():
+        paths.extend(frontend / name for name in ('package.json','package-lock.json','app.json','tsconfig.json','README.md','LICENSE'))
+        for folder in ('src','public'):
+            paths.extend(p for p in (frontend / folder).rglob('*') if p.is_file())
     paths = sorted(set(paths))
     blobs = {}
     for path in paths:
