@@ -1,8 +1,32 @@
 # 验证记录
 
-> **线上版本：2026-09-16 13:24:33（北京时间），镜像 `sha256:ea399441e6696bc29214842ab8c47e3db943714c1ae72a05ca1266bdc4a1b739`。** 完整账本分页、搜索和导入金额校验已通过 SOURCE 43→43 更新发布；258 源文件、43 Markdown、44 静态资源、107 方法／路径模板、43 张户内表及 2 张平台表。实际安装为同树 main `79faaf3`／integration `82f4401`；本次发布后的七份文档及文档检查器修订仅在本地交接，尚未同步服务器。 本轮与历史证据分别记录如下。
+> **线上版本：2026-09-16 16:33:32（北京时间），镜像 `sha256:9cd092392b27d6e2342ab1890ff3514149416281fe130df62976b8b1488acac8`。** 旅行地图已完成 43→44 迁移发布；295 源文件、52 Markdown、47 静态资源、112 个方法／路径模板、44 张户内表及 2 张平台表。安装源码对应 main `6f3d978`／integration `cd857f5` 的同一文件树；本次发布后的交接文档尚未同步服务器。NVIDIA 适配代码已交付，生产模型配置与真实账号／电视验收分别记录。
 
-## 本次开发与本地验收：完整账本与金额校验
+## 实际地点发布：2026-09-16 16:33:32
+
+main `6f3d978` 与 integration `cd857f5` 同树，295文件。精确READY SHA `15fa1dbaaa1df1e0161510a2ba1bca642f4318a5be4a7a373a9ecdf939a6e5e0`，非作者准入报告SHA `d44cb4a33216a296e0f08ceffacc9110f88010eabab92945871d8054c4845b34`。七类证据、43原件及新鲜基线核验通过后才部署。
+
+| 范围 | 实际结果与边界 |
+|---|---|
+| Windows | 899 passed：467后端+432工具。保留各次执行/JUnit与依赖适用性，非同一head单次全套；41 subtests单列 |
+| 新镜像Linux | 同29脚本899 passed，0 failed/error/skipped；41 subtests单列；74 runtime、221 fixture、958测试依赖不变，同Python3.12 ABI，4容器清理 |
+| 浏览器 | 地图真实应用10、成员会话33、导出权限59；运行文件和脚本逐字适用、各组0外站请求。另59布局的外站请求未测，不能填零 |
+| 双户Docker迁移 | 47 runner检查，seed15/HTTP100单列；旧43表保持、新增空地点表；17容器+2新卷清理；未调用生产controller |
+| 双户Docker恢复 | 65 runner、23 seed、232 verify分列；24地点含4删除标记、8资料、8采购图片；旧会话/OAuth各拒绝4；22容器+6卷清理 |
+| 实际生产 | 1户43→44、平台2表保持、两库组备份；安装前/启动后/HTTP后三次数据核对；47静态、10匿名权限GET；原配置保持、三服务运行且app健康 |
+| 独立读回 | 全295 source、manifest、镜像及原配置相符；正常TLS五项HTTPS：health200、地点匿名401、三地图资源200且SHA一致；不是手机或实体电视验收 |
+
+Linux `result.json` SHA `2659407b2fb40409355e4d06a13b6aae34878358e0199b312f8b6c8e3723ad2a`；Windows来源汇总SHA `3d23c4b8d10b6dfece0d67fa7498b584330ea1a798a3e66b951b3dc62a6f8e38`。迁移原件SHA `a9a0b4ceb401ecc6708892f9b84b4b7a7ca7ccd9aaaf11b2025ae3956e2b560f`；恢复原件SHA `63753f35cf4d6336508eeddf9fd8e53bcb0424a7928ad5b6d03beb8073ae6bbc`，其中79源码依赖是完整295 manifest的精确子集，另用实际调用和镜像绑定。计数不相加冒充独立功能数。
+
+实际 `deployment.json` SHA `e96105192351de23135e8b5df6b4fb61eb861f3f68b6d726e9ceb16309de77e3`；目录 `/opt/family-dashboard-releases/journey-places-20260916T083232752975Z`；manifest `1a5990e0b7e500ed44986b979e413a8ba26c92bd6cf4c7757be429bed17e51d8`。
+
+首次生产preflight因候选目录root 0700导致非root校验容器不可读，在停服前退出（interrupted=false、stops=[]）。仅修候选根及manifest权限，保留READY/evidence私有与所有字节，UID10001全源码读取和原verify-image通过，再按同一READY发布成功。原失败目录 `journey-places-20260916T082932814752Z` 保留。r2 Linux原有29失败来自测试环境遮蔽合成NVIDIA配置，修订测试进程环境后r3全部通过；旧失败不改写。迁移输入、子进程测试依赖路径与文档占位符修订也各经审查。
+
+NVIDIA配置工具组合 `14dc2b1` 仅增加3文件，其非作者报告SHA `2eed45a25c87d226091c141fcf8f9dbc1d70fe80264873807e2b2d6940557e3f`；组合Windows102 passed/7 POSIX跳过，独立WSL114通过。main `18f30dd` 接收同树组合；尚未配置或重启生产来启用模型。真实新云写、Google Photos、实体电视及生产覆盖恢复仍未验收。
+
+下方为历史分段开发记录，“尚未部署”仅描述当时阶段。
+
+## 历史分段开发：账本与地图
 
 ### 后续本地地图增量（尚未部署）
 
