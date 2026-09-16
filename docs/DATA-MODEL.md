@@ -1,5 +1,15 @@
 # 数据模型、同步一致性与隐私边界
 
+## Expo 财务候选：账单导入回执
+
+本轮源码新增 `hub_import_receipts`，临时新库实测为 **54 张户内表、2 张平台表、149 个 Flask 方法／路径模板**，另有家庭入口 WSGI 路由。此处是候选源码结构，实际安装版本仍以 [交接说明](HANDOFF.md) 为准；下面历次版本数字保留历史含义。
+
+`hub_import_receipts` 以 `(owner, request_id)` 为主键，包含业务输入摘要、原预览令牌摘要、确认结果 JSON 和创建时间。令牌原文与文件字节不写入回执。新增确认使用成员身份与事务校验，只有真实提交结果才形成回执；同一请求必须保持原输入和原令牌。`GET /api/finance-hub/imports/results/<request_id>` 仅本人读取，404 不能证明尚在处理的请求不会提交。
+
+新交易的 `data.provenance` 保存首次导入批次、文件名、格式、工作表、原始物理行范围与入账时间；旧交易标记来源未知，不从时间推断批次。重复或冲突保留第一次来源。删除交易后查询旧回执只返回历史结果，不恢复交易。`hub_imports` 原七列结构不变。
+
+私人导出增加 `personal.transactionImportReceipts` 业务白名单，不导出校验摘要或令牌。共同消费汇总不包含文件名、批次和个人明细。完整字段、容量上限和重试规则见 [财务 API](FINANCE-API.md)、[导入说明](FINANCE-IMPORT.md)；停写、全户备份、53→54 迁移与恢复核对见 [发布说明](FINANCE-RECEIPTS-RELEASE.md)。
+
 **本地媒体候选：48张户内表及2张平台表；线上当前为44+2，安装身份见 [README](../README.md)。** 本轮在地点表之后新增 `media_imports`、`media_items`、`media_tv_grants`、`media_playback`，分别存持久导入、加密展示副本、独立屏幕许可和每屏幕播放状态。账户授权、成员认证与家庭隔离复用现有表。五张库存核心表尚未注册，不计入48表。字段和约束见 [媒体API](HOUSEHOLD-MEDIA-API.md) 与 [电视播放](MEDIA-PLAYBACK.md)，44→48显式迁移见 [升级说明](MEDIA-MIGRATION.md)。
 
 下方时间、镜像和43表等段落为历史版本记录；现行完整结构以 [源码存储索引](PLATFORM-ROUTES.md) 为准。

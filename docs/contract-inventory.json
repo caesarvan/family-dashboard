@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-16T12:14:11.433593+00:00",
+  "generatedAt": "2026-09-16T19:38:23.443102+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -235,6 +235,12 @@
       "path": "/api/finance-hub/imports/preview",
       "source": "finance_hub.py",
       "endpoint": "hub_preview"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/imports/results/<request_id>",
+      "source": "finance_hub.py",
+      "endpoint": "hub_import_result"
     },
     {
       "method": "POST",
@@ -838,6 +844,18 @@
     },
     {
       "method": "GET",
+      "path": "/app",
+      "source": "frontend_runtime.py",
+      "endpoint": "expo_frontend"
+    },
+    {
+      "method": "GET",
+      "path": "/app/<path:name>",
+      "source": "frontend_runtime.py",
+      "endpoint": "expo_frontend"
+    },
+    {
+      "method": "GET",
       "path": "/auth/<provider>/callback",
       "source": "cloud_accounts.py",
       "endpoint": "callback"
@@ -847,6 +865,12 @@
       "path": "/auth/<provider>/login",
       "source": "cloud_accounts.py",
       "endpoint": "external_login"
+    },
+    {
+      "method": "GET",
+      "path": "/classic",
+      "source": "frontend_runtime.py",
+      "endpoint": "classic_frontend"
     },
     {
       "method": "GET",
@@ -1727,6 +1751,44 @@
       {
         "name": "revision",
         "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_import_receipts": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "payload_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "token_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
         "notNull": true,
         "primaryKey": false
       }
