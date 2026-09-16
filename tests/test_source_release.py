@@ -123,8 +123,30 @@ def test_source_update_uses_shared_ordering_preserves_originals_and_never_restor
     assert not any('warm' in x or 'restore' in x for x in f.runner.actions)
 
 
+def test_static_update_still_rejects_contract_inventory_json():
+    name = 'docs/contract-inventory.json'
+    base = {'static/app.js': '0' * 64, name: '1' * 64}
+    candidate = {'static/app.js': '2' * 64, name: '3' * 64}
+    with pytest.raises(RuntimeError, match='protected_source_change'):
+        C.validate_changes(base, candidate, sorted(candidate), policy=C.STATIC)
+
+
+def test_source_update_accepts_the_known_contract_inventory_json(f):
+    name = 'docs/contract-inventory.json'
+    original_environment = (f.root / '.env').read_bytes()
+    f.values[name] = b'{"scope":"synthetic source inventory","routes":[]}\n'
+    f.refreeze_source()
+    result = f.activate()
+    assert result['status'] == 'published'
+    assert (f.root / name).read_bytes() == f.values[name]
+    assert (f.root / '.env').read_bytes() == original_environment
+    assert name not in {change['path'] for change in C.runtime_changes(f.ready['baseHashes'], f.hashes)}
+
+
 @pytest.mark.parametrize('name', ['requirements.txt', 'Dockerfile', 'compose.yaml', 'deploy/nginx.conf',
-                                 'deploy/backup.py', 'deploy/other.py', 'new_backend.py'])
+                                 'deploy/backup.py', 'deploy/other.py', 'new_backend.py',
+                                 'docs/settings.json', 'docs/nested/contract-inventory.json',
+                                 'docs/contract-inventory.json.backup', 'contract-inventory.json'])
 def test_unapproved_scope_rejected_before_any_process(f, name):
     f.values[name] = f.values.get(name, b'') + b'\n# changed\n'; f.refreeze_source()
     with pytest.raises(RuntimeError): f.activate()
