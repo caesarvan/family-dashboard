@@ -69,3 +69,15 @@ python -B deploy/check_finance_receipt_migration.py check-restored \
 此前 44 → 47／48 媒体与 48 → 53 库存测试仍维持原表数和原断言。它们只在构造对应历史工厂时暂时把新回执 schema 常量设为空，离开该构造范围后恢复；不删除真实新表、不跳过测试，也不把当前 54 表伪装成旧生产库。53 → 54 和包含实际回执的当前工厂／恢复由本轮新测试负责。
 
 实际测试命令、结果、失败修订与源提交身份随本候选交付，组合与发布证据进入 [验证记录](VALIDATION.md) 和 [交接说明](HANDOFF.md)。
+
+## 本地实际验证记录
+
+2026-09-17，在独立组合 worktree 中以 backend `faac865867d290d5b8611bec8e3b09f33371dd61` 与迁移候选 `5a2b462f5fff798e409d2805c777c0119d669f70` 合成提交 `8b9dc87c1f68642f57fe617859cad019f5789a83`，执行：
+
+```sh
+python -B -X utf8 -m pytest -q tests/test_finance_receipt_migration.py tests/test_inventory_migration.py tests/test_media_migration.py tests/test_platform_backup.py --junitxml=test-results/finance-receipt-migration-r1.xml
+```
+
+实际 Windows **45 passed，43.58 秒，0 failed / error / skipped**。JUnit SHA256 为 `c2fda9190568380009129347f3c23c5365709a0dc3241d75eddc66d5e0cf48ab`；执行前后组合源码均干净。随后仅补充本段结果，工具及测试字节不变。
+
+新测试使用真实临时双户 SQLite、真实成员登录和实际账单确认生成回执。恢复直接执行部署文档中的完整恢复程序到新临时目录，核对整个 54 表组后执行文档会话失效 SQL；新登录能读取两户各自回执及首次来源，同请求不重复入账，跨户回执不可见，旧 Cookie 被拒绝。历史库存／媒体与平台备份作为同次受影响回归分别执行。没有进行生产迁移、真实家庭恢复、外部云调用或实体设备验收；Linux 镜像与生产发布需由集成人另行核验。
