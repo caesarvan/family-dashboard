@@ -1,68 +1,55 @@
 import { Platform } from 'react-native';
-import { configureFonts, MD3DarkTheme, MD3LightTheme, type MD3Theme } from 'react-native-paper';
-import type { ThemeName } from '../lib/types';
+import { configureFonts, MD3LightTheme, type MD3Theme } from 'react-native-paper';
 
-// Expo DESIGN: quiet surfaces, neutral primary actions, readable Chinese text.
-// Use system fallbacks; no remote font request is needed to open the application.
+// Visual source: expo/DESIGN.md. Saved classic/TV palettes do not style Expo.
+export const expoTokens = {
+  canvas: '#ffffff', canvasSoft: '#fafafa', ink: '#171717', body: '#60646c',
+  primary: '#000000', strong: '#f0f0f3', hairline: '#f0f0f3', outline: '#dcdee0',
+  link: '#0d74ce', skyLight: '#cfe7ff', skyMid: '#a8c8e8',
+  controlRadius: 8, cardRadius: 12,
+} as const;
 const fontFamily = Platform.select({
   web: 'Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif',
-  ios: 'System',
-  default: 'sans-serif',
+  ios: 'System', default: 'sans-serif',
 });
-const fonts = configureFonts({ config: { fontFamily, letterSpacing: 0 } });
+const fonts = configureFonts({ config: { fontFamily, letterSpacing: 0, fontWeight: '400' } });
 
-export function makeTheme(name: ThemeName): MD3Theme {
-  const light = name === 'light';
-  const ocean = name === 'ocean';
-  const base = light ? MD3LightTheme : MD3DarkTheme;
-  const surface = light ? '#ffffff' : ocean ? '#192a38' : '#1a2925';
-  const background = light ? '#f7f8fa' : ocean ? '#111e2b' : '#111d19';
-  const soft = light ? '#eff2f4' : ocean ? '#233b4a' : '#263b31';
-  const accent = light ? '#416750' : ocean ? '#a4d3df' : '#b7d7bc';
-  const ink = light ? '#171b1e' : '#f1f5f3';
-  const muted = light ? '#58646b' : ocean ? '#b6c7d2' : '#b8c9be';
+export function makeTheme(): MD3Theme {
+  const t = expoTokens;
   return {
-    ...base,
-    // Paper MD3 buttons use 5 × roundness; cards set their explicit 12px radius.
+    ...MD3LightTheme,
+    // Paper multiplies this by 5 for buttons; input/card radii are explicit.
     roundness: 1.6,
     colors: {
-      ...base.colors,
-      primary: light ? '#000000' : '#f1f5f3',
-      onPrimary: light ? '#ffffff' : '#111917',
-      primaryContainer: soft,
-      onPrimaryContainer: ink,
-      secondary: accent,
-      onSecondary: light ? '#ffffff' : '#13221d',
-      secondaryContainer: soft,
-      onSecondaryContainer: ink,
-      tertiary: accent,
-      onTertiary: light ? '#ffffff' : '#13221d',
-      tertiaryContainer: soft,
-      onTertiaryContainer: ink,
-      background,
-      onBackground: ink,
-      surface,
-      onSurface: ink,
-      surfaceVariant: soft,
-      onSurfaceVariant: muted,
-      outline: light ? '#78858d' : '#82948c',
-      outlineVariant: light ? '#dce2e6' : ocean ? '#3c5260' : '#354b3e',
-      surfaceDisabled: light ? '#e4e7e9' : '#34453e',
-      onSurfaceDisabled: light ? '#687279' : '#99aaa1',
-      inverseSurface: light ? '#24332c' : '#f1f5f3',
-      inverseOnSurface: light ? '#f1f5f3' : '#1a2925',
-      inversePrimary: light ? '#b7d7bc' : '#416750',
-      elevation: { level0: 'transparent', level1: surface, level2: surface, level3: soft, level4: soft, level5: soft },
+      ...MD3LightTheme.colors,
+      primary: t.primary, onPrimary: t.canvas,
+      primaryContainer: t.strong, onPrimaryContainer: t.ink,
+      secondary: t.ink, onSecondary: t.canvas,
+      secondaryContainer: t.strong, onSecondaryContainer: t.ink,
+      tertiary: t.body, onTertiary: t.canvas,
+      tertiaryContainer: t.strong, onTertiaryContainer: t.ink,
+      background: t.canvas, onBackground: t.ink,
+      surface: t.canvas, onSurface: t.ink,
+      surfaceVariant: t.canvasSoft, onSurfaceVariant: t.body,
+      outline: t.outline, outlineVariant: t.hairline,
+      surfaceDisabled: t.strong, onSurfaceDisabled: '#767676',
+      inverseSurface: t.ink, inverseOnSurface: t.canvas, inversePrimary: t.canvas,
+      // The reference pale error is unsuitable as small text on white.
+      error: '#b4232a', onError: t.canvas, errorContainer: '#fff0f0', onErrorContainer: '#7d1a20',
+      elevation: { level0: 'transparent', level1: t.canvas, level2: t.canvas, level3: t.canvasSoft, level4: t.canvasSoft, level5: t.canvasSoft },
     },
     fonts: {
       ...fonts,
-      headlineLarge: { ...fonts.headlineLarge, fontSize: 30, lineHeight: 38, fontWeight: '600' },
-      headlineMedium: { ...fonts.headlineMedium, fontSize: 26, lineHeight: 34, fontWeight: '600' },
-      headlineSmall: { ...fonts.headlineSmall, fontSize: 24, lineHeight: 32, fontWeight: '600' },
-      titleLarge: { ...fonts.titleLarge, fontSize: 20, lineHeight: 28, fontWeight: '600' },
-      titleMedium: { ...fonts.titleMedium, fontSize: 17, lineHeight: 25, fontWeight: '600' },
-      titleSmall: { ...fonts.titleSmall, fontSize: 15, lineHeight: 22, fontWeight: '600' },
-      bodyLarge: { ...fonts.bodyLarge, fontSize: 16, lineHeight: 25 },
+      displayLarge: { ...fonts.displayLarge, fontSize: 64, lineHeight: 70, fontWeight: '600', letterSpacing: -1.92 },
+      displayMedium: { ...fonts.displayMedium, fontSize: 48, lineHeight: 54, fontWeight: '600', letterSpacing: -1.44 },
+      displaySmall: { ...fonts.displaySmall, fontSize: 36, lineHeight: 44, fontWeight: '600', letterSpacing: -1.08 },
+      headlineLarge: { ...fonts.headlineLarge, fontSize: 32, lineHeight: 40, fontWeight: '600' },
+      headlineMedium: { ...fonts.headlineMedium, fontSize: 28, lineHeight: 36, fontWeight: '600' },
+      headlineSmall: { ...fonts.headlineSmall, fontSize: 28, lineHeight: 36, fontWeight: '600' },
+      titleLarge: { ...fonts.titleLarge, fontSize: 22, lineHeight: 30, fontWeight: '600' },
+      titleMedium: { ...fonts.titleMedium, fontSize: 18, lineHeight: 26, fontWeight: '600' },
+      titleSmall: { ...fonts.titleSmall, fontSize: 16, lineHeight: 24, fontWeight: '600' },
+      bodyLarge: { ...fonts.bodyLarge, fontSize: 16, lineHeight: 24 },
       bodyMedium: { ...fonts.bodyMedium, fontSize: 14, lineHeight: 22 },
       bodySmall: { ...fonts.bodySmall, fontSize: 13, lineHeight: 20 },
       labelLarge: { ...fonts.labelLarge, fontSize: 14, lineHeight: 20, fontWeight: '500' },
