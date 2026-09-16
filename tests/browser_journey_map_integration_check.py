@@ -4,6 +4,7 @@ Run only after the fixed map UI and land candidates are Git-merged with wiring.
 No contract double, external services, production data or model calls.
 """
 from datetime import datetime, timezone
+from contextlib import closing, ExitStack
 import hashlib
 import json
 from pathlib import Path
@@ -54,8 +55,15 @@ def main():
             raise AssertionError('External socket forbidden')
         return original(sock, address)
     server = None
+    def stop_server():
+        nonlocal server
+        if server:
+            server.shutdown(); server.server_close(); server = None
     try:
-        with patch.object(socket.socket, 'connect', connect), tempfile.TemporaryDirectory(prefix='real-map-') as folder:
+        with patch.object(socket.socket, 'connect', connect), ExitStack() as lifecycle:
+            folder = lifecycle.enter_context(tempfile.TemporaryDirectory(prefix='real-map-'))
+            assert Path(folder).resolve().parent == Path(tempfile.gettempdir()).resolve()
+            assert Path(folder).name.startswith('real-map-')
             config = dict(TESTING=True, DATA_DIR=folder, SECRET_KEY='synthetic-map-integration', SESSION_COOKIE_SECURE=False,
                           MEMBER1_PASSWORD='synthetic-map-password-one', MEMBER2_PASSWORD='synthetic-map-password-two',
                           MICROSOFT_CLIENT_ID='', MICROSOFT_CLIENT_SECRET='', GOOGLE_CLIENT_ID='', GOOGLE_CLIENT_SECRET='',
@@ -76,6 +84,7 @@ def main():
             assert seeded.status_code == 201
             server = make_server('127.0.0.1', 0, application, threaded=True, request_handler=Quiet)
             threading.Thread(target=server.serve_forever, daemon=True).start()
+            lifecycle.callback(stop_server)
             base = 'http://127.0.0.1:' + str(server.server_port)
             with sync_playwright() as pw:
                 browser = pw.chromium.launch(channel='msedge', headless=True)
@@ -210,7 +219,7 @@ def main():
                 restarted = partner.new_page()
                 restarted.goto(base+'/#map')
                 expect(restarted.locator('[data-jm=new]')).to_be_enabled()
-                with sqlite3.connect(Path(folder)/'household.sqlite3') as con:
+                with closing(sqlite3.connect(Path(folder)/'household.sqlite3')) as con:
                     assert con.execute('SELECT count(*) FROM journey_places WHERE deleted_at IS NULL').fetchone()[0]==2
                     assert con.execute('PRAGMA foreign_key_check').fetchall()==[]
                 passed('factory restart preserves real SQLite places and session privacy')
@@ -218,11 +227,11 @@ def main():
                 assert not report['pageErrors'] and not report['externalRequests'] and report['providerCalls']==0
                 report['passed']=True
     except Exception:
+        report['passed']=False
         report['failure']=traceback.format_exc()
         print(report['failure'], flush=True)
     finally:
-        if server:
-            server.shutdown(); server.server_close()
+        stop_server()
         report['sourceHashesAfter']=hashes()
         report['sourceUnchanged']=report['sourceHashesAfter']==report['sourceHashesBefore']
         report['passed']=report['passed'] and report['sourceUnchanged']
