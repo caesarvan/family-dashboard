@@ -1,5 +1,23 @@
 # 验证记录
 
+## Expo 统一设计与三模块发布：2026-09-16 23:02:11
+
+本轮旅行、助理、相册接入真实原有 API，不改变 53+2 表。main `5c59ffb7`／integration `95c73ed` 同树 `a405fd56`，23:02:11 激活、23:02:30 正常 TLS 读回通过；完整源码／镜像／包身份见 [本轮交付](EXPO-NEXT-RELEASE.md)。
+
+| 范围 | 已取得证据 |
+|---|---|
+| r2 真实组合浏览器 | `4cb69ac` 实际导出，临时 Flask／SQLite／Edge **14 组通过**；保留原日常操作，新增旅行预览／确认、助理选项与原计划回执、照片共享／逐台 TV／撤回、创建 202 后丢 GET 保留原标识与同步打开 Picker；零页面错误／外站请求 |
+| 视觉 | r2 实际查看 390／1440 的 16 张图，另独立真实 320 视口补充 8 张，合计查看 24 张；白底黑 CTA、细边框、无旧主题菜单，中文长标题／地点换行。320 八张页面宽度均为 320，无横向溢出；不是重复 14 组业务回归 |
+| r3 定向增量 | `95c73ed` 新导出 **6 组通过**：390／1440 首页查看旅行进入详情、明确编辑后的放弃草稿对话框居中限宽，以及新版登录／相册／助理烟测。其余 r2 结果按未改变输入继承，不写成单轮 20 组 |
+| 实际 Linux | 本次固定镜像 `c9229460` 内 dashboard layout／display preferences／household spaces／frontend runtime 四模块 **63 passed，0 failed／error／skipped**；明确 deselect 一项 Windows junction 检查，运行文件前后 SHA 验证通过 |
+| 生产与读回 | 1 户两库完整备份，53 表行／schema／序列及平台注册库在新 app 启动时相同，配置保全。444 源／112 运行／75 项正常 TLS 静态文件匹配，24 个内部生成路径和 20 个退役资源 404，十个匿名接口 401；四服务 running／restart 0、app healthy，发布后备份 service success／timer active |
+
+r2 功能原件 `expo-review-20260916T144652655491Z/result.json` SHA256 `2a8cb39d29897bcda6e97124fe7ec43dd66a794c8eb50c95e4ca8eb8826e00e8`；独立视觉报告 `review-4cb69ac-r2.json` SHA256 `daae0e66ef2bb508a8751fd8a402cd65fe067676f28aca0c8c658114198beeec`。r3 原件 `expo-review-20260916T145311737431Z/result.json` SHA256 `2918ca802d8bc4aa374ab45f1ac1a523c0a7b29851b3ffd4eb3f76a4157eb89c`。r3 两张放弃编辑对话框也已实际查看，390／1440 分别约 359／520px 宽，居中且文字可读。
+
+生产原件为私有 `expo-next-package-20260916/{activation,post-readback,validation}.json`，SHA 见 [本轮交付](EXPO-NEXT-RELEASE.md)。完整备份 manifest SHA256 `6387bb68f4688a57440bca620d3c55f71884866c9e261b1a3f1e27dd67f81b54`；启动前后快照 SHA 均为 `9580832d983279797015d093c10385765527d9919b0457ed4414eeb4e75c3e76`。数据相等限于新 app 启动核对时点，开放服务后允许正常业务变化。
+
+早期 Metro 沿 node_modules junction 解析到旧树，旧导出已拦下；改为独立 `npm ci` 后重新构建 r2／r3，未发布无效产物。浏览器初轮照片 readback 等待过早及 320 脚本标题／带图标按钮选择器失败均保留原件，修测试等待或定位后通过，没有据此放宽业务断言。Google 输入和像素均为合成，真实 Flask 身份、CSRF、SQLite、净化加密和保存接口参与执行；没有新增本人真实 Google、原生安装包或实体电视验收。此前本人 Photos 5／5 保存成功事实保留，Windows 公共域名 DNSFilter 限制仍未改变。
+
 ## Expo 前端发布：2026-09-16 21:59:19
 
 main `c74e72c79daa64a9fb9b575db496375b5803b91d`／integration `e00e5c25e0c64f0981913780ffb2024e77a384a7` 同树 `967ba95a0438bea7c405e1590adaa82af22d141e`。实际 Metro 导出使用 React Native Web／Paper；发布包 427 源、112 运行、23 导出文件，75 项公开静态资源。21:59:19 激活、21:59:51 正常 TLS 读回通过，完整身份见 [Expo 交付](EXPO-RELEASE.md)。
