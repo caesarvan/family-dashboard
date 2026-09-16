@@ -1,16 +1,16 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-16 18:57:14（北京时间），镜像 `sha256:43e8214c5241f0b94271d19503c3f4d26c398bb4a18596258bbf4f1e75db17bd`。** 相册逐项处理原因、历史未知提示和确切保存数已上线；344 源文件、70 Markdown、51 静态资源、130 个方法／路径模板、48 张户内表及 2 张平台表，无数据迁移。安装源码对应 main `d9c51b9`／integration `2aac0007` 同树；本次文档仅本地交接，不改已发布 manifest。本人已授权并完成一次十选三保存，其余七项原因未记录；新诊断的本人选片验证及实体电视仍待验收。
+> **线上版本：2026-09-16 19:16:22（北京时间），镜像 `sha256:6688c51fed543794a393bf397b49ccb0c36dee8c24e19efbdb0a3715c2ebd86c`。** JPEG 主图兼容补丁已上线；346 源文件、71 Markdown、51 静态资源、130 个方法／路径模板、48 张户内表及 2 张平台表，无数据迁移。安装源码对应 main `f603151`／integration `e2087e0` 同树；本次文档仅本地交接，不改已发布 manifest。本人已授权，后续十选五的诊断与保存数已验证；JPEG 补丁对其余五张的效果仍待本人重选，实体电视另验。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。本文帮助开发者确定从哪份代码开始、负责哪些文件、如何验证与交付。历次发布和失败修订集中在 [VALIDATION](VALIDATION.md)，不重放历史候选补丁。
 
 ## 当前接手基线：相册 48 表已上线
 
-安装源码 main `d9c51b9847e8ea9e0640c1da6d2e9f1c49dd5819`／integration `2aac0007b689a40d45fd36ed40fb75a1a64f8a3c` 同树 `db0949c2d1b55bb53351d4c352740edc9ac34a7c`。发布目录 `/opt/family-dashboard-releases/photos-results-20260916T105630Z-20260916`，manifest `76b8bc77ba786be3069ca477facd7ecb7d9b6d2d61a10c8df0388994a886b45d`。本次是 48 表内诊断补丁，无 schema 迁移；实际 1 户两库完整备份，停写至新 app 启动前后全部 48 表与平台 2 表的行、schema、序列保持，原配置保持。
+安装源码 main `f603151c28677da5b59fc004b62759a45fde5fb3`／integration `e2087e06649f3b5b80409992e255511a79240e94` 同树 `dc8e805e22914b701c2e2e0b6d888bd047d66f36`。发布目录 `/opt/family-dashboard-releases/photos-jpeg-20260916T111536Z-20260916`，manifest `a48831b101ab78f5b4cc61ea29e8b1cb5204af70a13885886fcda47cd36635eb`。本次是 48 表内 JPEG 兼容补丁，无 schema 迁移；实际 1 户两库完整备份，停写至新 app 启动前后全部 48 表与平台 2 表的行、schema、序列保持，原配置保持。
 
-18:58:16 正常 TLS 读回确认全 344 源文件、84 运行文件和 51 静态文件匹配；四服务 running、重启计数 0，app healthy，六个匿名接口 401；发布后备份 service 成功、timer active。分段验证与原件见 [VALIDATION](VALIDATION.md)。不要在当前 48 表重放历史 43→43、43→44 或 44→48 迁移。
+19:17:28 正常 TLS 读回确认全 346 源文件、84 运行文件和 51 静态文件匹配；四服务 running、重启计数 0，app healthy，六个匿名接口 401；发布后备份 service 成功、timer active。分段验证与原件见 [VALIDATION](VALIDATION.md)。不要在当前 48 表重放历史 43→43、43→44 或 44→48 迁移。
 
-本人 Google Photos 已授权并完成选片；历史选择 10 张普通照片、保存 3 张，另外 7 项原因无法还原。新选择才会生成逐项诊断，旧回执显示已知保存数及其余未知；不扩展解码格式／限额，不自动重新下载。使用见 [媒体交付](MEDIA-DELIVERY.md)、[结果契约](MEDIA-IMPORT-RESULTS.md)。新诊断仍待下一次本人选片反馈，实体电视另验；库存仍是独立候选，不属于此生产镜像。后续按独立分支／worktree→非作者审查→integration→组合验证→main，生产另行验收。
+本人 Google Photos 已授权并完成选片；历史选择 10 张普通照片、保存 3 张，另外 7 项原因无法还原。新选择才会生成逐项诊断，旧回执显示已知保存数及其余未知；不扩展解码格式／限额，不自动重新下载。使用见 [媒体交付](MEDIA-DELIVERY.md)、[结果契约](MEDIA-IMPORT-RESULTS.md)。后续本人重试已实际记录 10 项、保存 5 项，另 5 项 `invalid_image`；诊断结果与准确保存数已验证，具体原因仍未知。本次 [JPEG 主图兼容](MEDIA-JPEG-COMPAT.md) 只修复可合成复现的容器／metadata 兼容路径，是否解决真实五张照片仍待本人重选，实体电视另验；库存仍是独立候选，不属于此生产镜像。后续按独立分支／worktree→非作者审查→integration→组合验证→main，生产另行验收。
 
 <a id="当前接手基线地点-44-表已上线"></a>
 ## 历史接手基线：地点 44 表（16:33）
