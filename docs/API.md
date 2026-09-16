@@ -530,6 +530,8 @@ ICS 字节上限 500,000，每次展开最多 500 条，全部日程最多 2,500
   "accounts":[{
     "id":"local-account-id", "provider":"microsoft", "name":"示例云账户",
     "email":"example@example.test", "needsReauth":false,
+    "capabilities":{"sync":true,"photos":false},
+    "selectionVersion":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "sources":[{
       "id":"local-source-id", "remoteId":"remote-list-id", "kind":"tasks",
       "name":"示例共同清单", "owner":"shared", "primary":true,
@@ -545,6 +547,8 @@ ICS 字节上限 500,000，每次展开最多 500 条，全部日程最多 2,500
 
 实际 `providers` 同时包含两个平台。每成员最多绑定 4 个账户，按经过供应商身份端点验证的 `(provider, client_id, subject)` 唯一识别；邮箱仅用于显示，不用邮箱自动关联本地成员。
 
+`selectionVersion` 是当前已保存来源配置的 SHA256 内容版本，不是同步成功时间；用于下面的可选并发核对。详细字段、身份边界和旧客户端行为见 [来源版本](ACCOUNT-SOURCE-VERSION.md)。
+
 ### 9.2 绑定、登录和回调
 
 **先绑定，后第三方登录**：已有本地成员登录后，`POST /api/accounts/bind {"provider":"microsoft"}` 获取 `url`，浏览器跳转到该 URL 完成本人授权。请求必须来自配置的正式 `PUBLIC_ORIGIN`；从其他域名/IP 发起返回 `400` 并提示正式入口。不支持的平台 `404`，未配置平台 `503`。
@@ -556,6 +560,8 @@ GET `/auth/<provider>/callback` 接收供应商的 `state`、`code`，或 `error
 - 绑定成功：`/?auth=connected`。
 - 已绑定身份登录成功：`/?auth=signed-in`，创建新成员会话/CSRF。
 - 失败：`/?auth=error&reason=<固定原因>`，前端映射为可操作提示。
+
+当 Expo export 可用时，根入口将 `connected/error` 转入 `/app/connections`，只保留固定状态和白名单原因；页面消费后清除这些查询参数。`signed-in` 继续进入首页，Photos 专用返回继续进入相册。没有 Expo export 时保留经典页回退。
 
 当前可能的原因：`invalid_state`、`provider_denied`、`bind_session_changed`、`provider_error`、`not_configured`、`identity_failed`、`unbound_account`、`already_bound`、`account_limit`、`missing_refresh_token`、`insufficient_permissions`、`invalid_client`、`invalid_grant`、`token_failed`。启动不支持/未配置的第三方登录也重定向为 `not_configured`。本地限流触发时该浏览器导航可能直接得到 JSON `429`。
 
@@ -576,7 +582,8 @@ GET `/auth/<provider>/callback` 接收供应商的 `state`、`code`，或 `error
   "selected":[{
     "id":"local-source-id","remoteId":"remote-list-id","kind":"tasks","name":"示例清单",
     "owner":"shared","primary":true,"lastSuccess":"","error":""
-  }]
+  }],
+  "selectionVersion":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 }
 ```
 
@@ -593,7 +600,8 @@ GET `/auth/<provider>/callback` 接收供应商的 `state`、`code`，或 `error
   "sources":[
     {"remoteId":"remote-calendar-id","kind":"calendar","owner":"member1","primary":false},
     {"remoteId":"remote-list-id","kind":"tasks","owner":"shared","primary":true}
-  ]
+  ],
+  "selectionVersion":"0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 }
 ```
 
@@ -605,13 +613,14 @@ GET `/auth/<provider>/callback` 接收供应商的 `state`、`code`，或 `error
 
 本地待办连接的新 API 为 `/api/task-publish/state`、`/preview`、`/confirm` 及 `/publications/{id}/{pause|resume|retry|conflict-preview|conflict-confirm}`，完整请求/响应及错误边界见 [TASK-PUBLISH.md](TASK-PUBLISH.md)。这组接口已部署，保留原本地任务 ID、负责人和旅行关联，并要求独立预览确认；不改变已是云端镜像任务的原编辑限制。双平台模拟 HTTP 与临时浏览器通过，真实账户新增发布写入未验收。
 - 任务来源必须可写；日历全部以只读方式集成。改变 owner 会立即更新已存在镜像标签，无需等待下一次远端读取。
-- 无来源列表 revision 或 CAS，保存前界面应刷新状态；联合开发不可宣称已有并发来源编辑保护。账户级进程锁忙会返回 `409`。
+- `selectionVersion` 可选；Expo 提交最后明确核对的版本。服务端在事务中、修改来源前比较，不符返回 `409` 和 `code: "selection_conflict"`。显式 null 或格式错误返回 `400`。省略时保持旧客户端的完整替换语义，因此经典页仍无版本冲突保护。账户级进程锁忙也会返回 `409`，不得把所有 `409` 当成版本冲突。
+- 云端发现结束后重新验证原成员会话，防止请求等待期间换家庭、退出或撤销身份后继续保存。后台 worker 保持自身授权检查；不改变 schema。
 
-成功 `{"ok":true,"queued":true}` 仅证明选择已保存并排入下一轮同步，**不证明第一轮内容已经拉取成功**。
+成功返回 `{"ok":true,"queued":true,"selectionVersion":"<64位小写十六进制>"}`；空选择时 `queued:false`。`queued:true` 仅证明选择已保存并排入下一轮同步，**不证明第一轮内容已经拉取成功**。版本基于来源配置，恢复为完全相同的配置可能恢复相同版本；不是单调序号。
 
 ### 9.5 手动同步、解除绑定和实时性
 
-`POST /api/accounts/<account_id>/sync {}` 将已选来源的下次尝试时间设为立即，返回 `queued:true`；不等待同步完成，不返回新日程。应稍后读取状态和逐来源 `lastSuccess/error`。
+`POST /api/accounts/<account_id>/sync {}` 将已选来源的下次尝试时间设为立即，有来源返回 `queued:true`，没有来源返回 `queued:false`；不等待同步完成，不返回新日程。应稍后读取状态和逐来源 `lastSuccess/error`。
 
 `DELETE /api/accounts/<account_id> {}` 删除本人绑定、已选择来源及其镜像数据，保留远端原件；当前不调用供应商的全局撤销授权接口。API 不接受另一个成员的账号，即使其共同清单对家庭可见。
 
