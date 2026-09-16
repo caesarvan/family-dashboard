@@ -6,6 +6,8 @@
 
 当前 Windows 网络访问线上站点显示 `Website Filtered`，尚未完成该网络下的线上登录操作；服务器正常 TLS 读回与本地真实浏览器验证分别通过，详见 [验证边界](docs/VALIDATION.md)。
 
+**下一版财务界面已合入并完成本地验证，尚未部署。** 候选 `/app/finance` 将共同资金、本人完整账本、账单导入、订单／付款／退款核对和月预算放在同一套 Expo 界面中。真实临时浏览器 21 项、Node 19 项、Windows 418 项分别通过；其中迁移专项 45 项已包含在 418 项内。候选需要独立完成 53→54 表迁移与生产读回，当前线上仍为上方 53 表版本。操作步骤见 [Expo 财务](docs/EXPO-FINANCE.md)，证据和范围见 [验证记录](docs/VALIDATION.md)。
+
 面向两位家庭成员的日程、待办、采购、旅行、财务与助理工作台。手机和电脑负责维护，50／75 英寸电视负责常亮展示；两个住处的屏幕可各自设置侧重、布局和主题。目前支持邀请建立独立家庭，每户两位成员。
 
 本 README 汇总**软件方案、已开发功能、代码地图、接口入口、开发环境、部署指导与联合开发方式**。字段级接口、完整安装命令、用户操作和验收记录分别放在 `docs/`，通过下方导航进入。
@@ -28,7 +30,7 @@ JPEG 补丁后本人已实际选择 5 张、全部出现预览并明确保存，
 | 开发一个模块 | [项目规则](AGENTS.md) → [交接与候选状态](docs/HANDOFF.md) → [Git 分支协作](docs/GIT-WORKFLOW.md) → 对应接口文档 |
 | 对接或修改 API | [基础 API](docs/API.md)、[平台 API](docs/PLATFORM-API.md)、[财务 API](docs/FINANCE-API.md)、[完整路由索引](docs/PLATFORM-ROUTES.md) |
 | 安装、更新、备份或排障 | [部署指导](docs/DEPLOYMENT.md)、[运维手册](docs/OPERATIONS.md)、[恢复演练](docs/RECOVERY-REHEARSAL.md) |
-| 开发新版 React Native 界面 | [前端开发与构建](frontend/README.md)、[同源托管与安全边界](docs/EXPO-WEB.md)、[官网风格](docs/EXPO-SITE-STYLE.md)、[账户与同步](docs/EXPO-ACCOUNTS.md)、[地图与旅行相册](docs/EXPO-MAP.md)、[三模块发布记录](docs/EXPO-NEXT-RELEASE.md) |
+| 开发新版 React Native 界面 | [前端开发与构建](frontend/README.md)、[同源托管与安全边界](docs/EXPO-WEB.md)、[官网风格](docs/EXPO-SITE-STYLE.md)、[财务](docs/EXPO-FINANCE.md)、[账户与同步](docs/EXPO-ACCOUNTS.md)、[地图与旅行相册](docs/EXPO-MAP.md)、[三模块发布记录](docs/EXPO-NEXT-RELEASE.md) |
 | 把项目交给其他 agent | 源码 ZIP 供阅读；Git bundle 保留 main、候选分支和完整提交历史。恢复命令见 [Git 指导](docs/GIT-WORKFLOW.md) |
 
 <a id="最新发布旅行地图"></a>
