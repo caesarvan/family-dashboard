@@ -11,7 +11,7 @@ import time
 from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 
-from flask import Flask, g, jsonify, request, session, send_from_directory
+from flask import Flask, abort, g, jsonify, request, session, send_from_directory
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.middleware.proxy_fix import ProxyFix
 from cloud_accounts import register_accounts
@@ -36,6 +36,7 @@ from household_routines import register_routines
 from household_media import register_media_library
 from media_playback import register_media_playback
 from inventory_api import register_inventory
+from frontend_runtime import register_frontend_runtime
 
 TZ = ZoneInfo("Asia/Shanghai")
 ROOT = Path(__file__).parent
@@ -253,14 +254,20 @@ def create_app(config=None):
         db().execute("SELECT 1").fetchone()
         return jsonify(status="ok")
 
+    frontend_home = register_frontend_runtime(app, ROOT / 'static')
+
     @app.get("/")
     @app.get("/tv")
     @app.get("/demo")
     def index():
+        if request.path == '/':
+            return frontend_home()
         return send_from_directory(ROOT / "static", "index.html")
 
     @app.get("/static/<path:name>")
     def asset(name):
+        if any(part.rstrip(' .').lower() == 'experience' for part in name.replace('\\', '/').split('/')):
+            abort(404)
         return send_from_directory(ROOT / "static", name)
 
     @app.get("/api/me")
