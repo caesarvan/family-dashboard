@@ -39,7 +39,15 @@ def test_host_selectors_fail_before_source_read_or_docker(monkeypatch):
     with pytest.raises(RuntimeError,match='host_selector'):M.run(SimpleNamespace())
 
 
-def test_embedded_programs_are_valid_python_and_no_cloud_transport():
+@pytest.mark.parametrize('name',['deploy/__pycache__/rehearse_restore.cpython-314.pyc','tests/unchecked.pyo'])
+def test_unlisted_import_cache_is_rejected_even_with_valid_source_manifest(tmp_path,name):
+    (tmp_path/'app.py').write_bytes(b'original')
+    digest=manifest(tmp_path,{'app.py':M.sha(b'original')})
+    cache=tmp_path/name;cache.parent.mkdir(parents=True,exist_ok=True);cache.write_bytes(b'cached-code')
+    with pytest.raises(RuntimeError,match='source_bytecode'):M.frozen(tmp_path,digest)
+
+
+def test_embedded_programs_are_valid_python():
     for name in ('PROBE','CHECK','WRITE','READBACK'):
         compile(getattr(M,name),name,'exec')
     # The actual runtime test performs network isolation and source validation;

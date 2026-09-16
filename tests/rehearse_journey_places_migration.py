@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import sys
 
 
 HERE = Path(__file__).resolve()
@@ -32,6 +33,9 @@ def sha(value):
 
 def frozen(root, manifest_sha, name='RELEASE-MANIFEST.json'):
     need(root.is_absolute() and root.resolve(strict=True) == root, 'source_path')
+    # -B prevents writes, not reads of pre-existing import caches. Helpers on
+    # the host and /rehearsal must therefore contain source bytes only.
+    need(not any(p.suffix in ('.pyc', '.pyo') for p in root.rglob('*')), 'source_bytecode')
     manifest = root / name
     need(not manifest.is_symlink(), 'manifest_symlink')
     raw = manifest.read_bytes()
@@ -135,6 +139,7 @@ print(json.dumps({'passed':True,'households':2,'householdTables':44,'retainedMem
 def run(args):
     need(os.name == 'posix', 'linux_required')
     need(not any(k.upper().startswith(('DOCKER_', 'COMPOSE_')) for k in os.environ), 'host_selector')
+    need(sys.dont_write_bytecode and sys.pycache_prefix is None, 'host_bytecode')
     root = args.source
     files = frozen(root, args.manifest_sha)
     need(files.get(SELF) == sha(HERE.read_bytes()), 'runner_source_mismatch')
