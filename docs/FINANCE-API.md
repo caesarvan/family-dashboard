@@ -1,8 +1,8 @@
 # 财务中枢 HTTP 契约
 
-**当前版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
+**历史发布记录：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 当时为 106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。当前实际部署以 [README](../README.md) 为准；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。本页新增账本分页与文件金额校验为独立候选，尚未部署；候选增加一个 GET 方法／路径模板，不增加表或依赖。
 
-按 2026-09-15 的 [finance_hub.py](../finance_hub.py) 核对。该文件直接声明的既有功能共 15 个 HTTP 操作；其中 2 个账单／订单文件导入接口详见 [FINANCE-IMPORT](FINANCE-IMPORT.md)，本文补齐读取、共享汇总、交易核对、订单/支付/退款关联、预算和投资记录。基础财务快照 `/api/finance`、`/api/private-finance` 与历史基线接口仍见 [API](API.md)，不能与新账本重复相加。
+按 [finance_hub.py](../finance_hub.py) 核对。该文件直接声明既有 15 个 HTTP 操作及候选分页 GET，共 16 个；其中 2 个账单／订单文件导入接口详见 [FINANCE-IMPORT](FINANCE-IMPORT.md)，本文补齐读取、共享汇总、交易核对、订单/支付/退款关联、预算和投资记录。基础财务快照 `/api/finance`、`/api/private-finance` 与历史基线接口仍见 [API](API.md)，不能与新账本重复相加。
 
 **发布状态：XLSX 工作表名称发现已于 2026-09-15 06:50:21 发布。** 05:47:43 的金额列与对账保护继续保留；完整组合与真实接入边界见 [VALIDATION](VALIDATION.md)。
 
@@ -106,7 +106,29 @@
 | `importedAt` / `checkedAt` | 入账时间 / 最近核对时间；未核对时后者为 NULL |
 | `reconciliation` | overview 和对账详情中的派生关联状态；不改写原始金额，字段见下 |
 
-当前没有单独的流水分页或搜索接口；500 条显示上限是可见列表限制，不能把它误当成汇总只含 500 条。每位成员最多保留 20,000 条账单/订单记录。
+已发布 overview 保留最近 500 条及完整月度汇总；候选的完整账本查询见下一节。每位成员最多保留 20,000 条账单/订单记录。
+
+<a id="ledger-pagination-candidate"></a>
+
+### GET `/api/finance-hub/transactions`（独立候选，尚未部署）
+
+此只读接口分页浏览当前成员的完整账本，返回上述交易对象，包括原商品明细及派生 `reconciliation`。不创建预览、回执、审计记录或历史快照，不修改业务数据；旧 overview 的响应、500 条列表上限、全月汇总和预算不变。生产仍为 106 个方法／路径模板，本候选为 107 个。
+
+| 查询参数 | 规则 |
+| --- | --- |
+| `month` | 可省略，默认北京时间当前月；否则须为有效 `YYYY-MM` |
+| `q` | 可省略，最多 160 字符；去除首尾空白，大小写不敏感的逐字段子串匹配 |
+| `page` | 默认 1，规范十进制正整数；不接受符号、小数或前导零 |
+| `pageSize` | 默认 50，1–100 的规范十进制正整数 |
+| `snapshot` | 可省略；若提供须为 64 位十六进制字符串，输入可大小写 |
+
+搜索覆盖 `title/category/externalId/merchantOrderId/paymentId/originalTransactionId` 以及 `orderItems[].title/variant`，不搜索其他成员、家庭或月份。先用本人全账本派生跨月对账状态，再按月份、关键词筛选，以日期、id 倒序分页。未知或重复查询参数及无效格式返回 400；不能通过 owner 参数读取伙伴。
+
+响应为 `{month,q,page,pageSize,transactionCount,filteredCount,totalPages,hasNext,hasPrevious,snapshot,transactions}`。`transactionCount` 是本人该月全部记录数；`filteredCount` 是关键词筛选后条数。`totalPages` 最小为 1；越界页钳制为最后一页，空结果返回第 1 页和空列表。查询不会改变 overview 的全月汇总。
+
+`snapshot` 为小写 SHA256：同一 SQLite 读事务读取本人全部月份的交易与全部对账关系（包括已撤销关系），以稳定顺序和内容计算，包含成员／家庭范围；与页码、每页条数和关键词无关。它只检测账本变化，不是可读取的历史快照或授权凭据。本人其他月份、交易版本或关系变化也可能保守失效，其他成员写入不影响本人的值。首次查询或明确刷新不传 snapshot，连续翻页携带当前值；不匹配时返回 `409 {"error":"账本已变化，请刷新后重新查看","code":"ledger_changed"}`，没有旧页数据。客户端应要求刷新，不自动把不同版本页面拼接成一份列表。
+
+权限沿用成员登录与家庭数据库隔离，匿名 401、电视 403；伙伴只能查询其本人账本。测试见 [分页专项](../tests/test_finance_ledger.py)，仅为合成记录，不等于生产或真实账单验收。
 
 ### 淘宝合并订单明细候选契约
 
