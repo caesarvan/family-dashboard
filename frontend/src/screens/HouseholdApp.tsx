@@ -1,5 +1,6 @@
+import { openLocal } from '../lib/navigation';
 import React, { useEffect, useState } from 'react';
-import { Linking, Platform, View } from 'react-native';
+import { View } from 'react-native';
 import { ActivityIndicator, Button, Snackbar, Text } from 'react-native-paper';
 import { useRouter } from 'expo-router';
 import { useHousehold } from '../lib/household';
@@ -21,13 +22,13 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
   const [pendingId,setPendingId]=useState('');
   const actor=JSON.stringify([user?.id,user?.householdId,user?.auth_version]);
   useEffect(()=>{setEditor(null);setPendingId('');},[actor]);
-  useEffect(()=>{if(user?.role==='tv')void Linking.openURL('/tv');},[user?.role]);
-  const onLegacy=(fragment:string)=>{if(legacyRoutes.has(fragment))void Linking.openURL('/classic#'+fragment);};
+  useEffect(()=>{if(user?.role==='tv')void openLocal('/tv');},[user?.role]);
+  const onLegacy=(fragment:string)=>{if(legacyRoutes.has(fragment))void openLocal('/classic#'+fragment);};
   const onNavigate=(next:RouteName)=>router.push((next==='home'?'/':'/'+next) as never);
   const handle=(action:()=>Promise<unknown>)=>{void action().catch(e=>setNotice(e instanceof Error?e.message:'暂时无法完成操作'));};
   if(loading)return <View style={{flex:1,alignItems:'center',justifyContent:'center',gap:16}}><ActivityIndicator/><Text>正在打开家庭看板…</Text></View>;
   if(!user)return <LoginScreen/>;
-  if(user.role==='tv')return <View><Text>正在打开电视看板…</Text><Button onPress={()=>Linking.openURL('/tv')}>打开电视</Button></View>;
+  if(user.role==='tv')return <View><Text>正在打开电视看板…</Text><Button onPress={()=>openLocal('/tv')}>打开电视</Button></View>;
   if(!state)return <View style={{padding:32,gap:16}}><Text>{error||'正在读取家庭数据…'}</Text><Button onPress={()=>void refresh()}>重新加载</Button><Button onPress={()=>handle(household.logout)}>退出登录</Button></View>;
   const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:mode=>household.savePreferences({homeView:mode}),onNavigate,onLegacy,pendingId,
     onEdit:(kind,item)=>{
