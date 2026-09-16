@@ -8,6 +8,7 @@ import ast
 from contextlib import closing
 from datetime import datetime, timezone
 import hashlib
+from html.parser import HTMLParser
 import importlib.util
 import json
 from pathlib import Path
@@ -55,10 +56,23 @@ def blocks(path):
     return result, plain
 
 
+class ExplicitAnchors(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.anchors = set()
+
+    def handle_starttag(self, tag, attrs):
+        for key, value in attrs:
+            if value and (key == 'id' or (tag == 'a' and key == 'name')):
+                self.anchors.add(value)
+
+
 def heading_anchors(path):
     _, plain = blocks_cache[path]
     seen = {}
-    anchors = set()
+    explicit = ExplicitAnchors()
+    explicit.feed('\n'.join(line for _, line in plain))
+    anchors = explicit.anchors
     for _, line in plain:
         if re.match(r'^#{1,6}\s+', line):
             h = re.sub(r'^#{1,6}\s+|\s+#+\s*$', '', line).lower()
