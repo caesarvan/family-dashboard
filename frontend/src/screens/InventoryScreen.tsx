@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, StyleSheet, View } from 'react-native';
+import { AppState, Platform, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Button, Checkbox, Dialog, Divider, List, Portal, RadioButton, Searchbar, Text, TextInput, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Dialog, Divider, Icon, List, Portal, Searchbar, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
 import { dayKey } from '../lib/calendar';
 import { useHousehold } from '../lib/household';
@@ -20,6 +20,42 @@ const message = (error: unknown) => error instanceof Error ? error.message : '�
 const blankItem = (): ItemDraft => ({ type: 'item', title: '', unit: '件', variant: '', location: '', visibility: 'private', reorderPoint: '' });
 const itemDraft = (item: InventoryItem): ItemDraft => ({ type: 'item', id: item.id, title: item.title, unit: item.unit, variant: item.variant, location: item.location, visibility: item.visibility, reorderPoint: item.reorderPoint === null ? '' : String(item.reorderPoint) });
 const batchDraft = (kind: 'purchase' | 'opening', batch?: Acquisition): BatchDraft => ({ type: 'batch', id: batch?.id, kind, orderedQty: batch ? String(batch.orderedQty) : '', orderState: batch?.orderState || (kind === 'opening' ? 'closed' : 'planned'), orderedOn: batch?.orderedOn || '', expectedOn: batch?.expectedOn || '', warrantyUntil: batch?.warrantyUntil || '', afterSalesState: batch?.afterSalesState || 'none', shoppingId: batch?.shoppingId || '', note: batch?.note || '' });
+
+function SelectionRow({ kind, label, accessibilityLabel = label, checked, disabled, onPress }: {
+  kind: 'radio' | 'checkbox'; label: string; accessibilityLabel?: string; checked: boolean; disabled: boolean; onPress: () => void;
+}) {
+  const theme = useTheme();
+  const color = disabled ? theme.colors.onSurfaceDisabled : checked ? theme.colors.primary : theme.colors.onSurfaceVariant;
+  // Paper's Item controls do not forward aria-checked. Their native-only
+  // accessibilityState is insufficient for the installed React Native Web.
+  // Keep one interactive Paper surface, with both native and web semantics;
+  // the visual icon and announced state use exactly the same controlled value.
+  const keyboard = Platform.OS === 'web' ? { onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
+    if (event.key === ' ' || event.key === 'Spacebar') {
+      event.preventDefault(); event.stopPropagation();
+      if (!disabled && !event.repeat) onPress();
+    } else if (kind === 'radio' && !disabled && ['ArrowLeft', 'ArrowUp', 'ArrowRight', 'ArrowDown'].includes(event.key)) {
+      const group = event.currentTarget.closest('[role="radiogroup"]');
+      const controls = Array.from(group?.querySelectorAll<HTMLElement>('[role="radio"]') || []).filter(control => control.getAttribute('aria-disabled') !== 'true');
+      const index = controls.indexOf(event.currentTarget);
+      if (index >= 0 && controls.length) {
+        event.preventDefault(); event.stopPropagation();
+        const direction = ['ArrowLeft', 'ArrowUp'].includes(event.key) ? -1 : 1;
+        const next = controls[(index + direction + controls.length) % controls.length];
+        next.focus(); next.click();
+      }
+    }
+  } } : {};
+  return <TouchableRipple {...keyboard} accessible accessibilityRole={kind} accessibilityLabel={accessibilityLabel}
+    accessibilityState={{ checked, disabled }} aria-checked={checked} aria-disabled={disabled}
+    disabled={disabled} onPress={() => { if (!disabled) onPress(); }}
+    style={state => [styles.choice, { borderColor: state.focused ? theme.colors.primary : 'transparent' }]}>
+    <View style={styles.choiceContent} pointerEvents="none" aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+      <Icon source={kind === 'radio' ? checked ? 'radiobox-marked' : 'radiobox-blank' : checked ? 'checkbox-marked' : 'checkbox-blank-outline'} size={24} color={color} />
+      <Text variant="bodyMedium" style={[styles.choiceText, { color: disabled ? theme.colors.onSurfaceDisabled : theme.colors.onSurface }]}>{label}</Text>
+    </View>
+  </TouchableRipple>;
+}
 
 export default function InventoryScreen(props: Props) {
   const household = useHousehold();
@@ -328,7 +364,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
     <Text variant="bodySmall">第 {Math.floor(values.offset / values.limit) + 1} 页 · {values.total} 条</Text>
     <Button accessibilityLabel={title + '下一页'} disabled={navigationLocked || values.nextOffset === null} onPress={() => pageTo(kind, values.nextOffset!)}>下一页</Button>
   </View> : null;
-  const choices = (value: string, name: string, labels: Record<string, string>) => <RadioButton.Group value={value} onValueChange={next => change({ [name]: next })}><View style={styles.wrap}>{Object.entries(labels).map(([key, label]) => <RadioButton.Item key={key} value={key} label={label} accessibilityLabel={label} disabled={locked} position="leading" labelStyle={styles.choiceText} />)}</View></RadioButton.Group>;
+  const choices = (value: string, name: string, labels: Record<string, string>) => <View accessibilityRole="radiogroup" accessibilityLabel={({ visibility: '物品可见范围', orderState: '采购状态', afterSalesState: '售后状态' } as Record<string, string>)[name]} style={styles.wrap}>{Object.entries(labels).map(([key, label]) => <SelectionRow key={key} kind="radio" label={label} checked={value === key} disabled={locked} onPress={() => change({ [name]: key })} />)}</View>;
   const stat = (label: string, quantity: number) => <View style={styles.stat}><Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text><Text variant="headlineSmall">{quantity.toLocaleString('zh-CN')} <Text variant="bodyMedium">{item?.unit}</Text></Text></View>;
   const editable = (name: string) => draft?.type === 'batch' && (!draft.id || !!batch?.editableFields.includes(name));
 
@@ -371,11 +407,11 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
             {draft.kind === 'purchase' && editable('orderedOn') && field('下单日期（YYYY-MM-DD）', draft.orderedOn, 'orderedOn', 10)}
             {editable('warrantyUntil') && field('保修截止（YYYY-MM-DD）', draft.warrantyUntil, 'warrantyUntil', 10)}
             {editable('afterSalesState') && choices(draft.afterSalesState, 'afterSalesState', afterSalesLabels)}
-            {draft.kind === 'purchase' && editable('shoppingId') && <><Text variant="titleSmall">关联采购清单</Text><RadioButton.Group value={draft.shoppingId} onValueChange={value => change({ shoppingId: value })}>
-              <RadioButton.Item value="" label="不关联采购" disabled={locked} />
-              {props.state.shopping.map(row => <RadioButton.Item key={row.id} value={row.id} label={row.title} accessibilityLabel={'关联采购 ' + row.title} disabled={locked} labelStyle={styles.choiceText} />)}
-              {!!draft.shoppingId && !props.state.shopping.some(row => row.id === draft.shoppingId) && <RadioButton.Item value={draft.shoppingId} label="原采购（待核对）" disabled />}
-            </RadioButton.Group><Text variant="bodySmall">只关联家庭采购清单，不改采购完成状态，也不会记入支出。</Text></>}
+            {draft.kind === 'purchase' && editable('shoppingId') && <><Text variant="titleSmall">关联采购清单</Text><View accessibilityRole="radiogroup" accessibilityLabel="关联采购清单" style={styles.fields}>
+              <SelectionRow kind="radio" label="不关联采购" checked={!draft.shoppingId} disabled={locked} onPress={() => change({ shoppingId: '' })} />
+              {props.state.shopping.map(row => <SelectionRow key={row.id} kind="radio" label={row.title} accessibilityLabel={'关联采购 ' + row.title} checked={draft.shoppingId === row.id} disabled={locked} onPress={() => change({ shoppingId: row.id })} />)}
+              {!!draft.shoppingId && !props.state.shopping.some(row => row.id === draft.shoppingId) && <SelectionRow kind="radio" label="原采购（待核对）" checked disabled onPress={() => {}} />}
+            </View><Text variant="bodySmall">只关联家庭采购清单，不改采购完成状态，也不会记入支出。</Text></>}
           </View></List.Accordion>
         </>}
         {draft.type === 'movement' && <>
@@ -386,7 +422,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
           {field('发生日期（YYYY-MM-DD）', draft.occurredOn, 'occurredOn', 10)}
           {field('操作原因', draft.reason, 'reason', 300, false, true)}
           {draft.kind === 'receive' && <Text variant="bodySmall">收货原因可留空；其他实物变化必须填写原因。</Text>}
-          <Checkbox.Item label="我已核对实际物品和数量" accessibilityLabel="我已核对实际物品和数量" status={draft.confirmed ? 'checked' : 'unchecked'} position="leading" onPress={() => change({ confirmed: !draft.confirmed })} disabled={locked} labelStyle={styles.choiceText} />
+          <SelectionRow kind="checkbox" label="我已核对实际物品和数量" checked={draft.confirmed} onPress={() => change({ confirmed: !draft.confirmed })} disabled={locked} />
         </>}
         <View style={styles.wrap}>
           <Button mode="contained" disabled={locked || draft.type === 'movement' && !draft.confirmed} onPress={save}>{draft.type === 'item' ? '保存物品' : draft.type === 'batch' ? '保存批次' : draft.kind === 'reverse' ? '确认撤销原记录' : '确认实物变动'}</Button>
@@ -397,7 +433,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
     </SectionCard> : item ? <>
       <SectionCard title="物品详情" action={item.canManage ? <Button disabled={navigationLocked} onPress={() => begin(itemDraft(item))}>编辑物品</Button> : undefined}>
         <View style={styles.fields}>
-          <Text variant="headlineSmall">{item.title}</Text><Text>{[item.variant, item.location, item.visibility === 'shared' ? '家庭共享' : '仅本人可见'].filter(Boolean).join(' · ')}</Text>
+          <Text variant="titleLarge">{item.title}</Text><Text>{[item.variant, item.location, item.visibility === 'shared' ? '家庭共享' : '仅本人可见'].filter(Boolean).join(' · ')}</Text>
           <View style={styles.wrap}>{stat('家中现有', item.onHandQty)}{stat('已下单待到货', item.inTransitQty)}{stat('计划采购', item.plannedQty)}</View>
           {item.belowThreshold && <Text>该补货了：提醒数量 {item.reorderPoint} {item.unit}。仍需自行决定和下单。</Text>}
           {item.canMutate && <View style={styles.wrap}><Button mode="contained" icon="plus" disabled={navigationLocked} onPress={() => begin(batchDraft('purchase'))}>添加采购批次</Button><Button mode="outlined" disabled={navigationLocked} onPress={() => begin(batchDraft('opening'))}>登记家中已有</Button></View>}
@@ -450,10 +486,12 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
 const styles = StyleSheet.create({
   page: { gap: 18 }, fields: { gap: 16 }, wrap: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 10 },
   columns: { flexDirection: 'row', flexWrap: 'wrap', gap: 14 }, column: { flexGrow: 1, flexBasis: 200, minWidth: 0 },
-  stat: { flexGrow: 1, flexBasis: 170, minWidth: 0, gap: 4, paddingVertical: 10 },
+  stat: { flexGrow: 1, flexBasis: 96, minWidth: 0, gap: 4, paddingVertical: 10 },
   listRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 12, paddingVertical: 14 },
   rowBody: { flexGrow: 1, flexShrink: 1, flexBasis: 220, gap: 6, minWidth: 0 },
   historyRow: { gap: 8, paddingVertical: 10 }, choiceText: { flexShrink: 1, textAlign: 'left', fontSize: 14 },
+  choice: { minHeight: 48, maxWidth: '100%', borderWidth: 2, borderRadius: 12, flexShrink: 1 },
+  choiceContent: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 10, minWidth: 0 },
   pager: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   dialog: { borderRadius: 24, maxWidth: 480, width: '90%', alignSelf: 'center' },
 });
