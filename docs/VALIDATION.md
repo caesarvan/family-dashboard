@@ -1,6 +1,27 @@
 # 验证记录
 
-> **线上版本：2026-09-16 20:38:46（北京时间），镜像 `sha256:132dde7dc47567a27c3faa532c4a8bf447c4ef499c66aabbc956b38dffad7524`。** 地图旅行相册与本人照片时间建议已上线；373 源文件、83 份 README/docs Markdown、53 静态资源、145 个方法／路径模板、53 张户内表及 2 张平台表。安装 main `e20c269`／integration `c716e4d` 同树，53→53 无迁移发布与 20:39:27 读回通过。本文档增量只作本地交接，不修改已发布 manifest。此前本人 Photos 5／5 预览与保存事实保留；本轮旅行关联、地图新入口及实体电视尚待本人验收。
+## Expo 前端发布：2026-09-16 21:59:19
+
+main `c74e72c79daa64a9fb9b575db496375b5803b91d`／integration `e00e5c25e0c64f0981913780ffb2024e77a384a7` 同树 `967ba95a0438bea7c405e1590adaa82af22d141e`。实际 Metro 导出使用 React Native Web／Paper；发布包 427 源、112 运行、23 导出文件，75 项公开静态资源。21:59:19 激活、21:59:51 正常 TLS 读回通过，完整身份见 [Expo 交付](EXPO-RELEASE.md)。
+
+| 范围 | 已取得证据 |
+|---|---|
+| Windows 分段 | 既有受影响组合 60 项通过；runtime 后续单独 37 项通过，含新增 4 项 OAuth 状态返回 classic 的检查。两轮范围重叠，不相加为 97 项 |
+| 实际导出浏览器 | 精确导出候选 `4265faa`，真实临时 Flask／SQLite／Edge 八组通过：登录、范围持久化、本地待办、采购金额与图片、409 保草稿、已提交丢响应不重发、换成员清草稿、手机路由刷新；零页面错误／外站请求 |
+| 视觉 | 同候选 390／1440 两组、30 张原始截图，实际查看 13 张代表图；覆盖今日／周、日程、待办、采购、登录、导航、新建菜单及森林／晨光主题。长标题和地点换行，零页面横向溢出；组件作者视觉核验与非作者八组功能验收分别记录 |
+| 构建 | `npm run build:web` 实际执行；固定锁文件、输入与 23 输出字节绑定 `build-evidence.json`，SHA256 `4ed5633ec1c6bd6e553af7b0c30a3e6f15763d95fedd82ef5ba6bb2517652c23` |
+| 实际 Linux | 固定新镜像内四模块一轮 63 passed、0 failed／error／skipped；明确 deselect 一项 Windows junction 测试。全部运行文件前后核验通过，未使用生产数据 |
+| 生产与读回 | 实际 1 户两库完整备份，无迁移；53 表行／schema／序列及平台注册库在新 app 启动时保持，配置保全。全部 427 源／112 运行／75 HTTPS 资源匹配，24 个受限生成路径 404；深链、classic／tv／demo 入口通过，十个匿名 API 401，四服务 running／restart 0、app healthy，备份 service success／timer active |
+
+八组浏览器原件 `expo-review-20260916T134447004754Z/result.json` SHA256 `c20136df78116a50c3fb3ca60685145b33e12060a518b2459c69c51209888cdf`；视觉报告 `visual-review-4265faa.json` SHA256 `23f42ba39201b5b21d4eccdd0b53eccd945a7b1de8585a66a4d3de0047f81310`。旧登录 label、保留字路由 `/app/undefined`、手机 tab 名称及重复描边已修；初始失败和后续测试定位修订保留原件。最终源码新增的回调衔接另由 runtime 专项验证，不把早期浏览器执行写成针对后续 Python 改动的全量重跑。
+
+生产原始 JSON 位于私有 `expo-package-20260916/server-evidence/`：`activation.json` SHA256 `02dd3c2792ee9788324d6ba005cbef6d360bf29b4a0b1f514ecb26ece9f3e1db`，`post-readback.json` SHA256 `6b5fcc2c9abcd09671d26c87e7bf485f47505fbe9839e26519ef157537deec7f`。`validation.json` SHA256 `dd93b913fffca41118173a5b716fbfd61d66d9addbd2d0b04c52850f234f001f`，绑定同镜像和实际日志／JUnit／运行证明；完整两库备份 manifest SHA256 `a339e66bf11d24785c227b9cedc45a96b59b9b1d4b31b775202fb0807050d03e`。数据相等结论覆盖新 app 启动核对时点，开放 worker／web 后允许正常业务变化。
+
+**线上浏览器检查未通过：** 当前 Windows 网络把根路径与 `/app` 返回为 `Website Filtered` 页面，包含 `blocked.dnsfilter.com/index.js`，响应不是应用 CSP；同页 SHA256 `66d9a8da0b6e608c0bc4e8c6ad73baeef7a118d983d27699396d837dc9667f4a`。独立浏览器未进入应用，0 组完成；报告 `expo-public-20260916T140013842499Z/review.json` SHA256 `25eeab2409cbb952993cf6298dbeb3969c0d84ce380f5818efa452fb69c60156`。未修改 DNS、代理或安全设置。此限制与服务器正常 TLS 的入口／75 资源读回分开记录，不把本地八组浏览器结果写成线上浏览器通过。
+
+未制作／验证原生 APK 或 iOS 安装包，没有新增真实云写入、本人登录操作或实体 TV 验收。此前本人 Photos 五选五保存成功事实保留。本节为发布后交接，不改变已安装 manifest。
+
+以下保留此前发布的独立身份和验证原件，不作为 Expo 当前安装身份。
 
 ## 地图相册与照片时间建议发布：2026-09-16 20:38:46
 

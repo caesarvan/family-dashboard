@@ -1,16 +1,18 @@
 # 家庭中枢 · Family Dashboard
 
-> **Expo 前端候选（待部署）：** 已按 `npx getdesign@latest add expo` 创建 React Native／Expo Router／React Native Paper 前端。新版 `/app` 覆盖首页、日程、待办、采购与登录；详细财务、旅行、相册、地图等继续通过 `/classic` 使用。构建与协作见 [前端说明](frontend/README.md)，托管见 [Expo Web](docs/EXPO-WEB.md)。本段描述已实现候选；下方线上身份仍为此前媒体发布，不能当作 Expo 已上线。
+> **线上版本：2026-09-16 21:59:19（北京时间）。** React Native／Expo Router／React Native Paper 新界面已上线，覆盖登录、首页、日程、待办和采购。手机底导航、电脑侧栏及晨光／森林／海岸主题保留；首页先看安排和共同资金，长标题与地点完整换行。详细财务、旅行、相册、地图、库存和助理暂由 `/classic` 提供。范围、固定身份和验证见 [Expo 交付](docs/EXPO-RELEASE.md)。
 
-> **线上版本：2026-09-16 20:38:46（北京时间）。** 地图旅行相册与本人照片时间建议已上线，原有照片、家庭物品与本地搜索保留。安装身份与发布证据见 [交接说明](docs/HANDOFF.md)和[验证记录](docs/VALIDATION.md)。此前本人 Photos 5／5 保存事实保留；本轮新入口、旅行关联和实体电视仍待本人验收。本文为发布后本地交接，不改写已安装 manifest。
+> 此次为 53→53 无迁移发布。实际 1 户两库完整备份，21:59:51 正常 TLS 读回确认 427 源／112 运行／75 公开静态文件、四服务和备份正常，原配置保持。此前本人 Photos 5／5 保存成功；本期未重做真实云、本人最终体验或实体电视验收，也未交付原生 APK。本文为发布后本地交接，不改写已安装 manifest。
+
+当前 Windows 网络访问线上站点显示 `Website Filtered`，尚未完成该网络下的线上登录操作；服务器正常 TLS 读回与本地真实浏览器验证分别通过，详见 [验证边界](docs/VALIDATION.md)。
 
 面向两位家庭成员的日程、待办、采购、旅行、财务与助理工作台。手机和电脑负责维护，50／75 英寸电视负责常亮展示；两个住处的屏幕可各自设置侧重、布局和主题。目前支持邀请建立独立家庭，每户两位成员。
 
 本 README 汇总**软件方案、已开发功能、代码地图、接口入口、开发环境、部署指导与联合开发方式**。字段级接口、完整安装命令、用户操作和验收记录分别放在 `docs/`，通过下方导航进入。
 
-本次发布把地图与旅行相册连接起来：在地图选择已关联旅行的地点，打开该旅行中当前可查看的照片，再返回原筛选和选中地点。普通相册入口仍可编辑和导入。照片还可按来源时间提示日期匹配的旅行，需本人明确确认才关联；未记录来源时间的旧照片仍使用手动关联。上线和验证状态见 [交接说明](docs/HANDOFF.md)，操作与接口见 [地图相册联动](docs/MAP-TRAVEL-PHOTOS.md)、[照片旅行建议](docs/MEDIA-JOURNEY-SUGGESTIONS.md)和[建议界面](docs/MEDIA-JOURNEY-SUGGESTIONS-UI.md)。
+此前媒体发布把地图与旅行相册连接起来：在地图选择已关联旅行的地点，打开该旅行中当前可查看的照片，再返回原筛选和选中地点。普通相册入口仍可编辑和导入。照片还可按来源时间提示日期匹配的旅行，需本人明确确认才关联；未记录来源时间的旧照片仍使用手动关联。操作与接口见 [地图相册联动](docs/MAP-TRAVEL-PHOTOS.md)、[照片旅行建议](docs/MEDIA-JOURNEY-SUGGESTIONS.md)和[建议界面](docs/MEDIA-JOURNEY-SUGGESTIONS-UI.md)。
 
-**最新发布：地图 → 旅行相册 → 返回；本人照片 → 查看推荐 → 明确关联旅行。** 先核对照片时间对应的旅行日期和时区，再确认关联；旧照片来源时间未知时手动关联。版本冲突须重新读取并再次确认，网络结果不明先读回，不自动重写。关联不会自动共享、许可电视或标记到访。实际 1 户两库完整备份后更新源码，原 53+2 表和配置保持；20:39:27 读回确认四服务运行、app 健康及备份服务正常。
+**此前媒体功能：地图 → 旅行相册 → 返回；本人照片 → 查看推荐 → 明确关联旅行。** 先核对照片时间对应的旅行日期和时区，再确认关联；旧照片来源时间未知时手动关联。版本冲突须重新读取并再次确认，网络结果不明先读回，不自动重写。关联不会自动共享、许可电视或标记到访。该轮 20:39:27 读回和全部历史证据保留于 [验证记录](docs/VALIDATION.md)。
 
 家庭物品支持手工登记下单、分批收货、使用／报损／退回、纠正原流水、私有或明确共享及本人导出；电脑侧栏或手机“更多 → 家庭物品”进入。助理本地搜索新增已保存照片的说明／关联旅行标题和地点文字，不调用模型、不自动确认到访；尚未搜索库存。不自动向商家下单、记财务账或写云端。使用见 [家庭物品交付](docs/INVENTORY-DELIVERY.md) 与 [助理搜索](docs/ASSISTANT-SEARCH.md)。
 
@@ -22,6 +24,7 @@ JPEG 补丁后本人已实际选择 5 张、全部出现预览并明确保存，
 | 开发一个模块 | [项目规则](AGENTS.md) → [交接与候选状态](docs/HANDOFF.md) → [Git 分支协作](docs/GIT-WORKFLOW.md) → 对应接口文档 |
 | 对接或修改 API | [基础 API](docs/API.md)、[平台 API](docs/PLATFORM-API.md)、[财务 API](docs/FINANCE-API.md)、[完整路由索引](docs/PLATFORM-ROUTES.md) |
 | 安装、更新、备份或排障 | [部署指导](docs/DEPLOYMENT.md)、[运维手册](docs/OPERATIONS.md)、[恢复演练](docs/RECOVERY-REHEARSAL.md) |
+| 开发新版 React Native 界面 | [前端开发与构建](frontend/README.md)、[同源托管与安全边界](docs/EXPO-WEB.md)、[Expo 交付](docs/EXPO-RELEASE.md) |
 | 把项目交给其他 agent | 源码 ZIP 供阅读；Git bundle 保留 main、候选分支和完整提交历史。恢复命令见 [Git 指导](docs/GIT-WORKFLOW.md) |
 
 <a id="最新发布旅行地图"></a>
@@ -173,7 +176,7 @@ flowchart LR
 
 | 层 | 方案 |
 |---|---|
-| 前端 | 同源 HTML、CSS、原生 JavaScript；无 React/Vue、npm 构建或独立 Node 运行服务；hash 路由与全局模块接口 |
+| 前端 | 新版为 React Native／Expo Router／React Native Web／Paper，npm 构建后由 Flask 同源托管；高级模块暂保留 `/classic` 原生 JavaScript／hash 界面。生产无独立 Node 运行服务，部署状态见文首 |
 | Web 后端 | Python 3.12 生产容器、Flask 3.1.2、Gunicorn 23；1 worker / 4 线程，内部端口 8000 |
 | 数据与安全 | SQLite WAL、事务与 revision；成员授权、CSRF/同源检查、scrypt 密码散列、加密第三方令牌、图片解码重编码 |
 | 同步 | 独立 `sync_worker.py`；任务约 30 秒、日历约 60 秒到期检查，页面每 10 秒取共享状态；条件回写、持久化队列及远端读回，错误退避，实际延迟受服务商响应与家庭数量影响 |
@@ -215,7 +218,10 @@ family-dashboard/
 ├─ home_assistant.py           # 概览、草案、确认执行、可选模型
 ├─ shopping_media.py           # 采购图片与权限
 ├─ shopping_settlement.py      # 本人付款到采购实付的预览确认、版本及私有回执
+├─ frontend/                   # Expo React Native 源码、锁文件与构建说明
+├─ frontend_runtime.py         # /app 同源导出托管、/classic 和原回调衔接
 ├─ static/
+│  ├─ experience/              # 经发布证据绑定的 Expo 导出；不手工修改
 │  ├─ index.html / app.js / style.css
 │  ├─ accounts-ui.js / calendar-ui.js / shopping-ui.js
 │  ├─ finance-baseline.js / finance-hub.js
@@ -237,11 +243,11 @@ family-dashboard/
 └─ docs/                       # 产品、接口、部署、验收与交接文档
 ```
 
-脚本以 `defer` 顺序加载，基础 `app.js` 在 DOM 就绪后启动；工作台包装既有渲染函数，各业务模块保持自己的接口。详细顺序与 `JourneyUI`、`FinanceHub`、`HomeAssistant`、`HouseholdSpaces`、`CalendarPublish` 等依赖见 [工作台文档](docs/WORKSPACE-UI.md)。新增静态文件必须同时检查 HTML 引用、Docker 复制范围和发布白名单。
+新版从 `frontend/src/app/` 进入统一会话上下文，使用现有 `/api`，构建方式见 [前端说明](frontend/README.md)。`/classic` 的脚本仍以 `defer` 顺序加载，基础 `app.js` 在 DOM 就绪后启动；模块加载与公共接口见 [工作台文档](docs/WORKSPACE-UI.md)。两套页面不同时加载各自的外壳。新增资产须核对入口引用、Docker 复制范围与发布清单。
 
 ## 接口与数据契约
 
-当前为 **144 个 Flask 方法／路径模板**，包含库存 13 个方法／路径组合与助理搜索 GET；另有 WSGI `GET /space/<slug>`，HEAD/OPTIONS 不重复计数。以 [当前路由索引](docs/PLATFORM-ROUTES.md)、[机器结构](docs/contract-inventory.json)和实际源码为准；字段与权限仍见各模块契约。
+既有接口索引为 **145 个 Flask 方法／路径模板**，本轮另增 `/classic`、`/app`、`/app/<path:name>` 三个 GET 托管入口；另有 WSGI `GET /space/<slug>`，HEAD/OPTIONS 不重复计数。见 [路由索引及 Expo 增量](docs/PLATFORM-ROUTES.md)和[托管契约](docs/EXPO-WEB.md)；机器结构保留既有业务索引，字段与权限仍见各模块契约。
 
 | 接口族 | 内容与权限 |
 |---|---|
