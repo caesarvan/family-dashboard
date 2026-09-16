@@ -6,13 +6,21 @@
 
 ## 已发布：完整账本与金额校验
 
+### 本地地图基线：已合 main，尚未部署
+
+当前地图基线 main `9559ca4ea0dfab064cb9c19897daeca86475876b` 与已审 integration `1ff3bd441350545370cb03306187bd776fda659b` 同树 `69a1afa4f8afec8e8ab9c34fc0fa157cb780bb91`，279 个跟踪文件。该基线包含先前 NVIDIA/编排、地图 API `05f885b`、底图 `0585547`、界面 `e6795f4`、应用接线 `f429569`，分别经非作者审查后按 Git 合入，再核对精确联合与实际测试证据。不要重新拷贝或重放这些分支。
+
+地图模块入口为 `journey_places.py`、`static/journey-map.js/.css`，app 注册和主导航已接好；[API](JOURNEY-PLACES.md)、[UI](JOURNEY-MAP-UI.md)、[底图来源](MAP-BASEMAP.md)、[接线与导出](JOURNEY-MAP-INTEGRATION.md) 是对应契约。新增 `journey_places` 一表后本地为 44+2 表、112 路由。原 SOURCE 43→43 与历史 42→43 工具不能承担这次发布，地点迁移工具和双户恢复演练仍需独立审查、真实运行和发布证据。
+
+真实浏览器 10 项通过；不同阶段的 API、界面及接线测试分开记录于 [VALIDATION](VALIDATION.md)。Google Photos 纯协议适配器 `44bf644` 已通过独立 129 项合成检查，但保留在独立分支：OAuth 接线、展示副本、相册和独立电视许可尚未完成；不能把它混进只允许新增地点模块的发布清单。
+
 ### 新一轮本地候选：NVIDIA 与并发编排
 
 发布后文档、设计参考及扩展计划已通过独立审查后合入本地 main `e42c535`；这不改变上方服务器安装身份。其上 NVIDIA 产品适配 `52be16e803758797eabe545c0500094cd005ee09` 和开发编排 `96d8a82f64b6b9a05e5270953b2214935d55b41d` 分别经非作者审查，无冲突合入 integration `ff590965c8feb544930e12a0cd7a477ffd17b872`。本段文档在以该集成提交为明确依赖的 `codex/root-nvidia-handoff` 独立工作树编辑，再交非作者审查；不在 integration 直接编辑。
 
 产品适配只修改既有 `home_assistant.py`、`app.py` 的 AI 配置读取、`household_spaces.py` 的子户配置白名单和一处前端服务名称告知，另加专用测试及 [说明](ASSISTANT-PROVIDER.md)。开发编排只增加 `tools/inference_orchestrator/` 四文件、合成测试及 [指导](INFERENCE-ORCHESTRATION.md)，不操作工作树、应用补丁或自行审查晋级。两个分支没有新应用路由、schema 或依赖；配置秘密仍只在服务端。
 
-root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项检查；编排独立 27 项合成测试与 24 次真实需求请求分列，原件/限制见 [VALIDATION](VALIDATION.md)。源码已合入候选不代表生产已配置 NVIDIA。现有 SOURCE 策略尚未准许根 DESIGN.md 和开发工具路径变化；后续发布须先独立处理发布清单，并针对实际环境配置、镜像与数据版本验收。地图资产 `0585547` 已独立审查，地图 API/UI 尚在各自分支，不混入本次 NVIDIA 组合。
+root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项检查；编排独立 27 项合成测试与 24 次真实需求请求分列，原件/限制见 [VALIDATION](VALIDATION.md)。这一历史 NVIDIA 组合后来已审合入 main `583f5c9`，再作为上方地图基线祖先；它本身没有地图 API/UI。源码合入不代表生产已配置 NVIDIA。旧 SOURCE 策略没有准许根 DESIGN.md 和开发工具路径变化；后续独立地点发布策略须针对实际环境配置、镜像与数据版本验收。
 
 开发共同 base 为 `fa72df437af8e97315e04d019a2f110b6cf69938`。发布前服务器的 255 文件 BASE 逐字对应 `54c0854`；本次实际安装同树 integration `82f4401`／main `79faaf3` 的 258 文件，不能把开发基线当作服务器安装状态。
 
