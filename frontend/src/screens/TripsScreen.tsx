@@ -1,5 +1,6 @@
 import React, {useEffect, useRef, useState} from 'react';
 import {StyleSheet, View} from 'react-native';
+import {SelectionRow} from '../ui/SelectionRow';
 import {ActivityIndicator, Button, Checkbox, Chip, Dialog, Divider, HelperText, IconButton, List, Portal, Searchbar, Text, TextInput, useTheme} from 'react-native-paper';
 import {ApiError, request} from '../lib/api';
 import {useHousehold} from '../lib/household';
@@ -147,7 +148,7 @@ export default function TripsScreen(props:Props) {
         <View style={styles.columns}><View style={styles.column}>{field('出发日期（YYYY-MM-DD）',draft.plan.start,value=>change(plan=>{const old=plan.start;plan.start=value;if(!draft.journeyId&&!draft.tripId)for(const dest of plan.destinations)if(dest.arrival===old)dest.arrival=value;}),10)}</View><View style={styles.column}>{field('返程日期（包含当天）',draft.plan.end,value=>change(plan=>{const old=plan.end;plan.end=value;if(!draft.journeyId&&!draft.tripId)for(const dest of plan.destinations)if(dest.departure===old)dest.departure=value;}),10)}</View></View>
         <Text variant="bodySmall">{draft.plan.schemaVersion===2?'参考时区：'+draft.plan.referenceTimezone+'。改变总日期不会自动移动分段与准备截止。':'日期包含出发和返程当天，生成北京时间的全天日程。已有分段和截止日期不会随总日期自动移动。'}</Text>
         <View style={styles.wrap}>{props.state.people.map(person=><Chip key={person.id} selected={draft.plan.memberIds.includes(person.id)} disabled={locked} onPress={()=>change(plan=>{plan.memberIds=plan.memberIds.includes(person.id)?plan.memberIds.filter(id=>id!==person.id):[...plan.memberIds,person.id];})}>{person.name}</Chip>)}</View>
-        <Checkbox.Item label="境外旅行" status={draft.plan.international?'checked':'unchecked'} disabled={locked} onPress={()=>change(plan=>{plan.international=!plan.international;})}/>
+        <SelectionRow label="境外旅行" checked={draft.plan.international} disabled={locked} onPress={()=>change(plan=>{plan.international=!plan.international;})}/>
         {draft.plan.destinations.map((dest,index)=><View style={styles.fields} key={dest.key}><Text variant="titleSmall">目的地 {index+1}</Text>{field('城市 '+(index+1),dest.city,value=>change(plan=>{plan.destinations[index].city=value;}),80)}{field('国家或地区 '+(index+1),dest.country,value=>change(plan=>{plan.destinations[index].country=value;}),60)}<View style={styles.columns}><View style={styles.column}>{field('抵达日期 '+(index+1),dest.arrival,value=>change(plan=>{plan.destinations[index].arrival=value;}),10)}</View><View style={styles.column}>{field('离开日期 '+(index+1),dest.departure,value=>change(plan=>{plan.destinations[index].departure=value;}),10)}</View></View>{dest.timeZone&&<Text variant="bodySmall">当地时区：{dest.timeZone}（高级编辑见经典旅行）</Text>}{draft.plan.destinations.length>1&&<Button disabled={locked} onPress={()=>change(plan=>{plan.destinations.splice(index,1);})}>移除目的地 {index+1}</Button>}</View>)}
         {draft.plan.schemaVersion!==2&&<Button icon="plus" disabled={locked||draft.plan.destinations.length>=20} onPress={()=>change(plan=>{plan.destinations.push({key:newKey(),city:'',country:'',arrival:plan.start,departure:plan.end});})}>增加目的地</Button>}
       </View></SectionCard>

@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Button, Checkbox, HelperText, RadioButton, Text, TextInput, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import { PhotoReadDiscarded, PhotoReadFence, type PhotoSession } from '../lib/photos';
@@ -9,6 +9,7 @@ import { memberKey, type Draft } from '../lib/trips';
 import type { Member, Person } from '../lib/types';
 import { blankBriefStop, emptyBrief, journeyBriefPlan, journeyBriefRequest, journeyCheckedRead, preparedJourneyDraft, readJourneyBrief, type BriefForm, type BriefStop } from '../lib/journeyBrief';
 import { PageHeader, SectionCard } from '../ui/components';
+import { SelectionRow } from '../ui/SelectionRow';
 
 export type JourneyBriefPanelProps = {
   user: Member; people: Person[]; initialPrompt?: string; initialUseModel?: boolean; prepareOnOpen?: boolean;
@@ -153,7 +154,7 @@ function BriefWorkspace(props: JourneyBriefPanelProps) {
       <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} multiline label="旅行原始需求" accessibilityLabel="旅行原始需求" value={prompt}
         onChangeText={value => { if (!current()) return; changed(); promptRef.current = value; setPrompt(value); if (!hasBrief) installForm({ ...formRef.current, note: value }); }}
         maxLength={4000} placeholder="想去哪里、何时出发、准备花多少……也可以直接填写下方表单。" style={styles.prompt} />
-      <Checkbox.Item label="使用 AI 整理这段文字" status={useModel ? 'checked' : 'unchecked'} accessibilityLabel="使用 AI 整理这段文字"
+      <SelectionRow label="使用 AI 整理这段文字" checked={useModel} accessibilityLabel="使用 AI 整理这段文字"
         onPress={() => { if (!current()) return; changed(); modelRef.current = !modelRef.current; setUseModel(modelRef.current); }} />
       <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{useModel ? '只把这次原文发送给已配置的 AI，不附带家庭记录或成员信息。结果需要你核对。' : '不使用 AI 时，只提取明确标注的字段；其他内容在下方补齐。'}</Text>
       <Button mode="outlined" loading={busy === 'extract'} disabled={!!busy} onPress={() => void extract()}>{hasBrief ? '按当前文字重新整理' : '整理旅行简报'}</Button>
@@ -164,15 +165,15 @@ function BriefWorkspace(props: JourneyBriefPanelProps) {
       {field('旅行名称', form.title, title => editForm({ title }))}
       <View style={styles.row}><View style={styles.column}>{field('出发日期', form.start, start => editForm({ start }), 10, 'YYYY-MM-DD')}</View>
         <View style={styles.column}>{field('返程日期', form.end, end => editForm({ end }), 10, 'YYYY-MM-DD')}</View></View>
-      <Text variant="labelLarge">出行范围</Text><View style={styles.row}>
-        <RadioButton.Item label="国内旅行" value="domestic" status={form.international === false ? 'checked' : 'unchecked'} onPress={() => editForm({ international: false })} />
-        <RadioButton.Item label="境外旅行" value="international" status={form.international === true ? 'checked' : 'unchecked'} onPress={() => editForm({ international: true })} />
+      <Text variant="labelLarge">出行范围</Text><View style={styles.row} accessibilityRole="radiogroup" accessibilityLabel="出行范围">
+        <SelectionRow kind="radio" label="国内旅行" checked={form.international === false} onPress={() => editForm({ international: false })} />
+        <SelectionRow kind="radio" label="境外旅行" checked={form.international === true} onPress={() => editForm({ international: true })} />
       </View>
       {field('旅行总预算（元）', form.budget, budget => editForm({ budget }), 14, '待确认')}
       <Text variant="bodySmall">填写人民币家庭总额。未知可暂留空，继续前请确认；0 只用于明确的零预算，不自动换汇。</Text>
       <Text variant="labelLarge">出行成员</Text>
-      {props.people.map(person => <Checkbox.Item key={person.id} label={person.name} accessibilityLabel={'出行成员：' + person.name}
-        status={form.memberIds.includes(person.id) ? 'checked' : 'unchecked'} onPress={() => editForm({ memberIds: form.memberIds.includes(person.id) ? form.memberIds.filter(id => id !== person.id) : [...form.memberIds, person.id] })} />)}
+      {props.people.map(person => <SelectionRow key={person.id} label={person.name} accessibilityLabel={'出行成员：' + person.name}
+        checked={form.memberIds.includes(person.id)} onPress={() => editForm({ memberIds: form.memberIds.includes(person.id) ? form.memberIds.filter(id => id !== person.id) : [...form.memberIds, person.id] })} />)}
     </View></SectionCard>
     <SectionCard title={`目的地与停留 · ${form.destinations.length}`} action={<Button accessibilityLabel={stopsOpen ? '收起目的地' : '展开目的地'} onPress={() => setStopsOpen(!stopsOpen)}>{stopsOpen ? '收起' : '展开'}</Button>}>
       {stopsOpen ? <View style={styles.fields}>{form.destinations.map((row, index) => <View key={index} style={styles.stop} testID={`journey-brief-stop-${index + 1}`}>
