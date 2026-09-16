@@ -5,20 +5,26 @@ import {ApiError, request} from '../lib/api';
 import {useHousehold} from '../lib/household';
 import {dayKey} from '../lib/calendar';
 import type {ListItem, ScreenProps, Trip} from '../lib/types';
-import {copy, editDraft, eventDates, memberKey, newDraft, newKey, previewPayload, readForMember, recordVersions, SessionChangedError, summaryCounts, upgradeDraft, validateReceipt, type Draft, type Journey, type Plan, type Preview} from '../lib/trips';
+import {copy, editDraft, eventDates, initialPlanningDraft, memberKey, newDraft, newKey, previewPayload, purchaseBudgetText, readForMember, recordVersions, SessionChangedError, summaryCounts, upgradeDraft, validateReceipt, type Draft, type Journey, type Plan, type Preview} from '../lib/trips';
 import {EmptyState, PageHeader, SectionCard} from '../ui/components';
 import {money} from './ListScreen';
 
-type Props=ScreenProps & {tripRequest?:{key:number;id?:string}; onReturnMap?:()=>void};
+type Props=ScreenProps & {tripRequest?:{key:number;id?:string}; onReturnMap?:()=>void; initialDraft?:Draft; onExitPlanning?:()=>void};
 type Pending={previewToken:string;idempotencyKey:string};
 export default function TripsScreen(props:Props) {
   const {mutate,refresh,online}=useHousehold(), theme=useTheme();
   const actor=memberKey(props.user), identity=useRef(actor); identity.current=actor;
+  const initial=useRef<{actor:string;present:boolean;invalidated:boolean;draft:Draft|null;error:string}|null>(null);
+  if(initial.current===null){
+    let seeded:Draft|null=null,seedError='';
+    if(props.initialDraft!==undefined&&props.user.role==='member')try{seeded=initialPlanningDraft(props.initialDraft,props.state.people);}catch(failure){seedError=failure instanceof Error?failure.message:'旅行草案无法读取';}
+    initial.current={actor,present:props.initialDraft!==undefined,invalidated:false,draft:seeded,error:seedError};
+  }
   const alive=useRef(true), readVersion=useRef(0), writing=useRef(false), requestKey=useRef<number|undefined>(undefined);
   const [journeys,setJourneys]=useState<Journey[]|null>(null),[detail,setDetail]=useState<Journey|null>(null),[legacy,setLegacy]=useState<Trip|null>(null);
-  const [draft,setDraft]=useState<Draft|null>(null),[preview,setPreview]=useState<Preview|null>(null),[pending,setPending]=useState<Pending|null>(null);
+  const [draft,setDraft]=useState<Draft|null>(initial.current.draft),[preview,setPreview]=useState<Preview|null>(null),[pending,setPending]=useState<Pending|null>(null);
   const [uncertain,setUncertain]=useState(false),[blocked,setBlocked]=useState(false),[busy,setBusy]=useState(''),[reading,setReading]=useState(false);
-  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[query,setQuery]=useState(''),[discard,setDiscard]=useState(false);
+  const [error,setError]=useState(initial.current.error),[notice,setNotice]=useState(''),[query,setQuery]=useState(''),[discard,setDiscard]=useState(false);
   const editing=useRef(false); editing.current=!!draft;
   const selected=useRef(''); selected.current=detail?.id||'';
   const current=(key:string)=>alive.current&&identity.current===key;
@@ -45,15 +51,19 @@ export default function TripsScreen(props:Props) {
     }finally{if(current(key)&&ticket===readVersion.current)setReading(false);}
   }
   useEffect(()=>{
-    alive.current=true;setJourneys(null);setDetail(null);setLegacy(null);setDraft(null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setBusy('');setError('');setNotice('');setQuery('');
-    if(props.user.role==='member')void load();
+    const seed=initial.current!;
+    if(seed.actor!==actor){seed.invalidated=true;seed.draft=null;seed.error='';}
+    const useSeed=!seed.invalidated&&seed.actor===actor;
+    alive.current=true;setJourneys(null);setDetail(null);setLegacy(null);setDraft(useSeed?seed.draft:null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setBusy('');setError(useSeed?seed.error:'');setNotice('');setQuery('');
+    if(props.user.role==='member'&&!(useSeed&&seed.present))void load();
     return()=>{alive.current=false;++readVersion.current;};
   },[actor]);
-  useEffect(()=>{if(props.user.role==='member'&&!editing.current&&!writing.current)void load(selected.current||undefined);},[props.state.revision]);
+  useEffect(()=>{if(props.user.role==='member'&&!initial.current?.error&&!editing.current&&!writing.current)void load(selected.current||undefined);},[props.state.revision]);
   useEffect(()=>{
     const incoming=props.tripRequest;
     if(!incoming||incoming.key===requestKey.current)return;
     requestKey.current=incoming.key;
+    if(initial.current?.present)return;
     if(editing.current||writing.current){setNotice('请先完成或取消当前旅行编辑，再打开另一趟旅行。');return;}
     if(!incoming.id)startNew();
     else void openTrip(incoming.id);
@@ -78,7 +88,9 @@ export default function TripsScreen(props:Props) {
   }
   function change(update:(plan:Plan)=>void){if(locked||writing.current)return;setDraft(value=>{if(!value)return value;const next=copy(value);update(next.plan);return next;});setPreview(null);setPending(null);setBlocked(false);setError('');}
   function amount(field:'budget'|'saved'|'paid',value:string){if(locked)return;setDraft(old=>old?{...old,[field]:value}:null);setPreview(null);setPending(null);setBlocked(false);}
-  async function makePreview(){
+  function purchaseAmount(key:string,value:string){if(locked||writing.current)return;setDraft(old=>old?{...old,purchaseBudgets:{...old.purchaseBudgets,[key]:value}}:null);setPreview(null);setPending(null);setBlocked(false);setError('');}
+  function usePreparation(items:Plan['checklist']){if(!items||locked||writing.current)return;change(plan=>{plan.checklist=copy(items);});setNotice('准备建议已展开，可以调整负责人和截止日期。修改后请重新预览。');}
+  async function makePreview(expandPreparation=false){
     if(!draft||locked||writing.current)return;const key=actor;writing.current=true;setBusy('preview');setError('');
     try{
       const payload=previewPayload(draft,props.state.people);
@@ -86,7 +98,9 @@ export default function TripsScreen(props:Props) {
       if(!current(key))return;
       const value=await mutate<Preview>('/journeys/preview','POST',payload);
       if(!current(key))return;
-      setPreview(value);setPending(value.previewToken?{previewToken:value.previewToken,idempotencyKey:newKey()}:null);setBlocked(false);
+      if(expandPreparation){setDraft(old=>old?{...old,plan:{...old.plan,checklist:copy(value.plan.checklist||[])}}:null);setPreview(null);setPending(null);setNotice('准备建议已展开，可以调整负责人和截止日期。修改后请重新预览。');}
+      else {setPreview(value);setPending(value.previewToken?{previewToken:value.previewToken,idempotencyKey:newKey()}:null);}
+      setBlocked(false);
     }catch(failure){if(current(key))setError(failure instanceof ApiError&&failure.status===409?'旅行已变化，输入仍保留。请先核对最新计划后重新编辑。':message(failure));}
     finally{writing.current=false;if(current(key))setBusy('');}
   }
@@ -116,10 +130,12 @@ export default function TripsScreen(props:Props) {
   }
   function cancel(){if(busy)return;if(uncertain){setError('保存结果尚未核实，请先核对原保存。关闭页面后请先检查旅行列表，勿直接重新创建。');return;}setDiscard(true);}
   const field=(label:string,value:string,onChangeText:(value:string)=>void,maxLength=100)=><TextInput key={label} mode="outlined" outlineStyle={{borderRadius:8}} dense label={label} accessibilityLabel={label} value={value} onChangeText={onChangeText} maxLength={maxLength} disabled={locked}/>;
+  const ownerChoices=(label:string,value:string,onChange:(owner:string)=>void)=><View style={styles.fields}><Text variant="bodySmall">{label}</Text><View style={styles.wrap}>{[{id:'shared',name:'一起'},...props.state.people].map(person=><Chip key={person.id} selected={value===person.id} accessibilityLabel={label+'：'+person.name} disabled={locked} onPress={()=>onChange(person.id)}>{person.name}</Chip>)}</View></View>;
   const group=(items:ListItem[],kind:'tasks'|'shopping')=>items.map(item=><View style={styles.item} key={item.id}><Checkbox.Android status={item.done?'checked':'unchecked'} disabled={!!busy||!online||!!item.sync?.readOnly} accessibilityLabel={(item.done?'恢复':'完成')+item.title} onPress={()=>void toggle(kind,item)}/><View style={styles.body}><Text variant="titleSmall" style={item.done?{textDecorationLine:'line-through',color:theme.colors.onSurfaceVariant}:undefined}>{item.title}</Text><Text variant="bodySmall">{item.owner==='shared'?'一起':props.state.people.find(p=>p.id===item.owner)?.name||'家庭成员'}{item.due?' · '+item.due:''}{kind==='shopping'?' · '+(item.quantity||'1 件'):''}</Text>{!!item.note&&<Text variant="bodySmall">{item.note}</Text>}{kind==='shopping'&&<Text variant="bodySmall">预算 {money(item.budget)}{item.done?' · 实付 '+money(item.actual):''}</Text>}{item.sync?.readOnly&&<Text variant="bodySmall">来源只读</Text>}</View><IconButton icon="pencil-outline" accessibilityLabel={'编辑'+item.title} disabled={!!busy||!!item.sync} onPress={()=>props.onEdit(kind,item)}/></View>);
   if(props.user.role!=='member')return <Text>旅行编辑仅供已登录家庭成员使用。</Text>;
   const active=detail?.trip||legacy;
   return <View style={styles.page}>
+    {!!props.onExitPlanning&&!draft&&<Button accessibilityLabel="返回助理" icon="arrow-left" disabled={!!busy} onPress={props.onExitPlanning}>返回助理</Button>}
     {!!props.onReturnMap&&!draft&&<Button icon="arrow-left" disabled={!!busy} onPress={props.onReturnMap}>返回足迹地图</Button>}
     <PageHeader title={draft?(draft.journeyId?'编辑旅行':draft.tripId?'完善旅行计划':'计划旅行'):detail||legacy?'旅行详情':'旅行'} description={draft?'先安排日期与目的地，再按需补充细节。':undefined} action={!draft&&!detail&&!legacy?<Button mode="contained" icon="plus" disabled={!!busy||!online} onPress={startNew}>计划旅行</Button>:undefined}/>
     {!!notice&&<Text accessibilityLiveRegion="polite">{notice}</Text>}
@@ -137,15 +153,24 @@ export default function TripsScreen(props:Props) {
       </View></SectionCard>
       <List.Accordion title="预算" description={'总预算 '+draft.budget+' 元 · 可按需填写'}><View style={styles.fields}>{(['budget','paid','saved'] as const).map((name,index)=>field(['总预算（元）','已付金额（元）','已留备用金（元）'][index],draft[name],value=>amount(name,value),14))}<Text variant="bodySmall">人民币口径。准备金和已付金额单独记录，采购不会自动重复计为支出。</Text></View></List.Accordion>
       <List.Accordion title="准备清单与采购" description={draft.plan.checklist?`${draft.plan.checklist.length} 项准备 · ${draft.plan.shopping.length} 件采购`:'保存时生成常用准备清单'}>
-        <View style={styles.fields}>{!draft.plan.checklist?<><Text>将生成{draft.plan.international?'境外 7 项':'国内 5 项'}准备建议，确认预览时可核对。</Text><Button disabled={locked} onPress={()=>change(plan=>{plan.checklist=[];})}>改为自己填写</Button></>:<>{draft.plan.checklist.map((row,index)=><View style={styles.fields} key={row.key}>{field('准备事项 '+(index+1),row.title,value=>change(plan=>{plan.checklist![index].title=value;}))}{field('准备截止 '+(index+1),row.due||'',value=>change(plan=>{plan.checklist![index].due=value;}),10)}<Button disabled={locked} onPress={()=>change(plan=>{plan.checklist!.splice(index,1);})}>移出准备事项 {index+1}</Button></View>)}<Button disabled={locked||draft.plan.checklist.length>=100} icon="plus" onPress={()=>change(plan=>{plan.checklist!.push({key:newKey(),title:'',owner:'shared',due:plan.start,note:'',category:'preparation'});})}>增加准备事项</Button></>}
-          {draft.plan.shopping.map((row,index)=><View style={styles.fields} key={row.key}>{field('采购名称 '+(index+1),row.title,value=>change(plan=>{plan.shopping[index].title=value;}))}{field('采购数量 '+(index+1),row.quantity,value=>change(plan=>{plan.shopping[index].quantity=value;}),30)}<Text variant="bodySmall">预计 {money(row.budget)} · 保存后可编辑金额与参考图片</Text><Button disabled={locked} onPress={()=>change(plan=>{plan.shopping.splice(index,1);})}>移出采购 {index+1}</Button></View>)}<Button icon="plus" disabled={locked||draft.plan.shopping.length>=100} onPress={()=>change(plan=>{plan.shopping.push({key:newKey(),title:'',quantity:'1 件',owner:'shared',budget:null,note:''});})}>增加采购</Button><Text variant="bodySmall">移出计划的已有记录保留为独立事项，完成状态与图片不会删除。</Text>
+        <View style={styles.fields}>{!draft.plan.checklist?<><Text>准备建议由服务器根据当前计划生成，可先展开，再分配负责人。</Text><Button accessibilityLabel="展开并调整建议" disabled={locked} loading={busy==='preview'} onPress={()=>void makePreview(true)}>展开并调整建议</Button><Button disabled={locked} onPress={()=>change(plan=>{plan.checklist=[];})}>改为自己填写</Button></>:<>{draft.plan.checklist.map((row,index)=><View style={styles.fields} key={row.key}>{field('准备事项 '+(index+1),row.title,value=>change(plan=>{plan.checklist![index].title=value;}))}{ownerChoices('准备负责人 '+(index+1),row.owner,value=>change(plan=>{plan.checklist![index].owner=value;}))}{field('准备截止 '+(index+1),row.due||'',value=>change(plan=>{plan.checklist![index].due=value;}),10)}<Button disabled={locked} onPress={()=>change(plan=>{plan.checklist!.splice(index,1);})}>移出准备事项 {index+1}</Button></View>)}<Button disabled={locked||draft.plan.checklist.length>=100} icon="plus" onPress={()=>change(plan=>{plan.checklist!.push({key:newKey(),title:'',owner:'shared',due:plan.start,note:'',category:'preparation'});})}>增加准备事项</Button></>}
+          {draft.plan.shopping.map((row,index)=><View style={styles.fields} key={row.key}>{field('采购名称 '+(index+1),row.title,value=>change(plan=>{plan.shopping[index].title=value;}))}{field('采购数量 '+(index+1),row.quantity,value=>change(plan=>{plan.shopping[index].quantity=value;}),30)}{ownerChoices('采购负责人 '+(index+1),row.owner,value=>change(plan=>{plan.shopping[index].owner=value;}))}{field('采购预算（元，可不填） '+(index+1),purchaseBudgetText(draft,row),value=>purchaseAmount(row.key,value),14)}<Text variant="bodySmall">留空表示尚未估算，0 表示预计无需花费。保存后可添加参考图片。</Text><Button disabled={locked} onPress={()=>change(plan=>{plan.shopping.splice(index,1);})}>移出采购 {index+1}</Button></View>)}<Button icon="plus" disabled={locked||draft.plan.shopping.length>=100} onPress={()=>change(plan=>{plan.shopping.push({key:newKey(),title:'',quantity:'1 件',owner:'shared',budget:null,note:''});})}>增加采购</Button><Text variant="bodySmall">移出计划的已有记录保留为独立事项，完成状态与图片不会删除。</Text>
         </View>
       </List.Accordion>
       <List.Accordion title="分段行程与备注"><View style={styles.fields}>
         {draft.plan.schemaVersion===2?<Text>已有航班、住宿、活动和时区将完整保留。本页可编辑基本安排；复杂分段请在保存或取消后打开经典旅行编辑。</Text>:draft.plan.segments===undefined?<Text>将按每个目的地生成全天停留安排。</Text>:<>{draft.plan.segments.map((row,index)=><View style={styles.fields} key={row.key}>{field('行程标题 '+(index+1),row.title,value=>change(plan=>{plan.segments![index].title=value;}))}{field('行程开始 '+(index+1),String(row.start||''),value=>change(plan=>{plan.segments![index].start=value;}),10)}{field('行程结束 '+(index+1),String(row.end||''),value=>change(plan=>{plan.segments![index].end=value;}),10)}{field('行程地点 '+(index+1),row.location||'',value=>change(plan=>{plan.segments![index].location=value;}),200)}<Button disabled={locked} onPress={()=>change(plan=>{plan.segments!.splice(index,1);})}>移出分段 {index+1}</Button></View>)}<Button icon="plus" disabled={locked||draft.plan.segments.length>=100} onPress={()=>change(plan=>{plan.segments!.push({key:newKey(),title:'',start:plan.start,end:plan.end,location:'',note:''});})}>增加分段</Button></>}
         {field('旅行备注',draft.plan.note,value=>change(plan=>{plan.note=value;}),2000)}
       </View></List.Accordion>
-      {preview&&<SectionCard title="确认变更"><View style={styles.fields}><Text>新增：{summaryCounts(preview.summary.create)}</Text><Text>更新：{summaryCounts(preview.summary.update)}</Text>{!!preview.summary.detach&&<Text>移出计划 {preview.summary.detach} 项，记录仍保留。</Text>}<Text>准备 {preview.plan.checklist?.length||0} 项 · 采购 {preview.plan.shopping.length} 件 · 分段 {preview.plan.segments?.length||0} 项</Text>{preview.plan.checklist?.map(item=><Text variant="bodySmall" key={item.key}>{item.title} · {item.due}</Text>)}{preview.summary.warnings.map((warning,index)=><Text key={index}>{warning.message||'请核对本次日期或分段变化。'}</Text>)}{!!preview.summary.preserved.length&&<Text>已保留 {preview.summary.preserved.length} 处独立修改。</Text>}{!!preview.summary.cloudReviews.length&&<Text>已有云端时间需要另行复核；本次不会直接更改云日历。</Text>}<Text variant="bodySmall">{preview.summary.policyNotice}</Text>{!preview.canApply&&<Text accessibilityRole="alert">安排存在 {preview.summary.conflicts.length} 处独立修改冲突。请先取消编辑，在经典旅行核对并选择保留哪一项，本页不会覆盖冲突。</Text>}<Button mode="contained" disabled={!pending||!!busy||blocked||!online} loading={busy==='apply'} onPress={()=>void apply()}>{uncertain?'核对原保存':'确认保存旅行'}</Button></View></SectionCard>}
+      {preview&&<SectionCard title="确认变更"><View style={styles.fields}>
+        <Text>新增：{summaryCounts(preview.summary.create)}</Text><Text>更新：{summaryCounts(preview.summary.update)}</Text>{!!preview.summary.detach&&<Text>移出计划 {preview.summary.detach} 项，记录仍保留。</Text>}
+        <Text>准备 {preview.plan.checklist?.length||0} 项 · 采购 {preview.plan.shopping.length} 件 · 分段 {preview.plan.segments?.length||0} 项</Text>
+        {preview.plan.checklist?.map(item=><Text variant="bodySmall" key={item.key}>{item.title} · {item.owner==='shared'?'一起':props.state.people.find(person=>person.id===item.owner)?.name||'家庭成员'} · {item.due}</Text>)}
+        {!draft.plan.checklist&&<Button accessibilityLabel="调整准备建议与负责人" disabled={locked} onPress={()=>usePreparation(preview.plan.checklist)}>调整准备建议与负责人</Button>}
+        {preview.plan.shopping.map(item=><Text variant="bodySmall" key={item.key}>{item.title} · {item.owner==='shared'?'一起':props.state.people.find(person=>person.id===item.owner)?.name||'家庭成员'} · 预算 {money(item.budget)}</Text>)}
+        {preview.summary.warnings.map((warning,index)=><Text key={index}>{warning.message||'请核对本次日期或分段变化。'}</Text>)}{!!preview.summary.preserved.length&&<Text>已保留 {preview.summary.preserved.length} 处独立修改。</Text>}{!!preview.summary.cloudReviews.length&&<Text>已有云端时间需要另行复核；本次不会直接更改云日历。</Text>}
+        <Text variant="bodySmall">{preview.summary.policyNotice}</Text>{!preview.canApply&&<Text accessibilityRole="alert">安排存在 {preview.summary.conflicts.length} 处独立修改冲突。请先取消编辑，在经典旅行核对并选择保留哪一项，本页不会覆盖冲突。</Text>}
+        <Button accessibilityLabel={uncertain?'核对原保存':'确认保存旅行'} mode="contained" disabled={!pending||!!busy||blocked||!online} loading={busy==='apply'} onPress={()=>void apply()}>{uncertain?'核对原保存':'确认保存旅行'}</Button>
+      </View></SectionCard>}
       <View style={styles.wrap}><Button disabled={!!busy||uncertain} onPress={cancel}>取消编辑</Button><Button mode={preview?'outlined':'contained'} disabled={locked} loading={busy==='preview'} onPress={()=>void makePreview()}>预览变更</Button></View>
       {blocked&&<Text>输入仍保留。需要重新读取时，先记下变更，再取消编辑并打开最新旅行；不要沿用旧版本覆盖。</Text>}
       {uncertain&&blocked&&<Button onPress={()=>setDiscard(true)}>关闭并核对列表</Button>}
