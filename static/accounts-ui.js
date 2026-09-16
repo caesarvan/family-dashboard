@@ -242,8 +242,8 @@ async function accountsModal() {
   const connections = accounts.map(account => `<article class="account-card">
     <header><div><strong>${esc(accountProviderName(account.provider))} · ${esc(account.name || '已绑定账户')}</strong>${account.email ? `<small>${esc(account.email)}</small>` : ''}</div><span class="pill ${account.needsReauth ? 'demo' : ''}">${account.needsReauth ? '需要重新授权' : '已绑定'}</span></header>
     ${account.needsReauth ? '<p class="error">授权已失效，请使用下方同一平台的绑定按钮重新授权这个账户。</p>' : ''}
-    <div class="account-sources">${account.sources.length ? account.sources.map(source => `<div class="account-source-summary"><span>${icon(source.kind === 'calendar' ? 'calendar' : 'list')} ${esc(source.name)}${source.primary ? ' <span class="sage">· 共同待办主清单</span>' : ''}</span><small>${source.kind === 'calendar' ? esc(who(source.owner)) + ' · ' : ''}${esc(accountTimestamp(source.lastSuccess))}</small>${source.error ? `<p class="error">${esc(source.error)}</p>` : ''}</div>`).join('') : '<p class="help">还没有共享数据。选择日历或清单后才会开始同步。</p>'}</div>
-    <div class="account-actions"><button class="btn small secondary" data-account-select="${esc(account.id)}" ${account.needsReauth ? 'disabled' : ''}>选择日历与清单</button><button class="btn small secondary" data-account-sync="${esc(account.id)}" ${account.needsReauth || !account.sources.length ? 'disabled' : ''}>立即检查更新</button><button class="quiet" data-account-disconnect="${esc(account.id)}">断开绑定</button></div>
+    <div class="account-sources">${account.sources.length ? account.sources.map(source => `<div class="account-source-summary"><span>${icon(source.kind === 'calendar' ? 'calendar' : 'list')} ${esc(source.name)}${source.primary ? ' <span class="sage">· 共同待办主清单</span>' : ''}</span><small>${source.kind === 'calendar' ? esc(who(source.owner)) + ' · ' : ''}${esc(accountTimestamp(source.lastSuccess))}</small>${source.error ? `<p class="error">${esc(source.error)}</p>` : ''}</div>`).join('') : account.capabilities?.sync === false ? '<p class="help">这个账户用于相册，照片请在家庭相册中选择和管理。日历与清单需要另外授权。</p>' : '<p class="help">还没有共享数据。选择日历或清单后才会开始同步。</p>'}</div>
+    <div class="account-actions">${account.capabilities?.photos ? `<button class="btn small secondary" data-account-photos="${esc(account.id)}">管理相册</button>` : ''}<button class="btn small secondary" data-account-select="${esc(account.id)}" ${account.needsReauth || account.capabilities?.sync === false ? 'disabled' : ''}>选择日历与清单</button><button class="btn small secondary" data-account-sync="${esc(account.id)}" ${account.needsReauth || !account.sources.length ? 'disabled' : ''}>立即检查更新</button><button class="quiet" data-account-disconnect="${esc(account.id)}">断开绑定</button></div>
   </article>`).join('');
   openModal('账户与自动同步', `<div class="info-box">只同步你明确选择的日历与清单。选中的完整日程标题、地点和任务会展示给双方与已配对电视；个人财务仍仅本人可见。</div>
     ${AccountsReturn.footer()}
@@ -255,6 +255,10 @@ async function accountsModal() {
     <div class="dialog-footer"><button class="btn secondary" id="account-refresh">刷新状态</button><button class="btn" data-action="close">完成</button></div>`, true);
   $('[id="account-refresh"]').onclick = () => accountsModal().catch(error => toast(error.message, true));
   document.querySelectorAll('[data-account-bind]').forEach(button => button.onclick = () => bindAccount(button.dataset.accountBind, button, context));
+  document.querySelectorAll('[data-account-photos]').forEach(button => button.onclick = async () => {
+    try { await accountViewCheck(context, button); window.ProductShell?.navigate('photos'); }
+    catch (error) { toast(error.message, true); }
+  });
   document.querySelectorAll('[data-account-select]').forEach(button => button.onclick = async () => {
     button.disabled = true;
     try { await accountViewCheck(context, button); await accountSourcesModal(accounts.find(account => account.id === button.dataset.accountSelect)); }
