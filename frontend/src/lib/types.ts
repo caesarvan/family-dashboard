@@ -1,6 +1,6 @@
 export type CalendarMode = 'today' | 'week' | 'around';
 export type ThemeName = 'light' | 'forest' | 'ocean';
-export type RouteName = 'home' | 'calendar' | 'tasks' | 'shopping' | 'trips' | 'finance' | 'photos' | 'assistant' | 'inventory' | 'more';
+export type RouteName = 'home' | 'calendar' | 'tasks' | 'shopping' | 'trips' | 'finance' | 'photos' | 'assistant' | 'inventory' | 'map' | 'more';
 export type ItemKind = 'events' | 'tasks' | 'shopping' | 'trips';
 export type Person = { id: string; name: string };
 export type Member = Person & { role: 'member' | 'tv'; householdId?: string; auth_version?: number };
