@@ -6,7 +6,7 @@ import { request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import WelcomeVisual from '../ui/WelcomeVisual';
 
-export default function LoginScreen() {
+export default function LoginScreen({ authError = '' }: { authError?: string } = {}) {
   const { login } = useHousehold(); const theme = useTheme();
   const { width, height } = useWindowDimensions(); const wide = width >= 960;
   const [username, setUsername] = useState('member1'); const [password, setPassword] = useState('');
@@ -27,7 +27,7 @@ export default function LoginScreen() {
       <View style={styles.formHeading}><Text variant="headlineSmall" style={styles.formTitle}>欢迎回家</Text><Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>选择成员，继续今天的生活。</Text></View>
       <SegmentedButtons value={username} onValueChange={value=>{if(!busy)setUsername(value);}} buttons={[{value:'member1',label:'成员一',disabled:busy},{value:'member2',label:'成员二',disabled:busy}]} />
       <TextInput outlineStyle={{borderRadius:8}} accessibilityLabel="登录密码" label="登录密码" mode="outlined" disabled={busy} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" onSubmitEditing={() => { if (!busy && password) void submit(); }} />
-      {!!error && <HelperText type="error" accessibilityRole="alert">{error}</HelperText>}
+      {!!(error || authError) && <HelperText type="error" accessibilityRole="alert">{error || authError}</HelperText>}
       <Button mode="contained" style={styles.pill} contentStyle={styles.primaryContent} loading={busy} disabled={busy || !password} onPress={submit}>进入家庭看板</Button>
       {providers.some(p=>p.configured) && <><Divider /><Text variant="bodySmall">也可以使用已绑定的账户登录</Text>{providers.filter(p=>p.configured && /^\/auth\/(microsoft|google)\/login$/.test(p.loginUrl)).map(provider=><Button key={provider.id} mode="outlined" style={styles.pill} onPress={()=>openLocal(provider.loginUrl)}>{provider.id==='microsoft'?'Microsoft':'Google'} 账户</Button>)}</>}
       <View style={styles.links}><Button compact onPress={()=>setSpaceOpen(true)}>切换家庭</Button><Button compact onPress={()=>openLocal('/tv')}>连接电视</Button></View>

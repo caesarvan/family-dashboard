@@ -50,14 +50,14 @@ def test_only_completed_export_switches_home_and_classic_remains(export):
 
 
 @pytest.mark.parametrize('auth', ['connected', 'error'])
-def test_existing_oauth_result_flow_is_preserved(export, auth):
+def test_oauth_result_flow_enters_expo_connections(export, auth):
     from urllib.parse import parse_qs, urlsplit
     client, _, _ = export
-    response = client.get('/', query_string={'auth': auth, 'reason': 'denied',
+    response = client.get('/', query_string={'auth': auth, 'reason': 'provider_denied',
                                             'code': 'do-not-forward', 'next': '//external.invalid'})
     target = urlsplit(response.location)
-    assert response.status_code == 302 and target.path == '/classic' and not target.netloc
-    assert parse_qs(target.query) == ({'auth': [auth], 'reason': ['denied']} if auth == 'error' else {'auth': [auth]})
+    assert response.status_code == 302 and target.path == '/app/connections' and not target.netloc
+    assert parse_qs(target.query) == ({'auth': [auth], 'reason': ['provider_denied']} if auth == 'error' else {'auth': [auth]})
     assert response.headers['Cache-Control'] == 'no-store'
 
 
