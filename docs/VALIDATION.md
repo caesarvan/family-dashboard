@@ -1,6 +1,20 @@
 # 验证记录
 
-> **线上版本：2026-09-16 19:48:57（北京时间），镜像 `sha256:b82d0cdc1a594be661beed949fc317ddd7adaf2d2c53981f6403f667d31d0426`。** 家庭物品与助理本地照片／地点搜索已上线；367 源文件、80 份 README/docs Markdown、53 静态资源、144 个方法／路径模板、53 张户内表及 2 张平台表。安装 main `cf036908`／integration `0c7c783` 同树，48→53 迁移及发布后读回通过。本文档增量只作本地交接，不修改已发布 manifest。本人 Photos 此前实际 5／5 预览与保存成功；真实库存、新增搜索体验和实体电视尚待本人反馈。
+> **线上版本：2026-09-16 20:38:46（北京时间），镜像 `sha256:132dde7dc47567a27c3faa532c4a8bf447c4ef499c66aabbc956b38dffad7524`。** 地图旅行相册与本人照片时间建议已上线；373 源文件、83 份 README/docs Markdown、53 静态资源、145 个方法／路径模板、53 张户内表及 2 张平台表。安装 main `e20c269`／integration `c716e4d` 同树，53→53 无迁移发布与 20:39:27 读回通过。本文档增量只作本地交接，不修改已发布 manifest。此前本人 Photos 5／5 预览与保存事实保留；本轮旅行关联、地图新入口及实体电视尚待本人验收。
+
+## 地图相册与照片时间建议发布：2026-09-16 20:38:46
+
+安装 main `e20c269`／integration `c716e4d` 同树 `4127507e571656db19cd268804020874be0eca02`，manifest `945f0b70e1b07b2eac21485483e24a49855a0de0a57c207a02327d804fa342a9`；373 源／88 运行／53 静态文件，83 份 Markdown、145 路由、53+2 表。此轮只更新源码，无迁移。用户入口与错误处理见 [媒体交付](MEDIA-DELIVERY.md)。
+
+Windows 作者后端五模块 **144 passed／83.30s**，根代理独立建议专项另 **34 passed／23.83s**；新 UI 合成 10 组与旧相册 15 组分开执行。非作者真实临时 Flask／SQLite／Edge 地图桥接 **13 组**、建议 **6 组**分别通过，覆盖明确关联、地图读回、旧 unknown 手动关联、真实 409、已提交丢响应后只读回及共享撤回。最终镜像 Linux 五模块单轮 **144 passed／150.48s**，0 failure／error／skip，运行文件前后核验通过；不把这些执行相加为一次全套。
+
+实际 1 户两库完整组备份后更新，全部 53 张户内表和平台库在新 app 启动时的行／schema／序列与原值一致，配置保持，随后才开放 worker／web。20:39:27 正常 TLS 读回核对 373 源／88 运行／53 静态 SHA，十个匿名接口 401；四服务 running／restart 0、app healthy，完整备份 service success／timer active。
+
+实际原件在私有 `media-journey-package-20260916/`：`activation.json` SHA256 `87660ae1f736f743d6d526497df8f1570fb97446bdcad9e05e0efdc4d29bbc95`、`post-readback.json` SHA256 `0e988e1b52dbb33788d2f1d21a8e86d6faadc107d88b629917e4a982c43e591e`、`validation.json` SHA256 `03bdf20d89625f5a25372043e0ea5213cb40beb9a0e513c3e9fb5bb9a92fe1cf`。Linux 日志／JUnit／运行证明在同目录 `validation/`，均与报告绑定。发布目录 `/opt/family-dashboard-releases/media-journey-53-20260916T123758365084Z`；两库备份 manifest SHA256 `e978f53dfb2da37451a8d1d98b681c24735ac59ef5951fd3771c5fb33afbac1a`。
+
+非作者组合报告 SHA256 `79872ec25ae15517f1927a1b5faed4ef0d18af79ccf70cdca8a359e2275950cf` 绑定精确联合与 373 文件哈希。地图 13 组执行于 `b2be531`，到 `c716e4d` 只恢复相册 JS 原 LF 换行；建议 6 组直接执行于 `c716e4d`。测试工具首轮未等页面加载的失败原件保留，补等待后 6 组通过，未修改产品源码。
+
+此次私有操作脚本在 `media-journey-release-20260916/`，与上述包和证据目录分开；它们绑定发布前的旧 manifest／镜像，发布成功后不可直接重放。仓库 43→43 SOURCE 历史入口不适用于当前 53 表。本轮 Google 输入为合成，未重做本人真实云或实体 TV 验收。此前本人 Photos 5／5 保存仍成立；旧照片 unknown 不回填，日期建议不证明 GPS 或到访。本人新入口／旅行关联及库存 AI 搜索另候选仍分别待验／待发布。本文是发布后本地交接，不改写已安装 manifest 或原始报告。
 
 ## 库存与本地搜索发布：2026-09-16 19:48:57
 
