@@ -6,6 +6,7 @@ from io import BytesIO, StringIO
 from itertools import chain
 import csv
 import json
+from finance_hub import export_import_receipts
 from threading import BoundedSemaphore
 from zipfile import ZipFile, ZIP_DEFLATED
 
@@ -202,6 +203,9 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
             personal['inventory'] = {'items':inventory['personal'], 'sources':inventory['sources'],
                                      'operations':inventory['operations']}
             personal['transactions'] = decoded_rows(con, 'hub_transactions')
+            for transaction in personal['transactions']:
+                transaction.setdefault('provenance', {'status': 'unknown'})
+            personal['transactionImportReceipts'] = export_import_receipts(con, uid)
             personal['investments'] = decoded_rows(con, 'hub_investments')
             if 'hub_investment_sources' in available:
                 personal['investmentSources'] = [dict(r) for r in con.execute(

@@ -240,3 +240,18 @@ XLSX 工作表发现与助理旅行简报已于 2026-09-15 06:50:21 合入并发
 ## 报告消费观察不是支付文件导入
 
 需要独立更新既有消费报告时，在“我的资产与消费观察 → 更新财务来源”选择“仅更新消费观察”，使用 [消费观察专文](SPENDING-OBSERVATIONS.md) 的本机 CLI 与三路由 mode 契约。它保留资产基线和共享汇总，报告的渠道／订单补记不得当作本页已核对实付，不写本页账本、预算或采购。未启用真实报告刷新、邮箱登录、自动调度或无人值守确认。
+
+
+## Expo 导入持久回执与来源追溯（本地候选）
+
+此增量尚未发布；不改变上方历史发布记录。新的 Expo 界面在确认时附加可选 `requestId`，格式为 32 至 64 位小写十六进制字符串。标识在一次明确确认之前生成；结果未知、超时或重试均保留同一编号、完整原预览负载和原 previewToken，不自动创建新编号。旧客户端省略该字段时保留原有内容去重语义，没有持久操作回执。
+
+确认成功保留既有 imported／duplicates／conflicts／confirmedAt／resultMonths／note，增加 requestId、receiptId（64 位摘要标识）、batchId（本次新入账批次；全重复时为 null）与 replayed:false。GET /api/finance-hub/imports/results/<requestId> 仅读取当前本人、当前家庭的持久结果，并返回 replayed:true。这个历史结果不会根据后来删除或修改的交易重新计算。不存在时返回 404 和 code:import_result_not_found，仅表示尚未找到回执，不证明另一个正在处理的确认已停止。查询失败保留原请求；不得把缺少回执解释成未入账，也不得自动换编号重发。
+
+同编号重试必须携带同一完整内容和同一原签名令牌；不同内容或令牌返回 409 和 code:import_request_conflict，缺少令牌返回 400。已提交原令牌即使过期也可重放原结果，但不能新增记录；新编号仍须有效的 20 分钟预览。重新查询账本只发 GET；明确删除交易后，同编号重试不重建它。用户主动重新导入需要重新预览并使用新的编号。重复请求、交易、批次和回执在写事务内核对，操作只提交一次。
+
+所有本增量之后新入账记录（包括旧客户端）保存首次来源 provenance，包含 batchId、source、kind、fileName、format、sheet、lineStart、lineEnd、lineKind 和 importedAt，status 为 recorded。CSV 的行范围为原文本物理行，XLSX 为原工作表行，包括多行单元格和淘宝合并订单范围；lineKind 分别为 csv_lines／worksheet_rows。文本粘贴的 fileName 为 null。预览行通过 sourceLocation 提供同一行范围；既有 line 继续保留旧解析行语义以维持去重指纹。普通新来源也不保存附件。重复或冲突保留原交易的首次来源，不用后来的文件覆盖；此前没有来源的记录读取为 provenance:{status:unknown}，不从导入时间猜测批次。
+
+新增一张每户私有表 hub_import_receipts。受控迁移只执行 finance_hub.FINANCE_IMPORT_RECEIPTS_SCHEMA_SQL；旧七列 hub_imports 和旧业务表保持。回执每成员最多 20,000 条，单个结果 JSON 最多 256 KiB，每成员结果 JSON 总计最多 16 MiB。容量不足时整个新操作回滚；已有编号读取／精确重试及省略 requestId 的旧客户端不受回执配额阻断。回执不自动淘汰；删除交易不会删除操作回执。备份与恢复必须包含此表，具体发布迁移与实际结果由发布记录确认。
+
+金额列和工作表选择已支持；任意日期、标题、币种等字段映射仍未实现。专项 tests/test_finance_import_receipts.py 使用独立合成文件、会话及数据库覆盖并发一次提交、删除后重放、过期原签名、错内容、容量回滚、行范围、导出与家庭隔离。测试结果以本轮实际执行报告为准，不等同真实平台账单验收。
