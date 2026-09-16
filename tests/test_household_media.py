@@ -517,10 +517,10 @@ def test_worker_reauth_marks_account_and_blocks_new_import(env):
     assert c.post('/api/media/imports',json=value,headers=h).status_code==409
 
 
-def test_schema_is_exact_three_tables_and_hooks_require_transaction(env):
+def test_factory_media_tables_and_hooks_require_transaction(env):
     with env[1].sessions.db() as con:
         names={r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'media_%'")}
-        assert names=={'media_imports','media_items','media_tv_grants'}
+        assert names=={'media_imports','media_items','media_tv_grants','media_playback'}
         with pytest.raises(RuntimeError):
             env[1].on_account_removed(con,env[3][1])
 
