@@ -259,7 +259,7 @@ function MapWorkspace(props: Props & { identityKey: string }) {
     {draft ? <SectionCard title={draft.id ? '编辑地点' : '添加一个地点'}>
       <View style={styles.form}>
         {draft.id && place && notice.startsWith('最新版本已读取') ? <View style={styles.form}><Text variant="titleSmall">当前保存的版本 {place.revision}</Text><Text>{place.name} · {placeLabels[place.status]} · {[place.country, place.city].filter(Boolean).join(' / ') || '未填城市'}</Text><Text>{place.startDate || '未填日期'}{place.endDate ? ' 至 ' + place.endDate : ''} · {place.journey?.title || '未关联旅行'}</Text><Text>{place.coordinates ? `${place.coordinates.latitude}，${place.coordinates.longitude}` : '未填坐标'} · {place.visibility === 'private' ? '仅本人' : `家庭共享 / ${disclosureLabels[place.coordinateDisclosure]}`}</Text><Text variant="bodySmall">下方保留你的输入，请逐项核对后保存。</Text><Divider /></View> : null}
-        {field('地点名称', 'name', { maxLength: 160 })}
+        {field('地点名称', 'name', { maxLength: 160, style: { minWidth: 0 } })}
         <View style={styles.fields}>{field('国家或地区', 'country', { maxLength: 100 })}{field('城市', 'city', { maxLength: 100 })}</View>
         <Button mode="outlined" disabled={locked} onPress={() => options('地点状态', Object.entries(placeLabels).map(([value, label]) => ({ value, label })), draft.status, value => change({ status: value as Place['status'] }))}>状态：{placeLabels[draft.status]}</Button>
         <View style={styles.fields}>{field('开始日期', 'startDate', { placeholder: 'YYYY-MM-DD' })}{field('结束日期', 'endDate', { placeholder: 'YYYY-MM-DD' })}</View>
