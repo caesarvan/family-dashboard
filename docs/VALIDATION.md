@@ -10,7 +10,9 @@
 
 root 通过 Git 合入 integration `e0769e3cb9d341c73e5b21c1043eb943ddbf0be3`，再次执行五个工具模块，**269 passed，0 failed / error / skipped**。255 个源文件前后散列相同，原始报告为 `source-tools-combination-20260915T164219409390Z/verification.json`（SHA `d67c9fe7e1d3f7bae6492e2783cf9e2d4fc1096f4cc6acf5705d4e6322d93c6a`）。这次使用命令替身与临时 SQLite，不代表真实 Docker 演练。
 
-下方已审业务 406 后端／65 浏览器按运行依赖分别保留；文件读取、投资、核对、待办起步和共享页面的最终浏览器组合需要补齐。新不可变镜像 Linux 测试、双户 43→43 源码升级演练及生产准入尚未完成。工具审查通过不是部署批准，流程见 [SOURCE-RELEASE](SOURCE-RELEASE.md)。
+在冻结的 `e0769e3` detached worktree 已实际补跑八组浏览器：文件 5、选表 11、投资 15、对账 6、异步保护 57、待办起步 32、采购核对 61，共 **187 项功能**；另有 **59 项工作台路由**。每组 255 源文件前后相同，0 页面错误、外网或服务商请求。新报告 SHA `2c27bd9944b83fb6d4fd061e424f1edeee5e97e1a72670e551fb68d25aedd966` 绑定 89 个原始引用；旧 65 项按相同运行依赖单独复用，总计 252 功能与 59 路由，仍是分段证据。下方 406 后端也保留其原固定运行范围。新不可变镜像 Linux 测试、双户 43→43 源码升级演练及生产准入尚未完成。工具审查通过不是部署批准，流程见 [SOURCE-RELEASE](SOURCE-RELEASE.md)。
+
+发布前只读核对发现：线上 `RELEASE-MANIFEST.json` SHA 为 `3db7f24ee5566b1535abbfaacad0daae0d07fcacee6eafe060edda073b4179ae`，248 源文件逐字等于已审 Git `daf5ab4e7adbddb994ca5c1fd745180d5d912c63`。与原运行发布 TAR 的 `7150c5c9…` manifest 相比仅八份后来已发布文档不同，Python/static/配置保持。后续构建／演练必须冻结当前 BASE，而不能重用早期 TAR 当作完整现状；此次核对无生产写入。
 
 ## 淘宝订单分组与商品明细候选（尚未部署）
 
