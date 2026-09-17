@@ -18,6 +18,7 @@ export type Entity = CalendarEvent | ListItem | Trip;
 export type ScreenProps = {
   onReschedulePending?: (pending: boolean) => void;
   onDevicePending?: (message: string | null) => void;
+  onHomeLayoutPending?: (message: string | null) => void;
   state: FamilyState; user: Member; focus: string; mode: CalendarMode; layout: HomeLayout;
   setFocus: (id: string) => void; setMode: (mode: CalendarMode) => Promise<void>;
   onNavigate: (route: RouteName) => void; onEdit: (kind: ItemKind, item?: Entity) => void;

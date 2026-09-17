@@ -24,11 +24,35 @@ def register_dashboard_layout(app, db, Problem, body, require_member, audit):
                      'revision INTEGER NOT NULL DEFAULT 1)')
         db().commit()
 
+    def current_member(con):
+        """Verify the real credential in the caller's fresh transaction."""
+        require_member()
+        current = app.extensions['member_sessions'].current(con)
+        original = getattr(g, 'member_session', {})
+        if (current['owner'] != g.actor['id'] or current['auth_version'] != g.actor.get('auth_version')
+                or current['id'] != original.get('id')
+                or g.actor.get('householdId') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+            raise Problem('会话已失效，请重新登录', 401)
+
+    def read_layout(con, owner):
+        row = con.execute('SELECT data,revision FROM member_dashboard_layout WHERE owner=?', (owner,)).fetchone()
+        return (_stored(json.loads(row['data'])), row['revision']) if row else (_stored({}), 0)
+
     @app.route('/api/dashboard-layout', methods=['GET', 'PUT'])
     def dashboard_layout():
         require_member()
         owner = g.actor['id']
         con = db()
+        if request.method == 'GET':
+            con.execute('BEGIN')
+            try:
+                current_member(con)
+                previous, revision = read_layout(con, owner)
+            finally:
+                con.rollback()
+            # Release the earlier read snapshot before observing concurrent logout.
+            current_member(con)
+            return jsonify({**previous, 'revision': revision})
         if request.method == 'PUT':
             value = body()
             if set(value) != {'revision', 'order', 'hidden'}:
@@ -45,25 +69,27 @@ def register_dashboard_layout(app, db, Problem, body, require_member, audit):
                 raise Problem('首页至少保留一张可见卡片')
             # Serialize read/compare/write, including first-save races at revision zero.
             con.execute('BEGIN IMMEDIATE')
-        row = con.execute('SELECT data,revision FROM member_dashboard_layout WHERE owner=?', (owner,)).fetchone()
-        previous = _stored(json.loads(row['data'])) if row else _stored({})
-        revision = row['revision'] if row else 0
-        if request.method == 'GET':
-            return jsonify({**previous, 'revision': revision})
-        if revision != value['revision']:
-            con.rollback()
-            raise Problem('首页布局已在其他设备修改。请先查看最新布局，再决定保留哪一版。', 409)
-        # Older clients cannot introduce unknown keys or erase future server-stored keys.
-        future = [x for x in previous['order'] if x not in CARD_ORDER]
-        incoming['order'].extend(future)
-        incoming['hidden'].extend(x for x in previous['hidden'] if x in future)
-        if incoming == previous:
+        try:
+            current_member(con)
+            previous, revision = read_layout(con, owner)
+            if revision != value['revision']:
+                raise Problem('首页布局已在其他设备修改。请先查看最新布局，再决定保留哪一版。', 409)
+            # Older clients cannot introduce unknown keys or erase future server-stored keys.
+            future = [x for x in previous['order'] if x not in CARD_ORDER]
+            incoming['order'].extend(future)
+            incoming['hidden'].extend(x for x in previous['hidden'] if x in future)
+            if incoming == previous:
+                current_member(con)
+                con.commit()
+                return jsonify({**previous, 'revision': revision})
+            revision += 1
+            con.execute('INSERT INTO member_dashboard_layout(owner,data,revision) VALUES(?,?,?) '
+                        'ON CONFLICT(owner) DO UPDATE SET data=excluded.data,revision=excluded.revision',
+                        (owner, json.dumps(incoming), revision))
+            audit('dashboard_layout_update')
+            current_member(con)
             con.commit()
-            return jsonify({**previous, 'revision': revision})
-        revision += 1
-        con.execute('INSERT INTO member_dashboard_layout(owner,data,revision) VALUES(?,?,?) '
-                    'ON CONFLICT(owner) DO UPDATE SET data=excluded.data,revision=excluded.revision',
-                    (owner, json.dumps(incoming), revision))
-        audit('dashboard_layout_update')
-        con.commit()
+        except BaseException:
+            con.rollback()
+            raise
         return jsonify({**incoming, 'revision': revision})
