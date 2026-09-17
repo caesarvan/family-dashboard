@@ -219,7 +219,7 @@ class Run(BaseRun):
         assert page.evaluate('document.documentElement.scrollWidth <= innerWidth + 2'), (label, width)
         file = self.out / f'{label}-{width}.png'
         page.screenshot(path=str(file), full_page=False)
-        self.report['screenshots'].append({'path': file.name, 'sha256': sha(file), 'width': width,
+        self.report['screenshots'].append({'path': file.relative_to(self.out.parent).as_posix(), 'sha256': sha(file), 'width': width,
             'scope': 'Actual visible scrolled viewport; not the entire internal ScrollView or a physical device.'})
 
     def nav_lock(self, page):
@@ -348,8 +348,12 @@ class Run(BaseRun):
             self.get(foreign, BASE + '/operations/' + created['operationKey'], 404)
             pending = self.write(ctx, 'POST', BASE + '/preview', self.payload(ctx, '不得跨成员转交的预览'))
             before = self.snapshot()
-            for other in (partner, foreign):
-                self.write(other, 'POST', BASE + '/confirm', {'previewToken': pending['previewToken']}, 403)
+            self.write(partner, 'POST', BASE + '/confirm', {'previewToken': pending['previewToken']}, 403)
+            # Another household derives its own signing key, so verification
+            # rejects this envelope before the same-household owner check.
+            denied = self.write(foreign, 'POST', BASE + '/confirm', {'previewToken': pending['previewToken']}, 400)
+            assert denied == {'error': '预览凭据无法核对，请保留草稿'}
+            assert self.context_data(foreign)['plans'] == [] and self.snapshot() == before
             tv = self.context(browser, None); stack.callback(tv.close)
             pair = tv.request.post(self.base + '/api/pair/start', data={}); assert pair.status == 200
             self.write(ctx, 'POST', '/api/pair/approve', {'code': pair.json()['code'], 'name': '合成例行只读电视'})
@@ -529,12 +533,54 @@ class Run(BaseRun):
             assert self.plan(ctx, committed[0]['plan']['id'])['template']['title'] == '合成旧身份已提交回执'
             self.passed('Real member-cookie changes before final /me discard late preview and committed reply; no old draft/receipt installs, partner receipt is 404 while shared plan remains legitimately readable')
 
-    def run_scenarios(self, browser):
-        for scenario in (self.creation_and_restart, self.shopping_budgets, self.progression, self.boundaries, self.conflict):
-            scenario(browser)
-        self.unknown(browser, True); self.unknown(browser, False)
-        for scenario in (self.expiry, self.visibility_boundaries, self.identity_boundary):
-            scenario(browser)
+    @classmethod
+    def run_scenarios(cls, root, bundle, report, out, browser):
+        scenarios = (
+            ('creation_and_restart', 'creation_and_restart', ()),
+            ('shopping_budgets', 'shopping_budgets', ()),
+            ('progression', 'progression', ()),
+            ('boundaries', 'boundaries', ()),
+            ('conflict', 'conflict', ()),
+            ('unknown_committed', 'unknown', (True,)),
+            ('unknown_unsent', 'unknown', (False,)),
+            ('expiry', 'expiry', ()),
+            ('visibility_boundaries', 'visibility_boundaries', ()),
+            ('identity_boundary', 'identity_boundary', ()),
+        )
+        for name, method, args in scenarios:
+            case_out = out / name
+            case_out.mkdir()
+            folder = None
+            checks_before = len(report['checks'])
+            errors_before = len(report['pageErrors'])
+            network_before = len(report['externalRequests'])
+            case = {'name': name, 'passed': False, 'temporaryFixtureRemoved': False}
+            try:
+                # Close contexts, stop/join Flask, restore ROOT/environment and
+                # signer patches, then remove this DB before starting another.
+                # Cached Python modules remain the same frozen source; mutable
+                # app/DB/session state and signing offsets are never reused.
+                with ExitStack() as lifecycle:
+                    folder = Path(lifecycle.enter_context(tempfile.TemporaryDirectory(prefix='expo-routines-')))
+                    run = cls(root, bundle, folder, report, case_out, lifecycle)
+                    getattr(run, method)(browser, *args)
+                assert not folder.exists(), 'Temporary fixture was not removed'
+                assert len(report['checks']) == checks_before + 1
+                assert len(report['pageErrors']) == errors_before and len(report['externalRequests']) == network_before
+                case['passed'] = True
+            except Exception:
+                # A check printed before a context/fixture cleanup failure must
+                # not count as a completed flow in the final report.
+                del report['checks'][checks_before:]
+                failure = traceback.format_exc()
+                (case_out / 'failure.txt').write_text(failure, encoding='utf-8')
+                report['scenarioFailures'].append({'scenario': name, 'traceback': failure,
+                    'artifacts': case_out.relative_to(out).as_posix()})
+                print('FAIL ' + name + '\n' + failure, flush=True)
+            finally:
+                case['temporaryFixtureRemoved'] = folder is not None and not folder.exists()
+                report['scenarioResults'].append(case)
+        assert not report['scenarioFailures'], 'Independent scenario failures; see scenarioFailures and per-scenario artifacts'
 
 
 def main():
@@ -558,7 +604,7 @@ def main():
     assert all(sha(root / name) == digest for name, digest in evidence['inputFiles'].items())
     out = Path(__file__).resolve().parents[1] / 'test-results' / ('expo-routines-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
     out.mkdir(parents=True); shutil.copyfile(__file__, out / 'executed-harness.py')
-    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], screenshots=[], head=head, tree=evidence['sourceTree'],
+    report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], screenshots=[], scenarioResults=[], scenarioFailures=[], head=head, tree=evidence['sourceTree'],
         buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
         sourceHashesBefore=hashes(), bundleHashesBefore=exports(), productionWrites=0, realCloud=False, realAI=False, physicalTelevision=False,
         scope='Real isolated Flask/SQLite/Edge and synthetic records. Actual tick called explicitly, no real wall-clock scheduling; signer clock and visibility controlled by fixture. No successful business mocks, real cloud, files or physical devices.')
@@ -567,17 +613,14 @@ def main():
         if isinstance(address, tuple) and address[0] not in ('127.0.0.1', '::1', 'localhost'):
             report['externalRequests'].append({'kind': 'non-loopback socket'}); raise AssertionError('External network forbidden')
         return original_connect(sock, address)
-    folder = None
     try:
         with patch.object(socket.socket, 'connect', local_connect), sync_playwright() as pw:
             browser = pw.chromium.launch(channel='msedge', headless=True)
             try:
-                with ExitStack() as lifecycle:
-                    folder = Path(lifecycle.enter_context(tempfile.TemporaryDirectory(prefix='expo-routines-')))
-                    Run(root, bundle, folder, report, out, lifecycle).run_scenarios(browser)
-                    assert len(report['checks']) == CHECKS and len(report['screenshots']) == 12
-                    assert not report['pageErrors'] and not report['externalRequests']
-                    report['passed'] = True
+                Run.run_scenarios(root, bundle, report, out, browser)
+                assert len(report['checks']) == CHECKS and len(report['screenshots']) == 12
+                assert not report['pageErrors'] and not report['externalRequests']
+                report['passed'] = True
             finally:
                 browser.close()
     except Exception:
@@ -587,7 +630,8 @@ def main():
         report['sourceHashesAfter'] = hashes(); report['bundleHashesAfter'] = exports()
         report['sourceUnchanged'] = report['sourceHashesBefore'] == report['sourceHashesAfter']
         report['bundleUnchanged'] = report['bundleHashesBefore'] == report['bundleHashesAfter']
-        report['temporaryFixtureRemoved'] = folder is not None and not folder.exists()
+        report['temporaryFixtureRemoved'] = (len(report['scenarioResults']) == CHECKS
+            and all(case['temporaryFixtureRemoved'] for case in report['scenarioResults']))
         report['passed'] = report['passed'] and report['sourceUnchanged'] and report['bundleUnchanged'] and report['temporaryFixtureRemoved']
         (out / 'result.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         print(json.dumps({'passed': report['passed'], 'checks': len(report['checks']), 'report': str(out / 'result.json')}, ensure_ascii=False), flush=True)
