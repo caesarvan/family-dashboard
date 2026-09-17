@@ -1,6 +1,6 @@
 export type CalendarMode = 'today' | 'week' | 'around';
 export type ThemeName = 'light' | 'forest' | 'ocean';
-export type RouteName = 'home' | 'calendar' | 'tasks' | 'shopping' | 'trips' | 'finance' | 'investments' | 'photos' | 'assistant' | 'inventory' | 'map' | 'connections' | 'more';
+export type RouteName = 'home' | 'calendar' | 'tasks' | 'shopping' | 'trips' | 'finance' | 'investments' | 'photos' | 'assistant' | 'inventory' | 'map' | 'connections' | 'devices' | 'more';
 export type ItemKind = 'events' | 'tasks' | 'shopping' | 'trips';
 export type Person = { id: string; name: string };
 export type Member = Person & { role: 'member' | 'tv'; householdId?: string; auth_version?: number };
@@ -17,6 +17,7 @@ export type FamilyState = { revision: number; household?: { id: string; name: st
 export type Entity = CalendarEvent | ListItem | Trip;
 export type ScreenProps = {
   onReschedulePending?: (pending: boolean) => void;
+  onDevicePending?: (message: string | null) => void;
   state: FamilyState; user: Member; focus: string; mode: CalendarMode; layout: HomeLayout;
   setFocus: (id: string) => void; setMode: (mode: CalendarMode) => Promise<void>;
   onNavigate: (route: RouteName) => void; onEdit: (kind: ItemKind, item?: Entity) => void;

@@ -1,4 +1,7 @@
 /* TV preferences are scoped to the screen or its illustrative preview, never member preferences. */
+/* The shared travel illustration has a dark overlay; light TVs need their own readable surface. */
+body.tv.tv-display[data-tv-theme=light] .travel-card::after{background:linear-gradient(90deg,var(--card) 10%,transparent)}
+body.tv.tv-display[data-tv-theme=light] .travel-dates{color:var(--muted)}
 .tv.tv-display[data-tv-theme=forest],.tvd-preview[data-tv-theme=forest]{color-scheme:dark;--bg:#101d1c;--card:#172725;--edge:#30473d;--ink:#f4f1e8;--muted:#a6bab0;--sage:#b4d9af;--amber:#e6bb86;--lavender:#c8b8e5;--danger:#f2aba0;--tvd-soft:#233931;--tvd-tint:#b4d9af18}
 .tv.tv-display[data-tv-theme=light],.tvd-preview[data-tv-theme=light]{color-scheme:light;--bg:#f2f3ec;--card:#fffef9;--edge:#d7e0d1;--ink:#263d31;--muted:#607365;--sage:#3f704c;--amber:#99631f;--lavender:#7c5a9e;--danger:#ac453b;--tvd-soft:#eaf0e5;--tvd-tint:#48723b0f}
 .tv.tv-display[data-tv-theme=ocean],.tvd-preview[data-tv-theme=ocean]{color-scheme:dark;--bg:#0e2030;--card:#152e40;--edge:#2a4b60;--ink:#eff6f4;--muted:#a6c2cf;--sage:#8bcfce;--amber:#e4c58c;--lavender:#b6b5e5;--danger:#f2ada6;--tvd-soft:#203e53;--tvd-tint:#8bcfce18}
