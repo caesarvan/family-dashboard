@@ -335,7 +335,7 @@ class Run(BaseRun):
                 self.shot(page, 'document-library', width, exact_rows.first)
             self.passed('Deleting a real journey preserves owner file privately; library re-associates it explicitly, and 13 real setup records search/page with actual light/dark four-width scrolled screenshots')
 
-    def lifecycle(self, browser):
+    def visibility_lifecycle(self, browser):
         with self.flow(browser) as (ctx, page):
             journey = self.journey(ctx, '合成草稿恢复旅行'); self.trip_panel(page, journey)
             self.choose_file(page, '合成离线私密草稿'); before = self.snapshot()
@@ -422,7 +422,7 @@ class Run(BaseRun):
 
     def run_scenarios(self, browser):
         for scenario in (self.core, self.sharing, self.conflicts, self.unknown_upload, self.unknown_metadata, self.orphan_and_pages,
-                         self.lifecycle, self.identity_and_download, self.nested_navigation):
+                         self.visibility_lifecycle, self.identity_and_download, self.nested_navigation):
             scenario(browser)
 
 
