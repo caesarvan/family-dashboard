@@ -12,7 +12,7 @@ import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import WorldMap from '../ui/WorldMap';
 
 type JourneyLink = { id: string; tripId: string };
-type Props = ScreenProps & { initialView?: MapView; onOpenTrip: (journey: JourneyLink, view: MapView) => void; onOpenPhotos: (journey: JourneyLink, view: MapView) => void };
+type Props = ScreenProps & { initialView?: MapView; onBack?: () => void; onOpenTrip: (journey: JourneyLink, view: MapView) => void; onOpenPhotos: (journey: JourneyLink, view: MapView) => void };
 type JourneyOption = JourneyLink & { title: string };
 type Intent = { method: 'POST' | 'PATCH' | 'DELETE'; path: string; body: Record<string, unknown>; id?: string; state: 'unknown' | 'rejected' };
 type Choice = { title: string; options: { value: string; label: string }[]; selected: string; choose: (value: string) => void };
@@ -249,6 +249,7 @@ function MapWorkspace(props: Props & { identityKey: string }) {
 
   if (!visible) return <View style={styles.loading}><ActivityIndicator animating={busy} /><Text>{denied ? '登录身份或权限已变化，请重新打开地图。' : error || '正在核对身份和地点访问权限…'}</Text><Button disabled={busy || !household.online} onPress={enter}>重新读取地图</Button></View>;
   return <>
+    {props.onBack ? <Button icon="arrow-left" disabled={navigationLocked} onPress={() => { if (current() && !navigationLocked && !working.current) props.onBack?.(); }}>返回旅行</Button> : null}
     <PageHeader title="足迹地图" description="想去哪里，去过哪里。把地点、旅行和照片放在一起。" action={<Button mode="contained" icon="plus" disabled={navigationLocked} onPress={() => begin()}>添加地点</Button>} />
     {error ? <Text accessibilityRole="alert" style={{ color: theme.colors.error, marginBottom: 14 }}>{error}</Text> : null}
     {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
