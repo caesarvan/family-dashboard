@@ -1,6 +1,6 @@
 # 同一旅行的本地连续验收
 
-状态：独立验收候选，基于 `df759a6ac1d9ca03448967f5b790cbe59755ce32`，不混入旅行导入发布。原固定脚本 `65bbb6b` 已实际运行 R1：完整连续链通过，恢复场景失败，整体 1／2；下述故障边界修订尚未运行。
+状态：本地连续子链已分轮验收，脚本基于 `df759a6ac1d9ca03448967f5b790cbe59755ce32`，独立于旅行导入发布。R1 整体 1／2（连续链通过、恢复场景失败）；修订脚本后的 R2 仅补验原失败恢复场景，1／1 通过，`fullSuite=false`。未重新运行两项完整套件，失败原件保留。
 
 ## 两条有界流程
 
@@ -34,6 +34,10 @@
 
 R1 原件：`test-results/expo-travel-chain-20260917T201803937583Z/result.json`，SHA256 `d73545e1e2033bcba5b1854c34434063c813697bf2fc05cdc281d951808ac662`。被测应用 `fce37351dc18ac8b73f095682f3a42d6c1e3bad0`／build `df7ba17e84442bc5c2dafdf364ea23542631cdf588a3cff61d2c8af403e1d47a`。第一组通过并留一张图；第二组丢弃一份详情后，现场却已显示 fresh 的准备 1／2，等待错误页失败。`toggle` 会 refresh 后 load，`state.revision` 也能触发读取；单份丢失不足以保证失败中间态，不能把正常后继读取成功认定为产品缺陷。R1 没有逐请求时序，故不推断具体是哪份读回完成。两 fixture 清理、全部源码／导出／夹具前后不变、零外网／页面异常；失败原件保留，修订仅明确故障持续边界及诊断，不改产品或伪造响应。
 
-即使后续两条通过，也只证明合成资料的**本地场景 A 连续子链**。准备／采购的完成标记不证明旅行、预订或真实付款已完成；采购未知实付不当作零元完整实付。
+R2 原件仍在独立脚本工作树的 `test-results/expo-travel-chain-20260917T204048263740Z/result.json`，SHA256 `08a2645161deded53a2a24298958477ea15e85ed701278e16d5c0e1ff92b530f`。实际脚本 `c57c063f1169700a71678c621400f4674fd07f68`，只选择 `completed_write_lost_readback`；被测应用及 build 与 R1 完全相同，应用 tree 为 `f402fd307d392732cbc3b6d592b7d8abaf47113e`。真实完成 PATCH 仅 1 次，实际丢弃 1 份详情 200 响应，经明确只读恢复后准备进度为 1／2，原关联、采购及金额保持。源码／导出／脚本／七项夹具前后守卫通过，临时目录已清理，零外网／页面异常，提供方请求及日历确认请求均为 0。
+
+Root 独立核验记录：私有 access 下 `expo-travel-chain-verification-20260918-r2.json`，SHA256 `6997f92022ccd238200ca5c337f77954af85deafda32e8689da4e5f11221ec73`，结论为 `PASS_SEGMENTED_LOCAL_COVERAGE`。Root 实际逐张查看 R1 的 `same_trip_chain/completed-same-trip.png` 和 R2 的 `completed_write_lost_readback/readback-recovered.png`（各 390×844），可见视口未发现问题；内部滚动未完整覆盖。两图 SHA 分别为 `194df746fc871e83b9d2881fd291ca7f507cf9386bdd76465df483e2c0db703e`、`5fd95dc2af94d3db3b8191eb112adeaeb8e76a0a5c15b9d66a832fc02d010d32`。
+
+上述分轮证据只证明合成资料的**本地场景 A 连续子链**，不代表目标场景 A 全部验收完成。准备／采购的完成标记不证明旅行、预订或真实付款已完成；采购未知实付不当作零元完整实付。
 
 本人真实云日历写权限、外部创建／改期、在线 AI、真实个人旅行与实体电视均未验收。云日历预览不等于同步成功；本页不改变 [A–D 验收索引](ACCEPTANCE-SCENARIOS.md) 的整体结论。
