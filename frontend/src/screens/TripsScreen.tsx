@@ -1,6 +1,6 @@
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 import {useFocusEffect} from 'expo-router';
-import {StyleSheet, View} from 'react-native';
+import {AppState, StyleSheet, View} from 'react-native';
 import {SelectionRow} from '../ui/SelectionRow';
 import {ActivityIndicator, Button, Checkbox, Chip, Dialog, Divider, HelperText, IconButton, List, Portal, Searchbar, Text, TextInput, useTheme} from 'react-native-paper';
 import {ApiError, request} from '../lib/api';
@@ -20,10 +20,12 @@ import TripPhotosScreen from './TripPhotosScreen';
 import JourneyDocumentsPanel from './JourneyDocumentsPanel';
 import JourneySegmentsPanel from '../components/JourneySegmentsPanel';
 import TripRecapPanel from '../components/TripRecapPanel';
+import TripImportPanel from '../components/TripImportPanel';
+import {readJourneyDetail, SegmentDiscarded, SegmentError, SegmentFence, segmentRequest, type SegmentSession} from '../lib/journeySegments';
 
 type Props=ScreenProps & {tripRequest?:{key:number;id?:string}; onReturnMap?:()=>void; initialDraft?:Draft; onExitPlanning?:()=>void; onReschedulePending?: (pending:boolean)=>void};
 type Pending={previewToken:string;idempotencyKey:string};
-type TravelPanel={kind:'calendar'|'places'|'reschedule'|'documents'|'segments'|'recap';journeyId:string;tripId:string}|{kind:'map';view:MapView;tripId:string}|{kind:'photos';journeyId:string;view:MapView;tripId:string};
+type TravelPanel={kind:'calendar'|'places'|'reschedule'|'documents'|'segments'|'recap';journeyId:string;tripId:string}|{kind:'map';view:MapView;tripId:string}|{kind:'photos';journeyId:string;view:MapView;tripId:string}|{kind:'import';key:number};
 export default function TripsScreen(props:Props) {
   const {mutate,refresh,online,identityKey}=useHousehold(), theme=useTheme();
   const [panel,setPanel]=useState<TravelPanel|null>(null),[mapReturn,setMapReturn]=useState<MapView|undefined>();
@@ -32,11 +34,14 @@ export default function TripsScreen(props:Props) {
   const reschedulePending=useRef(false);
   const documentsPending=useRef(false);
   const segmentsPending=useRef(false);
+  const tripImportPending=useRef(false),importSequence=useRef(0),importReturnEpoch=useRef(0);
+  const importReturnController=useRef<AbortController|null>(null);
   const pendingReschedule=(value:boolean)=>{reschedulePending.current=value;props.onReschedulePending?.(value);};
   const pendingDocuments=useCallback((value:boolean)=>{documentsPending.current=value;props.onDocumentsPending?.(value);},[props.onDocumentsPending]);
   const pendingSegments=useCallback((value:boolean)=>{segmentsPending.current=value;props.onSegmentsPending?.(value);},[props.onSegmentsPending]);
+  const pendingTripImport=useCallback((value:boolean)=>{tripImportPending.current=value;props.onTripImportPending?.(value);},[props.onTripImportPending]);
   const focused=useRef(false),session=useRef(identityKey);session.current=identityKey;
-  useFocusEffect(useCallback(()=>{focused.current=true;return()=>{focused.current=false;setPanel(current=>current?.kind==='reschedule'||current?.kind==='documents'&&documentsPending.current||current?.kind==='segments'&&segmentsPending.current?current:null);setMapReturn(undefined);};},[identityKey]));
+  useFocusEffect(useCallback(()=>{focused.current=true;return()=>{focused.current=false;setPanel(current=>current?.kind==='reschedule'||current?.kind==='documents'&&documentsPending.current||current?.kind==='segments'&&segmentsPending.current||current?.kind==='import'&&tripImportPending.current?current:null);setMapReturn(undefined);};},[identityKey]));
   const actor=memberKey(props.user), identity=useRef(actor); identity.current=actor;
   const initial=useRef<{actor:string;present:boolean;invalidated:boolean;draft:Draft|null;error:string}|null>(null);
   if(initial.current===null){
@@ -60,6 +65,20 @@ export default function TripsScreen(props:Props) {
   const notifySegmentPending=useCallback((value:boolean)=>{
     if(alive.current&&identity.current===actor&&panelRef.current===panel)pendingSegments(value);
   },[actor,panel,pendingSegments]);
+  const notifyTripImportPending=useCallback((value:boolean)=>{
+    if(alive.current&&identity.current===actor&&panelRef.current===panel)pendingTripImport(value);
+  },[actor,panel,pendingTripImport]);
+  // The final detail read remains owned by the importer until it succeeds.
+  // Concealing the child must also discard a late parent navigation result.
+  useEffect(()=>{
+    if(panel?.kind!=='import')return;
+    const invalidate=()=>{++importReturnEpoch.current;importReturnController.current?.abort();};
+    const visibility=()=>{if(document.hidden)invalidate();};
+    const appState=AppState.addEventListener('change',state=>{if(state!=='active')invalidate();});
+    if(typeof window!=='undefined'){window.addEventListener('blur',invalidate);window.addEventListener('offline',invalidate);window.addEventListener('pagehide',invalidate);}
+    if(typeof document!=='undefined')document.addEventListener('visibilitychange',visibility);
+    return()=>{invalidate();appState.remove();if(typeof window!=='undefined'){window.removeEventListener('blur',invalidate);window.removeEventListener('offline',invalidate);window.removeEventListener('pagehide',invalidate);}if(typeof document!=='undefined')document.removeEventListener('visibilitychange',visibility);};
+  },[panel,identityKey]);
   const message=(failure:unknown)=>failure instanceof Error?failure.message:'暂时无法读取旅行';
   const locked=!!busy||uncertain||!online;
 
@@ -88,7 +107,7 @@ export default function TripsScreen(props:Props) {
     const useSeed=!seed.invalidated&&seed.actor===actor;
     alive.current=true;setPanel(null);setMapReturn(undefined);setJourneys(null);setDetail(null);setLegacy(null);setDraft(useSeed?seed.draft:null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setBusy('');setError(useSeed?seed.error:'');setNotice('');setQuery('');
     if(props.user.role==='member'&&!(useSeed&&seed.present))void load();
-    return()=>{alive.current=false;++readVersion.current;pendingReschedule(false);pendingDocuments(false);pendingSegments(false);};
+    return()=>{alive.current=false;++readVersion.current;++importReturnEpoch.current;importReturnController.current?.abort();pendingReschedule(false);pendingDocuments(false);pendingSegments(false);pendingTripImport(false);};
   },[actor]);
   // An explicit detail read owns readVersion until it finishes. A concurrent
   // household refresh must not supersede it with a background list-only read.
@@ -98,15 +117,15 @@ export default function TripsScreen(props:Props) {
     if(!incoming||incoming.key===requestKey.current)return;
     requestKey.current=incoming.key;
     if(initial.current?.present)return;
-    if(editing.current||writing.current||reschedulePending.current||documentsPending.current||segmentsPending.current||panelOpen.current){setNotice('请先完成或返回当前旅行操作，再打开另一趟旅行。');return;}
+    if(editing.current||writing.current||reschedulePending.current||documentsPending.current||segmentsPending.current||tripImportPending.current||panelOpen.current){setNotice('请先完成或返回当前旅行操作，再打开另一趟旅行。');return;}
     if(!incoming.id)startNew();
     else void openTrip(incoming.id);
   },[props.tripRequest?.key]);
 
   function clearEditor(){setDraft(null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setError('');}
-  function startNew(){if(writing.current||reschedulePending.current||documentsPending.current||segmentsPending.current||props.user.role!=='member')return;++readVersion.current;setPanel(null);setMapReturn(undefined);setReading(false);setDetail(null);setLegacy(null);clearEditor();setDraft(newDraft(props.state.people,dayKey()));setNotice('');}
+  function startNew(){if(writing.current||reschedulePending.current||documentsPending.current||segmentsPending.current||tripImportPending.current||props.user.role!=='member')return;++readVersion.current;setPanel(null);setMapReturn(undefined);setReading(false);setDetail(null);setLegacy(null);clearEditor();setDraft(newDraft(props.state.people,dayKey()));setNotice('');}
   async function openTrip(tripId:string,edit=false){
-    if(writing.current||editing.current||reschedulePending.current||documentsPending.current||segmentsPending.current)return;
+    if(writing.current||editing.current||reschedulePending.current||documentsPending.current||segmentsPending.current||tripImportPending.current)return;
     const key=actor,ticket=++readVersion.current;setReading(true);setError('');setDetail(null);setLegacy(null);setNotice('');
     try{
       const values=await read<{journeys:Journey[]}>('/journeys',key), linked=values.journeys.find(row=>row.tripId===tripId);
@@ -170,8 +189,33 @@ export default function TripsScreen(props:Props) {
   // Route-local navigation stores identifiers and map filters only. Each child
   // performs a fresh session-fenced read; late callbacks cannot reopen a panel.
   const canNavigate=()=>current(actor)&&focused.current&&session.current===identityKey;
+  const startImport=()=>{
+    if(!canNavigate()||!online||busy||reading||draft||panelRef.current||writing.current||tripImportPending.current)return;
+    ++readVersion.current;setReading(false);setError('');setNotice('');setPanel({kind:'import',key:++importSequence.current});
+  };
+  const openImported=async(target:Extract<TravelPanel,{kind:'import'}>,result:{journeyId:string;tripId:string})=>{
+    if(!isPlaceId(result.journeyId)||!isPlaceId(result.tripId))throw new SegmentError('保存后的旅行暂时无法核对。');
+    const ticket=++importReturnEpoch.current,controller=new AbortController();
+    importReturnController.current?.abort();importReturnController.current=controller;
+    const available=()=>canNavigate()&&panelRef.current===target&&ticket===importReturnEpoch.current&&!controller.signal.aborted
+      &&(typeof navigator==='undefined'||navigator.onLine!==false)&&(typeof document==='undefined'||!document.hidden&&document.hasFocus());
+    try{
+      if(!available())throw new SegmentDiscarded();
+      const fence=new SegmentFence(identityKey);
+      const raw=await fence.run(()=>segmentRequest('/me',controller.signal) as Promise<SegmentSession>,
+        ()=>segmentRequest('/journeys/'+result.journeyId,controller.signal),available);
+      const checked=readJourneyDetail(raw,result.journeyId);
+      if(checked.tripId!==result.tripId||!checked.trip)throw new SegmentError('旅行已变化，请重新核对保存后的详情。');
+      if(!available())throw new SegmentDiscarded();
+      ++readVersion.current;pendingTripImport(false);setReading(false);clearEditor();setLegacy(null);
+      setDetail(raw as Journey);setPanel(null);setNotice('已打开保存后的旅行。');void refresh();
+    }finally{if(importReturnController.current===controller)importReturnController.current=null;}
+  };
   const backToTrip=(tripId:string)=>{if(!canNavigate())return;setPanel(null);void openTrip(tripId);};
   const openPanel=(kind:'calendar'|'places'|'reschedule'|'documents'|'segments'|'recap')=>{if(!canNavigate()||!detail||busy||reading||draft||documentsPending.current||segmentsPending.current)return;++readVersion.current;setPanel({kind,journeyId:detail.id,tripId:detail.tripId});};
+  if(panel?.kind==='import')return <TripImportPanel key={'import-'+panel.key} onPendingChange={notifyTripImportPending}
+    onBack={()=>{if(!canNavigate()||panelRef.current!==panel)return;pendingTripImport(false);setPanel(null);setDetail(null);setLegacy(null);void load();}}
+    onSaved={result=>openImported(panel,result)}/>;
   if(panel?.kind==='recap')return <TripRecapPanel key={'recap-'+panel.journeyId} journeyId={panel.journeyId}
     onBack={()=>{if(!canNavigate()||panelRef.current!==panel)return;backToTrip(panel.tripId);}}/>;
   if(panel?.kind==='segments')return <JourneySegmentsPanel key={'segments-'+panel.journeyId} journeyId={panel.journeyId}
@@ -192,7 +236,7 @@ export default function TripsScreen(props:Props) {
     {!!props.onExitPlanning&&!draft&&<Button accessibilityLabel="返回助理" icon="arrow-left" disabled={!!busy} onPress={props.onExitPlanning}>返回助理</Button>}
     {!!props.onReturnMap&&!draft&&<Button icon="arrow-left" disabled={!!busy} onPress={props.onReturnMap}>返回足迹地图</Button>}
     {!!mapReturn&&!draft&&<Button icon="arrow-left" disabled={!!busy||!active} onPress={()=>{if(canNavigate()&&active)setPanel({kind:'map',view:mapReturn,tripId:active.id});}}>返回地图位置</Button>}
-    <PageHeader title={draft?(draft.journeyId?'编辑旅行':draft.tripId?'完善旅行计划':'计划旅行'):detail||legacy?'旅行详情':'旅行'} description={draft?'先安排日期与目的地，再按需补充细节。':undefined} action={!draft&&!detail&&!legacy?<Button mode="contained" icon="plus" disabled={!!busy||!online} onPress={startNew}>计划旅行</Button>:undefined}/>
+    <PageHeader title={draft?(draft.journeyId?'编辑旅行':draft.tripId?'完善旅行计划':'计划旅行'):detail||legacy?'旅行详情':'旅行'} description={draft?'先安排日期与目的地，再按需补充细节。':undefined} action={!draft&&!detail&&!legacy?<View style={styles.wrap}><Button mode="contained" icon="plus" disabled={!!busy||!online} onPress={startNew}>计划旅行</Button><Button mode="outlined" icon="file-import-outline" disabled={!!busy||reading||!online} onPress={startImport}>导入旅行</Button></View>:undefined}/>
     {!!notice&&<Text accessibilityLiveRegion="polite">{notice}</Text>}
     {!!error&&<HelperText type="error" accessibilityRole="alert">{error}</HelperText>}
     {reading&&<ActivityIndicator accessibilityLabel="正在读取旅行"/>}

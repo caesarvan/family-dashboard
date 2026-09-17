@@ -92,6 +92,11 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
       ||!locked&&pendingNavigation.current.source!=='finance-source')return;
     pendingNavigation.current={actor,locked,message:locked?'请先确认或放弃资产来源预览；保存结果不明时，先核对或保留操作编号再返回。':'',source:'finance-source'};
   },[actor,route]);
+  const onTripImportPending=useCallback((locked:boolean)=>{
+    if(activeActor.current!==actor||activeRoute.current!==route||!['trips','map','assistant'].includes(route)
+      ||!locked&&pendingNavigation.current.source!=='trip-import')return;
+    pendingNavigation.current={actor,locked,message:locked?'请先确认或放弃旅行导入；保存结果不明时，先核对再离开。':'',source:'trip-import'};
+  },[actor,route]);
   const onFinanceAccountsPending=useCallback((locked:boolean)=>{
     if(activeActor.current!==actor||route!=='finance'||activeRoute.current!==route
       ||!locked&&pendingNavigation.current.source!=='finance-accounts')return;
@@ -119,7 +124,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
   if(!state)return <View style={{padding:32,gap:16}}><Text>{error||'正在读取家庭数据…'}</Text><Button onPress={()=>void refresh()}>重新加载</Button><Button onPress={()=>handle(household.logout)}>退出登录</Button></View>;
   const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:async mode=>{
     try{await household.savePreferences({homeView:mode});}catch(failure){if(activeActor.current===actor)setNotice(failure instanceof Error?failure.message:'暂时无法保存显示范围');throw failure;}
-  },onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,onDevicePending,onHomeLayoutPending,onAppearancePending,onDocumentsPending,onRoutinesPending,onSegmentsPending,onFinanceSourcePending,onFinanceAccountsPending,
+  },onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,onDevicePending,onHomeLayoutPending,onAppearancePending,onDocumentsPending,onRoutinesPending,onSegmentsPending,onTripImportPending,onFinanceSourcePending,onFinanceAccountsPending,
     onInventory:(id)=>{
       if(holdNavigation())return;
       if(id!==undefined&&!/^[a-f0-9]{24}$/.test(id)){setNotice('物品链接已失效，请重新搜索');return;}
