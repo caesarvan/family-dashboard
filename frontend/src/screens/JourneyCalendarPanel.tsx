@@ -13,6 +13,8 @@ import {SelectionRow} from '../ui/SelectionRow';
 
 type Props={journeyId:string;onBack:()=>void;onConnections:()=>void};
 type Comparison={id:string;review:boolean;value:CalendarComparison};
+// Only tagged by the mutation endpoint itself; a later /me failure is unknown.
+class CalendarWriteRejected extends Error {}
 const foreground=()=>typeof document==='undefined'||!document.hidden;
 const connected=()=>typeof navigator==='undefined'||navigator.onLine!==false;
 const provider=(value:string)=>value==='google'?'Google':value==='microsoft'?'Microsoft':value;
@@ -92,13 +94,21 @@ function CalendarWorkspace(props:Props&{identityKey:string}){
     const ticket=epoch.current;working.current=true;setBusy(true);setError('');setNotice('');
     try{await action();}
     catch(failure){if(ticket===epoch.current){
-      if(submitted.current&&failure instanceof ApiError&&failure.status>=400&&failure.status<500){submitted.current=false;setPreview(null);setComparison(null);}
+      if(submitted.current&&failure instanceof CalendarWriteRejected){submitted.current=false;setPreview(null);setComparison(null);}
       if(submitted.current){setUnknown(true);setPreview(null);setComparison(null);setNotice('提交结果尚未确认，请先核对当前状态，不要重复提交。');}failed(failure);
     }}
     finally{if(ticket===epoch.current){working.current=false;setBusy(false);}}
   }
-  async function post(path:string,payload:unknown){
-    return guarded(csrf=>request<unknown>('/calendar-publish/'+path,{method:'POST',body:JSON.stringify(payload)},csrf));
+  async function post(path:string,payload:unknown,mutation=false){
+    return guarded(async csrf=>{
+      try{return await request<unknown>('/calendar-publish/'+path,{method:'POST',body:JSON.stringify(payload)},csrf);}
+      catch(failure){
+        // These endpoints reject these statuses before committing. Session 401,
+        // request timeout and every post-response identity check remain unknown.
+        if(mutation&&failure instanceof ApiError&&[400,403,404,409,422,429].includes(failure.status))throw new CalendarWriteRejected(failure.message);
+        throw failure;
+      }
+    });
   }
   async function makePreview(){
     if(!selected)return;
@@ -112,7 +122,7 @@ function CalendarWorkspace(props:Props&{identityKey:string}){
     const frozen={journeyId:props.journeyId,sourceId:preview.source.id,previewToken:preview.previewToken};
     await operation(async()=>{
       submitted.current=true;
-      const result=await post('confirm',frozen);
+      const result=await post('confirm',frozen,true);
       if(!validQueueReceipt(result))throw new Error('暂时无法确认同步请求的结果。');
       submitted.current=false;setPreview(null);setUnknown(false);
       setNotice('已加入同步队列。只有显示“云端已确认”才表示远端完成；本地新修改仍需等待确认。');
@@ -134,7 +144,7 @@ function CalendarWorkspace(props:Props&{identityKey:string}){
   async function command(id:string,action:'pause'|'resume'|'retry'|'review-confirm'|'conflict-confirm',token?:string){
     await operation(async()=>{
       submitted.current=true;
-      const result=await post('publications/'+id+'/'+action,token?{previewToken:token}:{});
+      const result=await post('publications/'+id+'/'+action,token?{previewToken:token}:{},true);
       if(!result||typeof result!=='object'||(action==='pause'?(result as {paused?:boolean}).paused!==true:(result as {queued?:boolean}).queued!==true))throw new Error('暂时无法确认操作结果。');
       submitted.current=false;setComparison(null);setUnknown(false);
       setNotice(action==='pause'?'已停止后续同步，云端原事项保留。':'同步请求已接收，请查看云端确认状态。');
