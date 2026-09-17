@@ -231,11 +231,39 @@ def register_finance_baseline(app, db, require_member, bump=None):
     @app.get('/api/finance-baseline/private')
     def private_baseline():
         require_member()
-        row = db().execute('SELECT private_data,revision FROM finance_baselines WHERE owner=?', (g.actor['id'],)).fetchone()
-        if not row:
-            return jsonify(None)
-        from spending_observations import decorate_private_spending
-        return jsonify(decorate_private_spending(db(), g.actor['id'], {**json.loads(row[0]), 'revision': row[1]}))
+        sessions = app.extensions.get('member_sessions')
+        if sessions is None:
+            return jsonify(error='无法核对登录状态，请稍后重试'), 503
+        actor, captured = dict(g.actor), dict(getattr(g, 'member_session', {}))
+        con = db()
+
+        def authenticated():
+            current = sessions.current(con)
+            if (current['id'] != captured.get('id')
+                    or current['owner'] != captured.get('owner')
+                    or current['owner'] != actor['id']
+                    or current['auth_version'] != captured.get('auth_version')
+                    or current['auth_version'] != actor.get('auth_version')
+                    or actor.get('householdId') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+                raise sessions.Problem('会话已失效，请重新登录', 401)
+
+        # Legacy-cookie resolution can open an implicit transaction. Neither
+        # that snapshot nor the report snapshot may be reused for the last check.
+        con.rollback()
+        try:
+            con.execute('BEGIN')
+            authenticated()
+            row = con.execute('SELECT private_data,revision FROM finance_baselines WHERE owner=?', (actor['id'],)).fetchone()
+            result = None
+            if row:
+                from spending_observations import decorate_private_spending
+                result = decorate_private_spending(con, actor['id'], {**json.loads(row[0]), 'revision': row[1]})
+            con.rollback()
+            authenticated()
+            return jsonify(result)
+        finally:
+            # Also release any legacy-session bookkeeping opened by the fresh check.
+            con.rollback()
 
 
 def main(argv=None):
