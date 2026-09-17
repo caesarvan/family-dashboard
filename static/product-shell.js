@@ -2,7 +2,7 @@
 (function (root) {
   'use strict';
   const THEMES = {forest:'暖绿森林', light:'晨光白', ocean:'海岸蓝'};
-  const DEFAULTS = {theme:'forest', density:'comfortable', homeView:'today'};
+  const DEFAULTS = {theme:'forest', density:'comfortable', homeView:'today', colorMode:'light', revision:0};
   const HOME_CARDS = {calendar:['日程安排','calendar'],finance:['家庭财务','wallet'],tasks:['共同待办','check'],shopping:['采购清单','bag'],trips:['旅行计划','plane']};
   const defaultLayout = () => ({revision:0,order:Object.keys(HOME_CARDS),hidden:[]});
   let dashboardLayout=defaultLayout(), layoutIdentity='', layoutLoadedAt=0, layoutPromise=null;
@@ -56,7 +56,32 @@
     navigate('photos',true,true);
   }
   const glyph = name => `<svg class="ps-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name] || ICONS.home}"/></svg>`;
-  const validPreferences = value => ({theme:Object.hasOwn(THEMES,value?.theme)?value.theme:'forest',density:value?.density==='compact'?'compact':'comfortable',homeView:['today','week','around'].includes(value?.homeView)?value.homeView:'today'});
+  const validPreferences = value => ({theme:Object.hasOwn(THEMES,value?.theme)?value.theme:'forest',density:value?.density==='compact'?'compact':'comfortable',homeView:['today','week','around'].includes(value?.homeView)?value.homeView:'today',colorMode:value?.colorMode==='dark'?'dark':'light',revision:Number.isSafeInteger(value?.revision)&&value.revision>=0?value.revision:0});
+  const readPreferences = value => {
+    const next=validPreferences(value);
+    if(!value || Object.keys(DEFAULTS).some(key=>value[key]!==next[key])) throw new Error('外观数据暂时不可用，请刷新后重试');
+    return next;
+  };
+  const preferencesIdentity = session => JSON.stringify([session?.user?.role,session?.user?.householdId,session?.user?.id,session?.user?.auth_version,session?.csrf,false,false]);
+  async function preferencesRequest(path,options={}) {
+    const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),12000);
+    try {return await api(path,{...options,signal:controller.signal});} finally {clearTimeout(timer);}
+  }
+  async function verifyPreferencesIdentity(identity) {
+    if(mapActor()!==identity || isTV || isDemo || user?.role!=='member') throw new Error('登录状态已变化，请刷新后继续');
+    const session=await preferencesRequest('/me');
+    if(mapActor()!==identity || preferencesIdentity(session)!==identity) throw new Error('登录状态已变化，请刷新后继续');
+  }
+  async function fetchPreferences(identity) {
+    await verifyPreferencesIdentity(identity);
+    const next=readPreferences(await preferencesRequest('/preferences'));
+    await verifyPreferencesIdentity(identity);
+    return next;
+  }
+  function acceptPreferences(next,identity) {
+    if(identity!==mapActor() || identity!==prefIdentity || isTV || next.revision<prefs.revision) return false;
+    setTheme(next);preferencesLoadedAt=Date.now();return true;
+  }
   const storageKey = () => 'household_preferences_' + (isDemo?'demo':user?.id || 'guest');
   const routeFromLocation = () => Object.hasOwn(ROUTES,location.hash.slice(1))?location.hash.slice(1):'home';
   const pending = kind => (data?.[kind] || []).filter(item=>!item.done);
@@ -120,30 +145,28 @@
     if (!user || isTV || isDemo) return;
     if (preferencesPromise) return preferencesPromise;
     if (!force && Date.now()-preferencesLoadedAt < 60000) return;
-    const identity = user.id;
-    preferencesPromise = (async()=>{
+    const identity = mapActor();
+    const pendingRead = (async()=>{
       try {
-        const result = await api('/preferences');
-        if (user?.id !== identity || isTV) return;
-        const next = validPreferences(result.preferences || result);
+        const next = await fetchPreferences(identity);
         const changed = JSON.stringify(next)!==JSON.stringify(prefs);
-        setTheme(next);
-        try { localStorage.setItem(storageKey(),JSON.stringify(next)); } catch (_) {}
-        preferencesLoadedAt = Date.now();
+        if(!acceptPreferences(next,identity))return;
         if (changed) { renderBoard(); applyDefaultView(); }
       } catch (_) {
         // Retain the last known appearance. Explicit saving reports errors in its form.
-        preferencesLoadedAt = Date.now();
-      } finally { preferencesPromise = null; }
+        if(identity===mapActor())preferencesLoadedAt = Date.now();
+      }
     })();
-    return preferencesPromise;
+    preferencesPromise=pendingRead;
+    try {return await pendingRead;} finally {if(preferencesPromise===pendingRead)preferencesPromise=null;}
   }
   function initializePreferences() {
-    const identity = isTV?'tv':isDemo?'demo':user?.id || 'guest';
+    const identity = mapActor();
     if (identity === prefIdentity) return;
-    prefIdentity = identity; preferencesLoadedAt = 0; currentRoute=routeFromLocation(); searchText='';taskFilter='pending';shoppingFilter='pending';
+    if(prefIdentity && document.querySelector('#ps-preferences-form') && document.querySelector('#dialog')?.open)closeModal();
+    prefIdentity = identity; preferencesLoadedAt = 0; preferencesPromise=null; currentRoute=routeFromLocation(); searchText='';taskFilter='pending';shoppingFilter='pending';
     let cached = DEFAULTS;
-    if (!isTV && user) try { cached=JSON.parse(localStorage.getItem(storageKey())) || DEFAULTS; } catch (_) {}
+    if (isDemo && !isTV) try { cached=JSON.parse(localStorage.getItem(storageKey())) || DEFAULTS; } catch (_) {}
     setTheme(cached);
     if (!isTV && !isDemo && user?.role==='member') void refreshPreferences(true);
   }
@@ -369,17 +392,70 @@
     return await root.InventoryUI.openItem(itemId);
   }
   function openPreferences() {
-    if (isTV) return;
+    if (isTV || (!isDemo && !canEdit())) return;
     openModal('让这里更像你们的家',`<form id="ps-preferences-form"><p class="help">选择喜欢的氛围与信息密度。${isDemo?'演示设置仅保存在本机。':'保存后会同步到你的手机与电脑。电视使用各自的显示设置。'}</p><div class="ps-preference-label">空间主题</div><div class="ps-theme-grid">${Object.entries(THEMES).map(([value,label])=>`<label class="ps-theme-choice"><input type="radio" name="theme" value="${value}" ${prefs.theme===value?'checked':''}><span class="ps-theme-preview ${value}"><i></i><i></i><i></i></span><strong>${label}</strong><small>${{forest:'沉静、温暖，适合每个夜晚',light:'轻盈、明亮，让思绪舒展',ocean:'清透、平静，像靠近海边'}[value]}</small></label>`).join('')}</div><div class="fields"><label class="field"><span>信息密度</span><select name="density"><option value="comfortable" ${prefs.density==='comfortable'?'selected':''}>舒适 · 留一些呼吸空间</option><option value="compact" ${prefs.density==='compact'?'selected':''}>紧凑 · 一眼看到更多</option></select></label><label class="field"><span>默认日程范围</span><select name="homeView">${[['today','今日'],['week','本周'],['around','前后 3 天']].map(([value,label])=>`<option value="${value}" ${prefs.homeView===value?'selected':''}>${label}</option>`).join('')}</select></label></div><div class="error" role="alert"></div><div class="dialog-footer"><button type="button" class="ps-button subtle" data-action="close">取消</button><button type="submit" class="ps-button primary">${isDemo?'应用演示外观':'保存并同步'}</button></div></form>`,true);
-    const form=document.querySelector('#ps-preferences-form');
-    form.onsubmit=async event=>{
-      event.preventDefault(); const button=form.querySelector('[type=submit]'), error=form.querySelector('.error'), next=validPreferences(Object.fromEntries(new FormData(form)));button.disabled=true;error.textContent='';
+    const form=document.querySelector('#ps-preferences-form'), dialog=document.querySelector('#dialog'), button=form.querySelector('[type=submit]'), error=form.querySelector('.error'), identity=mapActor();
+    const recovery=document.createElement('div');recovery.className='ps-preferences-recovery';recovery.setAttribute('aria-live','polite');form.insertBefore(recovery,form.querySelector('.dialog-footer'));
+    let base=null, busy=false, unresolved=false;
+    const owns=()=>form.isConnected && dialog.open && identity===mapActor();
+    const fields=()=>[...form.querySelectorAll('input,select')];
+    const enable=()=>{fields().forEach(field=>field.disabled=busy || !base || unresolved);button.disabled=busy || !base || unresolved;};
+    const populate=value=>{form.querySelector(`[name=theme][value=${value.theme}]`).checked=true;form.elements.density.value=value.density;form.elements.homeView.value=value.homeView;};
+    async function load() {
+      if(busy || !owns())return;busy=true;enable();error.textContent='';recovery.replaceChildren();
       try {
-        if (!isDemo) { if (!canEdit()) throw new Error('请登录后保存个人偏好'); await write('/preferences','PUT',next); }
-        setTheme(next);try { localStorage.setItem(storageKey(),JSON.stringify(next)); } catch (_) {}
+        const latest=isDemo?{...prefs}:await fetchPreferences(identity);
+        if(!owns())return;
+        if(!isDemo && latest.revision<prefs.revision)throw new Error('读取到较旧的外观，请重新加载');
+        base=latest;populate(base);unresolved=false;
+      } catch(err) {if(owns()){error.textContent=err.message;recoverButton('重新加载',load);}}
+      finally {busy=false;if(owns())enable();}
+    }
+    function recoverButton(label,handler) {
+      const control=document.createElement('button');control.type='button';control.className='ps-button subtle';control.textContent=label;control.onclick=handler;recovery.append(control);
+    }
+    async function readBack() {
+      if(busy || !owns())return;busy=true;enable();recovery.replaceChildren();
+      try {
+        const latest=await fetchPreferences(identity);if(!owns())return;
+        if(latest.revision<prefs.revision)throw new Error('读取到较旧的外观，请再次检查');
+        const summary=document.createElement('p');summary.textContent=`已保存的设置：${THEMES[latest.theme]}、${latest.density==='compact'?'紧凑':'舒适'}、${{today:'今日',week:'本周',around:'前后 3 天'}[latest.homeView]}。请选择如何继续，不会自动重试保存。`;recovery.append(summary);
+        recoverButton('使用已保存设置',()=>{
+          if(busy || !owns())return;base=latest;populate(base);unresolved=false;error.textContent='已载入已保存设置';recovery.replaceChildren();acceptPreferences(latest,identity);enable();
+        });
+        recoverButton('保留我的草稿',()=>{
+          if(busy || !owns())return;base=latest;unresolved=false;error.textContent='草稿已保留，请检查后再次保存';recovery.replaceChildren();enable();
+        });
+      } catch(err) {if(owns()){error.textContent=err.message;recoverButton('检查已保存设置',readBack);}}
+      finally {busy=false;if(owns())enable();}
+    }
+    form.onsubmit=async event=>{
+      event.preventDefault();if(busy || !base || unresolved || !owns())return;
+      const draft={...base,...Object.fromEntries(new FormData(form))}, changes=Object.fromEntries(['theme','density','homeView'].filter(key=>draft[key]!==base[key]).map(key=>[key,draft[key]]));
+      busy=true;enable();error.textContent='';recovery.replaceChildren();let dispatched=false;
+      try {
+        let saved=draft;
+        if (!isDemo) {
+          if(document.hidden || navigator.onLine===false)throw new Error('请回到页面并联网后保存，草稿仍保留');
+          const capturedCSRF=csrf;await verifyPreferencesIdentity(identity);
+          if(!owns() || document.hidden || navigator.onLine===false)throw new Error('页面状态已变化，草稿仍保留');
+          if(Object.keys(changes).length) {
+            dispatched=true;
+            saved=readPreferences(await preferencesRequest('/preferences',{method:'PUT',body:JSON.stringify({revision:base.revision,changes}),headers:{'X-CSRF-Token':capturedCSRF}}));
+            if(saved.revision!==base.revision+1 || ['theme','density','homeView','colorMode'].some(key=>saved[key]!==draft[key]))throw new Error('保存结果需要重新确认');
+            await verifyPreferencesIdentity(identity);
+          } else saved=await fetchPreferences(identity);
+          if(!owns() || document.hidden)throw new Error('页面状态已变化，请检查已保存设置');
+          if(!acceptPreferences(saved,identity))throw new Error('另一个操作更新了外观，请检查已保存设置');
+        } else {setTheme(saved);try {localStorage.setItem(storageKey(),JSON.stringify(saved));}catch(_){}}
+        if(!owns())return;
         preferencesLoadedAt=Date.now();closeModal();renderBoard();applyDefaultView();toast(isDemo?'演示外观已更新':'外观已保存，其他设备会自动读取');
-      } catch(err) { error.textContent=err.message; } finally { button.disabled=false; }
+      } catch(err) {
+        if(!owns())return;error.textContent=err.message;
+        if(dispatched){unresolved=true;error.textContent+='。草稿仍保留，请先检查已保存设置。';recoverButton('检查已保存设置',readBack);}
+      } finally {busy=false;if(owns())enable();}
     };
+    void load();
   }
   async function openLayout() {
     if(isTV || (!isDemo && !canEdit())) return;

@@ -92,14 +92,16 @@ tv-display.js 在 sync-health.js、product-shell.js 前加载，TV 重绘仍调�
 {
   "theme": "forest",
   "density": "comfortable",
-  "homeView": "today"
+  "homeView": "today",
+  "colorMode": "light",
+  "revision": 0
 }
 ```
 
-- `GET /api/preferences`：已登录成员读取本人的偏好。界面兼容直接对象与 `{ "preferences": { ... } }` 的返回形态。
-- `PUT /api/preferences`：使用已有 `write()`，发送完整三个字段和 CSRF；服务端是最终校验与持久化位置。
+- `GET /api/preferences`：已登录成员读取本人的平铺偏好对象，包含版本。读取前后复核成员、家庭、认证版本和 CSRF；迟到的较旧版本不能覆盖已确认的新设置。
+- `PUT /api/preferences`：发送 `{revision,changes}` 和捕获的 CSRF；经典界面只提交改过的 theme/density/homeView，保留 Expo 的 colorMode。旧无版本请求返回 400 并提示刷新，冲突返回 409。详见 [成员显示偏好 API](MEMBER-PREFERENCES-API.md)。
 - 成员登录后读取偏好，页面重新可见时刷新；常驻可见页面约每 60 秒检查一次。普通共享内容仍由原有 `/api/state` 约 10 秒刷新。
-- 外观在本机缓存，以便短时网络失败时保留上次外观。显式保存失败时，弹窗保留选中项并显示错误，不提示保存成功。
+- 成员偏好以服务器为准，不再从旧本机缓存恢复；短时网络失败保持当前会话已确认的外观。显式保存失败保留选中项；已发送请求但结果不明或版本冲突时，先点击“检查已保存设置”，再明确采用服务器设置或保留草稿检查后再次保存。只读核对不自动重发 PUT。身份变化清除旧编辑弹窗。
 - 演示偏好仅写本机缓存，不发偏好写请求。
 - 电视不读取或写入成员偏好接口，保留原有设备侧重成员、设备日程视图和全屏展示方式。
 
@@ -109,7 +111,7 @@ tv-display.js 在 sync-health.js、product-shell.js 前加载，TV 重绘仍调�
 
 手机按钮保留至少 44 px 触控区域，保存区在弹窗内固定可达，较长清单可滚动。桌面按顺序两列展示，奇数最后一张铺满；平板/手机按顺序单列。隐藏仅影响首页卡片，顶部概览数字和对应导航页面仍可使用，不删除记录，也不是新的权限控制。电视继续使用专用固定布局。
 
-独立接口由 [dashboard_preferences.py](../dashboard_preferences.py) 的 `register_dashboard_layout(app, db, Problem, body, require_member, audit)` 注册，不扩充原 `/api/preferences` 三字段契约。
+独立接口由 [dashboard_preferences.py](../dashboard_preferences.py) 的 `register_dashboard_layout(app, db, Problem, body, require_member, audit)` 注册，首页卡片布局与 `/api/preferences` 的显示偏好分别保存。
 
 ```json
 {
