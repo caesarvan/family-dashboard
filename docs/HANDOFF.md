@@ -1,6 +1,6 @@
 # 联合开发接手说明
 
-**当前本地候选：Expo 成员外观，尚未部署。** 组合源码 `892c9cae6a20aaa2ccda11076f457a59828657fb` 已包含偏好 API、`AppearancePanel`、provider 按完整身份／单调版本安装、Paper 主题／密度消费及 classic CAS 与前后台保护。新增入口为「更多 → 外观设置」；不新增路由、表或依赖，不改变电视配置。操作、模块接缝与实际验证集中在 [成员外观](EXPO-APPEARANCE.md)。接口三个模块 64 项、最终组合 Node 40 项、完整 typecheck 分别通过；此前 Node 29 项被最终 40 项包含，不相加。组合浏览器、候选 Linux、部署和实体设备仍未验收，下面继续保留真实线上身份。
+**当前本地候选：Expo 成员外观，尚未部署。** 受验源码 `61e82b48b6cd0f23d40366d9cb848ef2760d1a5b`、tree `ed30a40d893111d95cc1fa682c3dbd4876498d9a` 已包含偏好 API、`AppearancePanel`、provider 按完整身份／单调版本安装、Paper 主题／密度消费及 classic CAS 与前后台保护。新增入口为「更多 → 外观设置」；不新增路由、表或依赖，不改变电视配置。操作、模块接缝与原件集中在 [成员外观](EXPO-APPEARANCE.md)。接口三个模块 64 项、最终组合 Node 40 项、完整 typecheck 分别通过；此前 Node 29 项被最终 40 项包含，不相加。R1 真实临时浏览器 11 条流程通过，生成 17 图，572 源文件与 23 导出运行前后相同；Linux 九模块 227 项仅收集。候选部署、真实账号新流程及实体设备仍未验收，下面继续保留真实线上身份。
 
 **最新已发布：Expo 首页卡片布局，2026-09-17 14:56:51（北京时间）激活，14:57:27 正常 TLS 读回通过。** 安装 main `609a51afde8b6f8aa1f817fa5d2471a7a8b939ff`／source `cac7f78a1e4148b9c4d44164d3d6fbd74aa57234`，同树 `d22f6d4ee78dcc83501d4c478b97b4cfa506d1bc`。`HomeLayoutPanel`／`homeLayout.ts` 负责排序、显示及冲突／未知结果核对，provider 按完整身份和单调 revision 安装布局；`dashboard_preferences.py` 保持 CAS 与未来 key，并强化读后／事务内会话核验。复用原 API，无迁移。R2 本地 9 流程／9 图、Linux 188 通过及唯一精确 Windows 跳过分别核验；1 户两库备份、55 表与注册库保持，581 包文件／114 运行文件／75 HTTPS 资源读回通过。完整证据集中在 [本轮验收](EXPO-HOME-LAYOUT-ACCEPTANCE.md#expo-home-layout-release)，操作见 [首页布局](EXPO-HOME-LAYOUT.md)。后续文档不改变运行包；固定 [发布工具](EXPO-HOME-LAYOUT-RELEASE.md) 不可重放。
 
