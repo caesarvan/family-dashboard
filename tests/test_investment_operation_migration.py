@@ -20,6 +20,12 @@ from deploy.rehearse_restore import documented_programs
 from test_finance_receipt_migration import login, import_row, copy_backup_group_to_new_root
 
 
+@pytest.fixture(autouse=True)
+def historical_without_manual_accounts(monkeypatch):
+    """Keep both factories at the historical 54/55-table release boundary."""
+    monkeypatch.setattr(app_module, 'register_finance_accounts', lambda *_args, **_kwargs: None)
+
+
 @pytest.fixture
 def group(tmp_path, monkeypatch):
     def offline(*_args, **_kwargs):
