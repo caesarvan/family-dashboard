@@ -323,7 +323,7 @@ def main():
                     theme_values = []
                     for theme in ['forest', 'light', 'ocean']:
                         prefs = seed.request.get(base + '/api/preferences').json()
-                        changed = seed.request.put(base + '/api/preferences', headers=auth(seed), data={**prefs, 'theme': theme})
+                        changed = seed.request.put(base + '/api/preferences', headers=auth(seed), data={'revision': prefs['revision'], 'changes': {'theme': theme}})
                         assert changed.status == 200
                         flow.page.evaluate('void boot()')
                         expect(flow.page.locator('.ps-welcome')).to_be_visible()
