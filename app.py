@@ -30,6 +30,7 @@ from dashboard_preferences import register_dashboard_layout
 from data_portability import register_portability
 from task_publish import register_task_publish
 from member_sessions import MemberSessions, register_sessions
+from household_members import register_members
 from tv_display import stored_layout, validate_layout
 from sync_health import register_sync_health
 from shopping_settlement import register_shopping_settlement
@@ -342,6 +343,7 @@ def create_app(config=None):
         return jsonify(ok=True)
 
     register_sessions(app, sessions, Problem, body, require_member)
+    register_members(app, db, Problem, body, require_member, audit)
 
     @app.get("/api/state")
     def state():
