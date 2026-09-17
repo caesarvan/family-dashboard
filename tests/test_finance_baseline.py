@@ -1,5 +1,6 @@
 """Synthetic finance sources only; no household data belongs in this repository."""
 from copy import deepcopy
+from contextlib import closing
 import json
 from pathlib import Path
 import sqlite3
@@ -7,9 +8,8 @@ import subprocess
 import sys
 
 import pytest
-from flask import Flask, g, jsonify, request
-
-from finance_baseline import BaselineError, import_baseline, register_finance_baseline, shared_baselines
+from finance_baseline import BaselineError, import_baseline, shared_baselines
+from test_app import app as actual_app, member
 
 
 @pytest.fixture
@@ -148,25 +148,20 @@ def test_failed_write_rolls_back_payload_and_revision(conn, payload):
     assert conn.execute("SELECT revision FROM settings WHERE id='meta'").fetchone()[0] == 2
 
 
-def test_private_endpoint_uses_authenticated_owner_only(conn, payload):
-    app = Flask(__name__)
-    @app.before_request
-    def identity():
-        who = request.headers.get('X-Test-Actor')
-        g.actor = {'id': who, 'role': 'tv' if who == 'screen' else 'member'} if who else None
-    def require_member():
-        from werkzeug.exceptions import Unauthorized, Forbidden
-        if not g.actor:
-            raise Unauthorized()
-        if g.actor['role'] != 'member':
-            raise Forbidden()
-    register_finance_baseline(app, lambda: conn, require_member)
-    import_baseline(conn, **payload)
-    client = app.test_client()
+def test_private_endpoint_uses_authenticated_owner_only(actual_app, payload):
+    with closing(sqlite3.connect(Path(actual_app.config['DATA_DIR']) / 'household.sqlite3')) as con:
+        import_baseline(con, **payload)
+        con.commit()
+    client = actual_app.test_client()
     assert client.get('/api/finance-baseline/private').status_code == 401
-    assert client.get('/api/finance-baseline/private', headers={'X-Test-Actor': 'screen'}).status_code == 403
-    assert client.get('/api/finance-baseline/private?owner=member1', headers={'X-Test-Actor': 'member2'}).json is None
-    first = client.get('/api/finance-baseline/private?owner=member2', headers={'X-Test-Actor': 'member1'})
+    owner, headers = member(actual_app)
+    partner, _ = member(actual_app, 2)
+    pair = client.post('/api/pair/start', json={}).json
+    assert owner.post('/api/pair/approve', json={'code': pair['code']}, headers=headers).status_code == 200
+    assert client.post('/api/pair/poll', json={'secret': pair['secret']}).json['approved']
+    assert client.get('/api/finance-baseline/private').status_code == 403
+    assert partner.get('/api/finance-baseline/private?owner=member1').json is None
+    first = owner.get('/api/finance-baseline/private?owner=member2')
     assert first.json['assets'][0]['label'] == 'PRIVATE_ASSET_ACCOUNT'
     assert first.json['revision'] == 1
 

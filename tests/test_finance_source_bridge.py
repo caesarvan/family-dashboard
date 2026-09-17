@@ -1,5 +1,6 @@
 """Synthetic source files and temporary databases only; never refresh real reports."""
 from copy import deepcopy
+from contextlib import closing
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 import csv
@@ -106,6 +107,14 @@ H = {'X-Synthetic-Actor': 'member1', 'X-CSRF-Token': 'synthetic-csrf'}
 BASE = '/api/finance-baseline/imports/'
 
 
+def stored_private(path, owner='member1'):
+    """Import persistence only; real private HTTP/session scope has separate tests."""
+    from spending_observations import decorate_private_spending
+    with closing(sqlite3.connect(path)) as con:
+        row = con.execute('SELECT private_data,revision FROM finance_baselines WHERE owner=?', (owner,)).fetchone()
+        return decorate_private_spending(con, owner, {**json.loads(row[0]), 'revision': row[1]}) if row else None
+
+
 def preview(client, candidate=None, headers=None):
     headers = headers or H
     state = client.get(BASE + 'status', headers=headers).json['current']
@@ -138,7 +147,7 @@ def test_preview_has_no_write_recomputes_shared_then_confirm_is_persistent(setup
     state = restarted.get(BASE + 'status', headers=H).json
     assert state['lastReceipt']['receiptId'] == done.json['receiptId']
     assert 'SYNTHETIC_PRIVATE' not in json.dumps(state)
-    assert restarted.get('/api/finance-baseline/private', headers=H).json['assets'][0]['amountCents'] == 12000
+    assert stored_private(path)['assets'][0]['amountCents'] == 12000
     with sqlite3.connect(path) as conn:
         assert conn.execute('SELECT count(*) FROM hub_transactions').fetchone()[0] == 0
         assert conn.execute('SELECT data FROM hub_investments').fetchone()[0] == '{"untouched":true}'
@@ -235,7 +244,7 @@ def test_missing_or_regressed_sources_preserve_old_snapshot(setup, mutation):
         x['income'] = []
         x['sourceManifest']['files'] = [p for p in x['sourceManifest']['files'] if p['path'] != '01_Income/income-history.csv']
     assert preview(c, x).status_code == 409
-    assert c.get('/api/finance-baseline/private', headers=H).json['revision'] == 1
+    assert stored_private(path)['revision'] == 1
 
 
 def test_legacy_mapping_preserves_identity_and_foreign_values_do_not_sum(setup):
@@ -523,7 +532,7 @@ def test_mixed_bank_types_through_cli_preview_and_confirm_do_not_touch_other_fin
         assert con.execute('SELECT data FROM hub_investments').fetchone()[0] == '{"untouched":true}'
         assert con.execute("SELECT data FROM settings WHERE id='finance'").fetchone()[0] == '{"wallet":17}'
         assert con.execute('SELECT data FROM private_finance').fetchone()[0] == '{"income":29}'
-    assert client.get('/api/finance-baseline/private', headers={'X-Synthetic-Actor':'member2'}).json is None
+    assert stored_private(database, 'member2') is None
     assert client.post(BASE+'preview', json={'candidate':candidate,'expectedRevision':1,'expectedSourceDigest':accepted.json['sourceDigest']},
                        headers={'X-Synthetic-Actor':'screen','X-CSRF-Token':'synthetic-csrf'}).status_code == 403
 
@@ -602,7 +611,7 @@ def test_existing_bank_liability_legacy_id_updates_within_same_collection(tmp_pa
     mapping.update(recordType='liability', liabilitySign='negative')
     _bank_balance(root, '-120.00'); _write_config(config_path, config)
     module = load_prepare(); output = tmp_path/'candidate.json'; module.prepare(config_path, output)
-    original = json.loads(output.read_bytes()); _, client, _ = setup
+    original = json.loads(output.read_bytes()); _, client, database = setup
     assert confirm(client, preview(client, original), original).status_code == 200
     mapping.update(id='stable-bank-liability', legacyId='bank-one')
     _bank_balance(root, '-121.00'); _write_config(config_path, config)
@@ -611,7 +620,7 @@ def test_existing_bank_liability_legacy_id_updates_within_same_collection(tmp_pa
     assert planned.status_code == 200, planned.json
     assert planned.json['changes']['added'] == 0
     assert confirm(client, planned, updated).json['revision'] == 2
-    saved = client.get('/api/finance-baseline/private', headers=H).json
+    saved = stored_private(database)
     assert next(x for x in saved['liabilities'] if x['id']=='stable-bank-liability')['amountCents'] == 12100
     assert not any(x['id']=='bank-one' for x in saved['assets']+saved['liabilities'])
 
@@ -622,13 +631,13 @@ def test_cross_collection_asset_to_liability_still_rejects_and_preserves_baselin
     module = load_prepare(); output = tmp_path/'candidate.json'; module.prepare(config_path, output)
     original = json.loads(output.read_bytes()); _, client, database = setup
     assert confirm(client, preview(client, original), original).status_code == 200
-    before = client.get('/api/finance-baseline/private', headers=H).json
+    before = stored_private(database)
     mapping = config['sources'][0]['records'][0]
     mapping.update(recordType='liability', liabilitySign='positive')
     if rename_with_legacy: mapping.update(id='changed-bucket', legacyId='bank-one')
     _write_config(config_path, config); module.prepare(config_path, output)
     assert preview(client, json.loads(output.read_bytes())).status_code == 409
-    assert client.get('/api/finance-baseline/private', headers=H).json == before
+    assert stored_private(database) == before
     with sqlite3.connect(database) as con:
         assert con.execute('SELECT count(*) FROM finance_source_receipts').fetchone()[0] == 1
 
@@ -753,9 +762,9 @@ def test_cli_income_period_date_cannot_bypass_legacy_snapshot_date_guard(tmp_pat
     candidate = json.loads(output.read_bytes())
     legacy = deepcopy(candidate)
     legacy['income'][0].update(asOf='2026-09-09', dateBasis='synthetic_legacy_fixed_snapshot_date')
-    _, client, _ = setup
+    _, client, database = setup
     assert confirm(client, preview(client, legacy), legacy).status_code == 200
-    before = client.get('/api/finance-baseline/private', headers=H).json
+    before = stored_private(database)
     result = preview(client, candidate)
     assert result.status_code == 409 and '日期倒退' in result.json['error']
-    assert client.get('/api/finance-baseline/private', headers=H).json == before
+    assert stored_private(database) == before
