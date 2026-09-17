@@ -33,7 +33,7 @@ python -B -X utf8 deploy/expo_trip_recap_release/prepare.py --source-root <私�
 
 ## 验证与最终冻结
 
-八个 Linux 模块只涉及静态托管、家庭隔离、备份、58 表迁移／恢复兼容、旅程、地点、媒体及本适配器。完整列表是 `REQUIRED_TESTS`；最终数量由实际 collection 给出。需私有父脚本的批量工具测试不进入服务器业务选择。
+七个 Linux 模块只涉及静态托管、家庭隔离、备份、58 表迁移／恢复兼容、旅程、媒体及本适配器。完整列表是 `REQUIRED_TESTS`；最终数量由实际 collection 给出。需私有父脚本的批量工具测试不进入服务器业务选择。`test_journey_places.py` 的工厂测试仍引用旧 55 表集合，与已安装 58 表不符，因此整个模块不选入本轮，留待独立修复；没有使用 deselect 或伪跳过。回顾的可见地点／权限／分页流程由实际 R2 浏览器覆盖，不声称旧地点专项已通过。
 
 本地专项实际 21/21 通过：真实临时 Flask／SQLite 创建账户及 0／null 估值、历史回执，再验证完整快照；实际账户行、估值、回执、旧审计行、序列和 schema 漂移都被拒绝。固定父原件 CLI 在禁止网络／生成工具子进程的边界内执行真实生成与纯守卫检查，核对 38 后端／Docker 不变、189 个完整构建输入、37 匿名接口、896 MiB 内存／640 MiB tmpfs、七入口未绑定拒绝，以及配置和选择集合负例。
 
@@ -42,4 +42,4 @@ python -B -X utf8 -m pytest -q tests/test_expo_trip_recap_release.py
 python -B -X utf8 tests/test_expo_trip_recap_release.py --source-root <私有 A> --git-repo <固定源码目录> --git-revision <完整 commit> [--freeze <JSON>] [--build-evidence <JSON>]
 ```
 
-私有证据保存在作者树 `test-results/recap-release-r1`；不提交原件或真实数据。最终整合源码应分别列明已审工具／测试新增、发布后文档及 `docs/contract-inventory.json` 的精确 SHA 差异；构建输入与已受验前端／运行后端必须逐字节相同，不能以文件数量相等替代来源核验。未执行本批实际打包、绑定、服务器验收或部署；真实云、个人资料与实体设备仍不属于本地测试结论。
+私有证据保存在作者树 `test-results/recap-release-final2`；原八模块选择的生成检查保留在 `recap-release-r1`／`recap-release-final`，不与最终结果累加。不提交原件或真实数据。最终整合源码应分别列明已审工具／测试新增、发布后文档及 `docs/contract-inventory.json` 的精确 SHA 差异；构建输入与已受验前端／运行后端必须逐字节相同，不能以文件数量相等替代来源核验。未执行本批实际打包、绑定、服务器验收或部署；真实云、个人资料与实体设备仍不属于本地测试结论。

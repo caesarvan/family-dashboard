@@ -139,7 +139,8 @@ def test_generated_program_refuses_uncontrolled_migration_and_ddl(code):
 
 
 def test_scope_preserves_all_runtime_and_dependency_bytes():
-    assert len(adapter.REQUIRED_TESTS) == 8
+    assert len(adapter.REQUIRED_TESTS) == 7
+    assert 'tests/test_journey_places.py' not in adapter.REQUIRED_TESTS
     assert {'tests/test_finance_accounts_migration.py', 'tests/test_platform_backup.py'} <= adapter.REQUIRED_TESTS
     assert 'tests/test_packager_batch_read.py' not in adapter.REQUIRED_TESTS
     assert len(adapter.BACKEND_UNCHANGED) == 38

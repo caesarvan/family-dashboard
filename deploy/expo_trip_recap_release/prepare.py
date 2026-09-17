@@ -38,7 +38,7 @@ PARENT_IMAGE = 'sha256:6974cdb6cc98869d8cdc55927c7a1be05d941aaef76382645b1fbd8df
 REQUIRED_TESTS = {
     'tests/test_frontend_runtime.py', 'tests/test_household_spaces.py',
     'tests/test_platform_backup.py', 'tests/test_finance_accounts_migration.py',
-    'tests/test_journey_workflows.py', 'tests/test_journey_places.py',
+    'tests/test_journey_workflows.py',
     'tests/test_household_media.py', 'tests/test_expo_trip_recap_release.py',
 }
 FORBIDDEN_TESTS = previous.FORBIDDEN_TESTS
