@@ -49,12 +49,17 @@ export default function HomeScreen(props: ScreenProps) {
       {appointments.length ? appointments.map(event => <EventRow key={event.id} event={event} day={chosenDay || (bounds(event).start < now ? today : dayKey(bounds(event).start))} props={props} />)
         : <EmptyState title={chosenDay ? '这天还没有安排' : '接下来没有已记录的安排'} action={<Button onPress={() => props.onEdit('events')}>添加安排</Button>} />}
     </SectionCard>,
-    finance: <SectionCard style={[styles.bento, bento]} title="共同资金" action={<Button compact onPress={() => props.onNavigate('finance')}>查看资金</Button>}>
-      <View style={[styles.money, wide && styles.moneyWide]}><Text variant="bodyMedium" style={muted}>共同余额</Text><Text variant="headlineLarge" style={wide ? styles.balanceWide : styles.balance}>{state.finance.confirmedAt ? money(state.finance.wallet) : '待核对'}</Text></View>
-      <Divider /><View style={styles.moneyDetails}>
-        <View style={styles.flex}><Text variant="bodySmall" style={muted}>本月已支出</Text><Text variant="titleMedium">{state.finance.confirmedAt ? money(state.finance.livingSpent) : '待核对'}</Text></View>
-        <View style={styles.flex}><Text variant="bodySmall" style={muted}>本月预算</Text><Text variant="titleMedium">{state.finance.confirmedAt ? money(state.finance.livingBudget) : '待核对'}</Text></View>
-      </View><Text variant="bodySmall" style={muted}>{state.finance.confirmedAt ? `手工核对 · ${shortDay(dayKey(state.finance.confirmedAt))}` : '核对共同资金后显示余额。'}</Text>
+    finance: <SectionCard style={[styles.bento, bento]} title="共同资金" action={state.finance.confirmedAt ? <Button compact onPress={() => props.onNavigate('finance')}>查看资金</Button> : undefined}>
+      {state.finance.confirmedAt ? <>
+        <View style={[styles.money, wide && styles.moneyWide]}><Text variant="bodyMedium" style={muted}>共同余额</Text><Text variant="headlineLarge" style={wide ? styles.balanceWide : styles.balance}>{money(state.finance.wallet)}</Text></View>
+        <Divider /><View style={styles.moneyDetails}>
+          <View style={styles.flex}><Text variant="bodySmall" style={muted}>本月已支出</Text><Text variant="titleMedium">{money(state.finance.livingSpent)}</Text></View>
+          <View style={styles.flex}><Text variant="bodySmall" style={muted}>本月预算</Text><Text variant="titleMedium">{money(state.finance.livingBudget)}</Text></View>
+        </View><Text variant="bodySmall" style={muted}>{`手工核对 · ${shortDay(dayKey(state.finance.confirmedAt))}`}</Text>
+      </> : <View style={styles.financeUnconfirmed}>
+        <Text variant="bodyLarge" style={muted}>共同资金尚未核对。请先确认余额、本月支出和预算。</Text>
+        <Button mode="outlined" style={styles.financeAction} onPress={() => props.onNavigate('finance')}>核对资金</Button>
+      </View>}
     </SectionCard>,
     tasks: <SectionCard style={[styles.bento, bento]} title="先做这几件" action={<Button compact onPress={() => props.onNavigate('tasks')}>全部待办</Button>}>
       {tasks.length ? tasks.slice(0, 4).map(item => <View key={item.id} style={styles.task}>
@@ -95,7 +100,7 @@ export default function HomeScreen(props: ScreenProps) {
         <Text variant="bodySmall" style={muted}><Text style={styles.metricNumber}>{shopping.length}</Text> 件待采购</Text>
       </View>
     </View>
-    <View style={styles.grid}>{order.map((key, index) => <View key={key} style={[styles.card, wide ? { flexBasis: index === 0 ? '58%' : index === 1 ? '36%' : '30%' } : styles.cardNarrow]}>{cards[key]}</View>)}</View>
+    <View style={[styles.grid, wide && styles.gridWide]}>{order.map((key, index) => <View key={key} style={[styles.card, wide ? { flexBasis: index === 0 ? '58%' : index === 1 ? '36%' : '30%' } : styles.cardNarrow]}>{cards[key]}</View>)}</View>
   </View>;
 }
 
@@ -110,7 +115,8 @@ const styles = StyleSheet.create({
   range: { flexGrow: 1, flexShrink: 1, maxWidth: 680 },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, metricsWide: { maxWidth: 340, justifyContent: 'flex-end', columnGap: 20, rowGap: 8 },
   metricNumber: { fontSize: 18, lineHeight: 24, fontWeight: '600' },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 20 }, card: { minWidth: 0, flexGrow: 1, flexShrink: 1 }, cardNarrow: { width: '100%' }, bento: { flex: 1 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 20 }, gridWide: { alignItems: 'flex-start' }, card: { minWidth: 0, flexGrow: 1, flexShrink: 1 }, cardNarrow: { width: '100%' }, bento: { flex: 1 },
+  financeUnconfirmed: { gap: 16 }, financeAction: { alignSelf: 'flex-start' },
   flex: { flex: 1, minWidth: 0, gap: 4 }, week: { marginTop: 12 }, money: { gap: 8, paddingVertical: 18 }, moneyWide: { paddingTop: 28, paddingBottom: 28 },
   balance: { fontSize: 32, lineHeight: 40, fontWeight: '600', letterSpacing: -0.8 }, balanceWide: { fontSize: 40, lineHeight: 48, fontWeight: '600', letterSpacing: -1.2 },
   moneyDetails: { flexDirection: 'row', gap: 16, paddingVertical: 16 },
