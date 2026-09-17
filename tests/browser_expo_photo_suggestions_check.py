@@ -492,6 +492,10 @@ class Run(MediaRun):
             expect(page.get_by_role('checkbox', name='保留这张', exact=True)).to_have_count(0)
             expect(button(page, '核对 / 重试原保存请求')).to_have_count(0)
             expect(button(page, '保存选中的 1 张')).to_have_count(0)
+            finish = button(page, '结束本次核对'); expect(finish).to_be_enabled()
+            self.touch_target(finish); finish.click(); expect(finish).to_have_count(0)
+            page.get_by_text('本次保存结果', exact=True).first().click()
+            expect(page.get_by_role('heading', name='本次保存结果', exact=True)).to_be_visible(timeout=15000)
             self.no_writes(mark)
             assert len(attempts) == self.count_requests('POST', endpoint + '/confirm') == 1
             with closing(sqlite3.connect(self.database)) as con:
