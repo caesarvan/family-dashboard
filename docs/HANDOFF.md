@@ -1,11 +1,22 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-17 07:38:17（北京时间），07:39:46 正常 TLS 读回通过。** Expo 助理与旅行协作已发布，55→55 无 schema 迁移。完整运行包身份、Linux 结果和备份／TLS 原件见 [旅行协作验收](EXPO-TRAVEL-ACCEPTANCE.md#expo-travel-release)。本页为发布后本地文档，不改变已安装包或构建来源。
+> **线上版本：2026-09-17 09:25:21（北京时间），09:25:52 正常 TLS 读回通过。** 旅行地点确认与日历同步已发布，55→55 无 schema 迁移。完整运行包身份、Linux 结果和备份／TLS 原件见 [本轮发布验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md#expo-trip-coordination-release)。本页为发布后本地文档，不改变已安装包或构建来源。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。此前 23:02 三模块与 21:59 首期身份分别保留于 [EXPO-NEXT-RELEASE](EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](EXPO-RELEASE.md)，历次证据见 [VALIDATION](VALIDATION.md)。
 
+<a id="expo-trip-coordination-release"></a>
+## 当前线上交接：旅行地点与日历同步
+
+已安装 main `f7126dd59348eecfc749534953423d1df45dea14`／source `5d8a0c4d5e96a209ad80e6dddd80a086969f31d9`，同树 `7a5ffaf5ea5f781f0b93c84901921363aab98a72`；源码、组件与接线经非作者审查。第二轮 Linux 544 通过、1 个精确 Windows 跳过，本地浏览器 20 组通过；第一轮空间不足失败原件保留。完整包、镜像、备份和真实云边界集中在 [本轮验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md)。
+
+`TripsScreen` 持有子面板位置与清洗后的地图筛选；`JourneyPlacesPanel`／`journeyPlaces.ts` 负责用户确认的目的地草稿，`JourneyCalendarPanel`／`calendarPublish.ts` 负责本人日历来源、预览、队列及冲突状态。地图和照片沿用 `MapScreen`／`TripPhotosScreen`，返回时重新读取授权记录；[组件契约](EXPO-TRIP-COORDINATION.md) 与 [专项测试设计](EXPO-TRIP-COORDINATION-TESTS.md) 可直接接手。
+
+后端只在既有 `journey_places.py` 写事务核对可选旅行 revision，并在 `calendar_publish.py` 校验当前会话；无新增表或路由。任务截止及地点日期不随普通旅行改期自动移动；复杂分段与资料仍保留经典入口。后续发布须按 [本轮 55→55 适配器](TRIP-COORDINATION-RELEASE.md) 绑定实际安装身份，不能重放固定历史算子。
+
+实际 1 户两库停写完整备份、原 55 表和注册库在新 app 启动后保持，配置未变；随后正常 TLS 和新一次逐库在线备份通过，不代表跨库全局原子或 live 全组快照重检。Git 生成器仍有原 512 MiB 内存／256 MiB tmpfs 默认值，本次私有 r2 验证资源经独立复审调整为 768／512 MiB；后续重新生成需另核资源并审查，不能将旧绑定直接用于下一包。
+
 <a id="expo-travel-release"></a>
-## 当前线上交接：Expo 助理与旅行协作
+## 此前线上交接：Expo 助理与旅行协作（07:38）
 
 本轮在独立分支完成简报面板、旅行编辑桥接、成员与负责人选择、采购预算以及保存事务内会话复核，经非作者审查后组合验证。已安装 main `6b2bb55758fce0df02f51252d5eac2441b7c9869`／source `e0c1c6b03e14424bc170d1aa7d7c28529b381801`，与 r4 构建及最终浏览器受验运行输入分别核对；后续文档提交不是运行源码。新镜像 Linux 329 通过、唯一 Windows junction 跳过；本地 196 个不同用例由首次 195 通过和一项补跑组成，另有 117 项基线、31 项 Node 及 7 浏览器场景，不相加为一次全套。原件与剩余范围见 [旅行协作验收](EXPO-TRAVEL-ACCEPTANCE.md)。
 

@@ -1,6 +1,6 @@
 # Expo 旅行、地点与日历
 
-这是本轮源码候选的使用与接线说明，尚未部署；当前安装版本见 [README](../README.md)。界面使用现有 React Native／Paper 组件及 [Expo 官网视觉规范](EXPO-SITE-STYLE.md)，不新增依赖、页面路由或数据表。
+本轮已于 2026-09-17 09:25:21（北京时间）上线，09:25:52 正常 TLS 读回通过；完整身份见 [发布验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md#expo-trip-coordination-release)，当前入口见 [README](../README.md)。界面使用现有 React Native／Paper 组件及 [Expo 官网视觉规范](EXPO-SITE-STYLE.md)，不新增依赖、页面路由或数据表。
 
 ## 使用路径
 
@@ -18,4 +18,4 @@
 - `MapScreen` 新增可选 `onBack`，在内部使用相同编辑／未知提交锁控制返回；现有 `MapWorkspace` 调用不必传此参数。照片仍复用 `TripPhotosScreen({journeyId,onBack,...ScreenProps})`。
 - 当前路由失去焦点或完整身份改变时清除子面板位置；各子组件独立重新验证身份和访问权限。页面刷新不恢复未保存的草稿或未知提交凭证。
 
-组合测试计划与模拟边界见 [验收说明](EXPO-TRIP-COORDINATION-TESTS.md)。源码审查、类型检查、临时数据库浏览器测试、真实云账户和生产发布分别记录，不能互相替代。本人 Microsoft／Google 新的写权限授权及真实云端改期尚需另行验收。
+实际运行身份、第三轮 20 组通过、Linux 两轮结果与视觉复核范围见 [发布验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md)，场景和模拟边界见 [测试设计](EXPO-TRIP-COORDINATION-TESTS.md)。源码审查、类型检查、临时数据库浏览器测试、真实云账户和生产发布分别记录，不能互相替代。本人 Microsoft／Google 新的写权限授权及真实云端改期尚需另行验收。

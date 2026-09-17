@@ -1,6 +1,6 @@
 # Expo 旅行日历同步
 
-本页记录从 `f48c02dc51b6610a1f2af20a3b8dbc44286efda7` 开始的源码候选，尚未部署；实际安装身份以 [README](../README.md) 为准。沿用 [日历发布 API](CALENDAR-PUBLISH.md)，不新增依赖、路由或表。共享视觉遵循 [Expo 官网风格](EXPO-SITE-STYLE.md)。
+本页功能已于 2026-09-17 09:25:21（北京时间）上线，09:25:52 正常 TLS 读回通过，实际运行身份见 [发布验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md#expo-trip-coordination-release)。沿用 [日历发布 API](CALENDAR-PUBLISH.md)，不新增依赖、路由或表。共享视觉遵循 [Expo 官网风格](EXPO-SITE-STYLE.md)。
 
 ## 操作
 
@@ -22,4 +22,4 @@
 
 ## 当前验证
 
-Node 十一项纯逻辑测试通过，覆盖不同旅行/来源、重复 ID、缺失授权字段、旧成功但有新修改、暂停复核、非法覆盖预览、全天日期及无效回执。作者独立安装锁定依赖，完整 TypeScript 检查通过。源码接线、真实临时浏览器组合、四宽视觉与正常 TLS 部署须另外记录；这些检查不代表本人真实 Microsoft／Google 写入已验收。
+Node 十一项纯逻辑测试与组合 TypeScript 检查通过。各组件及接线经过非作者审查，补齐 401／403 立即隐藏私人日历、保留未知提交状态的修订；第三轮真实临时 Flask／SQLite／Edge 组合 20 组通过。第二轮 Linux 544 通过、1 个精确 Windows 跳过，实际发布及 TLS 读回通过；这些计数分别记录。冻结 source、构建、首轮 Linux 失败原件和四宽视觉范围见 [发布验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md)。日历 HTTP 验收使用合成远端，本人真实 Microsoft／Google 写权限和云端改期仍未验收。

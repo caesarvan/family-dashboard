@@ -1,5 +1,18 @@
 # 验证记录
 
+<a id="expo-trip-coordination-release"></a>
+## 旅行地点与日历发布：2026-09-17 09:25:21
+
+北京时间 09:25:21 实际激活，09:25:52 正常 TLS 读回通过。运行 main `f7126dd59348eecfc749534953423d1df45dea14`／source `5d8a0c4d5e96a209ad80e6dddd80a086969f31d9`，同树 `7a5ffaf5ea5f781f0b93c84901921363aab98a72`。完整镜像、manifest、包、激活与读回原件 SHA 见 [本轮发布验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md#expo-trip-coordination-release)；发布后的文档 Git 提交不改变实际运行源。
+
+候选 source `5d8a0c4d5e96a209ad80e6dddd80a086969f31d9` 的本地真实临时 Flask／SQLite／Edge 第三轮 20 组通过。12 张四宽截图已由验收作者逐张查看，原 320 宽过渡帧有输入标签重叠；同字节候选的补充稳定截图正常，保留两类原件及可见区域限制。组件独立审查与跨组件复审、Node 11／17、API 两组各 115、发布适配器 13 分别记录，不相加为一次全套；完整冻结身份、两次浏览器失败见 [本轮验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md)。
+
+第一轮 Linux 实际 545 项：411 通过、10 failure、123 error、1 个精确 Windows junction 跳过；全部 133 异常逐条核出磁盘空间不足，256 MiB tmpfs 用满，不能算作业务通过。第一轮验证被拒后未 stage、未激活或写生产，原件不覆盖。第二轮经独立复审，仅调整私有验证容器资源后实际 544 通过、1 个相同精确跳过，零失败／错误／deselect，JUnit 602.711 秒，测试前后运行文件核对通过；随后 READY、实际激活及读回通过。两轮与先前专项不相加，Git 生成器默认资源未改。
+
+本轮 55→55 无迁移，实际 1 户两库停写完整组备份验证通过；原 55 表／注册库的行、schema、序列在新 app 启动后保持，五份证明原件逐项匹配。后续读回验证 534 源／113 运行文件、75 项 HTTPS 静态资源、24 项内部生成资源与 1 项退役资源拒绝、22 个匿名 API 401；四服务运行且零重启，app 健康，环境配置保持。新一次 backup service 成功、timer active，完整 1 户两库备份与 55 表结构通过；这是逐库在线备份，`liveGroupSnapshotRechecked=false`，不宣称全局原子或 live 全组重检。
+
+本人真实 Microsoft／Google 新写权限及云端创建／改期、真实模型、实体电视和 native 未在本轮验收。普通改期不会自动移动任务截止或地图日期，复杂分段仍有经典入口；下方保留此前 07:38 版本及其历史证据。
+
 <a id="expo-travel-release"></a>
 ## Expo 旅行协作发布：2026-09-17 07:38:17
 
