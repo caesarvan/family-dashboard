@@ -21,4 +21,4 @@ JSON 下载不是数据库恢复包；完整备份和恢复另按部署文档执
 原件在本 worktree 的 `test-results/accounts-portability-r1/`；JUnit SHA
 `021cc817e59daa0890684ea0fa7a30df9bafb99992a3dd4e1b35a39efe418b28`，
 evidence SHA `c882422d023d90801985639e5b88c09bcb76ad6d6629be129a39238a3a03e64e`。
-这组测试不替代后续迁移、浏览器和 Linux 发布验证。本候选尚未生产部署。
+这组局部测试不与后续组合结果累加；账户及导出已发布，完整迁移、浏览器和 Linux 证据见 [发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。
