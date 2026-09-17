@@ -1,6 +1,7 @@
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { ApiError, request } from './api';
+import { acceptHomeLayout } from './homeLayout';
 import { FamilyState, HomeLayout, Member, Preferences } from './types';
 
 type Session = { user: Member | null; csrf?: string | null };
@@ -26,6 +27,13 @@ function useHouseholdState() {
   const authTransition = useRef(false);
   const preferenceWriting = useRef(false);
   const preferencesRef = useRef(defaults);
+  const layoutRef = useRef(defaultLayout);
+  const applyLayout = useCallback((next: HomeLayout, expectedIdentity: string): boolean => {
+    if (!mounted.current || current.current.user?.role !== 'member') return false;
+    const accepted = acceptHomeLayout(layoutRef.current, next, expectedIdentity, signature(current.current));
+    if (!accepted) return false;
+    layoutRef.current = accepted; setLayout(accepted); return true;
+  }, []);
 
   const refresh = useCallback(async () => {
     if (authTransition.current) return;
@@ -37,27 +45,27 @@ function useHouseholdState() {
         const next = await request<Session>('/me');
         if (!mounted.current || ticket !== sequence.current) return;
         const changed = signature(next) !== signature(current.current);
-        if (changed) { setState(null); setPreferences(defaults); setLayout(defaultLayout); setFocus(next.user?.id || ''); }
+        if (changed) { setState(null); setPreferences(defaults); layoutRef.current=defaultLayout; setLayout(defaultLayout); setFocus(next.user?.id || ''); }
         current.current = next; setSession(next);
         if (!next.user || next.user.role !== 'member') { setState(null); setError(''); setOnline(true); return; }
         const [snapshot, prefs, cards] = await Promise.all([
           request<FamilyState>('/state'), request<Preferences>('/preferences'), request<HomeLayout>('/dashboard-layout'),
         ]);
         if (!mounted.current || ticket !== sequence.current || signature(next) !== signature(current.current)) return;
-        setState(snapshot); preferencesRef.current=prefs; setPreferences(prefs); setLayout(cards);
+        setState(snapshot); preferencesRef.current=prefs; setPreferences(prefs); applyLayout(cards, signature(next));
         setFocus(value => snapshot.people.some(person => person.id === value) ? value : next.user!.id);
         setError(''); setOnline(true);
       } catch (failure) {
         if (!mounted.current || ticket !== sequence.current) return;
         if (failure instanceof ApiError && [401, 403].includes(failure.status)) {
-          current.current = { user: null }; setSession({ user: null }); setState(null); setPreferences(defaults);
+          current.current = { user: null }; setSession({ user: null }); setState(null); setPreferences(defaults); layoutRef.current=defaultLayout; setLayout(defaultLayout);
         }
         setOnline(false); setError(failure instanceof Error ? failure.message : '暂时无法读取家庭数据');
       } finally { if (mounted.current && ticket === sequence.current) { setLoading(false); setRefreshing(false); } }
     })();
     reading.current = job;
     try { await job; } finally { if (reading.current === job) reading.current = null; }
-  }, []);
+  }, [applyLayout]);
 
   useEffect(() => {
     mounted.current = true; void refresh();
@@ -111,12 +119,12 @@ function useHouseholdState() {
     try {
       if (reading.current) await reading.current;
       await mutate('/logout', 'POST');
-      ++sequence.current; current.current = { user: null }; setSession({ user: null }); setState(null); setPreferences(defaults); setLayout(defaultLayout);
+      ++sequence.current; current.current = { user: null }; setSession({ user: null }); setState(null); setPreferences(defaults); layoutRef.current=defaultLayout; setLayout(defaultLayout);
       preferencesRef.current=defaults;
     } finally { authTransition.current=false; }
     await refresh();
   };
-  return { user: session.user, identityKey: signature(session), state, preferences, layout, focus, setFocus, loading, refreshing, online, error, notice, setNotice, refresh, login, logout, mutate, savePreferences };
+  return { user: session.user, identityKey: signature(session), state, preferences, layout, applyLayout, focus, setFocus, loading, refreshing, online, error, notice, setNotice, refresh, login, logout, mutate, savePreferences };
 }
 
 const Context = createContext<ReturnType<typeof useHouseholdState> | null>(null);
