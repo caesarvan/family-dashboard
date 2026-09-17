@@ -1,6 +1,23 @@
 # 家庭看板接口文档
 
-当前部署身份见 [HANDOFF](HANDOFF.md)，已发布结构为 55 张户内表与两张平台注册表。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+当前部署身份见 [HANDOFF](HANDOFF.md)，线上结构仍为 55 张户内表与两张平台注册表。本人手动账户候选已实现六个操作和三张新增表，候选为 58＋2，尚未发布，见下节。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+
+## 本人手动资产／负债账户（已实现候选，未发布）
+
+接口由 [finance_accounts.py](../finance_accounts.py) 独立注册；完整字段、限制、错误码及会话核验见 [账户 API](FINANCE-ACCOUNTS-API.md)，三表与迁移边界见 [数据模型](DATA-MODEL.md#finance-accounts58)。全部仅当前家庭的本人可读写，匿名 401、电视 403、伙伴或其他家庭账户 404；不接受客户端 owner／visibility。写入须为同源 JSON 并带当前 CSRF，拒绝额外字段、重复查询参数和 JSON 重复字段。
+
+| 方法 | 路径 | 用途与返回 |
+|---|---|---|
+| GET | `/api/finance-accounts` | 必填 `asOf`，可选 `status=active\|archived\|all`（默认 active）；返回本人所选账户、各自最近有效日期估值及分原币已知部分汇总 |
+| POST | `/api/finance-accounts` | 原 `requestId`、`revision:0`、账户完整字段和首条估值；201 历史操作回执 |
+| PATCH | `/api/finance-accounts/<id>` | 原 `requestId`、账户 revision 和非空 changes；只修改名称、机构、备注、归档／恢复，200 回执 |
+| PUT | `/api/finance-accounts/<id>/valuations/<date>` | 原 `requestId`、账户 revision、amountCents；新增或纠正该日估值，200 回执；归档账户先恢复 |
+| GET | `/api/finance-accounts/<id>/valuations` | page／pageSize 分页日期倒序历史，含当前账户元数据；归档账户仍可读 |
+| GET | `/api/finance-accounts/operations/<requestId>` | 200 `{requestId,found,receipt}`；有历史时 receipt.replayed=true，没有时 found=false／receipt=null，不证明在途请求未提交 |
+
+账户 id 为 24 位、requestId 为 32 位小写十六进制；没有物理删除接口。写入使用账户 revision CAS 和本人持久幂等记录，同原内容重放只返回历史，不把旧状态安装为当前账户。未知结果保留原编号与完整请求，先核对历史和当前列表，不自动换号重发。业务错误含 `{error,code}`，这是下文基础接口通用错误描述之外的模块契约。
+
+估值日期只决定选择不晚于 asOf 的最近记录；名称和归档筛选使用账户当前状态。未知、零、缺少该日前记录分别显示。汇总不换汇、不与来源基线／持仓／公共资金相加，也不代表完整家庭净资产。本人 ZIP 导出已接入候选的账户白名单；即使 includeShared=true 也不导出伙伴账户，详见 [账户导出](FINANCE-ACCOUNTS-PORTABILITY.md)。
 
 ## 已发布持仓：三条读取接口
 
