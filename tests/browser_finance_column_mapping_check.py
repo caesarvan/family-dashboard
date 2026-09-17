@@ -170,15 +170,18 @@ class Run(BaseRun):
             response = ctx.request.post(self.base + BASE + '/confirm', data=changed,
                                        headers={'X-CSRF-Token': me['csrf'], 'Origin': self.base})
             assert response.status in (400, 409, 422) and not self.raw_transactions()
-            self.choose_file(page, csv_bytes([['2026-09-18', 'not-a-number', '合成错误记录', 'CNY', '0']], HEADERS), 'synthetic-invalid.csv')
+            bad_rows = [['2026-09-18', 'not-a-number', '合成错误金额', 'CNY', '0'],
+                        ['2026-09-18', '1.00', '合成短行缺少币种'],
+                        ['2026-09-18', '2.00', '合成有效行也不部分保存', 'CNY', '0']]
+            self.choose_file(page, csv_bytes(bad_rows, HEADERS), 'synthetic-invalid.csv')
             expect(button(page, '确认导入 · 仅本人')).to_have_count(0)
             meta = self.headers(page)
             self.select_columns(page, meta['columns'])
             bad = self.mapped_preview(page)['result']
-            assert bad['errorCount'] == 1 and not bad['previewToken']
+            assert bad['errorCount'] == 2 and len(bad['rows']) == 1 and not bad['previewToken']
             expect(button(page, '确认导入 · 仅本人')).to_be_disabled()
             assert not self.raw_transactions()
-            self.passed('Changing columns or file invalidates the old preview; mismatched token and malformed amount save no rows')
+            self.passed('Changing columns or file invalidates the old preview; mismatched token, malformed amount and missing currency prevent even valid rows from being saved')
 
     def lost_response(self, browser):
         with self.flow(browser) as (ctx, page):
