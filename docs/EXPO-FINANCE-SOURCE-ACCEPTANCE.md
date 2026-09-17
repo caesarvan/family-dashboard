@@ -45,3 +45,14 @@
 原件保留在 `A/expo-finance-source-tools-20260917-r1/failed-validation-originals/`：JUnit `validation-results.xml` SHA `a2570af81039a1408d809cdc90c0e55ee1a8dc3cdb6b73b3a97e87511c20d411`，日志 `validation-validation.log` SHA `1dbd2ad97a34c7efc6a0f136c4b12d44b3132e61bf150482c50f4b661644a2c8`，runtime SHA `aa0dea8507a85a21316be3ebfda08d8658d646575d3138d579b13eb2e0bfbd1f`；runtime 前后检查均 true。R1 原件和未完成的发布审计准备保留；修订后的本地定向结果与后续新 R2 Linux／发布结果分别记录，不重放 R1 算子。
 
 修订后仅对上述用例的 12 个参数组合执行一次真实本地 Flask／SQLite 专项：**12 passed、0 failed／error／skip，9.37秒**；基线 `944a712d69375c209ec7a63fe28b3a2287df8beb` 的工作树修订字节运行前后全部 650 个 tracked 文件 SHA 相同。原件 `W/finance-import-test-race/test-results/finance-import-test-race-20260917T144005086631Z/`：`results.xml` SHA `983f287140f248025093b86595908f2482857ec0c6e0849ea9109ff25974e784`，`evidence.json` SHA `bffc1676b83530efc80b7399bf012b4b4107ad4dba685441a4e6f243c7cbdcec`，stdout SHA `2940df64882be1a99a555bfbd51ce62fdf4de81ea28fa6d72886af7bd46aba7f`，stderr 空。随后仅补本文结果说明；未重跑其他用例、浏览器或远端算子，不能由这 12 项推断 R2 的 Linux 全套或发布通过。
+
+
+## R2 本地组合：修复测试竞态后重新冻结
+
+R2 固定 source `43bddc4cdd4531bcd9ad66b5bcd2cbd4b0cbc0be`、tree `81769033c0832a4c1f2858d84c8d4beaa96c59ce` 包含已独立审查的测试同步修复 `78c34574aa02b445ad5126d1725a7a6218e50c76`。实际重新构建 `A/expo-finance-source-build-20260917-r2/build-evidence.json` SHA `e16e89bfbc3d17aef686f3f685f0f9b0f76ca950758ba7c7b0387d9e9c73ec55`，184 构建输入／23 导出；入口字节与 R1 相同，但保留新的 source／build 身份，不重绑 R1 报告。
+
+同一未修改的 `bf0cbc1` harness 单次真实运行 **12／12 通过、12 PNG**。原件 `W/expo-finance-source-browser/test-results/expo-finance-source-20260917T144433030097Z/result.json` SHA `a11dc86cd3041e088b558050dbc8d6ce4e4e85782e5ad60ec739f230fcfc391c`；650 tracked 源码／23 导出前后相同，0 页面错误／外部请求／生产写入，12 个临时目录均已清理。调用原件 `test-results/source-r2-invocation-20260917T1444320861411Z/` 的 stdout SHA `055c7ebeef66ec207cb26a5f9207cf7adfac87e23ddede3f36b7759d7eeecf42`，stderr 空。
+
+R2 同源 collection 原件 `A/expo-finance-source-validation-20260917-r2/collection.json` SHA `30a497bcf05a33805656c627502660035d3e72d6d5e6770f9887cd393377465b`：8 模块／184 唯一 nodeId，仅收集，未执行 Linux 验证。R1 的服务器失败、定向 12 参数结果与 R2 浏览器结果分别保留、不累加；R2 发布尚未完成，线上仍为 baseline 父版本。
+
+R2 的 12 PNG 由 `/root/expo_finance_ui` 实际逐张查看并核散列，同目录 `visual-review.json` SHA `64574ecbee18ef68d48455eb8adad73cd8c6b6368c526f99a88c90dbf41dc205`；可见 viewport 无阻断。四宽长标题／编号换行、零／未知／退款负额可读；手机内层滚动的确认区等未全部覆盖，不外推本人真实财务、云或设备验收。
