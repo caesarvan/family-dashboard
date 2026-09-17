@@ -1,11 +1,11 @@
 # 数据模型、同步一致性与隐私边界
 
-> 当前线上为 2026-09-17 04:26:46 财务版，54 张户内表与 2 张平台注册表；下述持仓 55 表属于已验证、尚未部署的集成候选。安装身份见 [HANDOFF](HANDOFF.md)。
+> 现行结构为 **55 张户内表与 2 张平台注册表**。持仓回执表已于 2026-09-17 06:15:34 随持仓版发布；后续界面更新保持 55→55。实际安装身份见 [HANDOFF](HANDOFF.md)，完整源码结构见 [存储索引](PLATFORM-ROUTES.md)。下面较早版本的表数仅描述各自历史状态。
 
 <a id="investment-operations55"></a>
-## Expo 持仓候选：手工操作回执
+## Expo 持仓：手工操作回执
 
-候选 `753c7a3` 在每户原 54 表之上只新增 `hub_investment_operations`；平台仍为两表。DDL 唯一来源为 [investment_operations.py](../investment_operations.py) 的 `INVESTMENT_OPERATIONS_SCHEMA_SQL`，由 `finance_hub` 在既有持仓表初始化后注册，随后注册文件导入。新表不改写旧持仓、来源关联或账单导入回执。
+持仓版在每户原 54 表之上只新增 `hub_investment_operations`；平台仍为两表。DDL 唯一来源为 [investment_operations.py](../investment_operations.py) 的 `INVESTMENT_OPERATIONS_SCHEMA_SQL`，由 `finance_hub` 在既有持仓表初始化后注册，随后注册文件导入。新表不改写旧持仓、来源关联或账单导入回执。
 
 | 列 | 类型与约束／含义 |
 | --- | --- |
@@ -17,11 +17,11 @@
 
 七列组成一张表；实际写入、审计和回执在同一事务完成。读取回执不等于读取当前持仓，删除后的历史创建／更新回放不重建记录。私人 ZIP 的 `personal.investmentOperations` 只投影本人允许的业务字段，排除 payload_digest 和未知扩展字段；共享和电视响应不包含它。
 
-[迁移检查器](../deploy/check_investment_operation_migration.py) 核对停写的原 54 表组与备份，只允许新增空表，并完整比较原表行、schema、序列及注册库；逐库 DDL 原子，跨库中断保留现场并拒绝盲目重跑。已填充回执的 55 表组支持完整恢复核对。两户合成迁移／恢复测试已通过，生产迁移尚未执行。字段、容量与重试约束见 [持仓 API](INVESTMENTS-API.md)，证据见 [候选验收](VALIDATION.md#expo-holdings-candidate)。
+[迁移检查器](../deploy/check_investment_operation_migration.py) 核对停写的原 54 表组与备份，只允许新增空表，并完整比较原表行、schema、序列及注册库；逐库 DDL 原子，跨库中断保留现场并拒绝盲目重跑。已填充回执的 55 表组支持完整恢复核对。两户合成迁移／恢复测试与该次生产 54→55 迁移均已完成，不能重放历史升级命令。字段、容量与重试约束见 [持仓 API](INVESTMENTS-API.md)，生产证据见 [持仓发布验收](VALIDATION.md#expo-holdings-release)。
 
 ## 已发布 Expo 财务：账单导入回执
 
-2026-09-17 财务版新增 `hub_import_receipts`，当轮临时新库实测为 **54 张户内表、2 张平台表、149 个 Flask 方法／路径模板**，另有家庭入口 WSGI 路由，随后按 [交接说明](HANDOFF.md) 发布。该数字不包含上方尚未部署的持仓候选；下面历次版本数字保留历史含义。
+2026-09-17 财务版新增 `hub_import_receipts`，当轮临时新库实测为 **54 张户内表、2 张平台表、149 个 Flask 方法／路径模板**，另有家庭入口 WSGI 路由，随后按 [交接说明](HANDOFF.md) 发布。该历史数字不包含随后发布的持仓回执表；下面历次版本数字保留历史含义。
 
 `hub_import_receipts` 以 `(owner, request_id)` 为主键，包含业务输入摘要、原预览令牌摘要、确认结果 JSON 和创建时间。令牌原文与文件字节不写入回执。新增确认使用成员身份与事务校验，只有真实提交结果才形成回执；同一请求必须保持原输入和原令牌。`GET /api/finance-hub/imports/results/<request_id>` 仅本人读取，404 不能证明尚在处理的请求不会提交。
 
@@ -29,13 +29,13 @@
 
 私人导出增加 `personal.transactionImportReceipts` 业务白名单，不导出校验摘要或令牌。共同消费汇总不包含文件名、批次和个人明细。完整字段、容量上限和重试规则见 [财务 API](FINANCE-API.md)、[导入说明](FINANCE-IMPORT.md)；停写、全户备份、53→54 迁移与恢复核对见 [发布说明](FINANCE-RECEIPTS-RELEASE.md)。
 
-**本地媒体候选：48张户内表及2张平台表；线上当前为44+2，安装身份见 [README](../README.md)。** 本轮在地点表之后新增 `media_imports`、`media_items`、`media_tv_grants`、`media_playback`，分别存持久导入、加密展示副本、独立屏幕许可和每屏幕播放状态。账户授权、成员认证与家庭隔离复用现有表。五张库存核心表尚未注册，不计入48表。字段和约束见 [媒体API](HOUSEHOLD-MEDIA-API.md) 与 [电视播放](MEDIA-PLAYBACK.md)，44→48显式迁移见 [升级说明](MEDIA-MIGRATION.md)。
+**历史媒体开发阶段：本地候选 48 张户内表及 2 张平台表，当时线上为 44+2。** 该阶段在地点表之后新增 `media_imports`、`media_items`、`media_tv_grants`、`media_playback`，分别存持久导入、加密展示副本、独立屏幕许可和每屏幕播放状态。账户授权、成员认证与家庭隔离复用现有表。五张库存核心表当时尚未注册，不计入该 48 表数字；现行结构见页首。字段和约束见 [媒体API](HOUSEHOLD-MEDIA-API.md) 与 [电视播放](MEDIA-PLAYBACK.md)，历史 44→48 显式迁移见 [升级说明](MEDIA-MIGRATION.md)。
 
 下方时间、镜像和43表等段落为历史版本记录；现行完整结构以 [源码存储索引](PLATFORM-ROUTES.md) 为准。
 
-**当前版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
+**历史版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 当时旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
 
-当前结构为 **43 张户内表（41 业务 + 2 认证）和 2 张平台表**。20:23 旅行资料新增一表，停写及启动核对窗口内原 42 表、行／schema／序号完全保持；15:10 历史消费观察两表和更早例行三表保留原契约。没有全局 schema 版本号或自动旧数据重建，完整结构见 [存储索引](PLATFORM-ROUTES.md)。
+该 20:23 历史版本为 **43 张户内表（41 业务 + 2 认证）和 2 张平台表**。旅行资料新增一表，停写及启动核对窗口内原 42 表、行／schema／序号完全保持；15:10 历史消费观察两表和更早例行三表保留原契约。没有全局 schema 版本号或自动旧数据重建，现行完整结构见 [存储索引](PLATFORM-ROUTES.md)。
 
 > 本文汇总基础表及旅行 v2、持久云队列、财务来源回执的模型。多家庭与备份见 [平台扩展](PLATFORM.md)，完整表名与字段见 [当前存储索引](PLATFORM-ROUTES.md)。2026-09-15 01:10 历史版本每户 28 张业务表；02:33:28（北京时间）已部署版本新增 finance_source_receipts 后为 29 张，并增加旅行时间 JSON 与日历 review_required 列。平台目录仍为 2 张表。“单个数据库”仅指一户数据边界；当前部署及运行读回见 [交接说明](HANDOFF.md)。
 
@@ -51,7 +51,7 @@
 
 ### 旅行资料的第 43 张表
 
-`journey_documents` 已完成一次性迁移并发布；当前每户 **43 表（41 业务 + 2 认证）**，平台仍为两表。完整列和 SQL 见 [资料契约](JOURNEY-DOCUMENTS.md) 与 [源码存储索引](PLATFORM-ROUTES.md)。
+`journey_documents` 已完成一次性迁移并发布；该次发布将每户从 42 升至 **43 表（41 业务 + 2 认证）**，平台保持两表，现行数量见页首。完整列和 SQL 见 [资料契约](JOURNEY-DOCUMENTS.md) 与 [源码存储索引](PLATFORM-ROUTES.md)。
 
 - `owner` 外键指向本户 `users`。`journey_id` 指向 `journey_workflows`，使用 `ON DELETE SET NULL`；分段键仅作逻辑关联，不是 SQL 外键。
 - 文件保存在 SQLite BLOB 中；`bytes` 与内容长度一致。新上传必须关联存在的旅行，管理时可解除关联；可见范围默认 private，只有本人明确选择才 shared。没有有效旅行关联时，对外始终按 private 处理。
@@ -410,4 +410,4 @@ current_index 是生成次数，不是锚点间隔序号。当前期的 pending/
 
 创建预览不写库；确认在同一事务写规则／新实体／期次／回执／审计和 meta。周期 tick 同事务推进一期，无计划或不应推进时无业务写入。新实体仍是原 state 可见的共享 tasks/shopping；管理 context 不返回 TV。新表升级初始为空，不自动填入当前家务、历史事项或未来云任务。
 
-管理员备份含完整三表。显式 includeShared 的业务导出仅允许 [ROUTINES](ROUTINES.md) 中的 plans/occurrences/receipts 白名单；不导出确认者 owner、nonce_digest、完整 result、签名／会话上下文。采购实付与其他私人财务关系不进入共享计划。历史例行迁移精确校验旧 37 表及三新表，其后的 40→40 指导仅属于当时版本。2026-09-15 15:10 的历史消费观察迁移为 40→42，16:25 历史无结构更新使用 42→42；本次旅行资料已按独立 42→43 检查发布；历史 42→42 算法不可用于当前 43 表。详见 [DEPLOYMENT](DEPLOYMENT.md)。
+管理员备份含完整三表。显式 includeShared 的业务导出仅允许 [ROUTINES](ROUTINES.md) 中的 plans/occurrences/receipts 白名单；不导出确认者 owner、nonce_digest、完整 result、签名／会话上下文。采购实付与其他私人财务关系不进入共享计划。历史例行迁移精确校验旧 37 表及三新表，其后的 40→40 指导仅属于当时版本。2026-09-15 15:10 的历史消费观察迁移为 40→42，16:25 历史无结构更新使用 42→42；该日旅行资料随后按独立 42→43 检查发布。这些历史算法均不可用于当前 55 表，后续发布须绑定实际结构与运行基线。详见 [DEPLOYMENT](DEPLOYMENT.md)。
