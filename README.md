@@ -1,6 +1,6 @@
 # 家庭中枢 · Family Dashboard
 
-**开发候选：新版旅行资料与日程／清单优化，尚未发布。** 已保存旅行可直接打开资料夹，「更多 → 我的旅行资料」可管理本人全部凭证；支持上传、下载、明确共享及修改关联。日程和清单扩大操作按钮并接入标准／紧凑间距。五个独立分支经过非作者审查后合并，完整 TypeScript 检查通过，真实浏览器验收进行中。使用见 [旅行资料](docs/EXPO-JOURNEY-DOCUMENTS.md)、[日程与清单](docs/EXPO-CALENDAR-DENSITY.md)，当前证据及待验项见 [候选验收](docs/EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md)。下方线上版本仍是实际安装状态。
+**开发候选：新版旅行资料与日程／清单优化，本地验收通过、尚未发布。** 已保存旅行可打开「旅行资料」，「更多 → 我的旅行资料」管理本人凭证；支持上传、下载、明确共享及修改关联。资料 R4 的 9 条流程／12 图、日程 R2 的 5 条流程／18 图分别通过并视查可见区域，前序失败原件保留。使用见 [旅行资料](docs/EXPO-JOURNEY-DOCUMENTS.md)、[日程与清单](docs/EXPO-CALENDAR-DENSITY.md)，证据与待验边界集中于 [候选验收](docs/EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md)。下方线上版本仍是实际安装状态。
 
 **线上版本：成员外观于 2026-09-17 16:17:28（北京时间）激活，16:17:57 正常 TLS 读回通过。** 从「更多 → 外观设置」选择本人浅色／深色、标准／紧凑密度，明确保存后应用；伴侣与每台电视设置独立。R1 本地浏览器 11 条流程／17 图及 Linux 226 项通过、1 项精确 Windows 跳过分别核验；595 包文件／114 运行文件／75 HTTPS 静态资源读回通过，55→55 数据与配置保持。操作见 [成员外观](docs/EXPO-APPEARANCE.md)，完整运行身份、证据与未验边界见 [本轮验收](docs/EXPO-APPEARANCE-ACCEPTANCE.md#expo-appearance-release)。
 

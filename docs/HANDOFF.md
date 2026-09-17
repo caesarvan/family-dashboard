@@ -1,6 +1,6 @@
 # 联合开发接手说明
 
-**当前开发候选：Expo 旅行资料与日程／清单密度。** 功能组合 `c0c8ba4f41a268901cf41920e6012cb3da3333c8` 已合入独立 `codex/expo-documents-integration`，尚未进入正式 integration／main 或生产。UI、客户端模型、导航接线、日程密度和资料会话复核均已非作者审查；真实物理依赖的完整 TypeScript 检查通过。旧版 Cookie 隐式事务问题经过复现、修正及 26 项会话专项验证后关闭。组合浏览器与发布仍待执行，具体分支、证据及未验边界见 [本轮候选](EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md)。本段不是上线记录，下方为实际已发布版本。
+**当前开发候选：Expo 旅行资料与日程／清单密度，本地验收通过、尚未发布。** 资料 R4 固定源码 `e4499b88b89124f19fd6eb040435d133bdfffc7d`，9／9 流程通过、12 图由执行作者逐张视查；日程保留原 R2 身份的 5／5 与 18 图视查证据。会话、提示竞态、选中名称及两处测试等待／命名问题分次修正，失败原件不覆盖。R2 真实代码完整 typecheck 通过；最新 236 项／8 模块仍仅收集，不是服务器测试通过数。具体身份、等价冻结要求及边界见 [本轮候选](EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md)。本段不是上线记录，下方为实际已发布版本。
 
 **最新已发布：Expo 成员外观，2026-09-17 16:17:28（北京时间）激活，16:17:57 正常 TLS 读回通过。** 安装 main `e5b12c33b325359dc7629e19bf8a4d0b95f9b2ca`／source `c75676222406a6845e0c8527f43ef99d0143454d`，同树 `81e170870848042bee9f6a5ad7e984d7b70fbe1c`。`AppearancePanel`、provider 单调版本安装、Paper 主题／密度及 classic CAS／生命周期保护已接入「更多 → 外观设置」，电视设置独立。接口 64 项、最终 Node 40 项、完整 typecheck 与本地浏览器 11 流程／17 图分次通过；新镜像 Linux 226 通过加唯一精确 Windows 跳过，55→55 原数据及配置保持，595 包文件／114 运行文件／75 HTTPS 静态资源读回通过。完整身份与证据见 [本轮验收](EXPO-APPEARANCE-ACCEPTANCE.md#expo-appearance-release)，操作与接缝见 [成员外观](EXPO-APPEARANCE.md)。后续文档不改变运行包；真实本人公网流程和实体设备仍未验收。
 
