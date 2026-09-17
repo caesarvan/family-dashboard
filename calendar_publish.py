@@ -289,6 +289,20 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
     app.extensions['calendar_publish'] = engine
     signer = URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='calendar-publish-v1-' + engine.namespace)
 
+    def revalidate_member(con=None):
+        # g.actor is the request's initial decision, not current authority.
+        # Writes call this under their existing writer transaction; reads use
+        # a fresh short connection, never a snapshot held across remote I/O.
+        members = app.extensions['member_sessions']
+        if con is None:
+            with members.db() as fresh:
+                return revalidate_member(fresh)
+        member = members.current(con)
+        if (member['owner'] != g.actor['id']
+                or member['auth_version'] != g.actor['auth_version']
+                or g.actor.get('householdId', 'default') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+            raise Problem('登录状态已变化，请重新登录', 401)
+
     @contextmanager
     def locked_publication(rid, transaction=False):
         """Never use a freshly rebound row under its previous account's lock."""
@@ -299,15 +313,28 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
         with engine.accounts.lock(initial['account_id']), engine.accounts.db() as con:
             if transaction:
                 con.execute('BEGIN IMMEDIATE')
+                revalidate_member(con)
+            else:
+                revalidate_member()
             row = con.execute('SELECT * FROM calendar_publications WHERE id=? AND owner=?', (rid, g.actor['id'])).fetchone()
             if not row or binding_snapshot(row) != binding_snapshot(initial):
                 raise Problem('发布绑定或状态已变化，请刷新后重试', 409)
-            yield con, row
+            try:
+                yield con, row
+            finally:
+                if not transaction:
+                    revalidate_member()
+        if transaction:
+            # A concurrent revocation after commit hides the response; it does
+            # not undo the already committed durable publication decision.
+            revalidate_member()
 
     @app.get('/api/calendar-publish/journeys/<journey_id>')
     def publication_state(journey_id):
         require_member()
-        return jsonify(engine.state(journey_id, g.actor['id']))
+        value = engine.state(journey_id, g.actor['id'])
+        revalidate_member()
+        return jsonify(value)
 
     @app.post('/api/calendar-publish/authorize')
     def publication_authorize():
@@ -318,7 +345,10 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
         account = engine.accounts.account(account_id, g.actor['id'])
         if request.host_url.rstrip('/') != engine.accounts.origin:
             raise Problem('请通过 ' + engine.accounts.origin + ' 打开看板后授权')
-        return jsonify(url=engine.accounts.authorize(account['provider'], 'bind', g.actor, calendar_write=True, account_id=account_id))
+        revalidate_member()
+        url = engine.accounts.authorize(account['provider'], 'bind', g.actor, calendar_write=True, account_id=account_id)
+        revalidate_member()
+        return jsonify(url=url)
 
     def preview_payload(payload):
         journey_id, source_id = payload.get('journeyId'), payload.get('sourceId')
@@ -337,6 +367,7 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
         source, value = preview_payload(body())
         state = engine.state(value['journeyId'], g.actor['id'])
         selected = next(s for s in state['sources'] if s['id'] == source['id'])
+        revalidate_member()
         return jsonify(events=state['events'], source=selected, previewToken=signer.dumps(value), expiresInSeconds=900,
                        note='确认将发布这些日程，并持续同步后续本地修改。不添加参与者或发送邀请。云端权限会在执行时再次检查。')
 
@@ -367,10 +398,13 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
             for account_id in sorted(account_ids):
                 locks.enter_context(engine.accounts.lock(account_id))
             with engine.accounts.db() as con:
-                return confirm_locked(con, account, source, value, account_ids)
+                result = confirm_locked(con, account, source, value, account_ids)
+        revalidate_member()
+        return result
 
     def confirm_locked(con, account, source, value, account_ids):
         con.execute('BEGIN IMMEDIATE')
+        revalidate_member(con)
         # Recheck the signed revision snapshot after acquiring the lock.
         source = engine.source(con, source['id'], g.actor['id'])
         if source['account_id'] != account['id']:
@@ -458,6 +492,7 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
             snapshot = event_snapshot(json.loads(local['data']))
             account = engine.accounts.account(row['account_id'], g.actor['id'])
             adapter = engine.accounts.active_provider(account)
+            revalidate_member()
             remote = adapter.get_calendar_publication(engine.accounts.adapter_source(source), row['remote_id']) if row['remote_id'] else adapter.find_calendar_publication(engine.accounts.adapter_source(source), rid)
             if not remote or remote['key'] != rid:
                 raise Problem('无法确认这是本平台创建的原事项，请保留云端并停止发布', 409)
@@ -515,6 +550,7 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
             previous = json.loads(row['pending_data']) if row['pending_data'] else None
             account = engine.accounts.account(row['account_id'], g.actor['id'])
             adapter = engine.accounts.active_provider(account)
+            revalidate_member()
             remote = adapter.get_calendar_publication(engine.accounts.adapter_source(source), row['remote_id']) if row['remote_id'] else adapter.find_calendar_publication(engine.accounts.adapter_source(source), rid)
             if remote and remote['key'] != rid:
                 raise Problem('远端标识与原发布不一致，请保留云端并停止发布', 409)
