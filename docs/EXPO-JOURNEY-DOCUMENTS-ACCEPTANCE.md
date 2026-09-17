@@ -1,6 +1,6 @@
 # Expo 旅行资料与日程清单验收
 
-**状态：本地组合验收通过，尚未发布。** 资料 R4 的 9 条流程／12 图、日程／清单 R2 的 5 条流程／18 图分别通过并视查可见区域；各轮保持独立源码和构建身份，失败原件保留。历史经典资料服务已发布，不代表本次 Expo 界面已上线。
+**状态：已发布并完成服务器读回。** 2026-09-17 18:13:25（北京时间）激活，18:13:50 正常 TLS 检查通过。资料 R4 的 9 条流程／12 图、日程／清单 R2 的 5 条流程／18 图分别通过，原件及各自构建身份保留；历史失败不覆盖。完整生产身份与证据见 [本轮发布](#expo-documents-release)。
 
 ## 功能与固定审查
 
@@ -55,6 +55,36 @@
 
 ## 待完成与边界
 
-最终等价冻结、Linux 镜像检查及生产发布读回仍待完成。本地两个专项通过不代表已经部署，也不抹去前序失败；不能用源码样式声明、Node 或类型检查代替实际结果。
+最终等价冻结、Linux 镜像检查及生产发布读回均已完成，证据见下方。本地专项、Linux 与生产检查分别记录，前序失败保留；不能用源码样式声明、Node 或类型检查代替实际结果。
 
 用户暂时无法使用实体电视验证，保持待确认，不据此阻塞其他开发。真实手机系统选片／下载、原生安装、本人公网账户操作、真实云同步和实体电视均不在上述已验范围。服务端最后复核之后已经开始发送的文件字节无法撤回；上传的 PDF 不提供预订核验或病毒扫描。
+
+<a id="expo-documents-release"></a>
+## 实际发布与独立读回
+
+2026-09-17 18:13:25（北京时间）激活，18:13:50 完成正常 TLS 读回；非作者于 18:18:12 再次只读核对已安装 manifest、镜像、环境摘要及服务状态。build、validate、stage、activate、post_readback 各执行一次并退出 0，历史算子不可重放。发布后文档提交不改变本次运行身份。
+
+| 对象 | 固定身份／SHA256 |
+| --- | --- |
+| main | `c7bffed2aa51d55b88197d9c84ecbe1b7bc27337` |
+| source / integration | `03c150c0026ea66b28027424cef00be648e4ffa5` |
+| 同树 | `da500d99918be70249f7ccdcaeb78318d605f8d8` |
+| app / sync / media 镜像 | `sha256:79d20992e17a2ed5f1c03a47acd0bd8af91625d2445f5eb8b7c79d1b7ef39019` |
+| 保持的 web 镜像 | `sha256:1ae82dcc4a34bcd976195b3c4c5a6b7e569505527a1e2a28c2101e032159a5c7` |
+| archive | `68eefe89a79deb6373cdeacc9f115c9e29a8fde27481b3b22ca2089911a006e4` |
+| manifest | `9fe4a665f724c1e54a9d28b93bdaeb94df0ec8b39f027c15b669547e02dd5b92` |
+| 最终 freeze | `2a6e13354d4c230f63809af33a242c7805ad8908c3470c71558298afc1ff7f7e` |
+| activation.json | `e0ae8604b6547e1f612a3bb93fc6a7d6745478fa50612944f8c7c9dd97fbc881` |
+| post.json | `4e4e3c3a369df8dabb3b2d49b6eb1ec3dc81d0db67683883dd8043ab0052170e` |
+
+真实包中 613 文件为 590 源文件和 23 Expo 导出，114 运行文件与其中 37 个真实已加载模块在 Linux 测试前后匹配。最终 freeze 逐项核对资料 R4 与日程 R2 各自的运行代码、构建输入、导出字节、测试脚本及依赖夹具；保留不同 source 身份，不把两轮结果合称同次验收。九份实际生成发布工具也经非作者固定字节审查。
+
+Linux 镜像中实际执行 **236 个唯一项：235 通过、1 跳过、0 失败／错误**，8 模块，JUnit 290.681 秒；逐 node 与 R4 collection 相等。唯一跳过为 `tests.test_frontend_runtime::test_windows_junction_rejected`，原因精确为 `Windows junction semantics`。`results.xml` SHA256 为 `fc354bddd4995be2dd05cd2f28185c452a2a44aa297ac02bf596d29a79dbfe31`，`runtime.json` 为 `cbd16ba4a3592a6330b61f8244fc71f7b900974901c2aff93df3b0d01a381dc1`。此前 collection 只证明收集，本节才是实际运行结果。
+
+55→55 无 DDL；实际 1 户共 2 个数据库停写完整备份。新 app 启动后，原户内 55 表及序列、平台 2 表的行与 schema 保持；`before.json` 与 `after-app.json` 字节相同，SHA256 均为 `03369f58f86a7e31d0e061d6caa7b672c63eef9f979771266286c31250ca056e`。环境内容与 0600 权限保持，未输出密钥。四服务运行且零重启；仅 app 配置健康检查并为 healthy，其他服务没有 healthcheck。
+
+正常 TLS 验证 75 项静态资源、24 项生成源码拒绝及 1 项退役资源拒绝；原 post 的 25 个唯一匿名 API 均为 401。独立读回另查 `/api/journey-documents` 和 `/api/journey-documents/000000000000000000000000/file`，均为 401，单独记录而不混入原 post 数量。新一次逐库在线备份成功：manifest `manifest-20260917T101345789988Z.json`，SHA256 `7e8c5e43304fa53fb35ddaaebd175f655bbb2bef390c7bb57bcbea7eb771833a`。这是逐库备份，不是跨库全局原子快照，也没有重新做生产 live 全组快照。
+
+生产原件位于 `/opt/family-dashboard-releases/expo-documents-55-20260917T101228816042Z`。独立审查只下载 13 份小型 JSON／XML 原件，逐份远端→本地摘要匹配，未下载 DB、重放阶段或另启动备份。私有审计目录为 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/expo-documents-published-audit-20260917T101705634282Z/`；`audit.json` SHA256 `d06bee77fc45c095399580fdcc18150495d59640f71878284a4bc7d771431031`，原件索引 `readback.json` SHA256 `97354f173124948431335b1a2d32cbbe4ba5dbe83a9e82cd90759a9524743b9d`，独立审计 PASS。
+
+真实云账户新流程、原生手机文件交互及实体电视仍未验收；用户暂时无法使用电视不阻塞其余开发。下一批例行计划独立开发，不属于此已安装运行包。
