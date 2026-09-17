@@ -236,7 +236,7 @@ export default function TripsScreen(props:Props) {
     {!!props.onExitPlanning&&!draft&&<Button accessibilityLabel="返回助理" icon="arrow-left" disabled={!!busy} onPress={props.onExitPlanning}>返回助理</Button>}
     {!!props.onReturnMap&&!draft&&<Button icon="arrow-left" disabled={!!busy} onPress={props.onReturnMap}>返回足迹地图</Button>}
     {!!mapReturn&&!draft&&<Button icon="arrow-left" disabled={!!busy||!active} onPress={()=>{if(canNavigate()&&active)setPanel({kind:'map',view:mapReturn,tripId:active.id});}}>返回地图位置</Button>}
-    <PageHeader title={draft?(draft.journeyId?'编辑旅行':draft.tripId?'完善旅行计划':'计划旅行'):detail||legacy?'旅行详情':'旅行'} description={draft?'先安排日期与目的地，再按需补充细节。':undefined} action={!draft&&!detail&&!legacy?<View style={styles.wrap}><Button mode="contained" icon="plus" disabled={!!busy||!online} onPress={startNew}>计划旅行</Button><Button mode="outlined" icon="file-import-outline" disabled={!!busy||reading||!online} onPress={startImport}>导入旅行</Button></View>:undefined}/>
+    <PageHeader title={draft?(draft.journeyId?'编辑旅行':draft.tripId?'完善旅行计划':'计划旅行'):detail||legacy?'旅行详情':'旅行'} description={draft?'先安排日期与目的地，再按需补充细节。':undefined} action={!draft&&!detail&&!legacy?<View style={styles.wrap}><Button mode="contained" icon="plus" disabled={!!busy||!online} onPress={startNew}>计划旅行</Button><Button mode="outlined" icon="file-import-outline" accessibilityLabel="导入旅行" contentStyle={{minHeight:44}} disabled={!!busy||reading||!online} onPress={startImport}>导入旅行</Button></View>:undefined}/>
     {!!notice&&<Text accessibilityLiveRegion="polite">{notice}</Text>}
     {!!error&&<HelperText type="error" accessibilityRole="alert">{error}</HelperText>}
     {reading&&<ActivityIndicator accessibilityLabel="正在读取旅行"/>}
