@@ -381,6 +381,7 @@ class Run(BaseRun):
                 self.login(ctx, 2); route.fulfill(response=response); sent.append(document_id)
             page.route(self.base + PATH, switch); button(page, '确认上传资料').click()
             self.settle(page, lambda: len(sent) == 1)  # Editor also hides before the write; wait for the actual switched response.
+            expect(page.get_by_test_id('journey-documents-panel')).to_have_count(0, timeout=15000)  # Fresh identity refresh unmounts the old actor's Trips subtree.
             expect(page.get_by_test_id('journey-document-editor')).to_be_hidden(timeout=15000)
             expect(page.locator('body')).not_to_contain_text(record['title'], timeout=15000)
             page.unroute(self.base + PATH, switch); assert len(sent) == 1
