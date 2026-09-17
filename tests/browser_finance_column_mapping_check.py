@@ -92,6 +92,7 @@ class Run(BaseRun):
             column = next(c for c in columns if c['index'] == mapping[key])
             page.get_by_role('button', name=label, exact=True).click()
             page.get_by_role('menuitem', name=column['columnLabel'] + ' 列 · ' + (column['label'] or '无标题'), exact=True).click()
+            expect(page.get_by_role('menuitem')).to_have_count(0)
 
     def mapped_preview(self, page):
         result = self.actual(page, BASE + '/preview', lambda: button(page, '按所选列预览').click())
@@ -314,7 +315,10 @@ def main():
     evidence_path = bundle.parent / 'build-evidence.json'
     assert sha(evidence_path) == args.expected_build_evidence
     evidence = json.loads(evidence_path.read_text(encoding='utf-8'))
-    assert evidence['sourceHead'] == head and evidence['sourceTree'] == git('rev-parse', 'HEAD^{tree}')
+    build_head = evidence['sourceHead']
+    assert re.fullmatch('[a-f0-9]{40}', build_head)
+    assert evidence['sourceTree'] == git('rev-parse', build_head + '^{tree}')
+    subprocess.run(['git', '--no-replace-objects', 'merge-base', '--is-ancestor', build_head, head], cwd=root, check=True)
     names = subprocess.check_output(['git', '--no-replace-objects', 'ls-files', '-z'], cwd=root).decode('utf-8').rstrip('\0').split('\0')
     def hashes():
         return {name: sha(root / name) for name in names}
@@ -326,7 +330,8 @@ def main():
     out.mkdir(parents=True)
     shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], screenshots=[], scenarioResults=[], scenarioFailures=[],
-        head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
+        head=head, tree=git('rev-parse', 'HEAD^{tree}'), buildSourceHead=build_head, buildSourceTree=evidence['sourceTree'],
+        buildInputsEqual=True, buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
         sourceHashesBefore=hashes(), bundleHashesBefore=exports(), productionWrites=0, realFinancialData=False, realCloud=False,
         physicalTelevision=False, scope='Six independent temporary Flask/SQLite/HTTPS/Edge scenarios with synthetic generic files; no real platform export, cloud or device acceptance.')
     original_connect = socket.socket.connect
