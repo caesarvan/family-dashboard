@@ -1,6 +1,6 @@
 # Expo 首页卡片布局
 
-**开发候选：界面、客户端与后端会话强化已实现，尚未完成组合浏览器验收，尚未发布。** 本文描述下一批首页功能，不改变当前电视版本的运行包；线上身份仍以 [README](../README.md) 为准。
+**本地组合验收通过，尚未发布。** 首页布局已完成 R2 真实临时浏览器 9 条流程及 9 张截图的独立视查。本文不改变当前电视版本的运行包；线上身份仍以 [README](../README.md) 为准。
 
 ## 使用方法
 
@@ -67,19 +67,30 @@ GET 在读取事务内检查身份，并在释放快照后再次核对，以观�
 前台恢复、未知结果核对及冲突读取不自动保存，也不自动用新 revision 覆盖。
 只有真实身份变化、明确放弃或组件卸载才清除草稿；普通后台和断网不视为放弃修改。
 
-## 已有证据与待验范围
+## 本地组合证据与待验范围
 
 - 后端候选 `348827076efe76d636e45c3df94f947410355961`：30 项新会话测试加 17 项已有布局测试，实际 **47 通过、0 失败／错误／跳过**。覆盖真实 SQLite 锁等待、撤权、读取快照、提交前失效、成员／家庭隔离、CAS 和未来卡片保全。增强前基线记录中的 4 个失败保留。
 - UI 候选 `85a83a3c881b45d26be475f42186dee2e13bc99d`：`tests/test_expo_home_layout.mjs` 实际 **12 项通过**，包括前置核验失败时写回调执行零次、后置核验错误不能当确定拒绝、迟到响应失效、无自动重发，以及旧布局轮询不能覆盖新保存／其他身份不能安装布局。此前 11 项记录保留，不重复累加。
-- 定向类型检查通过；首轮两个泛型推断错误已修正，原件保留。此记录不等同于最终组合全项目类型检查或构建。
+- R1 组合在 `f6a974361ea4ee13e4aa83877184eb3ecdeed0f8` 实际完成全项目 `npm run typecheck` 和 `npm run build:web`，均退出 0；此前定向检查的两个泛型错误及修订原件保留。随后仅修订测试脚本，R2 再次实际构建；没有重绑 R1 元数据，也没有把类型检查记为再次运行。
 
-以上是不同命令的证据，不相加成一次完整验收。私有原件位于各自 worktree 的 `test-results/`，不纳入 Git：
+R2 受验源码为 `0438ee9fa82c1dc4f83958aa983682234e9f8202`，tree `c8aa76c2e66de7cafdf122b134021bd3428dbcb9`；构建原件位于私有 `expo-home-layout-build-20260917-r2/`。真实临时 Flask／SQLite／Edge **9 条流程全部通过**：键盘与四宽编辑、排序／隐藏／恢复默认及重载、成员／家庭与电视设置隔离、未来卡片保全、真实 409 草稿核对、已提交丢响应后只读恢复、请求前离线及前置身份失败、后台迟到响应与同身份恢复、真实成员切换后的迟到隔离。保存后释放旧布局响应也不能回退首页；未知结果核对不自动重发 PUT，脏草稿与未知结果均保留导航保护。
+
+执行前后 **555 个源码文件、23 个导出文件**散列一致；`temporaryFixtureRemoved=true`，零页面异常、零外网请求、零生产写入。320／390／1280／1920 宽度的编辑与保存后首页，加一张 320 键盘焦点图，共 **9 张截图均已实际查看**，所见区域无阻断。320 编辑页需内部滚动；截图仅代表当前可见区域，不覆盖全部内滚动内容。
+
+R1 保留 **5/9 流程后失败**的原件：测试精确匹配「添加待办」未包含实际可访问名称中的图标，随后临时 SQLite 句柄未关闭导致清理失败，`temporaryFixtureRemoved=false`。测试提交 `e614257d368c6787d7132988bbbbb2674b786f8f` 仅改为末尾名称匹配并断言唯一，以及显式提交／关闭合成数据库；R2 重新执行通过。R1 遗留目录后续清理被自动审批拒绝，原失败及清理记录未覆盖；不把 R1 与 R2 计数相加。
+
+以上是不同命令的证据，不相加成一次完整验收。私有原件位于 `family-dashboard-access/` 下的构建目录或 `worktrees/` 内各任务的 `test-results/`，不纳入 Git：
 
 | 原件 | SHA256 |
 | --- | --- |
 | `expo-home-layout-api/test-results/layout-session-r2.xml` | `6f5fe0228f00bd74e6c876faaa4d2bfbadcfd741ca7c0ded8d47016da3aca818` |
 | `expo-home-layout-ui/test-results/home-layout-node-r3.txt` | `08e29d1694f3843c273d35e9701cf08413d2d69b69bf12237e35b538a41c2239` |
 | `expo-home-layout-ui/test-results/home-layout-typecheck-r3.json` | `60ff59d1ce0d556ec578cc81d7ccf18d1bf64d46148974eaa7584e8ec880bad2` |
+| `expo-home-layout-build-20260917-r1/typecheck.log` | `5d94d62f27508ab5e111675b208ec464836bd1e95aee7ec9c4d2a67a7e265e89` |
+| `expo-home-layout-build-20260917-r2/build-evidence.json` | `3273bd1d628f33946f28dec5ea6d3de1074354ab4daf9ddc4e93c4f7346716a3` |
+| `expo-home-layout-tests/test-results/expo-home-layout-20260917T061514265342Z/result.json`（R1 失败） | `de60473a2397bc10f6eaf3a4fcdb197582df1b80969f82f86b64dc0bcbee9285` |
+| `expo-home-layout-tests/test-results/expo-home-layout-20260917T062646115230Z/result.json`（R2） | `bbf38788e0ad863e37604baf3a99979bb0c5d6ec43c38296d53ffe7f0a3fc34c` |
+| 同一 R2 目录的 `visual-review.json` | `0e4a1e4945118bb1833e10ac724f27b48d0acd1a132eccc248ddf40cda189a70` |
 
-仍需完成冻结组合的真实临时浏览器测试、四宽视觉检查及独立发布核验。本人实际设备、实体电视和原生安装包没有本轮验收证据；首页布局功能也不代表电视布局需要随之改变。
+仍需独立发布与生产读回核验。以上使用虚构家庭、真实本地成员／电视会话，不涉及真实云或 AI；本人实际设备、实体电视和原生安装包没有本轮验收证据，首页布局功能也不代表电视布局需要随之改变。
 后续合并与发布继续遵循 [Git 协作约定](GIT-WORKFLOW.md)，不能把候选提交写成已上线。
