@@ -1,8 +1,8 @@
 # 联合开发接手说明
 
-**当前开发候选：Expo 旅行资料与日程／清单密度，本地验收通过、尚未发布。** 资料 R4 固定源码 `e4499b88b89124f19fd6eb040435d133bdfffc7d`，9／9 流程通过、12 图由执行作者逐张视查；日程保留原 R2 身份的 5／5 与 18 图视查证据。会话、提示竞态、选中名称及两处测试等待／命名问题分次修正，失败原件不覆盖。R2 真实代码完整 typecheck 通过；最新 236 项／8 模块仍仅收集，不是服务器测试通过数。具体身份、等价冻结要求及边界见 [本轮候选](EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md)。本段不是上线记录，下方为实际已发布版本。
+**最新已发布：Expo 旅行资料与日程／清单优化，2026-09-17 18:13:25（北京时间）激活，18:13:50 正常 TLS 读回通过。** 安装 main `c7bffed2aa51d55b88197d9c84ecbe1b7bc27337`／source `03c150c0026ea66b28027424cef00be648e4ffa5`，同树 `da500d99918be70249f7ccdcaeb78318d605f8d8`。资料 R4 的 9 条流程／12 图与日程 R2 的 5 条流程／18 图分别验收，最终打包逐项证明运行字节一致；服务器 235 通过及唯一精确 Windows 跳过。613 包文件、114 运行文件及 75 HTTPS 资源读回通过，55→55 原数据、环境与 web 镜像保持。详细证据见 [本轮发布](EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md#expo-documents-release)。周期家务／采购的新界面正在独立功能分支开发，尚未合入本次运行包。
 
-**最新已发布：Expo 成员外观，2026-09-17 16:17:28（北京时间）激活，16:17:57 正常 TLS 读回通过。** 安装 main `e5b12c33b325359dc7629e19bf8a4d0b95f9b2ca`／source `c75676222406a6845e0c8527f43ef99d0143454d`，同树 `81e170870848042bee9f6a5ad7e984d7b70fbe1c`。`AppearancePanel`、provider 单调版本安装、Paper 主题／密度及 classic CAS／生命周期保护已接入「更多 → 外观设置」，电视设置独立。接口 64 项、最终 Node 40 项、完整 typecheck 与本地浏览器 11 流程／17 图分次通过；新镜像 Linux 226 通过加唯一精确 Windows 跳过，55→55 原数据及配置保持，595 包文件／114 运行文件／75 HTTPS 静态资源读回通过。完整身份与证据见 [本轮验收](EXPO-APPEARANCE-ACCEPTANCE.md#expo-appearance-release)，操作与接缝见 [成员外观](EXPO-APPEARANCE.md)。后续文档不改变运行包；真实本人公网流程和实体设备仍未验收。
+**此前已发布：Expo 成员外观，2026-09-17 16:17:28（北京时间）激活，16:17:57 正常 TLS 读回通过。** 安装 main `e5b12c33b325359dc7629e19bf8a4d0b95f9b2ca`／source `c75676222406a6845e0c8527f43ef99d0143454d`，同树 `81e170870848042bee9f6a5ad7e984d7b70fbe1c`。`AppearancePanel`、provider 单调版本安装、Paper 主题／密度及 classic CAS／生命周期保护已接入「更多 → 外观设置」，电视设置独立。接口 64 项、最终 Node 40 项、完整 typecheck 与本地浏览器 11 流程／17 图分次通过；新镜像 Linux 226 通过加唯一精确 Windows 跳过，55→55 原数据及配置保持，595 包文件／114 运行文件／75 HTTPS 静态资源读回通过。完整身份与证据见 [本轮验收](EXPO-APPEARANCE-ACCEPTANCE.md#expo-appearance-release)，操作与接缝见 [成员外观](EXPO-APPEARANCE.md)。后续文档不改变运行包；真实本人公网流程和实体设备仍未验收。
 
 **此前已发布：Expo 首页卡片布局，2026-09-17 14:56:51（北京时间）激活，14:57:27 正常 TLS 读回通过。** 安装 main `609a51afde8b6f8aa1f817fa5d2471a7a8b939ff`／source `cac7f78a1e4148b9c4d44164d3d6fbd74aa57234`，同树 `d22f6d4ee78dcc83501d4c478b97b4cfa506d1bc`。`HomeLayoutPanel`／`homeLayout.ts` 负责排序、显示及冲突／未知结果核对，provider 按完整身份和单调 revision 安装布局；`dashboard_preferences.py` 保持 CAS 与未来 key，并强化读后／事务内会话核验。复用原 API，无迁移。R2 本地 9 流程／9 图、Linux 188 通过及唯一精确 Windows 跳过分别核验；1 户两库备份、55 表与注册库保持，581 包文件／114 运行文件／75 HTTPS 资源读回通过。完整证据集中在 [本轮验收](EXPO-HOME-LAYOUT-ACCEPTANCE.md#expo-home-layout-release)，操作见 [首页布局](EXPO-HOME-LAYOUT.md)。后续文档不改变运行包；固定 [发布工具](EXPO-HOME-LAYOUT-RELEASE.md) 不可重放。
 
@@ -25,7 +25,7 @@
 
 `TripsScreen` 持有子面板位置与清洗后的地图筛选；`JourneyPlacesPanel`／`journeyPlaces.ts` 负责用户确认的目的地草稿，`JourneyCalendarPanel`／`calendarPublish.ts` 负责本人日历来源、预览、队列及冲突状态。地图和照片沿用 `MapScreen`／`TripPhotosScreen`，返回时重新读取授权记录；[组件契约](EXPO-TRIP-COORDINATION.md) 与 [专项测试设计](EXPO-TRIP-COORDINATION-TESTS.md) 可直接接手。
 
-后端只在既有 `journey_places.py` 写事务核对可选旅行 revision，并在 `calendar_publish.py` 校验当前会话；无新增表或路由。任务截止及地点日期不随普通旅行改期自动移动；复杂分段与资料仍保留经典入口。后续发布须按 [本轮 55→55 适配器](TRIP-COORDINATION-RELEASE.md) 绑定实际安装身份，不能重放固定历史算子。
+后端只在既有 `journey_places.py` 写事务核对可选旅行 revision，并在 `calendar_publish.py` 校验当前会话；无新增表或路由。任务截止及地点日期不随普通旅行改期自动移动；该 09:25 版本的复杂分段与资料当时保留经典入口；资料随后已迁入新版。后续发布须按 [本轮 55→55 适配器](TRIP-COORDINATION-RELEASE.md) 绑定实际安装身份，不能重放固定历史算子。
 
 实际 1 户两库停写完整备份、原 55 表和注册库在新 app 启动后保持，配置未变；随后正常 TLS 和新一次逐库在线备份通过，不代表跨库全局原子或 live 全组快照重检。Git 生成器仍有原 512 MiB 内存／256 MiB tmpfs 默认值，本次私有 r2 验证资源经独立复审调整为 768／512 MiB；后续重新生成需另核资源并审查，不能将旧绑定直接用于下一包。
 
@@ -159,7 +159,7 @@
 
 2026-09-16 16:33:32 发布 main `6f3d97855613e9b8ff78df5850652180e083ea76` 与 integration `cd857f525e5bf9127b1338e17a1a003e58f4916e` 的同树 `5581c3fb16852afaf0455bff991c8560dbcdbf19`。安装 manifest `1a5990e0b7e500ed44986b979e413a8ba26c92bd6cf4c7757be429bed17e51d8`，目录 `/opt/family-dashboard-releases/journey-places-20260916T083232752975Z`。精确 READY 经非作者核对后才执行，实际证据见 [VALIDATION](VALIDATION.md)。
 
-原43表、schema、序号及配置在停写至HTTP核对窗口保持；新地点表为空。实际生产1户、两库完整备份；双户迁移与恢复使用另建虚构数据，不能混算。当前44户内表+2平台表、112路由；旧43→43 SOURCE和43→44地点迁移均不能用于下一次更新。
+原43表、schema、序号及配置在停写至HTTP核对窗口保持；新地点表为空。实际生产1户、两库完整备份；双户迁移与恢复使用另建虚构数据，不能混算。该历史版本为44户内表+2平台表、112路由；旧43→43 SOURCE和43→44地点迁移均不能用于下一次更新。
 
 NVIDIA配置工具在独立分支通过审查，并经组合复审合入main `18f30dd`，只新增工具/测试/说明三文件，原295源文件与74运行文件不变。同日 16:58 已用审查后的工具只新增三项 AI 配置并以原镜像有序重建服务；旧 `.env` 原样 0600 备份、其他配置字节和数据卷保持。真实模型草稿 API 200、`mode=model`，只使用临时虚构家庭；未 apply。Google Photos OAuth/协议、图片净化/加密仍在独立已审候选；精选/逐台电视许可、库存和完整成员关系尚未接线。电视先按浏览器实现，型号稍后补充。
 
@@ -283,7 +283,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | `codex/root-journey-docs` | root / root-journey-docs | 旅行资料集成阶段的 README、接口索引、数据与部署文档；已独立审查并合入 |
 | `codex/docs-git-handoff`、`codex/git-workflow-guide` | 文档集成人与文档 agent，各自独立目录 | 此前 README、Git 规则与指导；已通过独立审查逐层合入 main，保留历史分支 |
 
-已发布资料默认本人私有、明确共享后伙伴只读，TV 不可读；PDF 仅下载、图片净化，删除旅行保留上传者资料。当前 **106 路由、43 户内表及 2 平台表**，完整契约见 [旅行资料](JOURNEY-DOCUMENTS.md)。
+已发布资料默认本人私有、明确共享后伙伴只读，TV 不可读；PDF 仅下载、图片净化，删除旅行保留上传者资料。该资料历史版本为 **106 路由、43 户内表及 2 平台表**，完整契约见 [旅行资料](JOURNEY-DOCUMENTS.md)。
 
 各模块分支保留独立职责，**单独分支不一定能启动完整新功能**。UI、导出和接线依赖新后端；完整测试在审查后的集成提交上执行，不通过复制其他工作树文件拼装。浏览器验证使用固定提交的 detached worktree，作者仍只在自己的功能分支修复；修复再次审查和 Git 合并后才验证新提交。
 
@@ -335,7 +335,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | 本人数据副本 | `data_portability.py`、`static/data-portability.js` | [导出契约](PORTABILITY.md)；仅本人私密与显式勾选的共同记录。排除令牌、会话/设备认证表和暂存预览；不是数据库恢复包 |
 | 部署与备份 | `Dockerfile`、`compose.yaml`、`deploy/` | [部署指导](DEPLOYMENT.md)、[运维说明](OPERATIONS.md)；源码白名单、现有配置、全部家庭、停止写入、成组备份及相配恢复 |
 
-路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)：当前 152 个方法／路径模板，新增三个持仓 GET；[机器索引](contract-inventory.json) 由实际应用的隔离新库生成。当前 55 张户内表与 2 张平台表，新增手工持仓操作回执表；完整字段见 [持仓 API](INVESTMENTS-API.md)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
+路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)：当前源码 156 个方法／路径模板，包含本轮尚未发布的例行回执 GET；[机器索引](contract-inventory.json) 由实际应用的隔离新库生成。当前 55 张户内表与 2 张平台表，新增手工持仓操作回执表；完整字段见 [持仓 API](INVESTMENTS-API.md)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
 
 ## 例行计划公共接缝
 
@@ -343,7 +343,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 
 `data_portability.py` 只在 `includeShared=true` 时加入 `shared.routines`。`home_assistant.py` 调用只读 `brief(con)`；`static/home-assistant.js` 按存在的数据显示例行计划待处理组。`static/product-shell.js` 提供三个入口并在共享状态刷新时通知例行模块；通知不发送请求、不重置草稿。新模块在 `product-shell.js` 之前加载。公开接口为 `HouseholdRoutines.open({planId?})`、`refresh()` 和 `notifyStateChanged()`。返回桥支持原待办／采购编辑器与 TaskPublish 初始选择页；保留未保存字段、图片和写中保护，显式返回重新核对原计划，不接管助理外层的关闭返回处理。Docker COPY 和 `deploy/prepare_release.py` 白名单都包含新后端。
 
-当前完整结构为 144 路由／53 户内表／2 平台表；资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
+144 路由／53 户内表／2 平台表也是此前版本；当前源码为 156 路由／55 户内表／2 平台表，其中本轮例行回执 GET 尚未发布。资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
 
 ## 已开发与待真实验证
 

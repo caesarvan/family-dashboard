@@ -1,6 +1,6 @@
 # Expo 旅行资料发布候选：55 → 55
 
-本适配器尚未用于发布。它只从已核对的九份私有原件生成未绑定的本地审查稿，不连接服务器、不运行 Docker，不执行打包、绑定或生产阶段。资料接口见 [旅行资料](JOURNEY-DOCUMENTS.md)，客户端见 [Expo 资料模型](EXPO-JOURNEY-DOCUMENTS-API.md) 和 [资料面板](EXPO-JOURNEY-DOCUMENTS.md)。
+本适配器已用于 2026-09-17 18:13:25（北京时间）的实际发布，18:13:50 正常 TLS 读回通过。它从已核对的九份私有原件生成未绑定审查稿；生成命令本身不连接服务器，打包、绑定和各服务器阶段由集成人在独立审查后顺序执行。实际包与验证边界见 [发布验收](EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md#expo-documents-release)。已完成的 `expo-documents-tools-20260917-r1` 不得重放。
 
 ## 固定输入与保护范围
 
