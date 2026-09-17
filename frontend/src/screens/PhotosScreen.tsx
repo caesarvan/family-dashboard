@@ -133,12 +133,16 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   async function readImport(id: string, reset = false) {
     if (!isMediaId(id)) return;
     const ticket = ++serial.current.imports;
-    const data = await checked(async () => validateImport(await request<ImportDetail>(`/media/imports/${id}`)), () => ticket === serial.current.imports);
+    const result = await checked(async () => validateImport(await request<ImportDetail>(`/media/imports/${id}`)), () => ticket === serial.current.imports);
+    const ended = terminalImport(result.import.state);
+    const data = ended ? { ...result, items: [] } : result;
     const changed = importRef.current?.import.id !== id;
     importRef.current = data; importReadAt.current = Date.now(); setImportDetail(data);
-    if (changed || reset) { setSelected(data.items.map(item => item.id)); setPersist(false); setConfirmReceipt(null); setConfirmReview(false); }
+    if (changed || reset) { setSelected(data.items.map(item => item.id)); setPersist(false);
+      if (!ended || data.import.state === 'confirmed') { setConfirmReceipt(null); setConfirmReview(false); } }
     else setSelected(previous => previous.filter(id => data.items.some(item => item.id === id)));
-    if (data.import.state === 'confirmed') { setConfirmReceipt(null); setConfirmReview(false); setPersist(false); }
+    if (ended) { setSelected([]); setPersist(false);
+      if (data.import.state === 'confirmed') { setConfirmReceipt(null); setConfirmReview(false); } }
   }
   async function readEditor(id: string, keepDraft = false, resuming = false) {
     const ticket = ++serial.current.detail;
@@ -197,12 +201,32 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
     active.current = true; const ticket = ++epoch.current; setLoading(true); setError('');
     try {
       await Promise.all([gallery(), support()]);
-      if (editorRef.current) await readEditor(editorRef.current.item.id, true, true);
+      const importId = importRef.current?.import.id;
+      if (importId) {
+        try { await readImport(importId); }
+        catch (caught) {
+          if (!current() || ticket !== epoch.current) return;
+          if (!(caught instanceof ApiError) || ![404, 410].includes(caught.status)) throw caught;
+          if (importRef.current?.import.id === importId) {
+            ++serial.current.imports; importRef.current = null; importReadAt.current = 0; setImportDetail(null);
+            setSelected([]); setPersist(false); setConfirmReview(true);
+            // Keep uncertain creation/confirmation IDs without guessing a receipt.
+            setError('本次选片记录已移除或不再可见。');
+          }
+        }
+      }
+      if (editorRef.current) {
+        try { await readEditor(editorRef.current.item.id, true, true); }
+        catch (caught) {
+          if (!current() || ticket !== epoch.current) return;
+          if (!(caught instanceof ApiError) || ![404, 410].includes(caught.status)) throw caught;
+          editorRef.current = null; setEditor(null); setError('照片已移除或不再可见。');
+        }
+      }
       if (current() && ticket === epoch.current) setFocused(true);
     } catch (caught) {
       if (ticket !== epoch.current || !current()) return;
-      if (caught instanceof ApiError && [404, 410].includes(caught.status)) { editorRef.current = null; setEditor(null); setError('记录已移除或不再可见。'); setFocused(true); }
-      else { failure(caught); active.current = false; }
+      failure(caught); active.current = false;
     } finally { if (ticket === epoch.current && alive.current) setLoading(false); }
   }
   const lifecycle = useRef({ conceal, resume }); lifecycle.current = { conceal, resume };
@@ -334,6 +358,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
     if (!openPhotosProvider(data.url, 'authorize')) throw new Error('授权链接无法安全打开，请刷新核对。');
   });
   function create() {
+    if (confirmReceipt) { setError('请先核对原选片保存请求，再开始新的选择。'); return; }
     let receipt = createReceipt;
     if (!receipt) {
       const account = accounts.find(a => a.id === accountId);
@@ -347,6 +372,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   }
   function saveSelection() {
     if (!importDetail || confirmReview || !persist) return;
+    if (confirmReceipt && confirmReceipt.path !== `/media/imports/${importDetail.import.id}/confirm`) { setError('请先核对原选片保存请求。'); return; }
     const receipt = confirmReceipt || { path: `/media/imports/${importDetail.import.id}/confirm`, body: confirmPhotos(importDetail.import, selected, newPhotoRequestId()) };
     setConfirmReceipt(receipt);
     void write(receipt.path, 'POST', receipt.body, async () => { await readImport(importDetail.import.id); await gallery(); await support(); setNotice('保存结果已更新，仅留下本次明确勾选的照片。'); }, 'confirm');
@@ -401,7 +427,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
         <View style={styles.actions}><Text>{account?.capabilities?.photos && !account.needsReauth ? '照片来源已连接' : '需要连接或更新照片授权'}</Text><Button disabled={busy || !!createReceipt} onPress={connect}>{account?.capabilities?.photos && !account.needsReauth ? '更新授权' : '连接 Google Photos'}</Button></View>
         <Text variant="bodySmall">Google 保留原图；在账户设置中解绑照片来源会删除这里对应的展示副本。</Text>
         {checkbox('允许临时处理本次选择，供我预览确认；未保存的内容最迟 24 小时后清理。', temporary, () => setTemporary(v => !v), busy || !!createReceipt)}
-        <Button mode="contained" disabled={busy || (!createReceipt && (!temporary || activeImport || !account?.capabilities?.photos || account.needsReauth))} onPress={() => { try { create(); } catch (caught) { failure(caught); } }}>{createReceipt ? '核对 / 重试原选择请求' : '开始选择照片'}</Button>
+        <Button mode="contained" disabled={busy || (!createReceipt && (!temporary || activeImport || !account?.capabilities?.photos || account.needsReauth)) || !!confirmReceipt} onPress={() => { try { create(); } catch (caught) { failure(caught); } }}>{createReceipt ? '核对 / 重试原选择请求' : '开始选择照片'}</Button>
         {!!createReceipt && <Text>上一请求结果未确认；此按钮沿用原请求标识，不会自动重复创建。</Text>}
         {activeImport && !row && <Text>已有进行中的选择，请从下方继续。</Text>}
         {imports.length > 0 && <List.Accordion title="最近的选择" description="继续选片或查看保存结果">
