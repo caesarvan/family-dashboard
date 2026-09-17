@@ -276,7 +276,7 @@ family-dashboard/
 
 ## 接口与数据契约
 
-当前接口索引为 **149 个 Flask 方法／路径模板**，包含三个 Expo／classic 托管 GET 与新增的本人导入回执 GET；另有 WSGI `GET /space/<slug>`，HEAD/OPTIONS 不重复计数。见 [路由索引](docs/PLATFORM-ROUTES.md)和[托管契约](docs/EXPO-WEB.md)；机器结构由实际应用生成，字段与权限仍见各模块契约。
+当前源码接口索引为 **156 个 Flask 方法／路径模板**，含本轮例行操作回执 GET；其中本轮增量尚未部署，线上仍为 155 个。另有 WSGI `GET /space/<slug>`，HEAD/OPTIONS 不重复计数。见 [路由索引](docs/PLATFORM-ROUTES.md)和[托管契约](docs/EXPO-WEB.md)；机器结构由实际应用生成，字段与权限仍见各模块契约。
 
 | 接口族 | 内容与权限 |
 |---|---|
@@ -407,7 +407,7 @@ node --test tests/test_calendar_views.js
 | [旅行资料与预订凭证](docs/JOURNEY-DOCUMENTS.md) | 文件格式、五个接口、私有与共享范围、幂等重放、删除旅行保留资料及迁移 |
 | [旅行资料发布控制器](docs/JOURNEY-DOCUMENTS-RELEASE.md) | 一次性 42→43、候选与镜像绑定、READY 和原始证据合同、失败保全与运维边界 |
 | [项目规则](AGENTS.md)／[Git 分支与审查流程](docs/GIT-WORKFLOW.md) | 独立 worktree、任务分支、审查记录、集成与主分支合并；Git bundle 联合开发 |
-| [家庭例行计划](docs/ROUTINES.md) | 周期模板、未来日期、预览确认、下一期生成、共享导出与成员权限 |
+| [家庭例行计划](docs/ROUTINES.md)／[新版界面](docs/EXPO-ROUTINES.md)／[验收](docs/EXPO-ROUTINES-ACCEPTANCE.md) | 周期模板、未来日期、预览确认、下一期生成、共享导出与成员权限；新版候选进度见验收页 |
 | [采购实付核对](docs/SHOPPING-SETTLEMENT.md) | 本人来源、CNY 整项替换、独立完成状态、预览／确认／撤销、旅行保护与私有导出 |
 | [同步状态与问题处理](docs/SYNC-HEALTH.md) | 全来源新鲜度、本人问题详情、只读接口、失败快照和原模块处理入口 |
 | [电视布局与外观](docs/TV-DISPLAY.md) | 按屏幕配置卡片、主题、密度、预览与版本冲突；只读与家庭隔离边界 |
