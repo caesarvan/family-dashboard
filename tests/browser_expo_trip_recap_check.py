@@ -400,7 +400,7 @@ class Run(BaseRun):
             self.open_panel(page, journey); self.open_photo(page)
             page.wait_for_function("getComputedStyle(document.documentElement).colorScheme === 'dark'")
             for width in WIDTHS:
-                self.image_loaded(page); self.capture(page, 'recap-photo-dark', width, heading(page, '照片详情'))
+                self.image_loaded(page); self.capture(page, 'recap-photo-dark', width, page.get_by_test_id('recap-photo-image'))
             button(page, '关闭照片详情').focus(); expect(button(page, '关闭照片详情')).to_be_focused()
             page.keyboard.press('Enter'); self.loaded(page); expect(page.get_by_test_id('recap-photo-detail')).to_have_count(0)
             page.keyboard.press('Tab'); focused = page.evaluate("() => ({role:document.activeElement?.getAttribute('role'),label:document.activeElement?.getAttribute('aria-label')})")
