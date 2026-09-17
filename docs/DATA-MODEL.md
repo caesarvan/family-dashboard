@@ -1,6 +1,25 @@
 # 数据模型、同步一致性与隐私边界
 
-> 现行结构为 **55 张户内表与 2 张平台注册表**。持仓回执表已于 2026-09-17 06:15:34 随持仓版发布；后续界面更新保持 55→55。实际安装身份见 [HANDOFF](HANDOFF.md)，完整源码结构见 [存储索引](PLATFORM-ROUTES.md)。下面较早版本的表数仅描述各自历史状态。
+> 当前线上为 **55 张户内表与 2 张平台注册表**；本人手动账户候选为 **58＋2，尚未发布**。持仓回执表已于 2026-09-17 06:15:34 随持仓版发布，此后的已发布界面更新保持 55→55。实际安装身份见 [HANDOFF](HANDOFF.md)，既有存储索引见 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)，本次候选三表如下。下面较早版本的表数仅描述各自历史状态。
+
+<a id="finance-accounts58"></a>
+## 本人手动账户与日期估值（候选 55→58）
+
+唯一 DDL 为 [finance_accounts.py](../finance_accounts.py) 的 `FINANCE_ACCOUNTS_SCHEMA_SQL`；`init_schema(con)` 逐条建表且由调用方控制事务。每个家庭使用本户数据库，新增三表不修改平台注册库，也不回填旧来源报告或持仓。
+
+| 表 | 键与关系 | 内容 |
+|---|---|---|
+| `finance_accounts` | id 主键，owner 外键指向本户 users，另有 UNIQUE(owner,id) | name／institution／kind／currency／note、archived、revision、created_at／updated_at；kind 为 asset 或 liability，币种与 kind 创建后固定 |
+| `finance_account_valuations` | 主键 (owner,account_id,as_of)，复合外键 (owner,account_id) 指向同一 owner 的账户 | amount_cents 为 null 或非负整数分，updated_at；同日明确纠正覆盖该日期记录，仍递增账户 revision |
+| `finance_account_operations` | 主键 (owner,request_id)，owner 外键指向 users；account_id 是操作目标标识，不另设账户外键 | payload_hash、operation、account_id、历史 result JSON、completed_at；与业务写入和 audit 同事务提交 |
+
+没有物理删除；归档与恢复同样受账户 revision 和原 requestId 约束。回执是提交当时事实，旧创建回放不撤销后来归档或修改。估值没有隐含实时价格：查询选择 `as_of <= asOf` 的最近记录，最近 null 不退回更早已知金额；没有符合日期的记录则返回 valuation=null。名称／机构／归档状态均为当前元数据，不是历史状态重建。
+
+账户始终 private，不加入 shared state、电视或伙伴导出。`data_portability.py` 已在候选接入 `personal.financeAccounts = {accounts,valuations,operations}`：包含本人归档账户和全部日期估值，operations 仅保留 operation／accountId／completedAt；不包含 requestId、payload_hash、原请求、历史 result 或认证上下文。账户、估值及操作摘要均按 owner 关联；includeShared 不扩展此范围，coverage 标记 `manual_accounts_and_dated_valuations`。这是个人业务副本，不是完整回执或数据库恢复备份。
+
+各币种仅计算所选手动账户的已知资产、已知负债及差额，汇总为十进制整数分字符串；未知与缺值另计，不换汇、不叠加 finance_baselines／hub_investments／公共荷包。相同金融资产可能由本人另在来源或持仓记录，系统没有自动识别同一资产或合并去重，不能相加宣称完整净资产，也不把历史估值差额称为投资收益。
+
+[55→58 检查器](../deploy/check_finance_accounts_migration.py) 与[迁移说明](FINANCE-ACCOUNTS-MIGRATION.md) 已覆盖临时双家庭原 55 表全部行／schema／序列、注册库保全、三新表为空、58 表已填数据恢复及完整 55 表回滚核验；正式发布与生产迁移仍待执行，不得重放现有 55→55 发布流程。字段、容量和恢复语义见 [账户 API](FINANCE-ACCOUNTS-API.md)，导出接线见 [账户数据副本](FINANCE-ACCOUNTS-PORTABILITY.md)。
 
 <a id="investment-operations55"></a>
 ## Expo 持仓：手工操作回执
