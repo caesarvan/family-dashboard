@@ -192,7 +192,9 @@ function Workspace(props: Props & { identityKey: string }) {
   }
   function acknowledge() {
     if (!current() || working.current || !live.current.unknown || !live.current.checked) return;
-    install({ unknown: null, checked: false, blocked: live.current.view === 'settings' && !!live.current.review });
+    const paired = live.current.unknown.kind === 'pair';
+    install({ unknown: null, checked: false, blocked: live.current.view === 'settings' && !!live.current.review,
+      ...(paired ? { view: 'list' as const, pair: freshModel(props.user.id).pair } : {}) });
     setError(''); setNotice('已完成本次核对。任何后续修改仍需你明确操作。');
   }
   function chooseReview(keep: boolean) {
@@ -225,7 +227,15 @@ function Workspace(props: Props & { identityKey: string }) {
     {!!model.unknown && <View testID="device-operation-unknown"><SectionCard title="先核对这次操作"><View style={styles.stack}>
       <Text>请求可能已经执行。请读取当前状态，再决定是否继续；不会自动重发配对、保存或翻页。</Text>
       {button('核对操作结果', recover, busy)}
-      {model.checked && button('我已核对当前状态', acknowledge, busy, 'contained')}
+      {model.checked && model.unknown.kind === 'pair' && <View testID="pair-current-devices" style={styles.stack}>
+        <Text variant="titleSmall" accessibilityRole="header">当前已连接电视</Text>
+        {model.devices.length ? model.devices.map(device => <View key={device.id} testID={'pair-current-device-' + device.id} style={styles.stack}>
+          <Text variant="titleMedium">{device.name}</Text>
+          <Text>{focusName(device.focus)} · {views.find(item => item.id === device.calendarView)?.name}</Text>
+        </View>) : <Text>当前没有有效设备。上次请求仍可能正在处理，请同时核对电视画面。</Text>}
+        <Text>这份列表不能证明某次配对是否执行。结束核对会清除本次配对草稿；再次连接需要重新输入电视上的配对码。</Text>
+      </View>}
+      {model.checked && button(model.unknown.kind === 'pair' ? '核对完成，返回设备列表' : '我已核对当前状态', acknowledge, busy, 'contained')}
     </View></SectionCard></View>}
     {model.view === 'list' && <View style={styles.stack}>
       {button('刷新设备列表', () => void readJob(ticket => reload(ticket)))}
