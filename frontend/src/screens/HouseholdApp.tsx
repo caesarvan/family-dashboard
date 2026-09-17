@@ -1,8 +1,8 @@
 import { openLocal } from '../lib/navigation';
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { View } from 'react-native';
 import { ActivityIndicator, Button, Snackbar, Text } from 'react-native-paper';
-import { useLocalSearchParams, useNavigationContainerRef, useRouter } from 'expo-router';
+import { useLocalSearchParams, useNavigation, useNavigationContainerRef, useRouter } from 'expo-router';
 import { useHousehold } from '../lib/household';
 import { Entity, ItemKind, RouteName, ScreenProps } from '../lib/types';
 import AppShell from '../ui/AppShell';
@@ -27,6 +27,7 @@ const legacyRoutes=new Set(['home','calendar','tasks','shopping','trips','map','
 export default function HouseholdApp({screen='home'}:{screen?:string}) {
   const route=Object.hasOwn(titles,screen)?screen as RouteName:'home', router=useRouter();
   const navigation=useNavigationContainerRef();
+  const pageNavigation=useNavigation();
   const params=useLocalSearchParams<{ request?: string; item?: string; auth?: string; reason?: string }>();
   const [authResult,setAuthResult]=useState<SyncAuthResult|undefined>(()=>route==='connections'?readSyncAuthResult(params.auth,params.reason):undefined);
   useEffect(()=>{
@@ -51,21 +52,37 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
   const inventoryRequest=route==='inventory'&&Number.isSafeInteger(requestKey)&&requestKey>0
     ?{key:requestKey,id:typeof params.item==='string'&&/^[a-f0-9]{24}$/.test(params.item)?params.item:undefined}:undefined;
   const actor=household.identityKey;
+  const pendingNavigation=useRef({actor,locked:false});
+  const activeActor=useRef(actor);activeActor.current=actor;
+  const onReschedulePending=(locked:boolean)=>{if(activeActor.current===actor)pendingNavigation.current={actor,locked};};
+  const holdNavigation=()=>{
+    if(pendingNavigation.current.actor!==actor||!pendingNavigation.current.locked)return false;
+    setNotice('请先核对这次改期的保存结果，再离开旅行页面。');return true;
+  };
+  useEffect(()=>{
+    const isPending=()=>pendingNavigation.current.actor===activeActor.current&&pendingNavigation.current.locked;
+    const unsubscribe=pageNavigation.addListener('beforeRemove',event=>{if(isPending()){event.preventDefault();setNotice('请先核对这次改期的保存结果，再返回。');}});
+    const beforeUnload=(event:BeforeUnloadEvent)=>{if(isPending()){event.preventDefault();event.returnValue='';}};
+    if(typeof window!=='undefined')window.addEventListener('beforeunload',beforeUnload);
+    return()=>{unsubscribe();if(typeof window!=='undefined')window.removeEventListener('beforeunload',beforeUnload);};
+  },[pageNavigation,setNotice]);
   useEffect(()=>{setEditor(null);setPendingId('');setNotice('');},[actor]);
   useEffect(()=>{if(user?.role==='tv')void openLocal('/tv');},[user?.role]);
-  const onLegacy=(fragment:string)=>{if(legacyRoutes.has(fragment))void openLocal('/classic#'+fragment);};
-  const onNavigate=(next:RouteName)=>router.push((next==='home'?'/':'/'+next) as never);
+  const onLegacy=(fragment:string)=>{if(!holdNavigation()&&legacyRoutes.has(fragment))void openLocal('/classic#'+fragment);};
+  const onNavigate=(next:RouteName)=>{if(!holdNavigation())router.push((next==='home'?'/':'/'+next) as never);};
   const handle=(action:()=>Promise<unknown>)=>{void action().catch(e=>setNotice(e instanceof Error?e.message:'暂时无法完成操作'));};
   if(loading)return <View style={{flex:1,alignItems:'center',justifyContent:'center',gap:16}}><ActivityIndicator/><Text>正在打开家庭看板…</Text></View>;
   if(!user)return <LoginScreen authError={authResult?.status==='error'?syncAuthMessage(authResult):''}/>;
   if(user.role==='tv')return <View><Text>正在打开电视看板…</Text><Button onPress={()=>openLocal('/tv')}>打开电视</Button></View>;
   if(!state)return <View style={{padding:32,gap:16}}><Text>{error||'正在读取家庭数据…'}</Text><Button onPress={()=>void refresh()}>重新加载</Button><Button onPress={()=>handle(household.logout)}>退出登录</Button></View>;
-  const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:mode=>household.savePreferences({homeView:mode}),onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,
+  const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:mode=>household.savePreferences({homeView:mode}),onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,
     onInventory:(id)=>{
+      if(holdNavigation())return;
       if(id!==undefined&&!/^[a-f0-9]{24}$/.test(id)){setNotice('物品链接已失效，请重新搜索');return;}
       router.push({pathname:'/inventory',params:{request:String(Date.now()),...(id?{item:id}:{})}} as never);
     },
     onEdit:(kind,item)=>{
+      if(holdNavigation())return;
       if(kind==='trips'){router.push({pathname:'/trips',params:{request:String(Date.now()),...(item?.id?{item:item.id}:{})}} as never);return;}
       if(item?.sync){setNotice('同步内容请在原应用修改');return;}
       if(kind==='events'&&(item as any)?.travelTiming){onNavigate('trips');return;}
@@ -80,7 +97,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
     }};
   return <><AppShell route={route} title={titles[route]} name={user.name} householdName={state.household?.name||'我们的家'} onNavigate={onNavigate} onCreate={kind=>props.onEdit(kind)} onRefresh={()=>void refresh()} onLogout={()=>handle(household.logout)} refreshing={household.refreshing} offline={!online} onLegacy={onLegacy}>
     <View key={actor}>
-      {route==='home'?<HomeScreen {...props}/>:route==='calendar'?<CalendarScreen {...props}/>:route==='tasks'||route==='shopping'?<ListScreen key={route} kind={route} {...props}/>:route==='finance'?<FinanceScreen {...props}/>:route==='investments'?<InvestmentsScreen {...props}/>:route==='trips'?<TripsScreen {...props}/>:route==='photos'?<PhotosScreen {...props}/>:route==='assistant'?<AssistantScreen {...props}/>:route==='inventory'?<InventoryScreen {...props}/>:route==='map'?<MapWorkspace {...props}/>:route==='connections'?<AccountsScreen {...props} authResult={authResult}/>:<MoreScreen {...props}/>}
+      {route==='home'?<HomeScreen {...props}/>:route==='calendar'?<CalendarScreen {...props}/>:route==='tasks'||route==='shopping'?<ListScreen key={route} kind={route} {...props}/>:route==='finance'?<FinanceScreen {...props}/>:route==='investments'?<InvestmentsScreen {...props}/>:route==='trips'?<TripsScreen {...props} onReschedulePending={onReschedulePending}/>:route==='photos'?<PhotosScreen {...props}/>:route==='assistant'?<AssistantScreen {...props}/>:route==='inventory'?<InventoryScreen {...props}/>:route==='map'?<MapWorkspace {...props}/>:route==='connections'?<AccountsScreen {...props} authResult={authResult}/>:<MoreScreen {...props}/>}
     </View>
   </AppShell>{editor&&<ItemEditor key={actor+':'+editor.key} kind={editor.kind} item={editor.item} onDismiss={()=>setEditor(current=>current?.key===editor.key?null:current)}/>}<Snackbar visible={!!notice} onDismiss={()=>setNotice('')} duration={5000} action={{label:'知道了',onPress:()=>setNotice('')}}>{notice}</Snackbar></>;
 }

@@ -16,6 +16,7 @@ export type TaskSource = { id: string; name: string; provider: string; writable?
 export type FamilyState = { revision: number; household?: { id: string; name: string; slug: string }; people: Person[]; events: CalendarEvent[]; tasks: ListItem[]; shopping: ListItem[]; trips: Trip[]; finance: SharedFinance; sync?: { taskSources?: TaskSource[]; primaryTaskSource?: { id: string }; health?: { state?: string } } };
 export type Entity = CalendarEvent | ListItem | Trip;
 export type ScreenProps = {
+  onReschedulePending?: (pending: boolean) => void;
   state: FamilyState; user: Member; focus: string; mode: CalendarMode; layout: HomeLayout;
   setFocus: (id: string) => void; setMode: (mode: CalendarMode) => Promise<void>;
   onNavigate: (route: RouteName) => void; onEdit: (kind: ItemKind, item?: Entity) => void;
