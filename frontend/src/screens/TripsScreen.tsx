@@ -154,7 +154,7 @@ export default function TripsScreen(props:Props) {
   if(panel?.kind==='calendar')return <JourneyCalendarPanel journeyId={panel.journeyId} onBack={()=>backToTrip(panel.tripId)} onConnections={()=>{if(canNavigate())props.onNavigate('connections');}}/>;
   if(panel?.kind==='places')return <JourneyPlacesPanel journeyId={panel.journeyId} onBack={()=>backToTrip(panel.tripId)} onOpenMap={view=>{if(canNavigate())setPanel({kind:'map',view:safeMapView(view),tripId:panel.tripId});}}/>;
   if(panel?.kind==='photos')return <TripPhotosScreen {...props} journeyId={panel.journeyId} onBack={()=>{if(canNavigate())setPanel({kind:'map',view:panel.view,tripId:panel.tripId});}}/>;
-  if(panel?.kind==='map')return <View style={styles.page}><Button icon="arrow-left" onPress={()=>backToTrip(panel.tripId)}>返回旅行</Button><MapScreen {...props} initialView={panel.view}
+  if(panel?.kind==='map')return <View style={styles.page}><MapScreen {...props} initialView={panel.view} onBack={()=>backToTrip(panel.tripId)}
     onOpenTrip={(journey,view)=>{if(!canNavigate()||!isPlaceId(journey.id)||!isPlaceId(journey.tripId))return;setMapReturn(safeMapView(view));backToTrip(journey.tripId);}}
     onOpenPhotos={(journey,view)=>{if(canNavigate()&&isPlaceId(journey.id)&&isPlaceId(journey.tripId))setPanel({kind:'photos',journeyId:journey.id,tripId:panel.tripId,view:safeMapView(view)});}}/></View>;
   const active=detail?.trip||legacy;
