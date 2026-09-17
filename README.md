@@ -1,6 +1,8 @@
 # 家庭中枢 · Family Dashboard
 
-**最新上线：照片旅行建议（2026-09-18 02:35，北京时间）。** 入口为「相册 → 我的照片 → 照片详情 → 查看旅行建议」；核对日期并明确选择后才关联，不自动共享或授予电视许可。[使用与恢复](docs/EXPO-PHOTO-SUGGESTIONS.md) · [集中验收证据](docs/EXPO-PHOTO-SUGGESTIONS-ACCEPTANCE.md)。
+**最新上线：旅行 JSON 导入（2026-09-18 04:42，北京时间）。** 从「旅行 → 导入旅行」选择文件或粘贴 JSON，先预览再明确创建；保存结果不明时可用原操作编号核对。R2 本地 12 组流程／12 图、Linux 287 通过及 1 项精确 Windows 跳过分别通过；58→58 原数据保持，04:43:27 HTTPS 读回完成。[使用与恢复](docs/EXPO-TRIP-IMPORT.md) · [集中验收记录](docs/EXPO-TRIP-IMPORT-ACCEPTANCE.md#expo-trip-import-release)。本人真实资料、云写入及实体电视仍未在本轮验收。
+
+**此前上线：照片旅行建议（2026-09-18 02:35，北京时间）。** 入口为「相册 → 我的照片 → 照片详情 → 查看旅行建议」；核对日期并明确选择后才关联，不自动共享或授予电视许可。[使用与恢复](docs/EXPO-PHOTO-SUGGESTIONS.md) · [集中验收证据](docs/EXPO-PHOTO-SUGGESTIONS-ACCEPTANCE.md)。
 
 **此前上线：单趟旅行回顾（2026-09-18 01:14，北京时间）。** 已完成旅行计划的旅行，可在详情打开「旅行回顾」，切换「行程安排」「关联地点」「旅行照片」，只读取当前有权查看的内容。返回时重新读取原旅行；不会自动共享、推断路线或增加电视许可。本地十条流程／十二图及服务器 180 项通过、1 项精确 Windows 跳过分别验证，58→58 原数据保持，01:15:15 正常 TLS 读回完成。使用见 [旅行回顾](docs/EXPO-TRIP-RECAP.md)，完整身份与证据见 [发布验收](docs/EXPO-TRIP-RECAP-ACCEPTANCE.md#expo-trip-recap-release)。独立审计通过；本人真实资料、云与实体电视仍未验收。
 

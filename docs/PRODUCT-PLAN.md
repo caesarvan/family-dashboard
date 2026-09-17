@@ -2,7 +2,7 @@
 
 A–D 的短使用路径、分段证据与未验步骤集中在 [交付场景索引](ACCEPTANCE-SCENARIOS.md)。该索引保留下方历史发布记录，不把分模块验证当作完整目标通过。
 
-Expo 照片旅行建议已于北京时间 2026-09-18 02:35:52 上线，发布与独立读回通过。本人照片详情可查看建议并明确确认关联，未知时间或无匹配保留手动关联；不自动共享或授予电视许可。R2 验证及 R1 失败历史见 [照片建议发布验收](EXPO-PHOTO-SUGGESTIONS-ACCEPTANCE.md#expo-photo-suggestions-release)。本人真实照片完整链及实体电视仍未验收；旅行 JSON 文件导入暂用经典入口，Expo 导入尚待实现。
+Expo 照片旅行建议已于北京时间 2026-09-18 02:35:52 上线，发布与独立读回通过。本人照片详情可查看建议并明确确认关联，未知时间或无匹配保留手动关联；不自动共享或授予电视许可。R2 验证及 R1 失败历史见 [照片建议发布验收](EXPO-PHOTO-SUGGESTIONS-ACCEPTANCE.md#expo-photo-suggestions-release)。本人真实照片完整链及实体电视仍未验收。旅行 JSON 文件导入随后已于 2026-09-18 04:42:28 迁入 Expo「旅行 → 导入旅行」，本地 12 组及 Linux 287 通过／1 跳过分别完成，见[导入发布验收](EXPO-TRIP-IMPORT-ACCEPTANCE.md#expo-trip-import-release)。真实云同步与完整场景 A 仍需单独验收。
 
 单趟旅行只读回顾已于 2026-09-18 01:14 上线：从已完成旅行计划的详情查看当前行程、授权地点及照片；不推断路线或自动到访，不新增共享与电视许可。R2 本地十组／十二图和 Linux 180 通过、1 个精确 Windows 跳过分别记录，58→58 保全及 TLS 读回完成，独立审计通过。证据见 [回顾发布验收](EXPO-TRIP-RECAP-ACCEPTANCE.md#expo-trip-recap-release)。完整场景 C、自动精选、真实本人新流程与实体电视仍待验收。
 
