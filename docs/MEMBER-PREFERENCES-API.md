@@ -1,6 +1,6 @@
 # 成员显示偏好 API
 
-本轮开发候选，尚未发布。复用 `household_spaces.py` 的 `/api/preferences` 与现有 `member_preferences(owner,data)`，无表、列、依赖或路由新增。外观偏好与本人首页卡片布局、每台电视设置分别保存。
+本契约已随 2026-09-17 16:17 成员外观版本发布，实际运行身份与验证见 [本轮验收](EXPO-APPEARANCE-ACCEPTANCE.md#expo-appearance-release)。复用 `household_spaces.py` 的 `/api/preferences` 与现有 `member_preferences(owner,data)`，无表、列、依赖或路由新增。外观偏好与本人首页卡片布局、每台电视设置分别保存。
 
 ## 读取与默认值
 
@@ -50,4 +50,4 @@ GET 在读取快照内核对真实凭证，读取后先释放快照，再 fresh 
 
 真实临时 Flask／SQLite 专项位于 [test_member_preferences.py](../tests/test_member_preferences.py)，与现有 [家庭隔离](../tests/test_household_spaces.py)、[首页布局](../tests/test_dashboard_layout.py) 测试一起执行。测试只使用合成家庭与真实本地会话，包含独立连接撤权、真实写锁等待和并发 CAS；不使用生产数据库或真实云服务。
 
-本轮三个模块实际 **64 项通过**（新增偏好 38、家庭隔离 9、首页布局 17），零失败／错误／跳过，耗时 50.83 秒。私有 `expo-appearance-api/test-results/member-preferences-r1.xml` 的 SHA256 为 `41c692884757c5124ba5eecdeabacc88ef1e8df40c6faa3e7bdcf9fbffc15947`。这不包含前端组合浏览器、生产部署、真实云或实体设备验收；后续按 [Git 协作约定](GIT-WORKFLOW.md) 审查与集成。
+本轮三个模块实际 **64 项通过**（新增偏好 38、家庭隔离 9、首页布局 17），零失败／错误／跳过，耗时 50.83 秒。私有 `expo-appearance-api/test-results/member-preferences-r1.xml` 的 SHA256 为 `41c692884757c5124ba5eecdeabacc88ef1e8df40c6faa3e7bdcf9fbffc15947`。上述 64 项是后端专项；随后组合浏览器及生产发布已有独立证据，见 [本轮验收](EXPO-APPEARANCE-ACCEPTANCE.md#expo-appearance-release)，不与本专项相加。真实云、本人公网新流程及实体设备仍未验收；后续继续按 [Git 协作约定](GIT-WORKFLOW.md) 审查与集成。
