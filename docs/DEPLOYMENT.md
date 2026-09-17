@@ -1,8 +1,10 @@
 # 部署、更新与恢复交接
 
-**最新运行版：旅行 JSON 导入，2026-09-18 04:42:28（北京时间）激活。** 58→58，无 DDL；实际 1 户两库停写备份、启动时原行／schema／序列与平台注册库保持。发布身份、镜像、静态资源、HTTPS 和后置备份见[旅行导入验收](EXPO-TRIP-IMPORT-ACCEPTANCE.md#expo-trip-import-release)。后续发布须重新固定实际父版本，不重放已完成的固定算子。
+**当前激活版：家庭与成员，2026-09-18 05:49:18（北京时间）。** 58→58 但 `schemaChange=true`，仅新增 `users.household_role`；停写后实际 1 户两库完整组备份，旧 users 五列、其它 57 表及 registry 保全，app 启动快照等于迁移后快照。05:49:55 发布后读回通过，05:55:19 独立读回及随后审计通过；固定身份、实际 Linux 226 通过／1 精确 Windows 跳过及迁移证据见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。不得重放已完成算子或迁移。
 
-**当前结构为 58 张户内表及 2 张平台注册表。** 2026-09-18 00:23:38（北京时间）完成手动资产账户发布，00:24:23 HTTPS 读回、00:27:22 独立只读复核通过。完整身份及证据见 [发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。后续更新须绑定新的实际基线，不可重放任何已完成迁移；完整恢复使用匹配 58 表的全组备份与 [账户迁移检查器](FINANCE-ACCOUNTS-MIGRATION.md) 的 snapshot-current／check-restored。生产覆盖恢复未执行。
+**此前运行版：旅行 JSON 导入，2026-09-18 04:42:28（北京时间）激活。** 58→58，无 DDL；实际 1 户两库停写备份、启动时原行／schema／序列与平台注册库保持。发布身份、镜像、静态资源、HTTPS 和后置备份见[旅行导入验收](EXPO-TRIP-IMPORT-ACCEPTANCE.md#expo-trip-import-release)。后续发布须重新固定实际父版本，不重放已完成的固定算子。
+
+**历史账户结构基线为 58 张户内表及 2 张平台注册表。** 2026-09-18 00:23:38（北京时间）完成手动资产账户发布，00:24:23 HTTPS 读回、00:27:22 独立只读复核通过。完整身份及证据见 [发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。后续更新须绑定新的实际基线，不可重放任何已完成迁移；该账户历史基线使用 [账户迁移检查器](FINANCE-ACCOUNTS-MIGRATION.md)。当前新增角色列后的完整组恢复必须改用 [成员角色迁移检查器](HOUSEHOLD-MEMBERS-MIGRATION.md) 的 snapshot-current／check-restored，旧结构整组回退用 check-rollback；不能仅凭同为 58 表混用检查器。生产覆盖恢复未执行。
 
 当前安装版本及实际发布证据以 [README 最新上线记录](../README.md) 和其链接的验收页为准。下方保留数据库结构变化与恢复要求的历史基线；后续界面更新不能据此复用旧发布包、镜像或固定算子。
 

@@ -1,4 +1,6 @@
-# 家庭成员角色发布适配器（候选，尚未发布）
+# 家庭成员角色发布适配器
+
+本轮已于北京时间 2026-09-18 05:49:18 完成激活，05:49:55 post 通过，05:55:19 独立读回及随后审计通过。正式包、实际 227 项 Linux 终态及角色列保全见[集中验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下方保留生成器专项及历史父版本边界，固定工具不可重放。
 
 本适配器仅生成未绑定的 9 份本地发布工具，不执行打包、绑定、上传、数据库迁移或服务器阶段。父版本为已安装的旅行 JSON 导入版；本轮户内表数仍为 **58 → 58**，但 `schemaChange=true`：仅 `users` 新增 `household_role` 列，已有两名成员初始化为管理员。它不是无 schema 变化发布。
 
@@ -42,4 +44,4 @@ post 阶段重新核对新增两份迁移证明与原证明哈希链，并用固
 
 CLI R1/R2 失败原件保留：先发现辅助测试不能 `literal_eval` 父匿名路径的字符串表达式，再发现父级原有重复路径；仅修正测试读取/计数方式，没有放宽生产守卫。9 项 pytest 在这些 CLI 辅助函数调整前执行；调整后的完整实际 CLI 已重新通过。生成器在两轮检查间字节不变，前后源码哈希记录见各目录 `evidence.json`。
 
-最终容器选择由 `REQUIRED_TESTS` 的 8 个模块定义：members API、members migration、member sessions、household spaces、device sessions、platform backup、frontend runtime、此 release 专项。最终计数必须由最终冻结源码真实 collect-only 得到，并在 Linux 实际执行后分别报告，不预填。本任务没有再次运行上述业务/迁移套件，没有执行正式 package/binder、SSH、迁移、备份或任何生产阶段。
+最终容器选择由 `REQUIRED_TESTS` 的 8 个模块定义：members API、members migration、member sessions、household spaces、device sessions、platform backup、frontend runtime、此 release 专项。最终计数必须由最终冻结源码真实 collect-only 得到，并在 Linux 实际执行后分别报告，不预填。生成器专项当时没有再次运行上述业务/迁移套件，也没有执行正式 package/binder、SSH、迁移、备份或生产阶段；后续正式阶段以文首集中验收为准。
