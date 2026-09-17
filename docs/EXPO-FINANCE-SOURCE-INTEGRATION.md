@@ -1,6 +1,6 @@
 # Expo 资产来源导入入口
 
-接线与 model／Panel 已合入固定候选 `c1486996`，全量类型检查与 R1 浏览器 12 项功能检查通过，尚未发布。财务页的「更新资产来源」接入 `FinanceSourceImportPanel`，传入 `onBack` 和 `onPendingChange`；具体文件处理、预览、确认与操作回执由面板负责。当前已上线功能以 README 为准。
+接线与 model／Panel 已于 2026-09-17 23:11:09（北京时间）发布，23:11:48 TLS 读回通过。财务页「更新资产来源」接入 `FinanceSourceImportPanel`，传入 `onBack` 和 `onPendingChange`；文件处理、预览、确认与操作回执由面板负责。固定安装身份和范围见 [发布验收](EXPO-FINANCE-SOURCE-ACCEPTANCE.md#expo-source-release)。
 
 进入前拒绝切换正在读取、写入、有未知结果或编辑草稿的财务工作区。进入时推进请求代次、清空财务显示并暂停后台读取的结果安装；返回后保留查询月份并重新读取当前账本。资产读取报告与来源导入是两个独立面板。
 
