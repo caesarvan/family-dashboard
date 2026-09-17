@@ -25,6 +25,7 @@ export type ScreenProps = {
   onRoutinesPending?: (pending: boolean) => void;
   onSegmentsPending?: (pending: boolean) => void;
   onFinanceSourcePending?: (pending: boolean) => void;
+  onFinanceAccountsPending?: (pending: boolean) => void;
   state: FamilyState; user: Member; focus: string; mode: CalendarMode; layout: HomeLayout;
   setFocus: (id: string) => void; setMode: (mode: CalendarMode) => Promise<void>;
   onNavigate: (route: RouteName) => void; onEdit: (kind: ItemKind, item?: Entity) => void;
