@@ -1,6 +1,6 @@
 # Expo 来源导入界面：55→55 发布适配器
 
-本适配器准备来源导入 UI 候选，尚未生成正式工具、打包、绑定或发布。父 baseline 已于 2026-09-17 21:58:49（北京时间）激活，21:59:22 TLS 读回及 22:01:55 独立读回通过；下列值是已核的当前父身份，见 [父发布验收](EXPO-BASELINE-ACCEPTANCE.md#expo-baseline-release)。本批后端不变，候选本地证据见 [组合验收](EXPO-FINANCE-SOURCE-ACCEPTANCE.md)。
+本适配器已用于 R2 来源导入发布：2026-09-17 23:11:09（北京时间）激活，23:11:48 TLS 读回通过。R1 的 Linux 测试竞态失败未进入暂存或激活，原件保留；R2 使用全新 freeze、九工具和归档重新验证，不重放旧算子。实际身份见 [发布验收](EXPO-FINANCE-SOURCE-ACCEPTANCE.md#expo-source-release)。下列父值描述发布前的 baseline 版本，本批后端、依赖与 55 表结构保持。
 
 ## 固定父原件与范围
 
@@ -22,7 +22,7 @@
 python -B deploy/expo_finance_source_release/prepare.py --source-root <private-access-root> --output <private-access-root>/expo-finance-source-tools-<new-id>
 ```
 
-输入与输出必须是受限绝对路径，拒绝 symlink／junction；输出只能位于 access 根下的全新目录。未给最终 `--freeze` 时不绑定测试数量；给出 freeze 后仍仅生成审查稿。父版本已上线并完成独立核验；本轮浏览器功能、12 图独立视查与 collection 已完成，仍须完成最终组合审查、正式源码合入和新 freeze，再独立审查实际九文件、核包并绑定。旧工具和失败原件不覆盖、不重放。
+输入与输出必须是受限绝对路径，拒绝 symlink／junction；输出只能位于 access 根下的全新目录。未给最终 `--freeze` 时不绑定测试数量；给出 freeze 后仍仅生成审查稿。父版本已上线并完成独立核验；本轮已完成 R2 组合审查、正式源码合入、新 freeze、九文件独立审查、核包绑定和五个服务器阶段。后续修改必须重新建立来源与验证，不复用这次固定输入。旧工具和失败原件不覆盖、不重放。
 
 `stage.py`、`validate.py`、`expo_contract.py` 保持父原字节；验证资源仍为内存 896 MiB、tmpfs 640 MiB。Docker、依赖、环境和 55 张户内表及注册库保持；没有 DDL。停写完整备份、原 rows／schema／sequences／registry 与新 app 启动后的比较、阶段身份和排他输出守卫保持。后续逐库在线备份不等于全局原子快照。
 
@@ -35,4 +35,4 @@ post 仅改变本批发布目录前缀，全部 34 个唯一匿名 API 检查原
 - CLI 对固定候选 `4b6d6c5aeba98386e0aafe712313a3fce2524359` 核对全部 37 个后端与父包相同。真实父／新选择器集合相同、三个本地输入缺失拒绝、敏感与生成路径拒绝。报告 `test-results/finance-source-release-pinned-r1.json` SHA `c928586b9bee469b9db4fc66c490701bc7c4103b9b06d6838e491b32c494437e`。
 - 上述 CLI 受验时的 `4b6d6c5` 尚缺本适配器、专项与 `browser_expo_finance_source_check.py`，原报告保留三项待集成及 `actualBuildInputCount=null`、`actualFreezeAccepted=false`。三项现已合入 `c1486996`，新真实构建与浏览器另有原件，不能倒改原 CLI 记录为已验最终 freeze。
 
-最终 Python 选择为八模块：baseline 读取会话、导入会话、原 baseline、frontend runtime、家庭隔离、平台备份、持仓迁移和本适配器。固定 `c1486996` 已实际收集 **184 个唯一 nodeId／8 模块**，前后 649 个 tracked 源相同，`collectedOnly=true`、`executed=false`；未执行本批 Linux 验证，不复用父 348。构建也恰有 184 个输入，但它与测试集合是两种不同计数。完整 source bridge／消费观察旧套件不重复纳入，依靠本轮后端字节守卫与既有受验父版本，不能据此扩称真实来源内容正确或新设备／云端验收。协议与父发布准备见 [baseline 发布](EXPO-BASELINE-RELEASE.md)。
+最终 Python 选择为八模块：baseline 读取会话、导入会话、原 baseline、frontend runtime、家庭隔离、平台备份、持仓迁移和本适配器。固定 `c1486996` 已实际收集 **184 个唯一 nodeId／8 模块**，前后 649 个 tracked 源相同，`collectedOnly=true`、`executed=false`；这是 R1 当时的 collect-only 记录。R2 实际执行 184 项，183 通过、1 个精确 Windows 跳过；不复用父 348。构建也恰有 184 个输入，但它与测试集合是两种不同计数。完整 source bridge／消费观察旧套件不重复纳入，依靠本轮后端字节守卫与既有受验父版本，不能据此扩称真实来源内容正确或新设备／云端验收。协议与父发布准备见 [baseline 发布](EXPO-BASELINE-RELEASE.md)。
