@@ -32,11 +32,11 @@
 
 独立前端基线：`7713ad1fd091d7390612c52d434b97e54e99f54b`。模型测试通过 `BASELINE_MODEL_BACKEND_ROOT` 选择单一后端源码，实际使用已审 `expo-baseline-read-api` 固定 `362051f911d517aa7bd2d944789c08200560157c`，没有拼接后端文件。
 
-`tests/test_expo_baseline.mjs` 用真实 Flask 登录、临时 SQLite 导入合成资产，真实消费观察预览/确认及真实 GET 取得 DTO；连接外网被禁止。12 项实际通过，覆盖本人空记录、伙伴/电视/匿名隔离、独立观察、旧记录、未知与零、外币、完整与不完整汇总、精确金额、500 条分页、完整身份前后核验、迟到响应和传输拒绝边界。测试 fixture 的写入只发生在临时数据库，产品组件始终只读。
+`tests/test_expo_baseline.mjs` 用真实 Flask 登录、临时 SQLite 导入合成资产，真实消费观察预览/确认及真实 GET 取得 DTO；连接外网被禁止。最终 13 项实际通过，覆盖本人空记录、伙伴/电视/匿名隔离、独立观察、旧记录、未知与零、外币、完整与不完整汇总、精确金额、500 条分页、完整身份前后核验、迟到响应和传输拒绝边界。审查发现旧时间允许省略秒，补充了实际持久化的省略秒、空格分隔、紧凑日期/时区、ISO 周日期和时区秒数变体，与 Python 上海时间结果核对；无时区与非法日期仍拒绝。测试 fixture 的写入只发生在临时数据库，产品组件始终只读。
 
-首轮 fixture 因 SQLite 连接未关闭，Windows 临时目录清理失败；已以 `closing` 确保连接关闭后完整重跑，保留失败原件。最终 12 项不与失败轮计数相加。
+首轮 fixture 因 SQLite 连接未关闭，Windows 临时目录清理失败；已以 `closing` 确保连接关闭后完整重跑。时间回归首次构造未同步共享 importedAt，被真实服务端校验拒绝；修正测试输入后完整重跑。失败原件保留，各轮计数不相加。
 
-本分支 `test-results/baseline-model-r2.tap` 与 `baseline-types-r1.txt` 保留原输出。模型和组件严格定向 TypeScript 检查为 0 diagnostics，使用现有物理依赖只读映射，没有安装依赖、junction 或生成应用导出。
+本分支 `test-results/baseline-model-r5.tap` 与 `baseline-types-r3.txt` 保留最终原输出。模型和组件严格定向 TypeScript 检查为 0 diagnostics，使用现有物理依赖只读映射，没有安装依赖、junction 或生成应用导出。
 
 复现模型检查（Node 支持 TypeScript transform，Python 环境需已有应用依赖）：
 

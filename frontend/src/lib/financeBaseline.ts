@@ -23,7 +23,33 @@ const currency = (v: unknown): string => typeof v === 'string' && /^[A-Z]{3}$/.t
 const flag = (v: unknown): boolean => typeof v === 'boolean' ? v : bad();
 const array = (v: unknown, max: number): unknown[] => Array.isArray(v) && v.length <= max ? v : bad();
 const day = (v: unknown): string => { const s = requiredText(v, 10); const d = new Date(s + 'T00:00:00Z'); return /^(?!0000)\d{4}-\d{2}-\d{2}$/.test(s) && Number.isFinite(d.getTime()) && d.toISOString().slice(0, 10) === s ? s : bad(); };
-const timestamp = (v: unknown): string => { const s = requiredText(v, 40); if (!/^\d{4}-\d\d-\d\dT(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d{1,6})?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(s) || !Number.isFinite(Date.parse(s))) bad(); day(s.slice(0, 10)); return s; };
+// Python's persisted fromisoformat contract allows omitted seconds, compact
+// dates/offsets, ISO week dates and any single separator. Do not use Date.parse:
+// its accepted spellings differ by browser and it can normalize invalid days.
+function timestampMillis(v: unknown): number {
+  const s = requiredText(v, 40), match = /^(\d{4}-\d{2}-\d{2}|\d{8}|\d{4}-W\d{2}(?:-\d)?|\d{4}W\d{2}\d?)(.)(\d[\d:.,]*)(Z|[+-]\d[\d:.,]*)$/u.exec(s);
+  if (!match) bad();
+  let date = match[1];
+  if (date.includes('W')) {
+    const parts = /^(\d{4})-?W(\d{2})(?:-?(\d))?$/.exec(date)!;
+    const year = Number(parts[1]), week = Number(parts[2]), weekday = Number(parts[3] || 1);
+    if (!year || week < 1 || week > 53 || weekday < 1 || weekday > 7) bad();
+    const fourth = new Date(parts[1] + '-01-04T00:00:00Z'), monday = fourth.getTime() - (fourth.getUTCDay() + 6) % 7 * 86400000;
+    const thursday = new Date(monday + ((week - 1) * 7 + 3) * 86400000); if (thursday.getUTCFullYear() !== year) bad();
+    date = new Date(monday + ((week - 1) * 7 + weekday - 1) * 86400000).toISOString().slice(0, 10);
+  } else if (!date.includes('-')) date = date.slice(0, 4) + '-' + date.slice(4, 6) + '-' + date.slice(6);
+  day(date);
+  const clock = (value: string, offset = false) => {
+    const parts = /^(\d{2})(?:(:?)(\d{2})(?:\2(\d{2})(?:[.,](\d+))?)?)?$/.exec(value); if (!parts) bad();
+    const hours = Number(parts[1]), minutes = Number(parts[3] || 0), seconds = Number(parts[4] || 0), fraction = Number('0.' + (parts[5]?.slice(0, 6) || 0));
+    if (!offset && (hours > 23 || minutes > 59 || seconds > 59)) bad();
+    const total = (hours * 3600 + minutes * 60 + seconds + fraction) * 1000;
+    if (offset && total >= 86400000) bad(); return total;
+  };
+  const offset = match[4] === 'Z' ? 0 : clock(match[4].slice(1), true) * (match[4][0] === '-' ? -1 : 1);
+  return Math.floor(new Date(date + 'T00:00:00Z').getTime() + clock(match[3]) - offset);
+}
+const timestamp = (v: unknown): string => { timestampMillis(v); return v as string; };
 const hash = (v: unknown) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v) ? v : bad();
 function quality(raw: unknown): BaselineQuality { const r = object(raw); return { knownGapsCount: optional(r.knownGapsCount, v => integer(v, 0, 1_000_000)), unreadableStatementsCount: optional(r.unreadableStatementsCount, v => integer(v, 0, 1_000_000)), channelOnlyAdded: optional(r.channelOnlyAdded, flag), orderOnlyAdded: optional(r.orderOnlyAdded, flag) }; }
 function range(start: string | null, end: string | null) { if (start && end && start > end) bad(); }
@@ -69,7 +95,7 @@ export function formatBaselineMoney(value: number | null, code: string | null): 
   const whole = String(absolute / 100n).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   return `${code === null ? '币种待核对' : currency(code)} ${amount < 0n ? '-' : ''}${whole}.${String(absolute % 100n).padStart(2, '0')}`;
 }
-export function formatBaselineTime(value: string | null): string { return value === null ? '日期待核对' : new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(timestamp(value))) + '（北京时间）'; }
+export function formatBaselineTime(value: string | null): string { return value === null ? '日期待核对' : new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(timestampMillis(value))) + '（北京时间）'; }
 export function baselinePage<T>(rows: readonly T[], query: string, page: number, searchable: (row: T) => string, size = 10): { rows: T[]; page: number; pages: number; count: number } {
   integer(page); integer(size, 1, 50); const needle = text(query, 200).trim().toLocaleLowerCase();
   const filtered = needle ? rows.filter(item => searchable(item).toLocaleLowerCase().includes(needle)) : [...rows]; const pages = Math.max(1, Math.ceil(filtered.length / size)), selected = Math.min(page, pages - 1);

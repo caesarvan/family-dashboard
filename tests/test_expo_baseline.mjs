@@ -11,6 +11,8 @@ const root = resolve(process.env.BASELINE_MODEL_BACKEND_ROOT || fileURLToPath(ne
 const python = process.env.BASELINE_TEST_PYTHON || 'python';
 const setup = spawnSync(python, ['-B', '-X', 'utf8', '-c', String.raw`
 import sys, os, json, tempfile, sqlite3, socket
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from copy import deepcopy
 from contextlib import closing
@@ -60,6 +62,15 @@ with tempfile.TemporaryDirectory(prefix='expo-baseline-model-') as folder, patch
         for item in legacy[kind]: item.pop('id',None)
     legacy['income'][0].pop('includedInRecordedSubtotal',None)
     save(legacy,shared); result['legacy']=read()
+    result['timestampVariants']=[]
+    for index,stamp in enumerate(['2026-09-14T12:00+08:00','2026-09-14 12:00+0800','20260914T1200+08',
+        '2026-W38-1T12:00:00+08:00','2026W381T12+0800','2026-09-14T12:00:00,5Z',
+        '2026-09-14T12:30:45.123456+08:30:15.5','2026-09-14T12:00+08:60']):
+        variant=deepcopy(legacy); variant['importedAt']=stamp
+        # Import timestamps alone deliberately do not cause an update; change a synthetic note.
+        variant['income'][0]['note']='Timestamp fixture '+str(index)
+        save(variant,{**shared,'importedAt':stamp}); actual=read(); assert actual['importedAt']==stamp
+        result['timestampVariants'].append({'value':actual,'shanghai':datetime.fromisoformat(stamp).astimezone(ZoneInfo('Asia/Shanghai')).strftime('%Y/%m/%d %H:%M')})
     tv=app.test_client(); pair=tv.post('/api/pair/start',json={}).json
     assert c.post('/api/pair/approve',json={'code':pair['code'],'name':'合成电视','focus':'member1'},headers=h).status_code==200
     assert tv.post('/api/pair/poll',json={'secret':pair['secret']}).json['approved']
@@ -109,6 +120,17 @@ test('money display uses exact cents, nullable currency, signs and safe large in
   assert.equal(formatBaselineMoney(-101, 'USD'), 'USD -1.01'); assert.equal(formatBaselineMoney(100_000_000_000_000, 'CNY'), 'CNY 1,000,000,000,000.00');
   assert.equal(formatBaselineMoney(0, null), '币种待核对 0.00'); assert.throws(() => formatBaselineMoney(1.1, 'CNY'), BaselineError);
   assert.equal(formatBaselineTime(null), '日期待核对'); assert.match(formatBaselineTime('2026-09-14T16:30:00Z'), /2026\/09\/15 00:30/);
+});
+test('real persisted timezone ISO variants render consistently while invalid/unzoned times fail closed', () => {
+  for (const sample of fixture.timestampVariants) {
+    const actual = readFinanceBaseline(sample.value, 'member1');
+    assert.equal(actual.importedAt, sample.value.importedAt);
+    assert.equal(formatBaselineTime(actual.importedAt), sample.shanghai + '（北京时间）');
+  }
+  for (const stamp of ['2026-09-14T12:00','2026-09-14','2026-02-30T12:00Z','2026-09-14T24:00Z',
+    '2026-09-14T12:60Z','2026-09-14T12:00:60Z','2026-09-14T12:00+24:00','2026-W54-1T12:00Z','2025-W53-1T12:00Z']) {
+    const value=clone(fixture.modern);value.importedAt=stamp;assert.throws(()=>readFinanceBaseline(value,'member1'),BaselineError);
+  }
 });
 test('section pagination reaches every one of 500 rows and searches the entire section', () => {
   const rows = Array.from({ length: 500 }, (_, i) => ({ label: '合成来源 ' + i })); const seen = [];
