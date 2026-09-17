@@ -107,8 +107,10 @@ def register_journey_documents(app, db, Problem, body, require_member, limited, 
         if engine is None:
             raise Problem('暂时无法核对登录状态，请稍后重试', 503)
         live = engine.current(con)
+        original = getattr(g, 'member_session', {})
         household = app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')
         if (live['owner'] != g.actor['id'] or live['auth_version'] != g.actor.get('auth_version')
+                or live['id'] != original.get('id')
                 or household != g.actor.get('householdId')):
             raise Problem('登录或家庭已变化，请重新打开', 401)
         return live['owner']
@@ -120,8 +122,22 @@ def register_journey_documents(app, db, Problem, body, require_member, limited, 
             con.execute('BEGIN IMMEDIATE' if write else 'BEGIN')
             owner = authenticated(con)
             yield con, owner
-            con.commit()
-        except Exception:
+            if write:
+                # The write lock serializes revocation; check expiry and the
+                # captured credential once more after business work/audit.
+                authenticated(con)
+                con.commit()
+            else:
+                # A read snapshot can predate logout in another connection.
+                # Release it before the final check, including upload replays
+                # and file bytes, before any response is returned.
+                con.rollback()
+                authenticated(con)
+                # Legacy-cookie resolution may refresh its expiry with UPDATE.
+                # Release that implicit transaction before another document
+                # transaction starts within this request.
+                con.rollback()
+        except BaseException:
             con.rollback()
             raise
 
@@ -368,6 +384,12 @@ def register_journey_documents(app, db, Problem, body, require_member, limited, 
         with transaction() as (con, owner):
             row = visible_row(con, document_id, owner)
             content = con.execute('SELECT content FROM journey_documents WHERE id=? AND deleted_at IS NULL', (document_id,)).fetchone()[0]
+        # Recheck file visibility after releasing the BLOB read snapshot too.
+        # A partner may have withdrawn sharing or deleted it during that read.
+        with transaction() as (con, owner):
+            fresh = visible_row(con, document_id, owner)
+            if fresh['revision'] != row['revision']:
+                raise Problem('资料已变化，请刷新后重新下载', 409)
         response = send_file(BytesIO(bytes(content)), mimetype=row['mime_type'], as_attachment=True,
                              download_name=row['filename'], etag=False, max_age=0, conditional=False)
         response.headers['Cache-Control'] = 'private, no-store'
