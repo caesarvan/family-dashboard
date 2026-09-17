@@ -31,11 +31,12 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
   const selection = useRef<Selection>({ tab: 'journey', places: 0, photos: 0, photoId: '' });
   const alive = useRef(false), focused = useRef(false), active = useRef(false), departed = useRef(false), denied = useRef(false);
   const foreground = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive'), pageHidden = useRef(false);
+  const windowFocused = useRef(typeof document === 'undefined' || document.hasFocus());
   const epoch = useRef(0), working = useRef(false), flight = useRef<AbortController | null>(null), url = useRef('');
   const imageExpiry = useRef<ReturnType<typeof setTimeout> | null>(null), imageDeadline = useRef(0);
   const fence = useRef(new RecapFence(props.identityKey));
   const current = (ticket = epoch.current) => alive.current && focused.current && active.current && !departed.current && !denied.current && !pageHidden.current
-    && foreground.current && pageVisible() && connected() && latest.current.household.online && latest.current.household.identityKey === props.identityKey && ticket === epoch.current;
+    && foreground.current && windowFocused.current && pageVisible() && connected() && latest.current.household.online && latest.current.household.identityKey === props.identityKey && ticket === epoch.current;
 
   function clearImage() {
     if (imageExpiry.current) clearTimeout(imageExpiry.current); imageExpiry.current = null; imageDeadline.current = 0;
@@ -48,6 +49,9 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
   }
   function failure(caught: unknown) {
     clearData();
+    // A missing selection must not make every later explicit gallery refresh fail.
+    // Keep the same workflow, scope and page; do not broaden or automatically read.
+    if (caught instanceof RecapError && [404, 410].includes(caught.status)) selection.current = { ...selection.current, photoId: '' };
     if (caught instanceof RecapDiscarded && caught.message === 'identity' || caught instanceof RecapError && [401, 403].includes(caught.status)) {
       denied.current = true; selection.current = { tab: 'journey', places: 0, photos: 0, photoId: '' }; conceal();
       setError('身份或权限已变化，回顾内容已清除。请重新进入。'); void latest.current.household.refresh();
@@ -91,7 +95,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
     finally { if (flight.current === controller) flight.current = null; if (current(ticket)) { working.current = false; setBusy(false); } }
   }
   function enter() {
-    if (active.current || denied.current || departed.current || !alive.current || !focused.current || !foreground.current || pageHidden.current || !pageVisible() || !connected() || !latest.current.household.online) return;
+    if (active.current || denied.current || departed.current || !alive.current || !focused.current || !foreground.current || !windowFocused.current || pageHidden.current || !pageVisible() || !connected() || !latest.current.household.online) return;
     active.current = true; void load();
   }
   function back() { departed.current = true; conceal(); latest.current.props.onBack(); }
@@ -102,13 +106,14 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
   useFocusEffect(useCallback(() => { focused.current = true; enter(); return () => { focused.current = false; conceal(); }; }, [props.identityKey, props.journeyId]));
   useEffect(() => {
     const visibility = () => { if (pageVisible()) enter(); else conceal(); }, online = () => enter(), offline = () => conceal();
+    const blur = () => { windowFocused.current = false; conceal(); }, focus = () => { windowFocused.current = true; enter(); };
     const hide = () => { pageHidden.current = true; conceal(); }, show = (event: PageTransitionEvent) => { if (event.persisted || pageHidden.current) { pageHidden.current = false; conceal(); enter(); } };
     const subscription = AppState.addEventListener('change', value => { foreground.current = value === 'active'; if (foreground.current) enter(); else conceal(); });
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visibility);
-    if (typeof window !== 'undefined') { window.addEventListener('online', online); window.addEventListener('offline', offline); window.addEventListener('pagehide', hide); window.addEventListener('pageshow', show); }
+    if (typeof window !== 'undefined') { window.addEventListener('blur', blur); window.addEventListener('focus', focus); window.addEventListener('online', online); window.addEventListener('offline', offline); window.addEventListener('pagehide', hide); window.addEventListener('pageshow', show); }
     const timer = setInterval(() => { if (current() && !working.current) void load(); }, 15000);
     return () => { clearInterval(timer); subscription.remove(); if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', visibility);
-      if (typeof window !== 'undefined') { window.removeEventListener('online', online); window.removeEventListener('offline', offline); window.removeEventListener('pagehide', hide); window.removeEventListener('pageshow', show); } };
+      if (typeof window !== 'undefined') { window.removeEventListener('blur', blur); window.removeEventListener('focus', focus); window.removeEventListener('online', online); window.removeEventListener('offline', offline); window.removeEventListener('pagehide', hide); window.removeEventListener('pageshow', show); } };
   }, []);
   useEffect(() => { if (!household.online) conceal(); else enter(); }, [household.online]);
 

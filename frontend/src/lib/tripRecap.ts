@@ -57,7 +57,7 @@ export function readRecapJourney(raw: unknown, expectedId: string): RecapJourney
       const format = (s: string) => new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(new Date(s));
       timing = [`${format(eventStart)} 至 ${format(eventEnd)}（北京时间）`];
     }
-    return { id: id(e.id), title: text(e.title, 500, false), location: text(e.location ?? '', 500), note: text(e.note ?? '', 6000), owner: text(e.owner, 100, false), start: eventStart, end: eventEnd, kind, timing, booking };
+    return { id: id(e.id), title: text(e.title, 500, false), location: text(e.location ?? '', 500), note: text(e.note ?? '', 8000), owner: text(e.owner, 100, false), start: eventStart, end: eventEnd, kind, timing, booking };
   })).sort((a, b) => Date.parse(a.start) - Date.parse(b.start) || a.id.localeCompare(b.id));
   return { id: uid, tripId, revision: integer(r.revision, 1), title: text(base.title, 500, false), start, end, note: text(base.note ?? '', 6000), tripPresent: !!trip, destinations, events };
 }

@@ -32,7 +32,7 @@ with tempfile.TemporaryDirectory(prefix='trip-recap-model-') as folder,MonkeyPat
     jp='/api/journeys/'+jid
     result['original']=read(c,jp)
     original=next(e for e in result['original']['events'] if e['workflowKey']=='segment:hotel')
-    assert c.patch('/api/items/events/'+original['id'],json={'revision':original['revision'],'title':'当前独立修改的日程','location':'当前地点'},headers=h).status_code==200
+    assert c.patch('/api/items/events/'+original['id'],json={'revision':original['revision'],'title':'当前独立修改的日程','location':'当前地点','note':'记'*8000},headers=h).status_code==200
     result['edited']=read(c,jp)
     assert c.delete('/api/items/events/'+original['id'],json={'revision':original['revision']+1},headers=h).status_code==200
     result['deleted']=read(c,jp)
@@ -85,6 +85,7 @@ const journey = readRecapJourney(fixture.edited, fixture.id);
 
 test('real current event titles replace old plan text; deleted events are not recreated', () => {
   assert(journey.events.some(e => e.title === '当前独立修改的日程' && e.location === '当前地点'));
+  assert.equal(journey.events.find(e => e.title === '当前独立修改的日程').note, '记'.repeat(8000));
   assert(!readRecapJourney(fixture.deleted, fixture.id).events.some(e => e.title === '当前独立修改的日程'));
   assert(fixture.deleted.plan.segments.some(s => s.title === '合成酒店'));
   assert(!('budget' in journey)); assert(!('tasks' in journey)); assert(!('shopping' in journey));
