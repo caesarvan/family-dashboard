@@ -66,7 +66,7 @@ class Run(MediaRun):
                            dict(previewToken=preview['previewToken'], idempotencyKey=secrets.token_hex(16)), 201)
         return self.get(ctx, '/api/journeys/' + saved['id'])
 
-    def make_photo(self, ctx, stamp=STAMP, caption=CAPTION, shared=False, member=1):
+    def stage_photo(self, ctx, stamp=STAMP, member=1):
         imported = self.write(ctx, 'POST', '/api/media/imports', dict(requestId=secrets.token_hex(16),
             accountId=self.synthetic_accounts[member], consentVersion='media-v1', allowTemporaryProcessing=True), 202)['import']
         job = self.engine.claim_next(); assert job and job['action'] == 'create'
@@ -81,7 +81,13 @@ class Run(MediaRun):
             jpeg = self.images.sanitize_media_preview(stream.getvalue(), 'image/png')
             assert self.engine.complete(job, dict(mediaId=job['media']['id'], manifest=[selected], preview=jpeg))
         detail = self.get(ctx, '/api/media/imports/' + imported['id'])
-        self.write(ctx, 'POST', '/api/media/imports/' + imported['id'] + '/confirm',
+        assert detail['import']['state'] == 'awaiting_confirmation' and detail['import']['canConfirm']
+        assert len(detail['items']) == 1
+        return detail
+
+    def make_photo(self, ctx, stamp=STAMP, caption=CAPTION, shared=False, member=1):
+        detail = self.stage_photo(ctx, stamp, member)
+        self.write(ctx, 'POST', '/api/media/imports/' + detail['import']['id'] + '/confirm',
                    dict(revision=detail['import']['revision'], confirmRequestId=secrets.token_hex(16),
                         itemIds=[i['id'] for i in detail['items']], consentVersion='media-v1', persistSelected=True))
         item = self.get(ctx, '/api/media/items/' + detail['items'][0]['id'])['item']
@@ -439,6 +445,62 @@ class Run(MediaRun):
             assert self.get(ctx, self.item_path(item))['item']['journey'] is None
             self.passed('Real partner shared detail has no suggestions; owner-only GET/PATCH reject partner, signed second household and paired TV without linking or granting photos')
 
+    def import_resume_regression(self, browser, ctx, page):
+        # Keep a genuine unknown confirm intent while another session cancels
+        # the staged import. Foreground must read its detail before revealing it.
+        detail = self.stage_photo(ctx)
+        endpoint = '/api/media/imports/' + detail['import']['id']
+        page.reload(); expect(button(page, '选择照片')).to_be_enabled(timeout=15000)
+        button(page, '选择照片').click()
+        page.get_by_text('最近的选择', exact=True).click()
+        page.get_by_text('确认想留下的照片', exact=True).click()
+        expect(page.get_by_role('checkbox', name='保留这张', exact=True)).to_be_enabled(timeout=15000)
+        page.get_by_role('checkbox', name='同意将勾选照片的展示副本持久保存在相册中。之后另行设置家庭共享和电视展示。', exact=True).click()
+        attempts = []
+        def drop_confirm(route):
+            assert route.request.method == 'POST'
+            attempts.append(route.request.post_data_json); route.abort('failed')
+        page.route(self.base + endpoint + '/confirm', drop_confirm)
+        try:
+            button(page, '保存选中的 1 张').click()
+            expect(button(page, '核对 / 重试原保存请求')).to_be_enabled(timeout=15000)
+            assert len(attempts) == 1 and attempts[0]['confirmRequestId']
+            assert attempts[0]['itemIds'] == [detail['items'][0]['id']]
+            visibility(page, True)
+            expect(page.get_by_role('checkbox', name='保留这张', exact=True)).to_have_count(0)
+            with ExitStack() as stack:
+                other_device = self.context(browser); stack.callback(other_device.close)
+                current = self.get(other_device, endpoint)['import']
+                assert current['state'] == 'awaiting_confirmation'
+                self.write(other_device, 'DELETE', endpoint, {'revision': current['revision']})
+                cancelled = self.get(other_device, endpoint)
+                assert cancelled['import']['state'] == 'cancelled' and cancelled['items'] == []
+            held = []
+            def hold_current(route):
+                response = route.fetch(max_redirects=0)
+                assert response.status == 200 and response.json()['import']['state'] == 'cancelled'
+                held.append((route, response))
+            page.route(self.base + endpoint, hold_current, times=1)
+            mark = len(self.requests); visibility(page, False)
+            self.settle(page, lambda: len(held) == 1)
+            expect(page.get_by_role('heading', name='相册', exact=True)).to_have_count(0)
+            expect(page.get_by_role('checkbox', name='保留这张', exact=True)).to_have_count(0)
+            expect(button(page, '核对 / 重试原保存请求')).to_have_count(0)
+            held[0][0].fulfill(response=held[0][1])
+            expect(page.get_by_role('heading', name='已取消', exact=True)).to_be_visible(timeout=15000)
+            expect(page.get_by_role('img', name='本次选择的照片', exact=True)).to_have_count(0)
+            expect(page.get_by_role('checkbox', name='保留这张', exact=True)).to_have_count(0)
+            expect(button(page, '核对 / 重试原保存请求')).to_have_count(0)
+            expect(button(page, '保存选中的 1 张')).to_have_count(0)
+            self.no_writes(mark)
+            assert len(attempts) == self.count_requests('POST', endpoint + '/confirm') == 1
+            with closing(sqlite3.connect(self.database)) as con:
+                assert con.execute('SELECT state,confirm_request_id FROM media_imports WHERE id=?',
+                                   (detail['import']['id'],)).fetchone() == ('cancelled', None)
+            button(page, '收起').click()
+        finally:
+            page.unroute(self.base + endpoint + '/confirm', drop_confirm)
+
     def lifetime_isolation(self, browser):
         with self.flow(browser) as (ctx, page):
             journey = self.make_journey(ctx); item = self.make_photo(ctx)
@@ -475,6 +537,9 @@ class Run(MediaRun):
                 expect(button(page, VIEW)).to_be_enabled(timeout=15000)
                 self.no_selection(page)
             self.no_writes(mark); assert self.snapshot() == before
+            button(page, '关闭').click()
+            self.import_resume_regression(browser, ctx, page)
+            self.open_detail(page, item, navigate=False)
             # A genuine late success from the old owner must not survive fresh /me.
             sent = []
             def change_identity(route):
@@ -498,7 +563,7 @@ class Run(MediaRun):
             expect(self.suggestion_box(page)).to_have_count(0)
             expect(page.locator('body')).not_to_contain_text(CAPTION)
             self.get(ctx, self.suggestion_path(item), 404)
-            self.passed('Switching photos discards selection; offline/hidden/blur reject delayed GETs; real new member and signed household cookies discard old private suggestions')
+            self.passed('Switching photos discards selection; offline/hidden/blur reject delayed GETs; cancelled staged import stays hidden until fresh detail and never repeats unknown confirm; new member/household cookies discard old suggestions')
 
     def screenshot(self, page, name, width, target):
         page.set_viewport_size(dict(width=width, height=1080 if width >= 1280 else 844))
