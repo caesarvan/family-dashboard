@@ -42,3 +42,13 @@ UI 初版 `5ecfe697773bbc9276827ef9cc44b4a7cd599c0c` 及负责人显示修正 `6
 19 张原图均由浏览器审查者逐张实际查看；320 像素首图的航班号标签重叠另做单一真实 fixture 探针，不重跑 15 组、不改源码或原报告。几何采样显示标签约 136 毫秒后自然上浮并连续六次稳定，稳定截图无重叠，确认为 Paper 动画过渡帧。`expo-segments-320-probe-20260917T122743422848Z/result.json` SHA256 `e227951ee54fde868c536468198d4287ff32f21b0a656f2edecbaa70c4a97fb8`，新图 SHA256 `c25ea97806cd1a4fb6bc80abfd6493a603f9e5cc6a629aad1b1d3c244d75753a`。同一源码／导出前后不变且临时数据清理；当前截图可见区域没有剩余视觉阻断，不扩大为完整表单、实体手机／电视或全面无障碍验收。
 
 生产发布还须绑定当时实际父版本、经过审查的部署工具和实际 Linux 结果，验证 55→55 原数据保全以及 HTTPS 读回。不得重放上一批固定发布工具，也不得以本页的开发结果宣称已部署。
+
+## 发布来源选择修正
+
+R1 的实际 freeze 已建立，但生成器在创建输出目录前拒绝：`Required new trip modules missing`。父选择器漏选了构建的三个来源文件，不能满足完整 180 项输入校验；当时没有生成生产工具、绑定或远程操作。原 freeze 与任务失败记录保留。
+
+适配器修订 `3b1e328e… → 6f038bb8710e38d974dbb158f61f605e32a9e6a6` 经非作者审查，只为生成的来源选择器明确增加已跟踪的 `frontend/tests/journeySegments.test.ts`、`frontend/tsconfig.tests.json`、`frontend/typecheck.mjs`。它们归档供复现构建使用，不在 Python 镜像执行 Node 测试；完整输入校验、全局白名单、Docker 及原数据保全守卫保持。新增保护测试后，实际 26 项通过，报告和真实父选择器检查见 [发布适配器](EXPO-JOURNEY-SEGMENTS-RELEASE.md)。
+
+修订后源码 `e7243789f6ad79702318f58bbbb0b0a491d018cf` 重新实际收集到 **261 个唯一用例、11 个模块**；`expo-segments-validation-20260917-r2/collection.json` SHA256 `06cd88754afd8f02255235a10a3f23ce887ca1726d2438d859d93e0c663a3346`，退出 0，源码前后不变。此项仍仅收集，不表示 Linux 已通过；R1 的 259 项留作历史，不相加。
+
+本次不重跑已通过的浏览器或 Expo 构建：应用、实际夹具及导出输入均未改变。经独立审查的私有 freeze r2 对唯一的离线部署适配器绑定旧 SHA256 `fa4f42b89147e1e316cb1f167e1bca1529c6b3bcde150adc83d258f613f8552d` 与新 SHA256 `afe37c0e671ea20d0da6626c99eea758df1448ccfb21d2f6ea1db79aaf4acb84`；其余可执行来源、实际夹具和导出仍逐字节保持，新 Python 输入则绑定 R2 收集证据。三个增加的归档来源已在原浏览器完整跟踪散列和原 180 个构建输入中核验。
