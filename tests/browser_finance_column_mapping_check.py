@@ -35,10 +35,16 @@ class Run(BaseRun):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         assert Path(self.source.__file__).resolve() == (self.root / 'app.py').resolve()
-        for path, name in ((Path(fixture.__file__), 'tests/browser_expo_finance_check.py'),
-                           (Path(__file__), 'tests/browser_finance_column_mapping_check.py')):
-            assert sha(path) == sha(self.root / name), name
-            self.report.setdefault('fixtureHashes', {})[name] = sha(path)
+        paths = {'tests/browser_expo_finance_check.py': str(Path(fixture.__file__).resolve()),
+                 'tests/browser_finance_column_mapping_check.py': str(Path(__file__).resolve()),
+                 **{'tests/' + name + '.py': str(Path(sys.modules[name].__file__).resolve())
+                    for name in ('test_financial_files', 'test_app')}}
+        digests = {name: sha(Path(path)) for name, path in paths.items()}
+        for name, digest in digests.items():
+            assert digest == sha(self.root / name), name
+        assert digests['tests/browser_finance_column_mapping_check.py'] == self.report['harnessSha256']
+        assert self.report.setdefault('fixtureActualPaths', paths) == paths
+        assert self.report.setdefault('fixtureHashes', digests) == digests
 
     def clear_finance(self):
         pass  # Each independent scenario has a fresh database.
@@ -337,15 +343,18 @@ def main():
             finally:
                 browser.close()
     except Exception:
+        report['passed'] = False
         report['failure'] = traceback.format_exc()
         print(report['failure'], flush=True)
     finally:
         report['sourceHashesAfter'], report['bundleHashesAfter'] = hashes(), exports()
         report['sourceUnchanged'] = report['sourceHashesBefore'] == report['sourceHashesAfter']
         report['bundleUnchanged'] = report['bundleHashesBefore'] == report['bundleHashesAfter']
+        report['fixtureHashesAfter'] = {name: sha(Path(path)) for name, path in report.get('fixtureActualPaths', {}).items()}
+        report['fixturesUnchanged'] = bool(report.get('fixtureHashes')) and report['fixtureHashesAfter'] == report['fixtureHashes']
         report['sourceStillFrozen'] = git('rev-parse', 'HEAD') == head and not git('status', '--porcelain=v1')
         report['temporaryFixtureRemoved'] = len(report['scenarioResults']) == CHECKS and all(c['temporaryFixtureRemoved'] for c in report['scenarioResults'])
-        report['passed'] = report['passed'] and report['sourceUnchanged'] and report['bundleUnchanged'] and report['sourceStillFrozen'] and report['temporaryFixtureRemoved']
+        report['passed'] = report['passed'] and report['sourceUnchanged'] and report['bundleUnchanged'] and report['fixturesUnchanged'] and report['sourceStillFrozen'] and report['temporaryFixtureRemoved']
         (out / 'result.json').write_text(json.dumps(report, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
         print(json.dumps(dict(passed=report['passed'], checks=len(report['checks']), report=str(out / 'result.json')), ensure_ascii=False), flush=True)
     return 0 if report['passed'] else 1
