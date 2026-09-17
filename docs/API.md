@@ -1,8 +1,8 @@
 # 家庭看板接口文档
 
-当前部署身份见 [HANDOFF](HANDOFF.md)，线上结构仍为 55 张户内表与两张平台注册表。本人手动账户候选已实现六个操作和三张新增表，候选为 58＋2，尚未发布，见下节。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+当前部署身份见 [HANDOFF](HANDOFF.md)，当前为 58 张户内表与两张平台注册表，已有家庭角色列。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
 
-## 本人手动资产／负债账户（已实现候选，未发布）
+## 本人手动资产／负债账户（已发布）
 
 接口由 [finance_accounts.py](../finance_accounts.py) 独立注册；完整字段、限制、错误码及会话核验见 [账户 API](FINANCE-ACCOUNTS-API.md)，三表与迁移边界见 [数据模型](DATA-MODEL.md#finance-accounts58)。全部仅当前家庭的本人可读写，匿名 401、电视 403、伙伴或其他家庭账户 404；不接受客户端 owner／visibility。写入须为同源 JSON 并带当前 CSRF，拒绝额外字段、重复查询参数和 JSON 重复字段。
 
@@ -17,7 +17,7 @@
 
 账户 id 为 24 位、requestId 为 32 位小写十六进制；没有物理删除接口。写入使用账户 revision CAS 和本人持久幂等记录，同原内容重放只返回历史，不把旧状态安装为当前账户。未知结果保留原编号与完整请求，先核对历史和当前列表，不自动换号重发。业务错误含 `{error,code}`，这是下文基础接口通用错误描述之外的模块契约。
 
-估值日期只决定选择不晚于 asOf 的最近记录；名称和归档筛选使用账户当前状态。未知、零、缺少该日前记录分别显示。汇总不换汇、不与来源基线／持仓／公共资金相加，也不代表完整家庭净资产。本人 ZIP 导出已接入候选的账户白名单；即使 includeShared=true 也不导出伙伴账户，详见 [账户导出](FINANCE-ACCOUNTS-PORTABILITY.md)。
+估值日期只决定选择不晚于 asOf 的最近记录；名称和归档筛选使用账户当前状态。未知、零、缺少该日前记录分别显示。汇总不换汇、不与来源基线／持仓／公共资金相加，也不代表完整家庭净资产。本人 ZIP 导出已接入账户白名单；即使 includeShared=true 也不导出伙伴账户，详见 [账户导出](FINANCE-ACCOUNTS-PORTABILITY.md)。
 
 ## 已发布持仓：三条读取接口
 
@@ -33,7 +33,7 @@
 
 **历史版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 当时旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
 
-> 本文保留基础版本 35 个 HTTP 操作的详细字段。平台扩展后的完整路由见 [当前路由索引](PLATFORM-ROUTES.md)；新家庭、偏好、助理与旅行见 [平台扩展](PLATFORM.md)，账单/XLSX/投资见 [财务导入](FINANCE-IMPORT.md)。请勿把下方基础接口计数当作新版本总数。
+> 本文保留基础版本 35 个 HTTP 操作的详细字段。平台扩展后的完整路由见 [当前路由索引](PLATFORM-ROUTES.md)；新家庭、偏好、助理与旅行见 [平台扩展](PLATFORM.md)，账单/XLSX/投资见 [财务导入](FINANCE-IMPORT.md)，通用文件手动四列映射的字段与会话契约见 [列映射](FINANCE-COLUMN-MAPPING.md)。请勿把下方基础接口计数当作新版本总数。
 
 ## 旅行资料接口
 

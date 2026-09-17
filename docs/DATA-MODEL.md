@@ -46,6 +46,8 @@
 
 新交易的 `data.provenance` 保存首次导入批次、文件名、格式、工作表、原始物理行范围与入账时间；旧交易标记来源未知，不从时间推断批次。重复或冲突保留第一次来源。删除交易后查询旧回执只返回历史结果，不恢复交易。`hub_imports` 原七列结构不变。
 
+通用四列映射仅在既有 `hub_transactions.data` 增加 `sourceRowKey`，不新增表、列或回填旧行。该 key 绑定来源／类型、严格解码文本摘要、工作表和原行起止；改名重传或改列后仍核对同一原行，重复／冲突保留旧金额和首次来源，跨文件相似记录不会自动合并。完整规则见 [映射契约](FINANCE-COLUMN-MAPPING.md#签名去重和恢复)，实际发布状态见 [本批验收](FINANCE-COLUMN-MAPPING-ACCEPTANCE.md)。
+
 私人导出增加 `personal.transactionImportReceipts` 业务白名单，不导出校验摘要或令牌。共同消费汇总不包含文件名、批次和个人明细。完整字段、容量上限和重试规则见 [财务 API](FINANCE-API.md)、[导入说明](FINANCE-IMPORT.md)；停写、全户备份、53→54 迁移与恢复核对见 [发布说明](FINANCE-RECEIPTS-RELEASE.md)。
 
 **历史媒体开发阶段：本地候选 48 张户内表及 2 张平台表，当时线上为 44+2。** 该阶段在地点表之后新增 `media_imports`、`media_items`、`media_tv_grants`、`media_playback`，分别存持久导入、加密展示副本、独立屏幕许可和每屏幕播放状态。账户授权、成员认证与家庭隔离复用现有表。五张库存核心表当时尚未注册，不计入该 48 表数字；现行结构见页首。字段和约束见 [媒体API](HOUSEHOLD-MEDIA-API.md) 与 [电视播放](MEDIA-PLAYBACK.md)，历史 44→48 显式迁移见 [升级说明](MEDIA-MIGRATION.md)。
