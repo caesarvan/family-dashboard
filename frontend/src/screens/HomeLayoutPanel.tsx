@@ -38,9 +38,10 @@ function Workspace(props: Props & { identityKey: string }) {
   function conceal(clear = false) {
     active.current = false; ++epoch.current; fence.current.invalidate(); flight.current?.abort(); flight.current = null;
     setVisible(false); setDiscard(false); working.current = false; setBusy(false);
-    // Unsubmitted drafts are discarded on background/offline/focus loss. Keep
-    // only the original uncertain PUT intent in memory, so returning cannot retry it.
-    live.current = { ...empty(), unknown: clear ? null : live.current.unknown }; setModel(live.current); notify();
+    // Same-identity drafts stay only in memory. Rendering remains hidden until
+    // a fresh identity check and layout read complete; uncertain writes never retry.
+    if (clear) { live.current = empty(); setModel(live.current); }
+    notify();
   }
   function failed(caught: unknown, ticket: number) {
     if (!current(ticket)) return;
@@ -64,19 +65,21 @@ function Workspace(props: Props & { identityKey: string }) {
   async function load(ticket: number, signal: AbortSignal) {
     const result = readHomeLayout(await guard(ticket, signal, () => layoutRequest('/dashboard-layout', signal)));
     if (!current(ticket)) return;
-    if (live.current.unknown || dirty(live.current) || live.current.blocked) install({ review: result, blocked: true });
-    else install({ base: result, draft: result, review: null, blocked: false });
+    const previous = live.current;
+    if (previous.unknown || previous.blocked || dirty(previous) && previous.base?.revision !== result.revision) install({ review: result, blocked: true });
+    else install({ base: result, draft: dirty(previous) && previous.draft ? rebaseHomeDraft(previous.draft, result) : result, review: null, blocked: false });
+    if (!latest.current.household.applyLayout(result, props.identityKey)) throw new LayoutDiscarded('identity');
     setVisible(true);
   }
   function enter() {
     if (active.current || !alive.current || !focused.current || !foreground.current || !online() || !latest.current.household.online || typeof document !== 'undefined' && document.hidden) return;
     active.current = true; void job(load);
   }
-  useEffect(() => { alive.current = true; return () => { alive.current = false; active.current = false; ++epoch.current; fence.current.invalidate(); flight.current?.abort(); latest.current.props.onPendingChange?.(null); }; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; active.current = false; ++epoch.current; fence.current.invalidate(); flight.current?.abort(); live.current=empty(); latest.current.props.onPendingChange?.(null); }; }, []);
   useFocusEffect(useCallback(() => { focused.current = true; enter(); return () => { focused.current = false; conceal(); }; }, [props.identityKey]));
   useEffect(() => {
-    const visibility = () => { if (document.hidden) { conceal(); setMessage('离开前台后已清除未提交草稿，返回时重新读取。'); } else enter(); };
-    const offline = () => { conceal(); setMessage('离线时已隐藏布局并清除未提交草稿；联网后重新核对。'); }, connected = () => enter();
+    const visibility = () => { if (document.hidden) { conceal(); setMessage('草稿已暂时隐藏，返回前台并核对身份后恢复。'); } else enter(); };
+    const offline = () => { conceal(); setMessage('离线时已隐藏布局，草稿保留在内存；联网后重新核对。'); }, connected = () => enter();
     const app = AppState.addEventListener('change', next => { foreground.current = next === 'active'; if (foreground.current) enter(); else conceal(); });
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visibility);
     if (typeof window !== 'undefined') { window.addEventListener('offline', offline); window.addEventListener('online', connected); }
@@ -99,6 +102,7 @@ function Workspace(props: Props & { identityKey: string }) {
           return readHomeLayout(await layoutRequest('/dashboard-layout', signal, intent, csrf));
         });
         if (!current(ticket)) return;
+        if (!latest.current.household.applyLayout(result, props.identityKey)) throw new LayoutDiscarded('identity');
         install({ base: result, draft: result, review: null, unknown: null, blocked: false }); setMessage('首页布局已保存。');
         void latest.current.household.refresh();
       } catch (caught) {
