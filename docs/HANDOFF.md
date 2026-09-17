@@ -1,6 +1,8 @@
 # 联合开发接手说明
 
-**当前线上：旅行明确改期已于 2026-09-17 11:09:53（北京时间）激活，11:10:38 正常 TLS 读回通过。** 安装 main `2092cc43c4660df905755475706a88dfd62e7203`／source `0059cd9da2db43e1ad4f4cc95edc15b9bb3804a7`，与受验候选 `06f5bd` 同树 `07540964da68469d3861436afa04bb5dd8b36415`。`JourneyReschedulePanel` 经来源快照、逐项选择和预览后调用原 `journeys/apply`；`journey_reschedule.py` 处理当地日期与 DST，`journey_workflows.py` 原子保存并提供只读操作回执。默认保留可选日期，保护历史、金额和共享范围；未知提交保留原凭证与编号。接口见 [旅行改期](JOURNEY-RESCHEDULE.md)，运行身份、失败修订和外部边界集中在 [改期发布验收](JOURNEY-RESCHEDULE-ACCEPTANCE.md#journey-reschedule-release)。
+**最新已发布：Expo 电视与播放，2026-09-17 13:00:01（北京时间）激活，13:00:47 正常 TLS 读回通过。** `DevicesScreen.tsx`／`devices.ts` 复用现有设备和播放 API，`HouseholdApp` 接入路由与未保存操作的导航保护；`app.py` 仅设备／配对段补真实会话复核及配对码单次消耗，不新增表或接口。安装 main `5f41b61980481aba7d88e58b21b0806e59891fe2`、source／integration `d0f660a8ead9f39126a35157f170e7fb6a1ad8b4`，同树 `a1b3bd81d492f235b0ca0d63ea60e2557aba06df`。本地 r2 实际 16 项／14 图，Linux R2 实际 758 通过／唯一精确 Windows 跳过；r1 视觉阻断和隔离空间不足失败保留。实际 1 户两库停写备份、55 表及注册库在 app 启动后保持；555 源／114 运行／75 HTTPS 资源和 25 个匿名 API 拒绝通过，新一次逐库在线备份成功，非全局原子快照。证据集中在 [验收页](EXPO-DEVICES-ACCEPTANCE.md)，本次 [固定适配器](EXPO-DEVICES-RELEASE.md) 不可重放；后续文档不改变运行包。
+
+**此前线上：旅行明确改期已于 2026-09-17 11:09:53（北京时间）激活，11:10:38 正常 TLS 读回通过。** 安装 main `2092cc43c4660df905755475706a88dfd62e7203`／source `0059cd9da2db43e1ad4f4cc95edc15b9bb3804a7`，与受验候选 `06f5bd` 同树 `07540964da68469d3861436afa04bb5dd8b36415`。`JourneyReschedulePanel` 经来源快照、逐项选择和预览后调用原 `journeys/apply`；`journey_reschedule.py` 处理当地日期与 DST，`journey_workflows.py` 原子保存并提供只读操作回执。默认保留可选日期，保护历史、金额和共享范围；未知提交保留原凭证与编号。接口见 [旅行改期](JOURNEY-RESCHEDULE.md)，运行身份、失败修订和外部边界集中在 [改期发布验收](JOURNEY-RESCHEDULE-ACCEPTANCE.md#journey-reschedule-release)。
 
 本地 38 新 API、182 既有回归、20 Node、21 发布工具与 16 浏览器检查分次通过；新镜像 Linux 603 通过加唯一精确 Windows 跳过，不相加为一套。实际 1 户两库完整备份、55 表及注册库行／schema／序列在 app 启动后保持，545 源／114 运行与 75 HTTPS 资源读回通过。后续逐库在线备份不是全局原子或再次 live 全组快照。新发布必须重新绑定实际安装基线，不能重放本次 [固定适配器](JOURNEY-RESCHEDULE-RELEASE.md)。本人真实云和实体电视仍另验；助理内嵌导航仅源码审查，地图内嵌恢复有本轮浏览器验证。
 

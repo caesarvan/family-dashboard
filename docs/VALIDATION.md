@@ -1,5 +1,10 @@
 # 验证记录
 
+<a id="expo-devices-candidate"></a>
+## Expo 电视与播放：2026-09-17 13:00:01 发布
+
+2026-09-17 13:00:01（北京时间）激活，13:00:47 正常 TLS 读回通过；安装 main `5f41b61980481aba7d88e58b21b0806e59891fe2`／source `d0f660a8ead9f39126a35157f170e7fb6a1ad8b4`，同树 `a1b3bd81d492f235b0ca0d63ea60e2557aba06df`。196 后端、14 Node、20 适配器为分次证据；正式本地 r2 浏览器 16 项／14 图通过，旧改期回归另有 16 项／18 图。首轮 Linux 空间不足为 743 通过／15 错误／1 跳过，R2 同包提高资源后实际 758 通过／唯一精确 Windows 跳过、零失败／错误／删选；运行文件前后保持。55→55、1 户两库停写备份及 app 启动数据保全，555 源／114 运行／75 HTTPS 与 25 个匿名 API 拒绝通过，四服务正常、环境保持；后续新一次逐库在线备份不是全局原子或 live 全组再快照。原件、失败与真实云／实体电视边界见 [发布验收](EXPO-DEVICES-ACCEPTANCE.md#expo-devices-release)，此前版本见 [旅行改期验收](JOURNEY-RESCHEDULE-ACCEPTANCE.md#journey-reschedule-release)。
+
 <a id="expo-trip-coordination-release"></a>
 ## 旅行地点与日历发布：2026-09-17 09:25:21
 
