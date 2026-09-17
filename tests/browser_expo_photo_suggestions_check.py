@@ -494,9 +494,9 @@ class Run(MediaRun):
             expect(button(page, '保存选中的 1 张')).to_have_count(0)
             finish = button(page, '结束本次核对'); expect(finish).to_be_enabled()
             self.touch_target(finish); finish.click(); expect(finish).to_have_count(0)
-            if not page.get_by_text('本次保存结果', exact=True).first().is_visible():
+            if not page.get_by_text('本次保存结果', exact=True).first.is_visible():
                 page.get_by_text('最近的选择', exact=True).click()
-            page.get_by_text('本次保存结果', exact=True).first().click()
+            page.get_by_text('本次保存结果', exact=True).first.click()
             expect(page.get_by_role('heading', name='本次保存结果', exact=True)).to_be_visible(timeout=15000)
             self.no_writes(mark)
             assert len(attempts) == self.count_requests('POST', endpoint + '/confirm') == 1
