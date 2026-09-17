@@ -68,6 +68,10 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
     if(activeActor.current!==actor||route!=='home'||activeRoute.current!==route||!message&&pendingNavigation.current.source!=='home-layout')return;
     pendingNavigation.current={actor,locked:!!message,message:message||'',source:'home-layout'};
   },[actor,route]);
+  const onAppearancePending=useCallback((message:string|null)=>{
+    if(activeActor.current!==actor||route!=='more'||activeRoute.current!==route||!message&&pendingNavigation.current.source!=='appearance')return;
+    pendingNavigation.current={actor,locked:!!message,message:message||'',source:'appearance'};
+  },[actor,route]);
   const holdNavigation=()=>{
     if(pendingNavigation.current.actor!==actor||!pendingNavigation.current.locked)return false;
     setNotice(pendingNavigation.current.message);return true;
@@ -88,7 +92,9 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
   if(!user)return <LoginScreen authError={authResult?.status==='error'?syncAuthMessage(authResult):''}/>;
   if(user.role==='tv')return <View><Text>正在打开电视看板…</Text><Button onPress={()=>openLocal('/tv')}>打开电视</Button></View>;
   if(!state)return <View style={{padding:32,gap:16}}><Text>{error||'正在读取家庭数据…'}</Text><Button onPress={()=>void refresh()}>重新加载</Button><Button onPress={()=>handle(household.logout)}>退出登录</Button></View>;
-  const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:mode=>household.savePreferences({homeView:mode}),onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,onDevicePending,onHomeLayoutPending,
+  const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:async mode=>{
+    try{await household.savePreferences({homeView:mode});}catch(failure){if(activeActor.current===actor)setNotice(failure instanceof Error?failure.message:'暂时无法保存显示范围');throw failure;}
+  },onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,onDevicePending,onHomeLayoutPending,onAppearancePending,
     onInventory:(id)=>{
       if(holdNavigation())return;
       if(id!==undefined&&!/^[a-f0-9]{24}$/.test(id)){setNotice('物品链接已失效，请重新搜索');return;}
@@ -110,6 +116,10 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
     }};
   return <><AppShell route={route} title={titles[route]} name={user.name} householdName={state.household?.name||'我们的家'} onNavigate={onNavigate} onCreate={kind=>props.onEdit(kind)} onRefresh={()=>void refresh()} onLogout={()=>handle(household.logout)} refreshing={household.refreshing} offline={!online} onLegacy={onLegacy}>
     <View key={actor}>
+      {household.preferencesUncertain&&<View style={{gap:8,marginBottom:16}} testID="preferences-uncertain">
+        <Text>显示设置的保存结果尚未核对。读取当前状态后，再决定是否修改。</Text>
+        <Button accessibilityLabel="核对显示设置" mode="outlined" disabled={household.preferencesBusy||!online} onPress={()=>handle(household.checkPreferences)}>核对显示设置</Button>
+      </View>}
       {route==='home'?<HomeScreen {...props}/>:route==='calendar'?<CalendarScreen {...props}/>:route==='tasks'||route==='shopping'?<ListScreen key={route} kind={route} {...props}/>:route==='finance'?<FinanceScreen {...props}/>:route==='investments'?<InvestmentsScreen {...props}/>:route==='trips'?<TripsScreen {...props} onReschedulePending={onReschedulePending}/>:route==='photos'?<PhotosScreen {...props}/>:route==='assistant'?<AssistantScreen {...props}/>:route==='inventory'?<InventoryScreen {...props}/>:route==='map'?<MapWorkspace {...props}/>:route==='connections'?<AccountsScreen {...props} authResult={authResult}/>:route==='devices'?<DevicesScreen {...props}/>:<MoreScreen {...props}/>}
     </View>
   </AppShell>{editor&&<ItemEditor key={actor+':'+editor.key} kind={editor.kind} item={editor.item} onDismiss={()=>setEditor(current=>current?.key===editor.key?null:current)}/>}<Snackbar visible={!!notice} onDismiss={()=>setNotice('')} duration={5000} action={{label:'知道了',onPress:()=>setNotice('')}}>{notice}</Snackbar></>;
