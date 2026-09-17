@@ -1,6 +1,6 @@
 # Expo 来源导入浏览器验收
 
-R1 已在固定候选 `c148699601d6234e5acc6f6e4f970b24700ccd1d` 与其真实构建上单次执行：12／12 功能检查、12 张 PNG，报告 `passed=true`。649 个 tracked 源和 23 个导出前后相同，12 个临时案例清理完成，页面错误／外部请求／生产写入均为 0。12 张原始截图已由 UI 审查者逐张核 hash 并查看，结论 `PASS_VISIBLE_VIEWPORT`；仍未发布，不能扩称全页或真实设备通过；完整身份和原件见 [组合验收](EXPO-FINANCE-SOURCE-ACCEPTANCE.md)。
+R1 已在固定候选 `c148699601d6234e5acc6f6e4f970b24700ccd1d` 与其真实构建上单次执行：12／12 功能检查、12 张 PNG，报告 `passed=true`。649 个 tracked 源和 23 个导出前后相同，12 个临时案例清理完成，页面错误／外部请求／生产写入均为 0。12 张原始截图已由 UI 审查者逐张核 hash 并查看，结论 `PASS_VISIBLE_VIEWPORT`；该 R1 浏览器阶段未发布，后续 R2 已按发布记录上线，仍不能扩称全页或真实设备通过；完整身份和原件见 [组合验收](EXPO-FINANCE-SOURCE-ACCEPTANCE.md)。
 
 复用 `browser_expo_finance_check.Run` 的真实临时 Flask／SQLite、HTTPS loopback、HttpOnly 成员与电视配对 cookie、Edge。来源 JSON 由 `test_finance_source_bridge.synthetic_candidate` 和 `test_spending_observations.observation` 生成，全部为虚构数据。两种成功响应都来自实际 API；故障仅丢弃真实请求、丢失或延迟真实响应，不能替换成功 DTO。
 
