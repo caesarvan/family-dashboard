@@ -36,8 +36,8 @@ PINNED = {
 OLD_ARCHIVE = '57cee29157d0ab96f500e760506139cef47d88fa90875409916cda4fab20e276'
 OLD_MANIFEST = 'af59bbbe1fd637930ae8c7878392e4a688f651a83f4061f015ec26cbce7b3fad'
 PARENT_IMAGE = 'sha256:5fa4c5d0b89e2a5ebce3f72c1691b3f4238f665a01c7419aff19a7aae2df98cc'
-# Deliberately unusable until the independently reviewed API revision is supplied.
-FINANCE_SOURCE_SHA256 = None
+# API 8c835bf independently reviewed; a missing or malformed pin fails closed.
+FINANCE_SOURCE_SHA256 = '093fb1cd54adb4cce7e486b44834800ec018be01cd7b668fc51ceb33f21d3091'
 SOURCE_PINS = dict(previous.SOURCE_PINS)
 SOURCE_PINS['financial_files.py'] = 'cfbc2bfc6b8c51ff9b7d4ed12b4ecf5e5ebe8d03df0064e60bae340bec89140e'
 REQUIRED_CHANGED = {'finance_hub.py', 'frontend/src/screens/FinanceImportPanel.tsx', 'frontend/src/lib/financeImport.ts'}

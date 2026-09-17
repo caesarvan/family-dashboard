@@ -270,7 +270,8 @@ def check_pinned_local_operators(source_root, git_repo, git_revision, evidence_d
             gitRevision=git_revision, pendingReleaseFiles=sorted(missing), requiredBuildInputs=len(required_inputs),
             sourceMutationRejections=len(rejected), badFreezeRejections=len(bad_configs),
             anonymous401Paths=list(dict.fromkeys(anonymous)), anonymousCheckRequests=len(anonymous),
-            unboundEntrypointsRejected=checked, syntheticFreezeCount=9991, schemaChange=False,
+            rejectedEntrypoints=checked, invalidLocalEntrypoints=checked[:2], unboundPhaseEntrypoints=checked[2:],
+            syntheticFreezeCount=9991, schemaChange=False,
             profile='household_members58', productionOperations=False, networkOrGeneratedProcessCalls=False,
             generatedDeltaSha256=adapter.sha((evidence_dir/'generated-delta.patch').read_bytes()))
 
