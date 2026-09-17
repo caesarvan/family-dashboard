@@ -247,8 +247,21 @@ class Run(BaseRun):
             button(page, '核对采购实付').click(); self.ready(page)
             expect(page.get_by_role('radio', name='选择付款：' + pay['title'], exact=True)).to_have_count(0)
             button(page, '返回').click()
+            expect(page.get_by_test_id('shopping-settlement-panel')).to_have_count(0)
+            expect(page.get_by_role('heading', name='交易详情', exact=True)).to_be_visible()
+            expect(button(page, '返回账本')).to_be_enabled()
             self.reconcile(ctx, 'order_payment', order, pay, '100.00')
-            self.ledger(page); self.transaction(page, order['title'])
+            with page.expect_response(lambda r: r.request.method == 'GET'
+                                      and r.url.startswith(self.base + '/api/finance-hub/reconciliation?')
+                                      and ('transactionId=' + order['id']) in r.url) as pending:
+                button(page, '重新读取交易').click()
+            response = pending.value
+            assert response.status == 200
+            response.finished()
+            current = response.json()
+            assert current['transaction']['id'] == order['id']
+            assert any(r['kind'] == 'order_payment' and r['rightId'] == pay['id'] and r['status'] == 'active' for r in current['relations'])
+            expect(button(page, '核对采购实付')).to_be_enabled()
             button(page, '核对采购实付').click(); self.ready(page)
             self.draft(page, pay, shop, '12.34'); self.preview(page); self.confirm(page)
             assert self.item(ctx, shop['id'])['actual'] == 1234
