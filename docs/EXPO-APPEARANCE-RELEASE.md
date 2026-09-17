@@ -1,10 +1,10 @@
-# Expo 成员外观发布候选：55 → 55
+# Expo 成员外观发布：55 → 55
 
-本适配器尚未用于发布。它仅从已审查的首页布局工具生成新的、未绑定的本地审查稿；不连接服务器、不运行 Docker、不保存偏好或修改生产数据。外观实现见 [样式与密度](EXPO-APPEARANCE-STYLE.md)，成员事务与 CAS 见 [偏好 API](MEMBER-PREFERENCES-API.md)。
+本适配器已用于 2026-09-17 16:17 成员外观发布，完整运行身份、原件与边界见 [本轮验收](EXPO-APPEARANCE-ACCEPTANCE.md#expo-appearance-release)。生成器本身只生成未绑定的本地审查稿，不连接服务器、不运行 Docker；审查后的打包、绑定与服务器阶段由集成人另行执行。此次固定绑定已使用，不能重放。外观实现见 [样式与密度](EXPO-APPEARANCE-STYLE.md)，成员事务与 CAS 见 [偏好 API](MEMBER-PREFERENCES-API.md)。
 
-## 已安装输入与边界
+## 本次使用的历史输入与边界
 
-[`prepare.py`](../deploy/expo_appearance_release/prepare.py) 固定私有 `expo-home-layout-tools-20260917-r1` 的七个算子、实际 `prepare-package.py` 和 `bind-release.py`，逐份校验九个原件 SHA。当前输入基线是 2026-09-17 14:56 首页布局版本，不能重放其历史绑定：
+[`prepare.py`](../deploy/expo_appearance_release/prepare.py) 固定私有 `expo-home-layout-tools-20260917-r1` 的七个算子、实际 `prepare-package.py` 和 `bind-release.py`，逐份校验九个原件 SHA。本次输入基线为当时已安装的 2026-09-17 14:56 首页布局版本；当前已升级，不能重放本次或更早的绑定：
 
 - 安装 main `609a51afde8b6f8aa1f817fa5d2471a7a8b939ff`，source `cac7f78a1e4148b9c4d44164d3d6fbd74aa57234`，同树 `d22f6d4ee78dcc83501d4c478b97b4cfa506d1bc`。
 - 源码包 `5b3ecfca687de81e9243e1a5472a4a1a3ebf3dd75a9c055a56f71cc926df39d3`；manifest `b1b6d2783ef69dbb18be23fc7841194306448ebc1921086fb22dd4d4f6a1b9dd`。
@@ -35,4 +35,4 @@ python -B deploy/expo_appearance_release/prepare.py --source-root <私有access�
 - `python -B -X utf8 -m pytest tests/test_expo_appearance_release.py -q -p no:cacheprovider`：实际 **20 项通过**。私有 `test-results/appearance-release-r1.xml` SHA256：`d030e86d98d9574352d3c926d72c10231c7ebb23091d8efd2874bcb585cce17d`。
 - 显式以私有九原件、真实已安装 archive 和本分支 base `5a963e1f1d0fa192249ee01d1a63b08072d145e1` Git Dockerfile 运行本地检查：临时目录生成九文件、Docker 字节相同、43 项非法 freeze 拒绝、七个未绑定入口拒绝、递归语法与无迁移检查通过；测试阶段阻断生成代码的一切网络／进程调用。私有 `test-results/appearance-release-pinned-r1.json` SHA256：`8ba16b5768dbb3dc48c5df1575e7f3e64eb8b27da5f8a84c21fe0a319e466d9e`。
 
-两类检查不是本轮服务器全套，也没有生成正式发布目录、包、绑定或执行生产阶段。最终 Linux、真实组合浏览器、服务器发布与读回结果仍待独立记录；实体电视／真实云未因此获得验收。发布后备份仍是逐库在线快照，不是跨库全局原子快照。
+上述两类检查发生在本地适配器阶段，当时未执行生产操作。后续独立审查、正式打包／绑定／上传，以及 build、validate、stage、activate、post_readback 五阶段均一次退出 0。Linux 实际 226 通过、唯一精确 Windows junction 跳过，正式 55→55 保全与 TLS 读回见 [本轮验收](EXPO-APPEARANCE-ACCEPTANCE.md#expo-appearance-release)，不将分段数量相加。实体电视、真实云和本人公网新流程仍未验收；发布后备份为逐库在线快照，不是跨库全局原子或再次 live 全组快照。
