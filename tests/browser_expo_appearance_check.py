@@ -562,6 +562,7 @@ def main():
             finally:
                 browser.close()
     except Exception:
+        report['passed'] = False
         report['failure'] = traceback.format_exc()
         print(report['failure'], flush=True)
     finally:
