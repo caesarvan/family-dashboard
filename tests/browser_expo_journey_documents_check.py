@@ -377,9 +377,13 @@ class Run(BaseRun):
             def switch(route):
                 if route.request.method != 'POST': return route.continue_()
                 response = route.fetch(max_redirects=0); assert response.status == 201
-                sent.append(response.json()['document']['id']); self.login(ctx, 2); route.fulfill(response=response)
+                document_id = response.json()['document']['id']
+                self.login(ctx, 2); route.fulfill(response=response); sent.append(document_id)
             page.route(self.base + PATH, switch); button(page, '确认上传资料').click()
+            self.settle(page, lambda: len(sent) == 1)  # Editor also hides before the write; wait for the actual switched response.
+            expect(page.get_by_test_id('journey-documents-panel')).to_have_count(0, timeout=15000)  # Fresh identity refresh unmounts the old actor's Trips subtree.
             expect(page.get_by_test_id('journey-document-editor')).to_be_hidden(timeout=15000)
+            expect(page.locator('body')).not_to_contain_text(record['title'], timeout=15000)
             page.unroute(self.base + PATH, switch); assert len(sent) == 1
             expect(page.locator('body')).not_to_contain_text('合成旧身份上传回执')
             self.get(ctx, PATH + '/' + sent[0] + '/file', 404)
