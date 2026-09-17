@@ -224,9 +224,10 @@ class Run(BaseRun):
         # Future schema fixture only: the old-client public API correctly cannot introduce unknown keys.
         data = {'order': [FUTURE] + CARDS, 'hidden': [FUTURE, 'finance']}
         assert self.database.resolve().is_relative_to(self.folder.resolve())
-        with sqlite3.connect(self.database) as con:
+        with closing(sqlite3.connect(self.database)) as con:
             con.execute('UPDATE member_dashboard_layout SET data=?,revision=? WHERE owner=?',
                         (json.dumps(data), current['revision'] + 1, 'member1'))
+            con.commit()
         self.open_panel(page)
         expect(page.get_by_text('还有 1 个当前版本暂不支持的卡片，其设置将由服务器保留。', exact=True)).to_be_visible()
         button(page, '恢复默认布局').click()
@@ -268,7 +269,9 @@ class Run(BaseRun):
         expect(page.get_by_test_id('home-layout-panel')).to_be_visible()
         assert page.url == original
         button(page, '新建记录').click()
-        page.get_by_role('menuitem', name='添加待办', exact=True).click()
+        create_task = page.get_by_role('menuitem', name=re.compile(r'添加待办$'))
+        expect(create_task).to_have_count(1)
+        create_task.click()
         expect(page.get_by_text(message, exact=True)).to_be_visible()
         button(page, '知道了').click()
         expect(page.get_by_test_id('home-layout-panel')).to_be_visible()
