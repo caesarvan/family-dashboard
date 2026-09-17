@@ -1,6 +1,6 @@
 # Expo 更新资产来源
 
-此页是独立实现候选，尚未完成接线、组合浏览器或发布验收。它使用现有导入协议，不创建新路由、表或外部刷新任务。
+财务页「更新资产来源」已在候选 `c1486996` 接线，模型、全量类型检查与 R1 真实浏览器 12 项功能检查通过；12 张原始截图经独立逐图视查，当前可见区域无阻断，尚未发布。它使用现有导入协议，不创建新路由、表或外部刷新任务。固定身份、原件与验收边界集中见 [组合验收](EXPO-FINANCE-SOURCE-ACCEPTANCE.md)。
 
 ## 使用步骤
 
@@ -27,7 +27,7 @@
 
 ## 组件与协议
 
-`FinanceSourceImportPanel` 默认导出，props 为 `{onBack, onPendingChange?}`。接线由集成人负责。草稿、文件读取、请求及未知结果同步报告 pending；明确返回先清父导航锁，再调用 `onBack`。根导航需尊重该锁，页面自身提供离开确认和 `beforeunload` 提示。
+`FinanceSourceImportPanel` 默认导出，props 为 `{onBack, onPendingChange?}`。已由财务页接入，并通过 `ScreenProps.onFinanceSourcePending` 向根导航报告状态。草稿、文件读取、请求及未知结果同步报告 pending；明确返回先清父导航锁，再调用 `onBack`。根导航需尊重该锁，页面自身提供离开确认和 `beforeunload` 提示。
 
 | 范围 | 现有协议 |
 | --- | --- |
@@ -48,7 +48,7 @@
 - 固定 API `05ee656825a7209c8b5c903c3eb94067fc7d00a0` 的真实 Flask／SQLite 临时合成来源，独立 Node 模型 **15 项通过**。包括两 lane、预览零写、确认与原请求重放、真实新登录回执、伙伴隔离、TV／匿名拒绝、锁内过期代码、null／0／外币、完整身份／epoch、限制和不确定恢复；明确决定才解除核对、单独 false 不解锁、旧句柄不清其他家庭或新操作。
 - 所有测试数据库连接显式关闭，临时目录自动清理，测试禁止外部网络。没有个人真实输入或生产请求。
 - 严格 model＋Panel 定向 TypeScript **0 个诊断**；只读映射现有物理依赖，不新增依赖或安装。
-- 本分支未接入 FinanceScreen；全量组合类型检查、真实浏览器导入／恢复／导航锁、四宽视觉及实际账号流程均待独立验收。
+- 已审 model／Panel 与入口在 `c1486996` 合并，全量类型检查及 R1 真实浏览器 12 项通过；覆盖导入、两种未知提交恢复、导航与身份边界。12 张四宽截图已独立逐图视查，仅覆盖各自当前滚动区域；本人实际来源、云端和实体设备流程未验收；详见 [组合验收](EXPO-FINANCE-SOURCE-ACCEPTANCE.md)。
 
 运行模型测试（PowerShell，路径按实际工作树设置）：
 
@@ -60,4 +60,4 @@ node --experimental-transform-types --test --test-reporter=tap tests/test_expo_f
 
 现有时间显示 helper 使用 TypeScript 参数属性，所以 Node 需 `--experimental-transform-types`，仅 strip 模式不能启动。模型测试不替代浏览器完成边界；消费记录的来源正确性仍由原始来源材料决定。
 
-协议依据：[来源桥接](FINANCE-SOURCE-BRIDGE.md)、[消费观察](SPENDING-OBSERVATIONS.md)。会话与精确回执增强来自独立 API 分支 `05ee6568`，组合后参见其 `FINANCE-IMPORT-SESSION-RECOVERY.md`。
+协议依据：[来源桥接](FINANCE-SOURCE-BRIDGE.md)、[消费观察](SPENDING-OBSERVATIONS.md)。会话与精确回执增强 `05ee6568` 已随父 baseline 发布，本批保持后端字节不变，参见 [导入会话与恢复](FINANCE-IMPORT-SESSION-RECOVERY.md)。
