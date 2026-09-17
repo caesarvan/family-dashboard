@@ -1,5 +1,7 @@
 # 验证记录
 
+**2026-09-18 01:14:21（北京时间）单趟旅行回顾已发布。** R2 十条本地浏览器流程／十二图、Linux 180 passed 加 1 个精确 Windows junction 跳过分别通过；58→58 全表与注册库保全、01:15:15 正常 TLS 读回完成。独立审计通过；完整身份、原件与限制集中于 [回顾发布验收](EXPO-TRIP-RECAP-ACCEPTANCE.md#expo-trip-recap-release)。本地与服务器数字不累加，以下历史记录保持。
+
 **2026-09-18 00:23:38（北京时间）手动资产账户已发布。** R2 12 条本地浏览器流程／12 图、Linux 207 passed 加 1 个精确 Windows 跳过分别通过；55→58 保全、00:24:23 TLS 和 00:27:22 独立只读复核通过。完整身份、原件及限制集中于 [账户发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。以下各历史记录保持原验收范围。
 
 <a id="expo-devices-candidate"></a>

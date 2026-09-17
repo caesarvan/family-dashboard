@@ -1,11 +1,11 @@
-# 旅行回顾发布适配器（58→58 候选）
+# 旅行回顾发布适配器（58→58）
 
-本适配器仅在本地生成九份未绑定工具。旅行回顾已完成独立临时浏览器验收；此文档不表示已发布，也不代替最终源码冻结、工具审查或服务器阶段。
+本适配器本身仅在本地生成九份未绑定工具。本次固定工具随后由集成人独立审查、绑定并执行发布；2026-09-18 01:14:21（北京时间）激活、01:15:15 正常 TLS 读回完成。实际身份、Linux 180 通过／1 项精确跳过、58→58 保全及独立审计状态见 [发布验收](EXPO-TRIP-RECAP-ACCEPTANCE.md#expo-trip-recap-release)。固定历史算子不可重放。
 
 ## 固定父版本与范围
 
 - 父原件目录：私有 `finance-accounts-tools-20260917-r1`，九份 SHA 固定在 `prepare.py`。
-- 已安装账户包 archive：`146e8e3553e8b4fcf00363a396414ee8f3da021f5fb68ecc588cbfee69dad74e`。
+- 本次更新前已安装账户包 archive：`146e8e3553e8b4fcf00363a396414ee8f3da021f5fb68ecc588cbfee69dad74e`。
 - 父 manifest：`16aa062f50fb203a5b6a1da4150824613a6989f517cccf3aac65ee81a931a763`。
 - 父 app／sync／media 镜像：`sha256:6974cdb6cc98869d8cdc55927c7a1be05d941aaef76382645b1fbd8dfe422ad7`。
 - 仍使用 `finance_accounts58`。38 个根后端、Dockerfile、依赖、部署与 schema helper 必须保持原字节；没有新表或账户迁移。
@@ -42,4 +42,4 @@ python -B -X utf8 -m pytest -q tests/test_expo_trip_recap_release.py
 python -B -X utf8 tests/test_expo_trip_recap_release.py --source-root <私有 A> --git-repo <固定源码目录> --git-revision <完整 commit> [--freeze <JSON>] [--build-evidence <JSON>]
 ```
 
-私有证据保存在作者树 `test-results/recap-release-final2`；原八模块选择的生成检查保留在 `recap-release-r1`／`recap-release-final`，不与最终结果累加。不提交原件或真实数据。最终整合源码应分别列明已审工具／测试新增、发布后文档及 `docs/contract-inventory.json` 的精确 SHA 差异；构建输入与已受验前端／运行后端必须逐字节相同，不能以文件数量相等替代来源核验。未执行本批实际打包、绑定、服务器验收或部署；真实云、个人资料与实体设备仍不属于本地测试结论。
+私有证据保存在作者树 `test-results/recap-release-final2`；原八模块选择的生成检查保留在 `recap-release-r1`／`recap-release-final`，不与最终结果累加。不提交原件或真实数据。最终整合源码应分别列明已审工具／测试新增、发布后文档及 `docs/contract-inventory.json` 的精确 SHA 差异；构建输入与已受验前端／运行后端必须逐字节相同，不能以文件数量相等替代来源核验。此生成验证不等于发布验收；实际包、绑定与五阶段结果见验收页。旧地点断言的独立修复不在本次包，也不计入本次七模块；真实云、个人资料与实体设备仍不属于本地测试结论。
