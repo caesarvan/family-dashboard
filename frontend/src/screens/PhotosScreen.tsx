@@ -429,6 +429,10 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
         {checkbox('允许临时处理本次选择，供我预览确认；未保存的内容最迟 24 小时后清理。', temporary, () => setTemporary(v => !v), busy || !!createReceipt)}
         <Button mode="contained" disabled={busy || (!createReceipt && (!temporary || activeImport || !account?.capabilities?.photos || account.needsReauth)) || !!confirmReceipt} onPress={() => { try { create(); } catch (caught) { failure(caught); } }}>{createReceipt ? '核对 / 重试原选择请求' : '开始选择照片'}</Button>
         {!!createReceipt && <Text>上一请求结果未确认；此按钮沿用原请求标识，不会自动重复创建。</Text>}
+        {!!confirmReceipt && (!row || terminalImport(row.state)) && <View style={styles.stack}>
+          <Text>原保存结果仍待核对。结束核对只清除此页的等待记录，不代表原请求成功或失败。</Text>
+          <Button contentStyle={{ minHeight: 44 }} disabled={busy} onPress={() => { if (!locked.current && current()) { setConfirmReceipt(null); setConfirmReview(false); setSelected([]); setPersist(false); } }}>结束本次核对</Button>
+        </View>}
         {activeImport && !row && <Text>已有进行中的选择，请从下方继续。</Text>}
         {imports.length > 0 && <List.Accordion title="最近的选择" description="继续选片或查看保存结果">
           {imports.map(item => <List.Item key={item.id} title={importLabels[item.state] || '选择记录'} description={item.state === 'confirmed' ? savedSummary(item) : new Date(item.createdAt).toLocaleString('zh-CN')} onPress={() => { if (!busy && !confirmReceipt) void readAction(() => readImport(item.id)); }} />)}
