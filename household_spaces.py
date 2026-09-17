@@ -21,7 +21,29 @@ from itsdangerous import URLSafeSerializer, BadSignature
 from werkzeug.wrappers import Request, Response
 
 
-DEFAULT_PREFERENCES = {'theme': 'forest', 'density': 'comfortable', 'homeView': 'today'}
+DEFAULT_PREFERENCES = {'theme': 'forest', 'density': 'comfortable', 'homeView': 'today', 'colorMode': 'light'}
+PREFERENCE_CHOICES = {'theme': {'forest', 'light', 'ocean'}, 'density': {'comfortable', 'compact'},
+                      'homeView': {'today', 'week', 'around'}, 'colorMode': {'light', 'dark'}}
+MAX_PREFERENCE_REVISION = 9007199254740991
+
+
+def _stored_preferences(raw, Problem):
+    """Project known fields without leaking or discarding future stored data."""
+    try:
+        stored = json.loads(raw) if raw is not None else {}
+        if not isinstance(stored, dict):
+            raise ValueError('preferences must be an object')
+        revision = stored.get('revision', 0)
+        if type(revision) is not int or not 0 <= revision <= MAX_PREFERENCE_REVISION:
+            raise ValueError('invalid stored revision')
+        projected = {key: stored.get(key, default) for key, default in DEFAULT_PREFERENCES.items()}
+        if any(not isinstance(projected[key], str) or projected[key] not in choices
+               for key, choices in PREFERENCE_CHOICES.items()):
+            raise ValueError('invalid stored choice')
+    except (ValueError, TypeError):
+        # Never reset a corrupt version to zero and accidentally accept a stale write.
+        raise Problem('偏好数据无法读取，请联系管理员核对', 503) from None
+    return stored, {**projected, 'revision': revision}
 
 
 def register_preferences(app, db, Problem, body, require_member, audit):
@@ -30,22 +52,66 @@ def register_preferences(app, db, Problem, body, require_member, audit):
                      '(owner TEXT PRIMARY KEY REFERENCES users(id), data TEXT NOT NULL)')
         db().commit()
 
+    def current_member(con):
+        require_member()
+        current = app.extensions['member_sessions'].current(con)
+        original = getattr(g, 'member_session', {})
+        if (current['owner'] != g.actor['id'] or current['auth_version'] != g.actor.get('auth_version')
+                or current['id'] != original.get('id')
+                or g.actor.get('householdId') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+            raise Problem('会话已失效，请重新登录', 401)
+
+    def read_preferences(con, owner):
+        row = con.execute('SELECT data FROM member_preferences WHERE owner=?', (owner,)).fetchone()
+        return _stored_preferences(row['data'] if row else None, Problem)
+
     @app.route('/api/preferences', methods=['GET', 'PUT'])
     def preferences():
         require_member()
+        owner, con = g.actor['id'], db()
         if request.method == 'GET':
-            row = db().execute('SELECT data FROM member_preferences WHERE owner=?', (g.actor['id'],)).fetchone()
-            return jsonify({**DEFAULT_PREFERENCES, **(json.loads(row['data']) if row else {})})
+            try:
+                con.execute('BEGIN')
+                current_member(con)
+                _, previous = read_preferences(con, owner)
+            finally:
+                con.rollback()
+            # Release the read snapshot before observing concurrent revocation.
+            current_member(con)
+            return jsonify(previous)
         value = body()
-        choices = {'theme': {'forest', 'light', 'ocean'}, 'density': {'comfortable', 'compact'},
-                   'homeView': {'today', 'week', 'around'}}
-        if set(value) != set(choices) or any(not isinstance(value[k], str) or value[k] not in v for k, v in choices.items()):
-            raise Problem('请选择有效的主题、密度和默认日程视图')
-        db().execute('INSERT INTO member_preferences VALUES(?,?) ON CONFLICT(owner) DO UPDATE SET data=excluded.data',
-                     (g.actor['id'], json.dumps(value)))
-        audit('preferences_update')
-        db().commit()
-        return jsonify(value)
+        if set(value) != {'revision', 'changes'}:
+            raise Problem('请刷新页面后提交偏好版本和修改项')
+        if type(value['revision']) is not int or not 0 <= value['revision'] <= MAX_PREFERENCE_REVISION:
+            raise Problem('请提供有效的偏好版本')
+        changes = value['changes']
+        if (not isinstance(changes, dict) or not changes or not set(changes) <= set(PREFERENCE_CHOICES)
+                or any(not isinstance(v, str) or v not in PREFERENCE_CHOICES[k] for k, v in changes.items())):
+            raise Problem('请选择有效的主题、密度、默认日程视图或明暗模式')
+        try:
+            con.execute('BEGIN IMMEDIATE')
+            current_member(con)
+            stored, previous = read_preferences(con, owner)
+            if previous['revision'] != value['revision']:
+                raise Problem('偏好已在其他设备修改，请读取最新设置后重新核对', 409)
+            incoming = {**previous, **changes}
+            if incoming == previous:
+                current_member(con)
+                con.commit()
+                return jsonify(previous)
+            if previous['revision'] == MAX_PREFERENCE_REVISION:
+                raise Problem('偏好版本已达上限，请联系管理员核对', 409)
+            incoming['revision'] += 1
+            con.execute('INSERT INTO member_preferences(owner,data) VALUES(?,?) '
+                        'ON CONFLICT(owner) DO UPDATE SET data=excluded.data',
+                        (owner, json.dumps({**stored, **incoming})))
+            audit('preferences_update')
+            current_member(con)
+            con.commit()
+        except BaseException:
+            con.rollback()
+            raise
+        return jsonify(incoming)
 
 
 class HouseholdPlatform:
