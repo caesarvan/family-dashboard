@@ -28,7 +28,7 @@
 
 本模块不改公共资金、私人账本、投资、预算表、采购实付关联或旅行 `paid`。采购预算是模板估价，完成不证明付款。
 
-## 三个 HTTP 接口
+## HTTP 接口
 
 共同前缀 `/api/routines`，沿用普通 JSON 600,000 字节上限。GET 不迁移、不补期；context 和助理摘要只读业务记录。
 
@@ -92,7 +92,7 @@ schedule 必填 frequency／interval／anchor，可选 `timeZone:"Asia/Shanghai"
 {"operation":"skip","planId":"synthetic-plan-id","revision":2}
 ```
 
-返回 `{operation,today,timeZone,before,after,nextDates,willGenerate,warnings,previewToken,expiresInSeconds}`。before 是当前 plan 或 null；after 为 `{kind,template,schedule,state}`；warnings 为字符串数组。
+返回 `{operation,today,timeZone,before,after,nextDates,willGenerate,warnings,previewToken,operationKey,expiresInSeconds}`。before 是当前 plan 或 null；after 为 `{kind,template,schedule,state}`；warnings 为字符串数组。operationKey 是服务端签名 nonce 派生的 64 位小写十六进制编号，用于本人历史回执读回，不是新的写入凭据。
 
 willGenerate 为 `{index,scheduledOn,kind,data}` 或 null。create、skip、当前项已完成的 resume 会生成；pause、archive、update 不生成。**preview.nextDates 包含尚未生成的 willGenerate 日期作为第一期，再列后两期**；确认后 context.nextDates 排除新 current，这是时间点差异，不是重复生成。
 
@@ -104,11 +104,17 @@ willGenerate 为 `{index,scheduledOn,kind,data}` 或 null。create、skip、当�
 {"previewToken":"仅使用本人本次预览返回的签名"}
 ```
 
-返回 `{operation,plan,generated,replayed}`；generated 为 `{id,kind,revision,scheduledOn}` 或 null。BEGIN IMMEDIATE 中重新核对 MemberSessions.current、请求 actor、签名及依赖，原子保存规则、期次、实体、回执和 audit／meta。
+返回 `{operation,plan,generated,replayed,operationKey}`；generated 为 `{id,kind,revision,scheduledOn}` 或 null。BEGIN IMMEDIATE 中重新核对 MemberSessions.current、捕获的实际 session ID、请求 actor、签名及依赖，原子保存规则、期次、实体、回执和 audit／meta；审计后、提交前再次核对会话。读取接口释放原快照后重新核对身份，兼容旧 Cookie 的隐式事务。
 
-同一仍有效签名重复确认返回历史回执、replayed:true，不重建或再推进。历史结果不是当前状态证明；后来删除、归档或编辑也不会被回放恢复。确认后读回 context；关闭窗口不能取消已发送写入，结果不明时沿用同一 token，不自动产生新确认。
+同一签名在原有效成员会话内重复确认先查历史回执：即使预览超过 600 秒，已执行操作仍返回历史结果、replayed:true，不重建或再推进。历史结果不是当前状态证明；后来删除、归档或编辑也不会被回放恢复。尚无回执时才在写锁内检查时效；过期返回 410 与 `code:preview_expired_unapplied`，不写业务数据。所有首次确认都在此写锁后检查时效，因此这一 410 可结束原未知状态并重新预览，普通 GET 404 则不能。确认后读回 context；关闭窗口不能取消已发送写入，结果不明时沿用同一 token，不自动产生新确认。
 
-格式、未知字段、坏签名或过期为 400；无登录／会话撤销 401；电视、CSRF、签名所属成员／家庭／会话不符 403；本户计划不存在 404；日期、版本、实体、容量、状态改变或归档后操作 409。冲突保留草稿后重读、预览，不静默覆盖或改变操作。
+格式、未知字段或坏签名为 400；无登录／会话撤销 401；电视、CSRF、签名所属成员／家庭／会话不符 403；本户计划不存在 404；日期、版本、实体、容量、状态改变或归档后操作 409；锁内核实原操作未执行且预览过期为上述 410。冲突保留草稿后重读、预览，不静默覆盖或改变操作。
+
+### GET /operations/\<operationKey\>
+
+仅当前户、当前有效成员本人可读其发起的历史回执；同户另一成员也不能代读。重新登录后可读取本人历史，但不能用旧会话签名产生新写入。编号严格为 64 位小写十六进制，不接受查询参数。
+
+成功返回 `{found:true,operationKey,operation,planId,revision,generated,createdAt}`，revision 为当时确认后的计划版本，generated 沿用上述精简结构；createdAt 是原回执 UTC 时间。未找到返回 404 与 `code:routine_receipt_not_found`，只表示此刻尚未找到，原确认可能仍在途。响应 `Cache-Control: no-store`，不返回完整计划、nonce、签名或会话信息；没有写入、补期或延长预览。原有回执不含 operationKey 也可按现存 owner／nonce_digest 精确读取，无 schema 迁移。新 Expo 接缝及验收范围见 [EXPO-ROUTINES-API](EXPO-ROUTINES-API.md)。
 
 ## 存储、调度与共享导出
 
