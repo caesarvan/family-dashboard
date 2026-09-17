@@ -5,6 +5,7 @@ import type { ListItem, ScreenProps } from '../lib/types';
 import { bounds, dayKey, duration, eventsForDay, overlapsDay, rangeDays, rangeSummary, shortDay } from '../lib/calendar';
 import { EmptyState, SectionCard } from '../ui/components';
 import { EventRow, RangeControls, WorkloadStrip } from './CalendarScreen';
+import HomeLayoutPanel from './HomeLayoutPanel';
 
 const cardKeys = ['calendar', 'finance', 'tasks', 'shopping', 'trips'];
 const money = (value: number) => Number.isSafeInteger(value) ? '¥' + new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value / 100) : '待核对';
@@ -12,13 +13,15 @@ const money = (value: number) => Number.isSafeInteger(value) ? '¥' + new Intl.N
 export default function HomeScreen(props: ScreenProps) {
   const theme = useTheme(), { width } = useWindowDimensions();
   const [busy, setBusy] = useState(''), [error, setError] = useState('');
+  const [layoutOpen, setLayoutOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | undefined>();
   const identity = `${props.user.householdId}:${props.user.id}:${props.user.auth_version}`;
   const current = useRef(identity); current.current = identity;
   const pending = useRef(false);
-  useEffect(() => { pending.current = false; setBusy(''); setError(''); }, [identity]);
+  useEffect(() => { pending.current = false; setBusy(''); setError(''); setLayoutOpen(false); }, [identity]);
   useEffect(() => { setSelectedDay(undefined); }, [identity, props.mode]);
   if (props.user.role !== 'member') return <EmptyState title="请使用成员账户打开首页" />;
+  if (layoutOpen) return <HomeLayoutPanel onClose={() => setLayoutOpen(false)} onPendingChange={props.onHomeLayoutPending} />;
   const { state } = props, today = dayKey(), now = Date.now(), days = rangeDays(props.mode);
   const summary = rangeSummary(state.events, days, props.focus);
   const upcoming = state.events.filter(event => days.some(day => overlapsDay(event, day)) && (bounds(event).end > now || bounds(event).start === now))
@@ -90,7 +93,10 @@ export default function HomeScreen(props: ScreenProps) {
         <Text accessibilityRole="header" style={[styles.title, wide && styles.titleWide]}>{`${props.user.name}，欢迎回家`}</Text>
         {wide && <Text variant="bodyMedium" style={muted}>今天的安排、共同的计划，一起照顾好。</Text>}
       </View>
-      <Button icon="plus" mode="contained" style={styles.pill} contentStyle={styles.primaryContent} onPress={() => props.onEdit('tasks')}>添加待办</Button>
+      <View style={styles.heroActions}>
+        <Button mode="outlined" accessibilityLabel="安排首页" disabled={!!busy || !!props.pendingId} onPress={() => setLayoutOpen(true)}>安排首页</Button>
+        <Button icon="plus" accessibilityLabel="添加待办" mode="contained" style={styles.pill} contentStyle={styles.primaryContent} onPress={() => props.onEdit('tasks')}>添加待办</Button>
+      </View>
     </View>
     <View style={[styles.overview, wide && styles.overviewWide]}>
       <View style={styles.range}><RangeControls props={props} /></View>
@@ -111,6 +117,7 @@ const styles = StyleSheet.create({
   title: { fontSize: 28, lineHeight: 34, fontWeight: '600', letterSpacing: -0.7 },
   titleWide: { fontSize: 38, lineHeight: 44, letterSpacing: -1 },
   pill: { borderRadius: 999, alignSelf: 'center' }, primaryContent: { minHeight: 40 },
+  heroActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center' },
   overview: { gap: 14 }, overviewWide: { flexDirection: 'row', alignItems: 'center', gap: 32 },
   range: { flexGrow: 1, flexShrink: 1, maxWidth: 680 },
   metrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, metricsWide: { maxWidth: 340, justifyContent: 'flex-end', columnGap: 20, rowGap: 8 },
