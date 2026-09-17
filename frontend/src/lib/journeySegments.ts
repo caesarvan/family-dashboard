@@ -112,7 +112,7 @@ export function editSegmentDraft(detail: JourneyDetail): SegmentDraft {
   const d = readJourneyDetail(detail), plan = copy(d.plan), t = d.trip;
   if (!t) throw new SegmentError('关联旅行已不存在，请重新核对。');
   for (const [rows, records, prefix, label] of [[plan.checklist, d.tasks, 'task:', '准备事项'], [plan.shopping, d.shopping, 'shopping:', '采购事项']] as const) {
-    if (rows.length !== records.length || rows.some(row => !records.some(record => record.workflowKey === prefix + row.key))) throw new SegmentError(`关联${label}已被单独删除或解除关联，请先核对旅行清单，再编辑详细行程。`);
+    if (rows.length !== records.length || rows.some(row => !records.some(record => record.workflowKey === prefix + row.key)) || records.some(record => record.tripId !== d.tripId || record.journeyId !== d.id)) throw new SegmentError(`关联${label}已被单独删除或解除关联，请先核对旅行清单，再编辑详细行程。`);
   }
   if (d.tasks.some(record => !record.due)) throw new SegmentError('关联准备事项已被单独清空截止日期，请先核对旅行清单，再编辑详细行程。');
   Object.assign(plan, { title: text(t.title), start: day(t.start), end: day(t.end), budget: money(t.budget), saved: money(t.saved), paid: money(t.paid), note: text(t.note ?? '', 2000, true) });

@@ -56,7 +56,21 @@ with tempfile.TemporaryDirectory(prefix='journey-segment-dto-') as directory:
     cleared=checked(c.get('/api/journeys/'+d1['id']))
     checked(c.delete('/api/items/tasks/'+cleared['tasks'][0]['id'],json={'revision':cleared['tasks'][0]['revision']},headers=h))
     deleted_task=checked(c.get('/api/journeys/'+d1['id']))
-    checked(c.delete('/api/items/shopping/'+d2['shopping'][0]['id'],json={'revision':manual['shopping'][0]['revision']},headers=h))
+    checked(c.patch('/api/items/tasks/'+manual['tasks'][0]['id'],json={'revision':manual['tasks'][0]['revision'],'tripId':''},headers=h))
+    unlinked_task=checked(c.get('/api/journeys/'+d2['id']))
+    checked(c.patch('/api/items/tasks/'+unlinked_task['tasks'][0]['id'],json={'revision':unlinked_task['tasks'][0]['revision'],'tripId':d2['tripId']},headers=h))
+    checked(c.patch('/api/items/shopping/'+manual['shopping'][0]['id'],json={'revision':manual['shopping'][0]['revision'],'tripId':d1['tripId']},headers=h))
+    relinked_purchase=checked(c.get('/api/journeys/'+d2['id']))
+    checked(c.patch('/api/items/shopping/'+relinked_purchase['shopping'][0]['id'],json={'revision':relinked_purchase['shopping'][0]['revision'],'tripId':d2['tripId']},headers=h))
+    current=checked(c.get('/api/journeys/'+d2['id']))
+    checked(c.patch('/api/items/tasks/'+current['tasks'][0]['id'],json={'revision':current['tasks'][0]['revision'],'journeyId':''},headers=h))
+    unlinked_task_journey=checked(c.get('/api/journeys/'+d2['id']))
+    checked(c.patch('/api/items/tasks/'+unlinked_task_journey['tasks'][0]['id'],json={'revision':unlinked_task_journey['tasks'][0]['revision'],'journeyId':d2['id']},headers=h))
+    checked(c.patch('/api/items/shopping/'+current['shopping'][0]['id'],json={'revision':current['shopping'][0]['revision'],'journeyId':d1['id']},headers=h))
+    relinked_purchase_journey=checked(c.get('/api/journeys/'+d2['id']))
+    checked(c.patch('/api/items/shopping/'+relinked_purchase_journey['shopping'][0]['id'],json={'revision':relinked_purchase_journey['shopping'][0]['revision'],'journeyId':d2['id']},headers=h))
+    current=checked(c.get('/api/journeys/'+d2['id']))
+    checked(c.delete('/api/items/shopping/'+d2['shopping'][0]['id'],json={'revision':current['shopping'][0]['revision']},headers=h))
     deleted_purchase=checked(c.get('/api/journeys/'+d2['id']))
     # Existing full-plan editing can explicitly detach a task while preserving
     # its standalone record. A coherent plan/link result remains editable.
@@ -65,7 +79,7 @@ with tempfile.TemporaryDirectory(prefix='journey-segment-dto-') as directory:
     detached=checked(c.get('/api/journeys/'+d1['id']))
     state=checked(c.get('/api/state'))
     assert any(row['id']==d1['tasks'][1]['id'] for row in state['tasks'])
-    print(json.dumps({'cleared':cleared,'deletedTask':deleted_task,'deletedPurchase':deleted_purchase,'detached':detached,'session':session,'capabilities':checked(c.get('/api/journeys/templates')),'v1':d1,'v2':d2,'initialPreview':initial,'preview':p2,'receipt':receipt,'replay':replay,'operation':operation,'latest':latest,'manual':manual,'preserved':preserved,'conflict':conflict,'resolved':resolved,'dstPlan':dst,'issue':issue},ensure_ascii=False))
+    print(json.dumps({'unlinkedTaskJourney':unlinked_task_journey,'relinkedPurchaseJourney':relinked_purchase_journey,'unlinkedTask':unlinked_task,'relinkedPurchase':relinked_purchase,'cleared':cleared,'deletedTask':deleted_task,'deletedPurchase':deleted_purchase,'detached':detached,'session':session,'capabilities':checked(c.get('/api/journeys/templates')),'v1':d1,'v2':d2,'initialPreview':initial,'preview':p2,'receipt':receipt,'replay':replay,'operation':operation,'latest':latest,'manual':manual,'preserved':preserved,'conflict':conflict,'resolved':resolved,'dstPlan':dst,'issue':issue},ensure_ascii=False))
 `;
 const produced = spawnSync(process.env.JOURNEY_MODEL_PYTHON || 'python', ['-B', '-X', 'utf8', '-c', python], { cwd: root, encoding: 'utf8', maxBuffer: 8_000_000 });
 assert.equal(produced.status, 0, produced.stderr + produced.stdout);
@@ -106,6 +120,17 @@ test('actual purchase deletion cannot recreate a shopping item through segment e
   const d = m.readJourneyDetail(dto.deletedPurchase); assert.equal(d.shopping.length, d.plan.shopping.length - 1);
   assert.throws(() => m.editSegmentDraft(d), /采购事项.*删除或解除关联/);
 });
+test('actual task trip unlink with a remaining workflow link cannot silently restore association', () => {
+  const d = m.readJourneyDetail(dto.unlinkedTask); assert.equal(d.tasks.length, d.plan.checklist.length); assert.equal(d.tasks[0].tripId, '');
+  assert.throws(() => m.editSegmentDraft(d), /准备事项.*删除或解除关联/);
+  assert.throws(() => m.editSegmentDraft(m.readJourneyDetail(dto.unlinkedTaskJourney)), /准备事项.*删除或解除关联/);
+});
+test('actual purchase relink to another trip cannot silently restore its previous association', () => {
+  const d = m.readJourneyDetail(dto.relinkedPurchase); assert.equal(d.shopping.length, d.plan.shopping.length); assert.notEqual(d.shopping[0].tripId, d.tripId);
+  assert.throws(() => m.editSegmentDraft(d), /采购事项.*删除或解除关联/);
+  assert.throws(() => m.editSegmentDraft(m.readJourneyDetail(dto.relinkedPurchaseJourney)), /采购事项.*删除或解除关联/);
+});
+
 test('explicit full-plan detachment retains independent records and its coherent result remains editable', () => {
   const d = m.readJourneyDetail(dto.detached), edit = m.editSegmentDraft(d);
   assert.deepEqual(edit.plan.checklist, []); assert.deepEqual(d.tasks, []);

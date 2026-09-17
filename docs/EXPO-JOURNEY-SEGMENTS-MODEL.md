@@ -1,6 +1,6 @@
 # Expo 复杂行程客户端契约
 
-这是独立客户端模型候选，尚未接入页面或发布。不新增 API、表、依赖，不改变普通旅行编辑或现有改期模块。若进入编辑前准备／采购已被单独删除、解除关联，或准备截止日已清空，现有完整计划 API 不能无损保留该差异，本模型明确拒绝编辑并提示先核对旅行清单，绝不重建或补回旧值。未来应通过部分更新协议改善，此候选不改 apply。后端依据 [v2 时间契约](TRAVEL-DETAILS-PLAN.md)；模型位于 `frontend/src/lib/journeySegments.ts`，仅支持已有 journey 的预览／保存。
+这是独立客户端模型候选，尚未接入页面或发布。不新增 API、表、依赖，不改变普通旅行编辑或现有改期模块。若进入编辑前准备／采购已被单独删除、解除关联（包括实体 tripId／journeyId 与当前工作流不一致），或准备截止日已清空，现有完整计划 API 不能无损保留该差异，本模型明确拒绝编辑并提示先核对旅行清单，绝不重建或补回旧值。未来应通过部分更新协议改善，此候选不改 apply。后端依据 [v2 时间契约](TRAVEL-DETAILS-PLAN.md)；模型位于 `frontend/src/lib/journeySegments.ts`，仅支持已有 journey 的预览／保存。
 
 ## UI 接口
 
@@ -31,4 +31,4 @@ UI 应保存一次预览所对应的草稿与来源，任意编辑立即丢弃�
 
 `frontend/tests/journeySegments.test.ts` 通过独立临时 Flask／SQLite 生成真实 v1/v2、实际 apply／replay／operation、三方冲突／保留／解决与 DST choices，然后执行纯 Node 边界断言。成功业务 JSON 不伪造；仅 transport 负例使用合成 HTTP 拒绝，且临时后端禁止网络连接。开发期可由 `JOURNEY_MODEL_BACKEND_ROOT` 指定 Root 已审的单一后端组合源码，默认用本测试所在仓库；实际源 head 另记，不拼接模块。Python 可由 `JOURNEY_MODEL_PYTHON` 指定，Node 使用 `--experimental-transform-types --test frontend/tests/journeySegments.test.ts`。旧 v2 后端缺少快照能力时新版提交测试应失败，不能伪造成功 capability。没有 npm 安装、前端导出、浏览器、实际账号、云写、生产或 native 安装验收。作者交付记录区分专项／定向类型检查和后续组合验证，不把模型通过当 UI 已上线。
 
-固定 API `6c9261e4655bb24932dc747920c1539d60e1e6f1` 的真实临时 DTO 与当前模型最终 19 项 Node 专项全部通过（1.802 秒），定向 strict TypeScript 检查退出 0，前后模型／测试及后端全部 tracked 字节不变。原件在作者工作树 `test-results/segments-model-20260917T115504541706Z`，result SHA-256 `483a4719d6893c09ae5151a76c5a1d2924e58e06000a6d8b41b38f0aaded1443`，Node stdout SHA-256 `13e29c2c327d24045bb1e70fbc3fc0aeef808b281c40b03c7d5a056deb2e3ae1`。上一轮 18 通过／1 失败原件保留于 `segments-model-20260917T115234280634Z`：旧负例误把实际支持的 owner 当非法字段，修为不存在的 budget 组后重新全跑；没有放宽接口断言。更早旧 API 的 13 项仅为开发历史。尚未做组合 typecheck、构建或浏览器验收。
+固定 API `6c9261e4655bb24932dc747920c1539d60e1e6f1` 的真实临时 DTO 与当前模型最终 21 项 Node 专项全部通过（1.934 秒），定向 strict TypeScript 检查退出 0，前后模型／测试及后端全部 tracked 字节不变。原件在作者工作树 `test-results/segments-model-20260917T115849665330Z`，result SHA-256 `0d8b686b0981b8b94c84f13e5b4597c07afa55090b2d4c55f3722238395972f3`，Node stdout SHA-256 `a1b84a468bb029d040d27b4f5231c568b9b980cd77d345fe51ad8d6da134e5a7`。上一轮 18 通过／1 失败原件保留于 `segments-model-20260917T115234280634Z`：旧负例误把实际支持的 owner 当非法字段，修为不存在的 budget 组后重新全跑；没有放宽接口断言。更早旧 API 的 13 项仅为开发历史。尚未做组合 typecheck、构建或浏览器验收。
