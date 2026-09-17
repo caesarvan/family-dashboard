@@ -1,6 +1,6 @@
 # Expo 采购实付浏览器验收
 
-`tests/browser_expo_shopping_settlement_check.py` 在十个互相独立的临时 Flask／SQLite／HTTPS／Edge 环境中操作真实 Expo 入口。付款、订单、退款和采购全部为虚构内容，经真实 HTTP 持久化；不读取本人文件，不连接云或生产。脚本尚未实际执行，静态检查和提交不代表下列场景已通过。
+`tests/browser_expo_shopping_settlement_check.py` 在十个互相独立的临时 Flask／SQLite／HTTPS／Edge 环境中操作真实 Expo 入口。付款、订单、退款和采购全部为虚构内容，经真实 HTTP 持久化；不读取本人文件，不连接云或生产。R1 已实际执行，9/10 通过，修订后的整轮尚待运行；不将静态检查或多轮部分结果称为全部通过。
 
 ## 场景与关键断言
 
@@ -30,3 +30,9 @@ python -B -X utf8 tests/browser_expo_shopping_settlement_check.py \
 父 `Run` 只提供本地应用、登录、HTTPS 服务、合成导入和浏览器生命周期；各场景有独立临时目录、数据库、context 和服务，SQLite 只读验证连接显式关闭。浏览器拒绝非同源请求，Python socket 拒绝非 loopback。故障只丢弃／暂扣实际传输，不伪造成功 DTO；原 POST body、实际状态及响应 bytes 留在自己的忽略输出目录，不进入仓库。
 
 结果独占写到作者 worktree 的 `test-results/expo-shopping-settlement-<UTC>/`，包含逐场景状态、异常堆栈、失败截图／ARIA、实际响应与八张预期 PNG 散列。失败组不计成功，继续其他独立组；任意场景、外网、页面错误、来源变化或资源清理失败都使整轮失败，不把多轮部分通过相加。截图须另行逐张视查，只支持实际可见区域；不称完整页面／内部滚动／辅助技术或实体设备验收。`productionWrites=0`、`realFinancialData=false`、`realCloud=false`、`physicalTelevision=false` 单独报告。
+
+## R1 实际记录与等待修订
+
+R1 原件 `test-results/expo-shopping-settlement-20260917T233036215151Z/result.json`，SHA `408d30ca8b2b2e0742799fb6c41fdb3236399005aa0ad384c69ca5fefcc2ac0a`。受验 source `95f3e87b5b201a0695cd15dfdb0684dfec334384`，复用实际 build `8c15b68a3ff45c6495f44f2565087fd77f716cb5`，build evidence SHA `3a5b1ea424c1ed8b439c0665389e10235fa341455ea2d0a64a68f59609c76588`。751 源文件／23 导出／4 fixture 前后保持，10 临时目录全清理，零页面错误／外网请求，八张 PNG 已生成，视觉须单独查看。
+
+唯一失败为 `transaction_dirty`：从无付款订单的子面板返回后，脚本在父详情恢复途中调用通用账本 helper，其瞬时可见性分支跳过返回，再等待不存在的「我的账本」而超时；原失败页面仍为正常订单详情。修订只让返回先等待父详情和返回按钮落定，真实创建对账关系后明确「重新读取交易」，核真实 GET 200／原订单与付款关系，再等待操作就绪直接进入核对。原订单无付款／关联后可选的业务断言保持，不改产品或弱化选择器；R1 原件保留，不自行重跑。
