@@ -27,7 +27,7 @@ def export(tmp_path):
     return app.test_client(), static, dist
 
 
-@pytest.mark.parametrize('url', ['/app', '/app/', '/app/index.html', '/app/tasks', '/app/settings/account'])
+@pytest.mark.parametrize('url', ['/app', '/app/', '/app/index.html', '/app/tasks', '/app/settings/account', '/app/tv'])
 def test_spa_entry_and_deep_links(export, url):
     client, _, _ = export
     response = client.get(url, follow_redirects=True)
@@ -47,6 +47,26 @@ def test_only_completed_export_switches_home_and_classic_remains(export):
     assert b'classic fixture' in client.get('/').data
     assert client.get('/app').status_code == 404
     assert client.get('/app/tasks').status_code == 404
+
+
+def test_television_entry_uses_direct_display_route_without_query_forwarding(export):
+    client, _, _ = export
+    response = client.get('/tv?code=private&secret=private&auth=error&next=//external.invalid')
+    assert response.status_code == 302 and response.location == '/app/tv'
+    assert response.headers['Cache-Control'] == 'no-store'
+    assert 'Set-Cookie' not in response.headers
+    assert client.get('/tv', follow_redirects=True).data == b'<html>Expo synthetic export</html>'
+
+
+def test_television_classic_fallback_when_unbuilt_or_explicit(export):
+    client, _, dist = export
+    response = client.get('/tv?classic=1')
+    assert response.status_code == 200 and response.data == b'<html>classic fixture</html>'
+    assert response.headers['Cache-Control'] == 'no-store'
+    assert client.get('/tv?classic=unexpected').location == '/app/tv'
+    (dist / 'index.html').unlink()
+    assert client.get('/tv').data == b'<html>classic fixture</html>'
+    assert client.get('/app/tv').status_code == 404
 
 
 @pytest.mark.parametrize('auth', ['connected', 'error'])
@@ -128,6 +148,7 @@ def test_export_root_symlink_cannot_replace_bundle(export, tmp_path):
     (static / 'experience').symlink_to(moved, target_is_directory=True)
     assert client.get('/app').status_code == 404
     assert client.get('/').status_code == 404
+    assert client.get('/tv').status_code == 404
 
 
 @pytest.mark.skipif(os.name != 'nt', reason='Windows junction semantics')
@@ -173,7 +194,8 @@ def test_real_factory_csp_legacy_routes_and_no_static_bypass(real_app):
     assert "script-src 'self'" in response.headers['Content-Security-Policy']
     assert "connect-src 'self'" in response.headers['Content-Security-Policy']
     assert response.headers['X-Content-Type-Options'] == 'nosniff'
-    for url in ('/classic', '/tv', '/demo'):
+    assert client.get('/tv').location == '/app/tv'
+    for url in ('/classic', '/tv?classic=1', '/demo'):
         assert client.get(url).data == b'<html>classic real factory fixture</html>'
     for name in ('experience/secret.json', './experience/secret.json', 'EXPERIENCE/secret.json',
                  'experience./secret.json', 'experience%5csecret.json'):
@@ -206,5 +228,5 @@ def test_real_auth_csrf_local_crud_and_conflict_are_unchanged(real_app):
 
 def test_frontend_routes_do_not_accept_write_requests(real_app):
     client = real_app.test_client()
-    for url in ('/app', '/app/tasks', '/classic'):
+    for url in ('/app', '/app/tasks', '/app/tv', '/tv', '/classic'):
         assert client.post(url, json={}).status_code == 405

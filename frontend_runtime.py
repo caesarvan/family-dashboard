@@ -67,6 +67,18 @@ def register_frontend_runtime(app, static_root):
         response.headers['Cache-Control'] = 'no-store'
         return response
 
+    @app.get('/tv')
+    def television_frontend():
+        # The TV client performs its own display-only authentication. Never
+        # forward query parameters or route it through the member home page.
+        if request.args.get('classic') == '1':
+            return classic_frontend()
+        if index_file() is not None:
+            response = redirect('/app/tv', code=302)
+            response.headers['Cache-Control'] = 'no-store'
+            return response
+        return classic_frontend()
+
     @app.get('/app', defaults={'name': ''}, strict_slashes=False)
     @app.get('/app/<path:name>')
     def expo_frontend(name):
