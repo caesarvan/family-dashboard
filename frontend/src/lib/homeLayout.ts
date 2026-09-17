@@ -28,6 +28,12 @@ export function sameHomeLayout(a: HomeLayout, b: HomeLayout): boolean {
   const left = homeLayoutPayload(a), right = homeLayoutPayload(b);
   return left.order.join('|') === right.order.join('|') && [...left.hidden].sort().join('|') === [...right.hidden].sort().join('|');
 }
+/** A late poll must not replace a newer, identity-checked save in the provider. */
+export function acceptHomeLayout(current: HomeLayout, next: unknown, expectedIdentity: string, actualIdentity: string): HomeLayout | null {
+  if (expectedIdentity !== actualIdentity) return null;
+  const candidate = readHomeLayout(next);
+  return candidate.revision < current.revision ? current : candidate;
+}
 export function moveHomeCard(value: HomeLayout, key: HomeCard, direction: -1 | 1): HomeLayout {
   const next = readHomeLayout(value), positions = next.order.map((item, index) => isHomeCard(item) ? index : -1).filter(index => index >= 0);
   const at = positions.indexOf(next.order.indexOf(key)), target = at + direction;

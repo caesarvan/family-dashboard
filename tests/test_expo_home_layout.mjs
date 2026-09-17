@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { homeCards, readHomeLayout, homeLayoutPayload, sameHomeLayout, moveHomeCard, toggleHomeCard, resetHomeLayout,
-  rebaseHomeDraft, layoutSignature, HomeLayoutFence, LayoutDiscarded, LayoutError, LayoutRejected, checkedLayoutWrite, layoutRequest } from '../frontend/src/lib/homeLayout.ts';
+  rebaseHomeDraft, acceptHomeLayout, layoutSignature, HomeLayoutFence, LayoutDiscarded, LayoutError, LayoutRejected, checkedLayoutWrite, layoutRequest } from '../frontend/src/lib/homeLayout.ts';
 const layout = (patch = {}) => ({ revision: 0, order: [...homeCards], hidden: [], ...patch });
 const session = (patch = {}) => ({ user: { id: 'member1', role: 'member', householdId: 'default', auth_version: 1, name: 'Synthetic' }, csrf: 'synthetic-csrf', ...patch });
 
@@ -49,6 +49,14 @@ test('same-session before/after checks return the real result and reject every i
   }
   const fence = new HomeLayoutFence(expected);
   assert.equal(await fence.run(async () => original, async csrf => csrf, () => true), original.csrf);
+});
+test('verified save cannot be replaced by a late old poll; another identity cannot install any revision', () => {
+  const identity = layoutSignature(session()), old = layout({ revision: 2 }), saved = layout({ revision: 3, hidden: ['finance'] });
+  const installed = acceptHomeLayout(old, saved, identity, identity);
+  assert.deepEqual(installed, saved);
+  assert.equal(acceptHomeLayout(installed, old, identity, identity), installed);
+  assert.equal(acceptHomeLayout(installed, layout({ revision: 99 }), identity, 'other-session'), null);
+  assert.deepEqual(acceptHomeLayout(installed, layout({ revision: 4, hidden: ['tasks'] }), identity, identity), layout({ revision: 4, hidden: ['tasks'] }));
 });
 test('invalidated epoch rejects late success or failure even after foreground resumes', async () => {
   for (const fail of [false, true]) {
