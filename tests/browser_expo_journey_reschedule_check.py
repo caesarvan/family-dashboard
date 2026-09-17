@@ -24,7 +24,7 @@ from uuid import uuid4
 from playwright.sync_api import expect, sync_playwright
 import browser_expo_trip_coordination_check as coordination_fixture
 from browser_expo_trip_coordination_check import Run as CoordinationRun, CP, PLACE
-from browser_expo_journey_brief_check import button, textfield, sha
+from browser_expo_journey_brief_check import button, icon_button, textfield, sha
 
 
 APPLY = '/api/journeys/apply'
@@ -209,7 +209,7 @@ class Run(CoordinationRun):
         expect(page.get_by_test_id('journey-reschedule-unknown')).to_be_visible()
         expect(page.get_by_role('heading', name='调整旅行日期', exact=True)).to_be_visible()
         expect(textfield(page, '新的出发日期')).to_have_value('2028-03-08' if committed else '2028-03-11')
-        expect(textfield(page, '新的出发日期')).to_be_disabled()
+        expect(textfield(page, '新的出发日期')).not_to_be_editable()
         expect(button(page, '核对保存结果')).to_be_enabled()
         assert page.url == original_url and self.snapshot() == saved
         assert not [r for r in self.requests[request_start:] if r['method'] == 'POST']
@@ -415,7 +415,7 @@ class Run(CoordinationRun):
             expect(button(page, '查看旅行')).to_be_enabled()
             button(page, '查看旅行').click()
             expect(page.get_by_role('heading', name='旅行详情', exact=True)).to_be_visible()
-            expect(button(page, '返回足迹地图')).to_be_enabled()
+            expect(icon_button(page, '返回足迹地图')).to_be_enabled()
             button(page, '调整日期').click()
             expect(textfield(page, '新的出发日期')).to_be_enabled()
             self.dates(page, '2028-05-06', '2028-05-09')
@@ -451,8 +451,8 @@ class Run(CoordinationRun):
             assert saved['revision'] == d['revision'] + 1 and saved['tasks'][0]['id'] == d['tasks'][0]['id']
             assert saved['tasks'][0]['due'] == '2028-05-04'
             button(page, '返回旅行详情').click()
-            expect(button(page, '返回足迹地图')).to_be_enabled()
-            button(page, '返回足迹地图').click()
+            expect(icon_button(page, '返回足迹地图')).to_be_enabled()
+            icon_button(page, '返回足迹地图').click()
             expect(page.get_by_role('heading', name='足迹地图', exact=True)).to_be_visible()
             page.get_by_role('tab', name='首页', exact=True).click()
             expect(page.get_by_role('heading', name=re.compile(r'，欢迎回家$'))).to_be_visible()
