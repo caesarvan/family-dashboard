@@ -8,7 +8,7 @@ import { useDisplayDensity } from '../ui/theme';
 export const money = (value?:number|null) => Number.isSafeInteger(value) ? '¥'+((value as number)/100).toLocaleString('zh-CN',{maximumFractionDigits:2}) : '未填写';
 
 function CompleteItem({ title, checked, disabled, onPress }: { title: string; checked: boolean; disabled: boolean; onPress: () => void }) {
-  // Match the homepage's Paper icon checkbox: 48px target and one Space action.
+  // Paper icon checkbox with a >=44px target (pending DOM measurement) and one Space action.
   const keyboard = Platform.OS === 'web' ? { onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.key === ' ' || event.key === 'Spacebar') {
       event.preventDefault(); event.stopPropagation();
