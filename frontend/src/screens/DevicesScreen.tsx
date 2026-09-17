@@ -115,7 +115,10 @@ function Workspace(props: Props & { identityKey: string }) {
   }, []);
   useEffect(() => { if (!household.online) conceal(); else enter(); }, [household.online]);
   useEffect(() => {
-    const timer = setInterval(() => { if (visible && current() && !working.current && !live.current.unknown) void readJob(ticket => reload(ticket)); }, 10000);
+    const timer = setInterval(() => {
+      const state = live.current;
+      if (visible && current() && !working.current && !state.unknown && !dirty(state) && (state.view === 'list' || state.view === 'playback')) void readJob(ticket => reload(ticket));
+    }, 10000);
     return () => clearInterval(timer);
   }, [visible]);
   const locked = busy || !!model.unknown || !visible;
