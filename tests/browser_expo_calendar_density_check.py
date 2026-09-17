@@ -36,6 +36,13 @@ TITLES = {
 LOCATION = '合成城市春日路家庭活动中心一层靠近花园的长桌请从东侧入口进入'
 
 
+def range_button(page, name):
+    # Only these three Paper range buttons may add the selected-state suffix.
+    assert name in ('今日', '本周', '前后 3 天')
+    return page.get_by_test_id('calendar-range-controls').get_by_role(
+        'button', name=re.compile('^' + re.escape(name) + '(?:，已选择)?$'))
+
+
 class Run(BaseRun):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -62,6 +69,7 @@ class Run(BaseRun):
             partner.close()
         self.preferences(ctx, theme='forest', colorMode='light', density='comfortable', homeView='today')
         today = datetime.now(timezone(timedelta(hours=8))).date()
+        self.today = today
         self.ids = {}
         for key, kind, value in (
             ('event', 'events', dict(title=TITLES['event'], location=LOCATION, allDay=True,
@@ -137,7 +145,7 @@ class Run(BaseRun):
     def range_controls(self, page, label):
         group = page.get_by_test_id('calendar-range-controls')
         for name in ('今日', '本周', '前后 3 天'):
-            self.target(button(group, name), label + '/' + name)
+            self.target(range_button(page, name), label + '/' + name)
         for name in NAMES:
             control = group.get_by_role('radio', name=name, exact=True)
             self.target(control, label + '/' + name, minimum=48)
@@ -231,19 +239,35 @@ class Run(BaseRun):
         page.keyboard.press('ArrowLeft'); expect(first).to_be_focused(); expect(first).to_be_checked()
         before = self.count_requests('PUT', PREFERENCES)
         with page.expect_response(lambda r: urlsplit(r.url).path == PREFERENCES and r.request.method == 'PUT') as response:
-            button(page, '本周').click()
+            range_button(page, '本周').click()
         assert response.value.status == 200
-        expect(button(page, '本周')).to_be_enabled()
+        saved = response.value.json()
+        expect(range_button(page, '本周')).to_be_enabled()
+        expect(range_button(page, '本周')).to_have_accessible_name('本周，已选择')
         assert self.count_requests('PUT', PREFERENCES) == before + 1
-        assert self.get(page.context, PREFERENCES)['homeView'] == 'week'
-        page.reload(); expect(button(page, '本周')).to_have_attribute('aria-checked', 'true')
+        assert saved['homeView'] == 'week' and self.get(page.context, PREFERENCES) == saved
+        with closing(sqlite3.connect(self.database)) as con:
+            stored = con.execute('SELECT * FROM member_preferences ORDER BY owner').fetchall()
+        page.reload()
+        expect(range_button(page, '本周')).to_have_accessible_name('本周，已选择')
+        expect(range_button(page, '今日')).to_have_accessible_name('今日')
+        expect(range_button(page, '前后 3 天')).to_have_accessible_name('前后 3 天')
+        day_buttons = page.get_by_role('button', name=re.compile(r'^\d{4}-\d{2}-\d{2}，\d+ 项安排，忙碌 '))
+        expect(day_buttons).to_have_count(7)
+        monday = self.today - timedelta(days=self.today.weekday())
+        assert [item.get_attribute('aria-label').split('，', 1)[0] for item in day_buttons.all()] == [
+            (monday + timedelta(days=offset)).isoformat() for offset in range(7)]
+        assert self.get(page.context, PREFERENCES) == saved
+        with closing(sqlite3.connect(self.database)) as con:
+            assert con.execute('SELECT * FROM member_preferences ORDER BY owner').fetchall() == stored
+        assert self.count_requests('PUT', PREFERENCES) == before + 1
         row = page.get_by_test_id('calendar-event-' + self.ids['event'])
         expect(row).to_be_visible()
         button(page, '后一段时间').click(); expect(row).to_have_count(0)
         button(page, '前一段时间').click(); expect(row).to_be_visible()
         button(page, '前一段时间').click(); expect(row).to_have_count(0)
         button(page, '回到今天').click(); expect(row).to_be_visible()
-        self.passed('Member radio Space/arrows update actual focus/checked state; one range PUT persists across reload; previous/next/return-to-today keep real event visibility correct')
+        self.passed('Member radio Space/arrows update actual focus/checked state; selected range is explicitly announced after one PUT/reload, exact seven-day week and SQLite preferences persist; previous/next/return-to-today keep real event visibility correct')
 
     def completion(self, page):
         for kind, key in (('tasks', 'task_short'), ('shopping', 'shopping_short')):
