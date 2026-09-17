@@ -18,4 +18,4 @@
 - `MapScreen` 新增可选 `onBack`，在内部使用相同编辑／未知提交锁控制返回；现有 `MapWorkspace` 调用不必传此参数。照片仍复用 `TripPhotosScreen({journeyId,onBack,...ScreenProps})`。
 - 当前路由失去焦点或完整身份改变时清除子面板位置；各子组件独立重新验证身份和访问权限。页面刷新不恢复未保存的草稿或未知提交凭证。
 
-组合测试计划与模拟边界见 [验收说明](EXPO-TRIP-COORDINATION-TESTS.md)。源码审查、类型检查、临时数据库浏览器测试、真实云账户和生产发布分别记录，不能互相替代。本人 Microsoft／Google 新的写权限授权及真实云端改期尚需另行验收。
+实际冻结身份、第三轮 20 组通过与视觉复核范围见 [候选验收记录](EXPO-TRIP-COORDINATION-ACCEPTANCE.md)，场景和模拟边界见 [测试设计](EXPO-TRIP-COORDINATION-TESTS.md)。源码审查、类型检查、临时数据库浏览器测试、真实云账户和生产发布分别记录，不能互相替代。本人 Microsoft／Google 新的写权限授权及真实云端改期尚需另行验收。
