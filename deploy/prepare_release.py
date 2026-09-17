@@ -13,7 +13,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parents[1]
 FILES = ['app.py','frontend_runtime.py','member_sessions.py','tv_display.py','sync_health.py','cloud_accounts.py','cloud_providers.py','sync_worker.py','shopping_media.py','shopping_settlement.py','household_routines.py','spending_observations.py',
-         'finance_baseline.py','finance_source_bridge.py','journey_time.py','journey_reschedule.py','household_spaces.py','journey_workflows.py','journey_documents.py','journey_places.py','finance_hub.py',
+         'finance_baseline.py','finance_source_bridge.py','finance_accounts.py','journey_time.py','journey_reschedule.py','household_spaces.py','journey_workflows.py','journey_documents.py','journey_places.py','finance_hub.py',
          'home_assistant.py','calendar_publish.py','task_publish.py','financial_files.py','investment_import.py','investment_operations.py','dashboard_preferences.py','data_portability.py','requirements.txt',
          'google_photos_picker.py','media_crypto.py','media_images.py','household_media.py','media_import_worker.py','media_playback.py','inventory_core.py','inventory_api.py',
          'Dockerfile','compose.yaml','pytest.ini','.dockerignore','.gitignore','README.md','DESIGN.md','AGENTS.md','expo/DESIGN.md',
