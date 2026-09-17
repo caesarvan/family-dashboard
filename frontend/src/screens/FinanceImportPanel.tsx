@@ -235,7 +235,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
         }}>{manual ? '使用自动识别' : '手动指定列'}</Button>}
         {manual && source === 'generic' && <View testID="finance-column-mapping" style={{ gap: density.sectionGap }}>
           <Text variant="titleMedium">指定表格中的四列</Text>
-          <Text>先读取表头，再核对日期、金额、标题和币种。四个字段各选不同的一列；金额和错误行由服务端校验。</Text>
+          <Text>先读取表头，再核对日期、金额、标题和币种。四个字段各选不同的一列。预览会检查金额和格式。</Text>
           <TextInput mode="outlined" label="表头所在行" accessibilityLabel="表头所在行" value={header} keyboardType="number-pad" disabled={disabled}
             placeholder="留空自动查找，或填写 1–60" outlineStyle={{ borderRadius: 8 }} onChangeText={value => {
               if (!current() || reading.current || writing.current || pendingRef.current) return;
