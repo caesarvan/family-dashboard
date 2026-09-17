@@ -1,12 +1,12 @@
 # 私有资产与来源报告：读取会话边界
 
-独立候选，基线 `7713ad1fd091d7390612c52d434b97e54e99f54b`。仅加固现有 `GET /api/finance-baseline/private`，与当前复杂旅行分段候选独立；未部署。
+独立候选，基线 `7713ad1fd091d7390612c52d434b97e54e99f54b`。本分支仅加固现有 `GET /api/finance-baseline/private`；此后的组合状态见[候选验收](EXPO-BASELINE-ACCEPTANCE.md)，本批仍未部署。
 
 ## 接口保持
 
 - 仍只按已登录成员读取，查询参数不能指定另一成员或家庭。无基线返回 JSON `null`；匿名 401、电视 403。
 - 完整私有基线、版本、金额、未知值及 `spending_observations.decorate_private_spending` 的消费观察选择和提示原样保留。独立消费观察不会与基线重复相加。
-- 导入 preview/confirm/status、共享投影、表结构与财务计算均未改变，没有新增路由或依赖。
+- 本读取分支没有修改导入、共享投影、表结构和财务计算。后续同批来源导入会话及回执增量由独立分支提供，见[恢复接口](FINANCE-IMPORT-SESSION-RECOVERY.md)，仍无新路由或依赖。
 
 ## 读取过程
 
@@ -20,6 +20,6 @@
 
 `tests/test_finance_baseline_read_session.py` 使用真实 Flask、已签名登录 cookie、临时 SQLite 和第二连接，覆盖读取前后撤权/过期/auth version、实际同浏览器重新登录、捕获身份不匹配、基线与消费观察一致快照、旧 cookie、两成员/两家庭/电视、完整投影与零业务写入。网络连接明确禁止。
 
-旧 `test_finance_baseline.py` 的私有接口用例已改用真实成员与电视配对。`test_finance_source_bridge.py` 的八处假鉴权私有 GET 改为共用临时 DB 读取：保留原导入金额、版本和不变性断言，但这些读取只证明导入持久化，不再计作 HTTP 鉴权覆盖。
+旧 `test_finance_baseline.py` 的私有接口用例已改用真实成员与电视配对。`test_finance_source_bridge.py` 的八处假鉴权私有 GET 改为共用临时 DB 读取：这是读取分支阶段的过渡处理，仅证明持久化；后续已审导入会话分支将整组夹具改为真实 app／登录，并恢复这八处 HTTP GET，组合结果见[候选验收](EXPO-BASELINE-ACCEPTANCE.md)。
 
 实际四模块 **207 项通过，0 失败／错误／跳过，67.84 秒**：新读取专项 28、基线 19、来源导入 106、消费观察 54。原件为本工作树 `test-results/baseline-read-r1.xml`，SHA-256 `1e2bfc6e5c172ff8e51d582f632c86eb8566967362cb72d1a80716256ec374a1`；运行后四份相关 Python 文件散列未变。未读取本人财务数据，未执行真实云、生产、浏览器或实体设备验收。
