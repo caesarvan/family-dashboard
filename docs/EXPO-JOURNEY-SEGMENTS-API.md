@@ -1,6 +1,6 @@
 # 旅行编辑的来源快照
 
-本增量是未发布候选；实际安装版本以 [README](../README.md) 为准。沿用现有旅行接口、表结构和确认流程，不新增路由、DDL 或云写入。
+本增量已随新版旅行分段发布，实际身份见 [发布验收](EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md#expo-segments-release)。沿用现有旅行接口、表结构和确认流程，不新增路由、DDL 或云写入。
 
 `GET /api/journeys/templates` 增加 `capabilities: {editSourceSnapshot: true}`。新版分段编辑必须先确认此能力，并在进入编辑或用户明确重新核对时，从 `GET /api/journeys/<id>` 的 `trip/tasks/shopping/events` 构建完整 `{id: revision}`。这个版本表与原草稿绑定；发送前不得用新 GET 的版本表替换旧草稿来源。
 
@@ -32,4 +32,4 @@
 
 最终同次组合运行上述专项与原 `test_journey_workflows.py`、`test_journey_details.py`、`test_journey_reschedule.py`、`test_journey_transaction_session.py`，实际 152 项全部通过，101.58 秒，无失败／跳过。52 项包含在 152 项内，不相加。原件为本工作树 `test-results/journey-edit-snapshot-regression-r2.xml`，SHA-256 `044dd0d255ef34db5d259969430479a36ce0dc67e6d334d238884121b9fa07e0`；运行前后 API 与新测试文件散列一致。首轮原件仍保留。
 
-浏览器、新版分段交互、真实云和生产发布均尚未在本任务验证；测试没有读取生产数据库或写第三方服务。
+上述作者专项仅覆盖 API；后续组合浏览器及生产结果见 [发布验收](EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md#expo-segments-release)。真实云仍未验收；专项没有读取生产数据库或写第三方服务。

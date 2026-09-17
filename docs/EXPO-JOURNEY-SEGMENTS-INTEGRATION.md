@@ -1,6 +1,6 @@
 # Expo 行程分段入口与导航
 
-本分支只接入已保存旅行的分段入口，尚未组合验收或发布。界面与模型各自独立分支实现，不能用接线提交代替依赖或验证。
+已保存旅行的分段入口、界面与模型分别经非作者审查后组合验收并发布，见 [发布验收](EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md#expo-segments-release)。本页说明接线与导航职责。
 
 - 旅行详情的「行程分段」打开 `JourneySegmentsPanel`，只传 journeyId、onBack 与 onPendingChange；组件自行读取当前授权和内容。
 - TripsScreen 保存来源 tripId，返回时重新读取原旅行；地图保留原筛选／页码／地点，助理保留其旅行入口。
