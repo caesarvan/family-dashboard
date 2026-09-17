@@ -35,7 +35,9 @@ function AssistantEntry(props: ScreenProps) {
   const latest = useRef(household); latest.current = household;
   const panelRef = useRef(panel); panelRef.current = panel;
   const reschedulePending = useRef(false);
+  const documentsPending = useRef(false);
   const pendingReschedule = (pending: boolean) => { reschedulePending.current = pending; props.onReschedulePending?.(pending); };
+  const pendingDocuments = useCallback((pending: boolean) => { documentsPending.current = pending; props.onDocumentsPending?.(pending); }, [props.onDocumentsPending]);
   const available = () => focused.current && latest.current.identityKey === actor
     && latest.current.online && (typeof navigator === 'undefined' || navigator.onLine !== false)
     && (typeof document === 'undefined' || !document.hidden);
@@ -57,7 +59,7 @@ function AssistantEntry(props: ScreenProps) {
   }
   useFocusEffect(useCallback(() => {
     focused.current = true;
-    return () => { focused.current = false; conceal(); if (!reschedulePending.current) { setPanel(null); setSourcePrompt(''); } };
+    return () => { focused.current = false; conceal(); if (!reschedulePending.current && !documentsPending.current) { setPanel(null); setSourcePrompt(''); } };
   }, [actor]));
   useEffect(() => {
     if (!panel) return;
@@ -93,7 +95,7 @@ function AssistantEntry(props: ScreenProps) {
           if (!ready.current || !available() || panelRef.current?.key !== panel.key || panelRef.current.kind !== 'brief') return;
           setPanel({ kind: 'planning', key: ++sequence.current, draft });
         }} />
-        : <TripsScreen {...props} key={panel.key} tripRequest={undefined} initialDraft={panel.draft} onReschedulePending={pendingReschedule}
+        : <TripsScreen {...props} key={panel.key} tripRequest={undefined} initialDraft={panel.draft} onReschedulePending={pendingReschedule} onDocumentsPending={pendingDocuments}
           onExitPlanning={() => { if (ready.current && available()) setPanel(null); }} />}
     </View>
   </View>;
