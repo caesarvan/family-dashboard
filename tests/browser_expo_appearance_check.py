@@ -164,6 +164,8 @@ class Run(BaseRun):
 
     def persistence_and_density(self, page):
         task = self.write(page.context, 'POST', '/api/items/tasks', {'title': '合成键盘待办', 'owner': 'shared'}, 201)
+        font_viewport = {'width': 390, 'height': 844}
+        page.set_viewport_size(font_viewport)
         self.home(page)
         title = page.get_by_role('heading', name='我，欢迎回家', exact=True)
         comfortable_font = title.evaluate('(n)=>getComputedStyle(n).fontSize')
@@ -176,6 +178,8 @@ class Run(BaseRun):
         self.mode(page, 'dark')
         for width in (390, 1280): self.shot(page, 'appearance-dark', width)
         button(page, '关闭外观设置').click()
+        # Compare density at one width; responsive heading sizes are separate.
+        page.set_viewport_size(font_viewport)
         self.home(page); self.mode(page, 'dark')
         assert title.evaluate('(n)=>getComputedStyle(n).fontSize') == comfortable_font
         assert page.get_by_test_id('home-card-grid').evaluate('(n)=>parseFloat(getComputedStyle(n).gap)') == 12
