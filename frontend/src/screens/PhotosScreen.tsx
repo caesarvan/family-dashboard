@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Image, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { AppState, Image, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Button, Card, Checkbox, Dialog, Divider, List, Menu, Portal, ProgressBar, SegmentedButtons, Text, TextInput, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
@@ -9,12 +9,16 @@ import type { ScreenProps } from '../lib/types';
 import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, finishPhotoCreate, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto } from '../lib/photos';
 import type { ImportDetail, Photo, PhotoAccount, PhotoDevice, PhotoImport, PhotoJourney, PhotoPage, PhotoSession } from '../lib/photos';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
+import PhotoJourneySuggestions from '../components/PhotoJourneySuggestions';
+import { photoSuggestionBody, readPhotoJourneySuggestions, type PhotoJourneySuggestions as Suggestions } from '../lib/photoJourneySuggestions';
 
-type Editor = { item: Photo; caption: string; visibility: 'private' | 'shared'; journeyId: string; grants: string[]; tvConsent: boolean; blocked: boolean; message: string };
+type Editor = { item: Photo; caption: string; visibility: 'private' | 'shared'; journeyId: string; grants: string[]; savedGrants: string[]; tvConsent: boolean; blocked: boolean; suggestionReview: boolean; message: string };
 type Receipt = { path: string; body: Record<string, unknown> };
 const origin = (process.env.EXPO_PUBLIC_API_ORIGIN || '').replace(/\/$/, '');
 const imageUri = (item: Photo) => { const path = previewPath(item); return path ? (Platform.OS === 'web' ? path : origin + path) : ''; };
 const dirty = (e: Editor) => e.caption !== e.item.caption || e.visibility !== e.item.visibility || e.journeyId !== (e.item.journey?.id || '');
+const anyDraft = (e: Editor) => dirty(e) || e.tvConsent || [...e.grants].sort().join(',') !== [...e.savedGrants].sort().join(',');
+const draftKey = (e: Editor) => JSON.stringify([e.item.id, e.item.revision, e.caption, e.visibility, e.journeyId, e.grants, e.tvConsent]);
 const toggle = (ids: string[], id: string) => ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id];
 
 export default function PhotosScreen(props: ScreenProps) {
@@ -30,7 +34,14 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   const household = useHousehold(); const latest = useRef(household); latest.current = household;
   const theme = useTheme(); const { width, height } = useWindowDimensions();
   const alive = useRef(false); const active = useRef(false); const locked = useRef(false);
+  const routeActive = useRef(false), epoch = useRef(0), deniedRef = useRef(false);
+  const foreground = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
+  const windowFocused = useRef(typeof document === 'undefined' || document.hasFocus()), pageHidden = useRef(false), requests = useRef(new Set<AbortController>());
+  const freshSession = useRef<PhotoSession | null>(null);
   const fence = useRef(new PhotoReadFence(() => request<PhotoSession>('/me'), props.user, props.identityKey));
+  const suggestionFence = useRef(new PhotoReadFence(async () => {
+    const session = await suggestionRequest<PhotoSession>('/me'); freshSession.current = session; return session;
+  }, props.user, props.identityKey));
   const serial = useRef({ gallery: 0, detail: 0, imports: 0 });
   const [denied, setDenied] = useState(false); const [focused, setFocused] = useState(false);
   const [busy, setBusy] = useState(false); const [loading, setLoading] = useState(true);
@@ -47,13 +58,43 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   const [createReceipt, setCreateReceipt] = useState<Receipt | null>(null); const [confirmReceipt, setConfirmReceipt] = useState<Receipt | null>(null);
   const [confirmReview, setConfirmReview] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null); const editorRef = useRef(editor); editorRef.current = editor;
+  const [suggestionVersion, setSuggestionVersion] = useState(0);
   const [journeyMenu, setJourneyMenu] = useState(false);
   const [decision, setDecision] = useState<'discard' | 'delete' | 'cancel' | null>(null);
   const [clock, setClock] = useState(Date.now());
-  const current = () => alive.current && active.current;
+  const available = () => foreground.current && windowFocused.current && !pageHidden.current
+    && (typeof document === 'undefined' || !document.hidden) && (typeof navigator === 'undefined' || navigator.onLine !== false) && latest.current.online;
+  const current = () => alive.current && active.current && routeActive.current && !deniedRef.current && available()
+    && (!props.identityKey || latest.current.identityKey === props.identityKey);
+
+  // This local transport covers identity and suggestion requests only. The URL
+  // is fixed to this origin, and both JSON consumption and lifetime are bounded.
+  async function suggestionRequest<T>(path: string, body?: Record<string, unknown>): Promise<T> {
+    if (!(path === '/me' || /^\/media\/items\/[a-f0-9]{24}(?:\/journey-suggestions)?$/.test(path))
+      || body && !/^\/media\/items\/[a-f0-9]{24}$/.test(path)) throw new Error('照片请求无法核对。');
+    const controller = new AbortController(); requests.current.add(controller);
+    const timeout = setTimeout(() => controller.abort(), 20000);
+    try {
+      const response = await fetch('/api' + path, { method: body ? 'PATCH' : 'GET', mode: 'same-origin', credentials: 'same-origin',
+        cache: 'no-store', redirect: 'error', signal: controller.signal,
+        headers: { 'Content-Type': 'application/json', ...(body ? { 'X-CSRF-Token': freshSession.current?.csrf || '' } : {}) },
+        ...(body ? { body: JSON.stringify(body) } : {}) });
+      if (!response.headers.get('Content-Type')?.toLowerCase().includes('application/json') || !response.body) throw new ApiError('照片响应无法核对。', response.ok ? 0 : response.status);
+      const reader = response.body.getReader(), decoder = new TextDecoder(); let text = '', bytes = 0;
+      try {
+        for (;;) { const chunk = await reader.read(); if (chunk.done) break; bytes += chunk.value.byteLength;
+          if (bytes > 1000000) { await reader.cancel(); throw new ApiError('照片响应过大，请重新读取。'); }
+          text += decoder.decode(chunk.value, { stream: true }); }
+      } finally { reader.releaseLock(); }
+      let value: any; try { value = JSON.parse(text + decoder.decode()); } catch { throw new ApiError('照片响应无法核对。', response.ok ? 0 : response.status); }
+      if (!response.ok) throw new ApiError(response.status === 409 ? '照片或旅行已变化，请重新核对。' : '暂时无法读取或保存照片。', response.status, typeof value?.code === 'string' ? value.code : '');
+      return value as T;
+    } catch (caught) { if (caught instanceof ApiError) throw caught; throw new ApiError('连接中断或超时，请重新核对。'); }
+    finally { clearTimeout(timeout); requests.current.delete(controller); }
+  }
 
   const clearIdentity = () => {
-    fence.current.invalidate(); setDenied(true); setPage({ items: [], total: 0, hasMore: false });
+    deniedRef.current = true; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort()); setDenied(true); setPage({ items: [], total: 0, hasMore: false });
     setEditor(null); editorRef.current = null; setImportDetail(null); importRef.current = null;
     setAccounts([]); setDevices([]); setJourneys([]); setImports([]); setSelected([]);
     setCreateReceipt(null); setConfirmReceipt(null); setDecision(null); setError('登录身份已变化，正在重新读取。');
@@ -66,7 +107,10 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
     setError(caught instanceof Error ? caught.message : '暂时无法读取照片，请稍后重试。');
   };
   async function checked<T>(load: () => Promise<T>, valid = () => true) {
-    return fence.current.read(load, () => current() && valid());
+    const ticket = epoch.current;
+    const live = () => current() && ticket === epoch.current && valid();
+    try { return await fence.current.read(load, live); }
+    catch (caught) { if (!live()) throw new PhotoReadDiscarded(); throw caught; }
   }
   async function gallery(nextScope = scope, nextOffset = offset) {
     const ticket = ++serial.current.gallery;
@@ -89,26 +133,38 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   async function readImport(id: string, reset = false) {
     if (!isMediaId(id)) return;
     const ticket = ++serial.current.imports;
-    const data = await checked(async () => validateImport(await request<ImportDetail>(`/media/imports/${id}`)), () => ticket === serial.current.imports);
+    const result = await checked(async () => validateImport(await request<ImportDetail>(`/media/imports/${id}`)), () => ticket === serial.current.imports);
+    const ended = terminalImport(result.import.state);
+    const data = ended ? { ...result, items: [] } : result;
     const changed = importRef.current?.import.id !== id;
     importRef.current = data; importReadAt.current = Date.now(); setImportDetail(data);
-    if (changed || reset) { setSelected(data.items.map(item => item.id)); setPersist(false); setConfirmReceipt(null); setConfirmReview(false); }
+    if (changed || reset) { setSelected(data.items.map(item => item.id)); setPersist(false);
+      if (!ended || data.import.state === 'confirmed') { setConfirmReceipt(null); setConfirmReview(false); } }
     else setSelected(previous => previous.filter(id => data.items.some(item => item.id === id)));
-    if (data.import.state === 'confirmed') { setConfirmReceipt(null); setConfirmReview(false); setPersist(false); }
+    if (ended) { setSelected([]); setPersist(false);
+      if (data.import.state === 'confirmed') { setConfirmReceipt(null); setConfirmReview(false); } }
   }
-  async function readEditor(id: string, keepDraft = false) {
+  async function readEditor(id: string, keepDraft = false, resuming = false) {
     const ticket = ++serial.current.detail;
+    setSuggestionVersion(value => value + 1);
     const data = await checked(async () => {
       const { item } = await request<{ item: Photo }>(`/media/items/${id}`); validatePhoto(item);
       const grants = item.canManage ? await request<{ revision: number; deviceIds: string[] }>(`/media/items/${id}/tv-grants`) : { revision: item.revision, deviceIds: [] };
       if (grants.revision !== item.revision) throw new Error('照片正在更新，请重新打开核对。');
       return { item, grants: grants.deviceIds };
     }, () => ticket === serial.current.detail);
-    setEditor(previous => ({ item: data.item, caption: keepDraft && previous ? previous.caption : data.item.caption,
-      visibility: keepDraft && previous ? previous.visibility : data.item.visibility,
-      journeyId: keepDraft && previous ? previous.journeyId : data.item.journey?.id || '',
-      grants: data.grants, tvConsent: false, blocked: false,
-      message: keepDraft ? '已读取当前版本，保留你的文字、旅行和共享选择；请比较后再保存。电视勾选已按当前权限重新读取。' : '' }));
+    const previous = editorRef.current?.item.id === id ? editorRef.current : null;
+    const retained = keepDraft && previous;
+    const blocked = !!(resuming && previous && (previous.blocked || previous.item.revision !== data.item.revision));
+    const next: Editor = { item: data.item, caption: retained ? retained.caption : data.item.caption,
+      visibility: retained ? retained.visibility : data.item.visibility,
+      journeyId: retained ? retained.journeyId : data.item.journey?.id || '',
+      grants: retained ? retained.grants : data.grants, savedGrants: data.grants,
+      tvConsent: retained ? retained.tvConsent : false, blocked,
+      suggestionReview: !!(resuming && previous?.suggestionReview),
+      message: resuming ? blocked ? previous?.suggestionReview ? '旅行关联需要核对，页面不会自动重发。' : '照片已更新。你的草稿仍保留，请读取当前版本后核对。' : previous?.message || ''
+        : keepDraft ? '已读取当前版本，保留你的未保存修改；请比较后再保存。' : '' };
+    editorRef.current = next; setEditor(next);
   }
   async function readAction(action: () => Promise<void>) {
     setError(''); try { await action(); } catch (caught) { failure(caught); }
@@ -117,15 +173,16 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   async function write(path: string, method: string, body: Record<string, unknown>, done: (data: any) => Promise<void>, category: 'create' | 'confirm' | 'editor' | 'other' = 'other') {
     if (locked.current || !current()) return;
     locked.current = true; setBusy(true); setError(''); setNotice('');
-    let writeReturned = false;
+    const ticket = epoch.current; let writeReturned = false;
     try {
       const result = await latest.current.mutate(path, method, body);
       writeReturned = true;
+      if (!current() || ticket !== epoch.current) return;
       await checked(async () => result);
       await done(result);
       void latest.current.refresh();
     } catch (caught) {
-      if (!current()) return;
+      if (!current() || ticket !== epoch.current) return;
       if (caught instanceof PhotoReadDiscarded || caught instanceof ApiError && [401, 403].includes(caught.status)) { failure(caught); return; }
       const unknown = writeReturned || !(caught instanceof ApiError) || caught.status === 0 || caught.status >= 500;
       if (category === 'editor') setEditor(value => value ? { ...value, blocked: true, message: unknown ? '提交结果尚不明确。草稿仍保留，请读取最新版本核对，不会自动重发。' : '修改未保存。草稿仍保留，请读取最新版本核对。' } : null);
@@ -135,12 +192,66 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
     } finally { locked.current = false; if (alive.current) setBusy(false); }
   }
 
-  useEffect(() => { alive.current = true; return () => { alive.current = false; active.current = false; fence.current.invalidate(); }; }, []);
+  function conceal() {
+    active.current = false; ++epoch.current; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort());
+    setFocused(false); setPage({ items: [], total: 0, hasMore: false }); setJourneyMenu(false); setAccountMenu(false); setDecision(null);
+  }
+  async function resume() {
+    if (!alive.current || !routeActive.current || !available() || deniedRef.current || active.current) return;
+    active.current = true; const ticket = ++epoch.current; setLoading(true); setError('');
+    try {
+      await Promise.all([gallery(), support()]);
+      const importId = importRef.current?.import.id;
+      if (importId) {
+        try { await readImport(importId); }
+        catch (caught) {
+          if (!current() || ticket !== epoch.current) return;
+          if (!(caught instanceof ApiError) || ![404, 410].includes(caught.status)) throw caught;
+          if (importRef.current?.import.id === importId) {
+            ++serial.current.imports; importRef.current = null; importReadAt.current = 0; setImportDetail(null);
+            setSelected([]); setPersist(false); setConfirmReview(true);
+            // Keep uncertain creation/confirmation IDs without guessing a receipt.
+            setError('本次选片记录已移除或不再可见。');
+          }
+        }
+      }
+      if (editorRef.current) {
+        try { await readEditor(editorRef.current.item.id, true, true); }
+        catch (caught) {
+          if (!current() || ticket !== epoch.current) return;
+          if (!(caught instanceof ApiError) || ![404, 410].includes(caught.status)) throw caught;
+          editorRef.current = null; setEditor(null); setError('照片已移除或不再可见。');
+        }
+      }
+      if (current() && ticket === epoch.current) setFocused(true);
+    } catch (caught) {
+      if (ticket !== epoch.current || !current()) return;
+      failure(caught); active.current = false;
+    } finally { if (ticket === epoch.current && alive.current) setLoading(false); }
+  }
+  const lifecycle = useRef({ conceal, resume }); lifecycle.current = { conceal, resume };
+  useEffect(() => { alive.current = true; return () => {
+    alive.current = false; active.current = false; ++epoch.current; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort());
+  }; }, []);
   useFocusEffect(useCallback(() => {
-    active.current = true; setFocused(true); setLoading(true);
-    void readAction(async () => { await Promise.all([gallery(), support()]); });
-    return () => { active.current = false; setFocused(false); fence.current.invalidate(); };
+    routeActive.current = true; void lifecycle.current.resume();
+    return () => { routeActive.current = false; lifecycle.current.conceal(); };
   }, [scope, offset]));
+  useEffect(() => {
+    const sync = () => { if (available()) void lifecycle.current.resume(); else lifecycle.current.conceal(); };
+    const app = AppState.addEventListener('change', value => { foreground.current = value === 'active'; sync(); });
+    const blur = () => { windowFocused.current = false; lifecycle.current.conceal(); };
+    const focus = () => { windowFocused.current = true; sync(); };
+    const hide = () => { pageHidden.current = true; lifecycle.current.conceal(); };
+    const show = (event: PageTransitionEvent) => { if (event.persisted || pageHidden.current) { pageHidden.current = false; sync(); } };
+    if (typeof window !== 'undefined') { window.addEventListener('blur', blur); window.addEventListener('focus', focus);
+      window.addEventListener('offline', sync); window.addEventListener('online', sync); window.addEventListener('pagehide', hide); window.addEventListener('pageshow', show); }
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', sync);
+    return () => { app.remove(); if (typeof window !== 'undefined') { window.removeEventListener('blur', blur); window.removeEventListener('focus', focus);
+      window.removeEventListener('offline', sync); window.removeEventListener('online', sync); window.removeEventListener('pagehide', hide); window.removeEventListener('pageshow', show); }
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', sync); };
+  }, []);
+  useEffect(() => { if (household.online) void lifecycle.current.resume(); else lifecycle.current.conceal(); }, [household.online]);
   useEffect(() => {
     if (!focused || denied) return;
     let running = false;
@@ -161,7 +272,8 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
             if (fresh.item.revision !== detail.item.revision) setEditor(e => e?.item.id === detail.item.id ? { ...e, blocked: true, message: '照片已更新。你的草稿仍保留，请读取当前版本后核对。' } : e);
           }
         } catch (caught) {
-          if (caught instanceof ApiError && [404, 410].includes(caught.status)) { setEditor(null); setImportDetail(null); setError('记录已移除或不再可见。'); }
+          if (!current()) return;
+          if (caught instanceof ApiError && [404, 410].includes(caught.status)) { editorRef.current = null; setEditor(null); setImportDetail(null); setError('记录已移除或不再可见。'); }
           else failure(caught);
         } finally { running = false; }
       })();
@@ -169,11 +281,84 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
     return () => clearInterval(timer);
   }, [focused, scope, offset, denied]);
 
-  const update = (patch: Partial<Editor>) => setEditor(value => value ? { ...value, ...patch } : null);
+  const update = (patch: Partial<Editor>) => { const value = editorRef.current; if (value) { editorRef.current = { ...value, ...patch }; setEditor(editorRef.current); } };
+  function suggestionFailure(caught: unknown, id: string) {
+    if (!current()) return;
+    if (caught instanceof ApiError && [404, 410].includes(caught.status)) {
+      if (editorRef.current?.item.id === id) { ++serial.current.detail; editorRef.current = null; setEditor(null); }
+      setError('照片已移除或不再可见。'); return;
+    }
+    failure(caught);
+  }
+  async function loadSuggestions(): Promise<Suggestions | null> {
+    const initial = editorRef.current;
+    if (locked.current || !current() || !initial?.item.canManage || initial.blocked || anyDraft(initial)) return null;
+    const key = draftKey(initial), ticket = epoch.current;
+    const valid = () => epoch.current === ticket && !!editorRef.current && draftKey(editorRef.current) === key;
+    locked.current = true; setBusy(true); setError('');
+    try {
+      return await suggestionFence.current.read(async () => {
+        const { item } = await suggestionRequest<{ item: Photo }>(`/media/items/${initial.item.id}`); validatePhoto(item);
+        if (!item.canManage || item.id !== initial.item.id || item.revision !== initial.item.revision || item.journey?.id !== initial.item.journey?.id) throw new ApiError('照片已变化，请重新核对。', 409);
+        return readPhotoJourneySuggestions(await suggestionRequest(`/media/items/${item.id}/journey-suggestions`), item);
+      }, () => current() && valid());
+    } catch (caught) {
+      if (current() && valid()) {
+        if (caught instanceof ApiError && caught.status === 409) update({ blocked: true, suggestionReview: true, message: '照片已变化，请核对当前旅行关联后重新查看建议。' });
+        suggestionFailure(caught, initial.item.id);
+      }
+      return null;
+    } finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
+  async function confirmSuggestion(suggestions: Suggestions, journeyId: string) {
+    const initial = editorRef.current;
+    if (locked.current || !current() || !initial?.item.canManage || initial.blocked || anyDraft(initial)) return;
+    const key = draftKey(initial), ticket = epoch.current;
+    const valid = () => epoch.current === ticket && !!editorRef.current && draftKey(editorRef.current) === key;
+    locked.current = true; setBusy(true); setError(''); setNotice(''); let attempted = false;
+    try {
+      const body = photoSuggestionBody(initial.item, suggestions, journeyId);
+      // Capture errors inside the fence so a rejected PATCH also receives a
+      // fresh post-request identity check before the UI handles its status.
+      const outcome = await suggestionFence.current.read(async () => {
+        if (!freshSession.current?.csrf) throw new PhotoReadDiscarded('identity');
+        attempted = true; update({ blocked: true, suggestionReview: true, message: '旅行关联尚待核对，页面不会自动重发。' });
+        try { return { result: await suggestionRequest<{ item: Photo }>(`/media/items/${initial.item.id}`, body) }; }
+        catch (error) { return { error }; }
+      }, () => current() && valid());
+      if ('error' in outcome) throw outcome.error;
+      const saved = validatePhoto(outcome.result.item);
+      if (saved.id !== initial.item.id || !saved.canManage || saved.journey?.id !== journeyId || saved.revision <= initial.item.revision) throw new Error('保存响应无法核对。');
+      await readEditor(initial.item.id); await gallery();
+      if (!current() || ticket !== epoch.current) return;
+      update({ message: '已收到关联保存确认，并重新读取当前照片。' }); setNotice('旅行关联已更新。');
+    } catch (caught) {
+      if (!current() || ticket !== epoch.current) return;
+      if (attempted && editorRef.current?.item.id === initial.item.id) update({ blocked: true, suggestionReview: true,
+        message: caught instanceof ApiError && caught.status === 409 ? '照片或旅行已变化。请核对当前关联，再重新选择建议。'
+          : '关联结果尚未核对。请读取当前关联；当前状态不能证明上一请求是否成功，页面不会自动重发。' });
+      suggestionFailure(caught, initial.item.id);
+    } finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
+  async function reviewSuggestion() {
+    const initial = editorRef.current;
+    if (locked.current || !current() || !initial?.suggestionReview) return;
+    locked.current = true; setBusy(true); setError(''); const ticket = epoch.current;
+    try {
+      await readEditor(initial.item.id); await gallery();
+      if (current() && ticket === epoch.current) update({ message: '已读取当前旅行关联；这不是上一请求的执行回执。需要更改时，请重新查看建议并明确确认。' });
+    } catch (caught) {
+      if (current() && ticket === epoch.current) {
+        if (editorRef.current?.item.id === initial.item.id) update({ blocked: true, suggestionReview: true, message: '尚未完成核对，请重试读取当前旅行关联。' });
+        suggestionFailure(caught, initial.item.id);
+      }
+    } finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
   const connect = () => void write('/accounts/google-photos/bind', 'POST', accountId ? { accountId } : {}, async data => {
     if (!openPhotosProvider(data.url, 'authorize')) throw new Error('授权链接无法安全打开，请刷新核对。');
   });
   function create() {
+    if (confirmReceipt) { setError('请先核对原选片保存请求，再开始新的选择。'); return; }
     let receipt = createReceipt;
     if (!receipt) {
       const account = accounts.find(a => a.id === accountId);
@@ -187,6 +372,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   }
   function saveSelection() {
     if (!importDetail || confirmReview || !persist) return;
+    if (confirmReceipt && confirmReceipt.path !== `/media/imports/${importDetail.import.id}/confirm`) { setError('请先核对原选片保存请求。'); return; }
     const receipt = confirmReceipt || { path: `/media/imports/${importDetail.import.id}/confirm`, body: confirmPhotos(importDetail.import, selected, newPhotoRequestId()) };
     setConfirmReceipt(receipt);
     void write(receipt.path, 'POST', receipt.body, async () => { await readImport(importDetail.import.id); await gallery(); await support(); setNotice('保存结果已更新，仅留下本次明确勾选的照片。'); }, 'confirm');
@@ -208,7 +394,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   }
   function decide() {
     const action = decision; setDecision(null);
-    if (action === 'discard') { serial.current.detail++; setEditor(null); }
+    if (action === 'discard') { serial.current.detail++; editorRef.current = null; setEditor(null); }
     if (action === 'delete' && editor) void write(`/media/items/${editor.item.id}`, 'DELETE', { revision: editor.item.revision }, async () => { setEditor(null); await gallery(); setNotice('已移除看板副本，Google Photos 原图保留。'); }, 'editor');
     if (action === 'cancel' && importDetail) void write(`/media/imports/${importDetail.import.id}`, 'DELETE', { revision: importDetail.import.revision }, async () => {
       setConfirmReceipt(null); setConfirmReview(false); setPersist(false); await readImport(importDetail.import.id); await support();
@@ -221,11 +407,12 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   const activeImport = imports.some(item => !terminalImport(item.state)) || !!row && !terminalImport(row.state);
   const columns = width < 540 ? 2 : width < 960 ? 3 : 4;
   const cardWidth = `${100 / columns - 1.7}%` as `${number}%`;
-  const closeEditor = () => { if (busy) return; if (editor && (dirty(editor) || editor.blocked)) setDecision('discard'); else { serial.current.detail++; setEditor(null); } };
+  const closeEditor = () => { if (busy) return; if (editor && (anyDraft(editor) || editor.blocked)) setDecision('discard'); else { serial.current.detail++; editorRef.current = null; setEditor(null); } };
   const renderPhoto = (item: Photo, label: string, large = false) => <Image accessibilityLabel={label} source={{ uri: imageUri(item) }} style={large ? styles.detailImage : styles.thumbnail} resizeMode={large ? 'contain' : 'cover'} />;
   const checkbox = (label: string, checked: boolean, change: () => void, disabled = false) => <Checkbox.Item label={label} status={checked ? 'checked' : 'unchecked'} onPress={change} disabled={disabled} position="leading" labelStyle={styles.checkLabel} style={styles.checkRow} />;
   if (denied) return <EmptyState title="正在核对登录身份" description="原账户的照片和编辑内容已清空。" />;
-  if (!focused) return null;
+  if (!focused || !available()) return <EmptyState title={loading && available() ? '正在核对照片权限' : '照片内容已隐藏'} description={error || '联网并回到页面后，将重新核对当前身份；未保存的修改仍保留在此页面内。'}
+    action={<Button contentStyle={{ minHeight: 44 }} disabled={!available() || loading} onPress={() => void lifecycle.current.resume()}>重新读取相册</Button>} />;
   return <View style={styles.page}>
     <PageHeader title="相册" description="自己留下，按你的选择分享。" action={<View style={styles.actions}><Button accessibilityLabel="电视与播放" mode="outlined" icon="television" disabled={busy || !!editor || importOpen || !!createReceipt || !!confirmReceipt} onPress={() => props.onNavigate('devices')}>电视与播放</Button><Button accessibilityLabel="选择照片" mode="contained" icon="plus" disabled={busy} onPress={() => setImportOpen(value => !value)}>选择照片</Button></View>} />
     {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
@@ -233,15 +420,19 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
     {importOpen && <SectionCard title="从 Google Photos 选择" action={<Button disabled={busy} onPress={() => setImportOpen(false)}>收起</Button>}>
       <View style={styles.stack}>
         <Text variant="bodyMedium">最多 20 张，仅处理你本次选择的照片，不扫描整个图库。视频暂不支持播放。</Text>
-        <Menu visible={accountMenu} onDismiss={() => setAccountMenu(false)} anchor={<Button mode="outlined" disabled={busy || !!createReceipt} onPress={() => setAccountMenu(true)}>{account ? account.name || account.email || 'Google 账户' : '选择照片来源'}</Button>}>
+        <Menu theme={{ animation: { scale: 0 } }} visible={accountMenu} onDismiss={() => setAccountMenu(false)} anchor={<Button mode="outlined" disabled={busy || !!createReceipt} onPress={() => setAccountMenu(true)}>{account ? account.name || account.email || 'Google 账户' : '选择照片来源'}</Button>}>
           {accounts.map(value => <Menu.Item key={value.id} title={value.name || value.email || 'Google 账户'} onPress={() => { setAccountId(value.id); setAccountMenu(false); }} />)}
           {!accounts.length && <Menu.Item title="尚未连接 Google Photos" disabled />}
         </Menu>
         <View style={styles.actions}><Text>{account?.capabilities?.photos && !account.needsReauth ? '照片来源已连接' : '需要连接或更新照片授权'}</Text><Button disabled={busy || !!createReceipt} onPress={connect}>{account?.capabilities?.photos && !account.needsReauth ? '更新授权' : '连接 Google Photos'}</Button></View>
         <Text variant="bodySmall">Google 保留原图；在账户设置中解绑照片来源会删除这里对应的展示副本。</Text>
         {checkbox('允许临时处理本次选择，供我预览确认；未保存的内容最迟 24 小时后清理。', temporary, () => setTemporary(v => !v), busy || !!createReceipt)}
-        <Button mode="contained" disabled={busy || (!createReceipt && (!temporary || activeImport || !account?.capabilities?.photos || account.needsReauth))} onPress={() => { try { create(); } catch (caught) { failure(caught); } }}>{createReceipt ? '核对 / 重试原选择请求' : '开始选择照片'}</Button>
+        <Button mode="contained" disabled={busy || (!createReceipt && (!temporary || activeImport || !account?.capabilities?.photos || account.needsReauth)) || !!confirmReceipt} onPress={() => { try { create(); } catch (caught) { failure(caught); } }}>{createReceipt ? '核对 / 重试原选择请求' : '开始选择照片'}</Button>
         {!!createReceipt && <Text>上一请求结果未确认；此按钮沿用原请求标识，不会自动重复创建。</Text>}
+        {!!confirmReceipt && (!row || terminalImport(row.state)) && <View style={styles.stack}>
+          <Text>原保存结果仍待核对。结束核对只清除此页的等待记录，不代表原请求成功或失败。</Text>
+          <Button contentStyle={{ minHeight: 44 }} disabled={busy} onPress={() => { if (!locked.current && current()) { setConfirmReceipt(null); setConfirmReview(false); setSelected([]); setPersist(false); } }}>结束本次核对</Button>
+        </View>}
         {activeImport && !row && <Text>已有进行中的选择，请从下方继续。</Text>}
         {imports.length > 0 && <List.Accordion title="最近的选择" description="继续选片或查看保存结果">
           {imports.map(item => <List.Item key={item.id} title={importLabels[item.state] || '选择记录'} description={item.state === 'confirmed' ? savedSummary(item) : new Date(item.createdAt).toLocaleString('zh-CN')} onPress={() => { if (!busy && !confirmReceipt) void readAction(() => readImport(item.id)); }} />)}
@@ -283,7 +474,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
       {renderPhoto(item, item.caption || '已保存的照片')}<Card.Content style={styles.photoCopy}><Text variant="bodyMedium">{item.caption || '未添加说明'}</Text><Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.visibility === 'private' ? '仅我自己' : '家庭共享'}{item.journey ? ' · ' + item.journey.title : ''}</Text></Card.Content>
     </Card>)}</View>}
     <View style={styles.actions}><Text variant="bodySmall">共 {page.total} 张 · 第 {Math.floor(offset / 24) + 1} 页</Text><Button disabled={!offset || busy} onPress={() => setOffset(v => Math.max(0, v - 24))}>上一页</Button><Button disabled={!page.hasMore || busy} onPress={() => setOffset(v => v + 24)}>下一页</Button></View>
-    <Portal><Dialog visible={!!editor} onDismiss={closeEditor} dismissable={!busy} style={[styles.dialog, { maxHeight: height - 40 }]}>
+    <Portal><Dialog testID="photo-editor" visible={!!editor} onDismiss={closeEditor} dismissable={!busy} style={[styles.dialog, { maxHeight: height - 40 }]}>
       <Dialog.Title>照片详情</Dialog.Title>
       <Dialog.ScrollArea style={styles.dialogScroll}><ScrollView contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
         {editor && <>
@@ -291,15 +482,21 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
           {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
           {!!editor.message && <Text accessibilityLiveRegion="polite">{editor.message}</Text>}
           {editor.item.canManage ? <>
-            <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} label="照片说明" accessibilityLabel="照片说明" multiline maxLength={500} value={editor.caption} disabled={busy} onChangeText={caption => update({ caption })} />
-            <Text variant="titleSmall">谁能查看</Text><SegmentedButtons value={editor.visibility} onValueChange={visibility => update({ visibility: visibility as 'private' | 'shared', tvConsent: false })} buttons={[{ value: 'private', label: '仅我自己', disabled: busy }, { value: 'shared', label: '家庭成员', disabled: busy }]} />
+            <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} label="照片说明" accessibilityLabel="照片说明" multiline maxLength={500} value={editor.caption} disabled={busy || editor.suggestionReview} onChangeText={caption => update({ caption })} />
+            <Text variant="titleSmall">谁能查看</Text><SegmentedButtons value={editor.visibility} onValueChange={visibility => update({ visibility: visibility as 'private' | 'shared', tvConsent: false })} buttons={[{ value: 'private', label: '仅我自己', disabled: busy || editor.suggestionReview }, { value: 'shared', label: '家庭成员', disabled: busy || editor.suggestionReview }]} />
             <Text variant="bodySmall">家庭共享包括照片和说明。改回私密会同时收回全部电视展示。</Text>
-            <Menu visible={journeyMenu} onDismiss={() => setJourneyMenu(false)} anchor={<Button mode="outlined" disabled={busy} onPress={() => setJourneyMenu(true)}>{editor.journeyId ? journeys.find(j => j.id === editor.journeyId)?.trip?.title || journeys.find(j => j.id === editor.journeyId)?.plan?.title || editor.item.journey?.title || '已关联旅行' : '关联旅行（可选）'}</Button>}>
+            <Menu theme={{ animation: { scale: 0 } }} visible={journeyMenu} onDismiss={() => setJourneyMenu(false)} anchor={<Button mode="outlined" disabled={busy || editor.suggestionReview} onPress={() => setJourneyMenu(true)}>{editor.journeyId ? journeys.find(j => j.id === editor.journeyId)?.trip?.title || journeys.find(j => j.id === editor.journeyId)?.plan?.title || editor.item.journey?.title || '已关联旅行' : '关联旅行（可选）'}</Button>}>
               <Menu.Item title="不关联旅行" onPress={() => { update({ journeyId: '' }); setJourneyMenu(false); }} />
               {journeys.map(journey => <Menu.Item key={journey.id} title={journey.trip?.title || journey.plan?.title || '旅行'} onPress={() => { update({ journeyId: journey.id }); setJourneyMenu(false); }} />)}
             </Menu>
             <Text variant="bodySmall">解除已有旅行关联会自动转为私密并收回电视许可；关联照片不会标记地点到访。</Text>
-            {editor.blocked ? <Button disabled={busy} onPress={() => void readAction(() => readEditor(editor.item.id, true))}>读取当前版本，保留我的修改</Button> : <Button mode="contained" disabled={busy || !dirty(editor)} onPress={saveEditor}>保存照片设置</Button>}
+            {editor.suggestionReview ? <Button contentStyle={{ minHeight: 44 }} disabled={busy} onPress={() => void reviewSuggestion()}>核对当前旅行关联</Button>
+              : editor.blocked ? <Button disabled={busy} onPress={() => void readAction(() => readEditor(editor.item.id, true))}>读取当前版本，保留我的修改</Button> : <Button mode="contained" disabled={busy || !dirty(editor)} onPress={saveEditor}>保存照片设置</Button>}
+            <PhotoJourneySuggestions key={JSON.stringify([scope, offset, suggestionVersion, draftKey(editor)])} busy={busy} dirty={anyDraft(editor)} blocked={editor.blocked}
+              load={loadSuggestions} confirm={confirmSuggestion} cancelDraft={() => {
+                if (locked.current || !current()) return;
+                const value = editorRef.current; if (value) update({ caption: value.item.caption, visibility: value.item.visibility, journeyId: value.item.journey?.id || '', grants: [...value.savedGrants], tvConsent: false });
+              }} />
             <Divider /><List.Accordion title="电视展示" description="家庭共享后，再选择具体电视">
               <Text variant="bodySmall">先保存上方设置。只有勾选并确认的电视可以展示这张照片；电视配对不等于获得全部相册。</Text>
               {devices.length ? devices.map(device => <React.Fragment key={device.id}>{checkbox(device.name || '家庭电视', editor.grants.includes(device.id), () => update({ grants: toggle(editor.grants, device.id), tvConsent: false }), busy || editor.blocked || dirty(editor) || editor.item.visibility !== 'shared')}</React.Fragment>) : <Text>尚未配对电视，可在设备设置中添加。</Text>}

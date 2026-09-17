@@ -4,6 +4,7 @@ export type Photo = {
   previewUrl: string; visibility: 'private' | 'shared'; canManage: boolean; createdAt: string;
   journey: { id: string; tripId: string; title: string } | null;
   accountId?: string; displayFilename?: string;
+  sourceCreatedAt?: string | null; sourceTimeState?: 'known' | 'unknown';
 };
 export type PhotoImport = {
   id: string; revision: number; state: string; createdAt: string; expiresAt: string;
