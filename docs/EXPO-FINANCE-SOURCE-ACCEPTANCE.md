@@ -34,3 +34,14 @@
 父 baseline 已于 2026-09-17 21:58:49 激活、21:59:22 TLS 读回、22:01:55 独立只读核验通过（北京时间）。实际 main `0bd330a6`／source `f0317fb6`／tree `f9f14984`，镜像、archive 和 manifest 见 [发布适配器](EXPO-FINANCE-SOURCE-RELEASE.md)。独立审计 `A/expo-baseline-published-audit-20260917T135020363048Z/audit.json` SHA `86358d4a77f074f9ff581c0efdab7e3c5ef2aed4d096494658a245f7afb8ac87` 已核。
 
 父版本实际 Linux 347 passed＋1 精确 Windows junction skip、55 张户内表及注册库保持、1 户两库备份，四服务运行／零重启，仅 app 配置 healthcheck 且 healthy；发布后逐库在线备份不等于全局事务或重新核对 live 全组快照。这些是父发布事实，不是本批来源 UI 的生产验证。新组合正式合入、freeze、九工具独立审查、Linux 和发布仍待完成。
+
+
+## R1 服务器验证失败：测试提交竞态
+
+在上述本地候选记录之后，R1 已完成正式合入、打包与绑定，但 Linux 验证实际为 **182 passed、1 failed、1 精确 Windows junction skip（184 项）**，0 errors；未进入 stage 或 activate，线上仍是上节的 baseline 父版本。不能将本地浏览器 12／12 或 184 项 collection 当作本轮发布通过。
+
+失败用例为 `test_confirm_checks_actual_session_after_guard_and_waited_lock[False-expired-spending_observation]`：非等待锁分支在工作线程提交前设置事件，主线程收到事件后又对同一个 SQLite writer 无条件提交，两个线程可能并发 commit，导致工作线程抛出 `cannot commit - no transaction is active`。这是夹具同步问题，尚未到该用例的 HTTP 拒绝与数据不变断言。修订仅让非等待分支提交完再通知，主线程仅在等待锁分支提交释放真实写锁，并断言事件后的事务状态符合分支；保留 401、真实等待和全部业务行快照不变检查，不改产品。
+
+原件保留在 `A/expo-finance-source-tools-20260917-r1/failed-validation-originals/`：JUnit `validation-results.xml` SHA `a2570af81039a1408d809cdc90c0e55ee1a8dc3cdb6b73b3a97e87511c20d411`，日志 `validation-validation.log` SHA `1dbd2ad97a34c7efc6a0f136c4b12d44b3132e61bf150482c50f4b661644a2c8`，runtime SHA `aa0dea8507a85a21316be3ebfda08d8658d646575d3138d579b13eb2e0bfbd1f`；runtime 前后检查均 true。R1 原件和未完成的发布审计准备保留；修订后的本地定向结果与后续新 R2 Linux／发布结果分别记录，不重放 R1 算子。
+
+修订后仅对上述用例的 12 个参数组合执行一次真实本地 Flask／SQLite 专项：**12 passed、0 failed／error／skip，9.37秒**；基线 `944a712d69375c209ec7a63fe28b3a2287df8beb` 的工作树修订字节运行前后全部 650 个 tracked 文件 SHA 相同。原件 `W/finance-import-test-race/test-results/finance-import-test-race-20260917T144005086631Z/`：`results.xml` SHA `983f287140f248025093b86595908f2482857ec0c6e0849ea9109ff25974e784`，`evidence.json` SHA `bffc1676b83530efc80b7399bf012b4b4107ad4dba685441a4e6f243c7cbdcec`，stdout SHA `2940df64882be1a99a555bfbd51ce62fdf4de81ea28fa6d72886af7bd46aba7f`，stderr 空。随后仅补本文结果说明；未重跑其他用例、浏览器或远端算子，不能由这 12 项推断 R2 的 Linux 全套或发布通过。
