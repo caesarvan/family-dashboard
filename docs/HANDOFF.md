@@ -1,6 +1,6 @@
 # 联合开发接手说明
 
-**待组合验收：Expo 电视展示候选。** `TVScreen`／`tv.ts` 负责签名家庭、配对及电视身份；`TVBoard` 负责每台设备的只读布局、日程和长内容翻阅；`TVPhotoPlayer.web.tsx`／model 负责短授权 JPEG。`/app/tv` 在根布局中绕过成员 provider，`/tv` 的新入口保留 classic／无导出回退。无新 API、依赖或 schema；尚未部署，当前安装身份仍是下述 13:00 版本。操作、契约和待验项见 [Expo 电视展示](EXPO-TV.md)；后续基于最终冻结组合记录构建、浏览器及发布证据。
+**本地验收通过，待发布：Expo 电视展示候选。** `TVScreen`／`tv.ts` 负责签名家庭、配对及电视身份；`TVBoard` 负责每台设备的只读布局、日程和长内容翻阅；`TVPhotoPlayer.web.tsx`／model 负责短授权 JPEG。`/app/tv` 在根布局中绕过成员 provider，`/tv` 的新入口保留 classic／无导出回退。无新 API、依赖或 schema；尚未部署，当前安装身份仍是下述 13:00 版本。操作、契约和待验项见 [Expo 电视展示](EXPO-TV.md)；R2 固定组合 `3adaf485` 已完成真实构建、13 项临时浏览器检查和 9 图独立视觉审查，源码与导出前后保持；独立发布及实体电视仍待验。
 
 **最新已发布：Expo 电视与播放，2026-09-17 13:00:01（北京时间）激活，13:00:47 正常 TLS 读回通过。** `DevicesScreen.tsx`／`devices.ts` 复用现有设备和播放 API，`HouseholdApp` 接入路由与未保存操作的导航保护；`app.py` 仅设备／配对段补真实会话复核及配对码单次消耗，不新增表或接口。安装 main `5f41b61980481aba7d88e58b21b0806e59891fe2`、source／integration `d0f660a8ead9f39126a35157f170e7fb6a1ad8b4`，同树 `a1b3bd81d492f235b0ca0d63ea60e2557aba06df`。本地 r2 实际 16 项／14 图，Linux R2 实际 758 通过／唯一精确 Windows 跳过；r1 视觉阻断和隔离空间不足失败保留。实际 1 户两库停写备份、55 表及注册库在 app 启动后保持；555 源／114 运行／75 HTTPS 资源和 25 个匿名 API 拒绝通过，新一次逐库在线备份成功，非全局原子快照。证据集中在 [验收页](EXPO-DEVICES-ACCEPTANCE.md)，本次 [固定适配器](EXPO-DEVICES-RELEASE.md) 不可重放；后续文档不改变运行包。
 

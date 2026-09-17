@@ -1,6 +1,6 @@
 # Expo Web 静态接入
 
-**电视入口增量为候选，尚未上线。** 下表中的电视新路由与根布局隔离已实现，待最终组合验证和独立发布；当前安装仍为 [13:00 设备版本](EXPO-DEVICES-ACCEPTANCE.md)。使用与身份／照片边界见 [Expo 电视展示](EXPO-TV.md)。
+**电视入口增量为候选，尚未上线。** 下表中的电视新路由与根布局隔离已实现，R2 临时浏览器已通过，等待独立发布；当前安装仍为 [13:00 设备版本](EXPO-DEVICES-ACCEPTANCE.md)。使用与身份／照片边界见 [Expo 电视展示](EXPO-TV.md)。
 
 实际上线状态以 [HANDOFF](HANDOFF.md) 为准。本模块只接入 Expo Web 编译产物与原 Flask API，不改变 Cookie、CSRF、家庭隔离、数据库或云端授权；不等同 iOS／Android 原生验收。
 
