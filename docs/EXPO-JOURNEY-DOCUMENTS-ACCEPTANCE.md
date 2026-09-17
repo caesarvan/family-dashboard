@@ -75,7 +75,7 @@
 | manifest | `9fe4a665f724c1e54a9d28b93bdaeb94df0ec8b39f027c15b669547e02dd5b92` |
 | 最终 freeze | `2a6e13354d4c230f63809af33a242c7805ad8908c3470c71558298afc1ff7f7e` |
 | activation.json | `e0ae8604b6547e1f612a3bb93fc6a7d6745478fa50612944f8c7c9dd97fbc881` |
-| post.json | `4e4e3c3a369df8dabb3b2d49b6eb1ec3dc81d0db67683883dd8043ab0052170e` |
+| post-readback.json | `4e4e3c3a369df8dabb3b2d49b6eb1ec3dc81d0db67683883dd8043ab0052170e` |
 
 真实包中 613 文件为 590 源文件和 23 Expo 导出，114 运行文件与其中 37 个真实已加载模块在 Linux 测试前后匹配。最终 freeze 逐项核对资料 R4 与日程 R2 各自的运行代码、构建输入、导出字节、测试脚本及依赖夹具；保留不同 source 身份，不把两轮结果合称同次验收。九份实际生成发布工具也经非作者固定字节审查。
 
@@ -85,6 +85,6 @@ Linux 镜像中实际执行 **236 个唯一项：235 通过、1 跳过、0 失�
 
 正常 TLS 验证 75 项静态资源、24 项生成源码拒绝及 1 项退役资源拒绝；原 post 的 25 个唯一匿名 API 均为 401。独立读回另查 `/api/journey-documents` 和 `/api/journey-documents/000000000000000000000000/file`，均为 401，单独记录而不混入原 post 数量。新一次逐库在线备份成功：manifest `manifest-20260917T101345789988Z.json`，SHA256 `7e8c5e43304fa53fb35ddaaebd175f655bbb2bef390c7bb57bcbea7eb771833a`。这是逐库备份，不是跨库全局原子快照，也没有重新做生产 live 全组快照。
 
-生产原件位于 `/opt/family-dashboard-releases/expo-documents-55-20260917T101228816042Z`。独立审查只下载 13 份小型 JSON／XML 原件，逐份远端→本地摘要匹配，未下载 DB、重放阶段或另启动备份。私有审计目录为 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/expo-documents-published-audit-20260917T101705634282Z/`；`audit.json` SHA256 `d06bee77fc45c095399580fdcc18150495d59640f71878284a4bc7d771431031`，原件索引 `readback.json` SHA256 `97354f173124948431335b1a2d32cbbe4ba5dbe83a9e82cd90759a9524743b9d`，独立审计 PASS。
+发布保全目录为 `/opt/family-dashboard-releases/expo-documents-55-20260917T101228816042Z`；阶段报告与 validation 原件位于 `/opt/family-dashboard-candidates/expo-documents-tools-20260917-r1`。独立审查只下载 13 份小型 JSON／XML／log 原件，逐份远端→本地摘要匹配，未下载 DB、重放阶段或另启动备份。私有审计目录为 `C:/Users/caesarf/Documents/Codex/family-dashboard-access/expo-documents-published-audit-20260917T101705634282Z/`；`audit.json` SHA256 `d06bee77fc45c095399580fdcc18150495d59640f71878284a4bc7d771431031`，原件索引 `readback.json` SHA256 `97354f173124948431335b1a2d32cbbe4ba5dbe83a9e82cd90759a9524743b9d`，独立审计 PASS。
 
 真实云账户新流程、原生手机文件交互及实体电视仍未验收；用户暂时无法使用电视不阻塞其余开发。下一批例行计划独立开发，不属于此已安装运行包。
