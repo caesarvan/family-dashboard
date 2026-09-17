@@ -26,7 +26,7 @@ def test_layout_round_trip_member_isolation_and_no_shared_payload(app):
     assert a.get('/api/dashboard-layout').json == saved.json
     assert b.get('/api/dashboard-layout?owner=member1').json == layout()
     assert 'dashboard' not in a.get('/api/state').get_data(as_text=True)
-    assert a.get('/api/preferences').json == {'theme': 'forest', 'density': 'comfortable', 'homeView': 'today'}
+    assert a.get('/api/preferences').json == {'theme': 'forest', 'density': 'comfortable', 'homeView': 'today', 'colorMode': 'light', 'revision': 0}
     assert a.put('/api/dashboard-layout', json=saved.json, headers=ah).json['revision'] == 1
 
 
