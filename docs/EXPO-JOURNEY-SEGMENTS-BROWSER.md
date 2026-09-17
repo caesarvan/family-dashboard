@@ -1,6 +1,6 @@
 # 详细行程浏览器验收
 
-这是待执行的独立验收脚本，尚不代表浏览器通过或产品发布。脚本为 `tests/browser_expo_segments_check.py`，复用既有 finance fixture 的本机 Flask、真实 SQLite、成员登录和 Edge 启动工具；不执行财务用例、不导入真实资料、不调用云服务或 AI。每例独立临时目录、数据库、会话和服务器；失败保存现场并继续收集其余案例。
+本脚本已实际通过 15 组流程，产出 19 图，并完成窄屏稳定补验；独立发布结果见 [发布验收](EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md#expo-segments-release)。脚本为 `tests/browser_expo_segments_check.py`，复用既有 finance fixture 的本机 Flask、真实 SQLite、成员登录和 Edge 启动工具；不执行财务用例、不导入真实资料、不调用云服务或 AI。每例独立临时目录、数据库、会话和服务器；失败保存现场并继续收集其余案例。
 
 ## 固定范围
 
