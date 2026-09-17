@@ -123,9 +123,10 @@ def test_confirm_checks_actual_session_after_guard_and_waited_lock(app, mode, ki
                 return
             writer.execute('BEGIN IMMEDIATE')
             invalidate(writer, kind)
-            entered.set()
             if not wait_for_lock:
                 writer.commit()
+            # Signal only after this thread's commit, or while the lock stays held.
+            entered.set()
         if wait_for_lock:
             install_connection(app, BASE+'confirm', 'POST', before=change)
         else:
@@ -134,10 +135,12 @@ def test_confirm_checks_actual_session_after_guard_and_waited_lock(app, mode, ki
             pending = pool.submit(client.post, BASE+'confirm', json=confirm, headers=headers)
             try:
                 assert entered.wait(10)
+                assert writer.in_transaction is wait_for_lock
                 if wait_for_lock:
                     assert not pending.done()
             finally:
-                writer.commit()
+                if wait_for_lock:
+                    writer.commit()
             denied(pending.result(timeout=10))
     assert snapshot(app) == before
 
