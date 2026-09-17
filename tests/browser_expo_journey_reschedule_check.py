@@ -9,6 +9,7 @@ from contextlib import ExitStack, closing
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import re
 import shutil
 import socket
 import sqlite3
@@ -196,6 +197,24 @@ class Run(CoordinationRun):
         saved = self.snapshot()
         if not committed:
             assert saved == before
+        # Both app navigation paths must keep the pending intent mounted. The
+        # operation GET / identical retry below proves its original key/token.
+        original_url, request_start = page.url, len(self.requests)
+        page.set_viewport_size({'width': 390, 'height': 844})
+        page.get_by_role('tab', name='首页', exact=True).click()
+        expect(page.get_by_test_id('journey-reschedule-unknown')).to_be_visible()
+        assert page.url == original_url
+        button(page, '新建记录').click()
+        page.get_by_role('menuitem', name=re.compile(r'(?:^|\s)计划旅行$')).click()
+        expect(page.get_by_test_id('journey-reschedule-unknown')).to_be_visible()
+        expect(page.get_by_role('heading', name='调整旅行日期', exact=True)).to_be_visible()
+        expect(textfield(page, '新的出发日期')).to_have_value('2028-03-08' if committed else '2028-03-11')
+        expect(textfield(page, '新的出发日期')).to_be_disabled()
+        expect(button(page, '核对保存结果')).to_be_enabled()
+        assert page.url == original_url and self.snapshot() == saved
+        assert not [r for r in self.requests[request_start:] if r['method'] == 'POST']
+        expect(page.get_by_text('请先核对这次改期的保存结果，再离开旅行页面。', exact=True)).to_be_visible()
+        button(page, '知道了').click()
         with page.expect_response(lambda r: urlsplit(r.url).path == OPERATIONS + operation and r.request.method == 'GET') as pending:
             button(page, '核对保存结果').click()
         response = pending.value
@@ -217,8 +236,12 @@ class Run(CoordinationRun):
         final = self.detail(page.context, d['id'])
         assert final['revision'] == current['revision'] + 1
         assert next(t for t in final['tasks'] if t['workflowKey'] == 'task:pack')['due'] == ('2028-03-07' if committed else '2028-03-10')
+        page.get_by_role('tab', name='首页', exact=True).click()
+        expect(page.get_by_role('heading', name=re.compile(r'，欢迎回家$'))).to_be_visible()
+        expect(page.get_by_test_id('journey-reschedule-panel')).to_have_count(0)
         self.passed(self.provider + (': lost committed reply recovers by GET receipt only; no second shift'
-            if committed else ': real absent receipt stays unknown; only explicit retry sends identical original token/key once'))
+            if committed else ': real absent receipt stays unknown; only explicit retry sends identical original token/key once')
+            + '; app home/create navigation preserves pending intent and becomes available after receipt')
 
     def conflict(self, page, d, place):
         ctx = page.context
@@ -325,6 +348,56 @@ class Run(CoordinationRun):
             expect(page.get_by_role('heading', name='旅行详情', exact=True)).to_be_visible()
             self.passed('DST ' + ('fold' if fold else 'gap') + ': real backend blocks guessing; explicit local clock/offset is visibly previewed and saved to the same event')
 
+    def home_visuals(self, browser):
+        with self.flow(browser) as (ctx, page):
+            finance = self.get(ctx, '/api/state')['finance']
+            assert not finance.get('confirmedAt')
+            page.goto(self.base + '/app/')
+            expect(page.get_by_role('heading', name=re.compile(r'，欢迎回家$'))).to_be_visible()
+            expect(button(page, '核对资金')).to_be_enabled()
+            expect(page.get_by_text('共同资金尚未核对。请先确认余额、本月支出和预算。', exact=True)).to_have_count(1)
+            expect(page.get_by_text('待核对', exact=True)).to_have_count(0)
+            before = self.snapshot()
+            for width in (320, 390, 1040, 1440):
+                page.set_viewport_size({'width': width, 'height': 1000 if width >= 1040 else 844})
+                page.get_by_role('heading', name=re.compile(r'，欢迎回家$')).click()
+                page.wait_for_timeout(400)
+                self.screenshot(page, 'home-unconfirmed', width)
+                cards = {}
+                for title in ('接下来的安排', '共同资金'):
+                    cards[title] = page.get_by_role('heading', name=title, exact=True).evaluate('''node => {
+                      for(let n=node;n;n=n.parentElement){const s=getComputedStyle(n);
+                        if(s.backgroundColor==='rgb(248, 248, 250)'&&parseFloat(s.borderTopLeftRadius)>=24){
+                          const r=n.getBoundingClientRect();return {x:r.x,y:r.y,width:r.width,height:r.height};}}
+                      throw new Error('Expected visible SectionCard surface');}''')
+                if width >= 1040:
+                    assert abs(cards['接下来的安排']['y'] - cards['共同资金']['y']) < 2, cards
+                    assert abs(cards['接下来的安排']['height'] - cards['共同资金']['height']) > 2, cards
+                assert cards['共同资金']['height'] < 300, cards
+                self.report.setdefault('homeCardBounds', []).append({'width': width, 'cards': cards})
+                if width in (390, 1440):
+                    account = page.get_by_role('button', name=re.compile(r'，账户菜单$'))
+                    account.focus()
+                    page.keyboard.press('Shift+Tab')
+                    page.keyboard.press('Tab')
+                    expect(account).to_be_focused()
+                    focus = account.evaluate('''node => {
+                      const s=getComputedStyle(node),r=node.getBoundingClientRect();
+                      return {active:document.activeElement===node,focusVisible:node.matches(':focus-visible'),
+                        outlineStyle:s.outlineStyle,outlineWidth:s.outlineWidth,outlineColor:s.outlineColor,
+                        outlineOffset:s.outlineOffset,borderRadius:s.borderRadius,boxShadow:s.boxShadow,
+                        x:r.x,y:r.y,width:r.width,height:r.height};}''')
+                    assert focus['active'] and focus['focusVisible'], focus
+                    assert focus['outlineStyle'] != 'none' and float(focus['outlineWidth'].removesuffix('px')) > 0, focus
+                    assert focus['outlineOffset'] == '-3px' and float(focus['borderRadius'].removesuffix('px')) >= focus['width'] / 2, focus
+                    self.report.setdefault('homeFocus', []).append({'viewport': width, **focus})
+                    self.screenshot(page, 'home-keyboard-focus', width)
+            button(page, '核对资金').click()
+            expect(page.get_by_role('heading', name='家庭资金', exact=True)).to_be_visible()
+            expect(button(page, '核对资金')).to_be_enabled()
+            assert self.get(ctx, '/api/state')['finance'] == finance and self.snapshot() == before
+            self.passed('Home: one unconfirmed shared-finance message opens real finance; four widths use natural card heights; keyboard account focus remains visible within rounded bounds')
+
     def run_scenarios(self, browser):
         with self.flow(browser) as (ctx, page):
             d, place, visited, rid = self.seed(ctx)
@@ -336,6 +409,7 @@ class Run(CoordinationRun):
         if self.provider == 'microsoft':
             self.dst_correction(browser, fold=False)
             self.dst_correction(browser, fold=True)
+            self.home_visuals(browser)
 
 
 def main():
