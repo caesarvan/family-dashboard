@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { canConfirmImport, confirmImportPayload, importAmount, importPayload, importRejectionIsDefinite, importSourceLabel, isImportRequestId, newImportRequestId, readImportPreview, readImportReceipt } from '../frontend/src/lib/financeImport.ts';
+import { canConfirmImport, confirmImportPayload, importAmount, importPayload, importRejectionIsDefinite, importSourceLabel, inspectImportColumnsPayload, manualImportPayload, readImportColumnSelection, isImportRequestId, newImportRequestId, readImportPreview, readImportReceipt } from '../frontend/src/lib/financeImport.ts';
 
 const id = 'a'.repeat(32);
 const file = { name: 'synthetic.csv', contentBase64: 'YWJj', encoding: 'auto' };
@@ -72,4 +72,85 @@ test('an expired retry cannot discard the recovery identity of an earlier unknow
   for (const status of [undefined, 400, 404, 409, 413, 422, 500, 503]) assert.equal(importRejectionIsDefinite(status, true), false);
   assert.equal(importRejectionIsDefinite(undefined, false), false);
   assert.equal(importRejectionIsDefinite(503, false), false);
+});
+
+const selection = () => ({ headerLine: 2, lineKind: 'csv_lines', columns: [
+  { index: 0, label: '日期', columnLabel: 'A' }, { index: 1, label: '', columnLabel: 'B' },
+  { index: 2, label: '标题', columnLabel: 'C' }, { index: 3, label: '币种', columnLabel: 'D' },
+  { index: 4, label: '金额', columnLabel: 'E' }], suggestedMapping: { date: 0, amount: null, title: 2, currency: 3 } });
+const mapping = () => ({ version: 1, headerLine: 2, date: 0, amount: 1, title: 2, currency: 3 });
+const mappedPreview = () => ({ ...preview(), requiresColumnSelection: false,
+  columnSelection: { ...selection(), mapping: mapping() }, amountSelection: null });
+
+test('header discovery is bounded, non-confirmable and contains no automatic import intent', () => {
+  const payload = inspectImportColumnsPayload('generic', 'payments', file, 2);
+  assert.deepEqual(payload, { source: 'generic', kind: 'payments', file, inspectColumns: true, headerLine: 2 });
+  assert.equal('headerLine' in inspectImportColumnsPayload('generic', 'orders', file), false);
+  const raw = { ...preview(), rows: [], previewToken: null, requiresColumnSelection: true, columnSelection: selection() };
+  const inspected = readImportPreview(raw); assert.equal(canConfirmImport(inspected), false);
+  assert.throws(() => confirmImportPayload(payload, inspected, id));
+  for (const line of [0, -1, 61, 1.5, NaN, '2']) assert.throws(() => inspectImportColumnsPayload('generic', 'payments', file, line));
+  assert.throws(() => inspectImportColumnsPayload('wechat', 'payments', file));
+  assert.throws(() => inspectImportColumnsPayload('generic', 'payments', { ...file, name: 'sheet.xlsx' }));
+  assert.equal(inspectImportColumnsPayload('generic', 'orders', { ...file, name: 'sheet.xlsx', sheet: '账单' }).file.sheet, '账单');
+});
+
+test('all four mapping fields are required, different, in the current header and cloned', () => {
+  const map = mapping(), input = { ...file }, meta = selection();
+  const payload = manualImportPayload('generic', 'payments', input, meta, map);
+  assert.deepEqual(Object.keys(payload).sort(), ['file', 'kind', 'mapping', 'source']);
+  map.amount = 4; input.name = 'changed.csv'; meta.columns[0].label = '改后';
+  assert.equal(payload.mapping.amount, 1); assert.equal(payload.file.name, 'synthetic.csv');
+  for (const patch of [{ currency: null }, { currency: 1 }, { currency: 79 }, { date: 1.5 }, { headerLine: 3 }, { version: 2 }, { amountColumn: 4 }]) {
+    assert.throws(() => manualImportPayload('generic', 'payments', file, selection(), { ...mapping(), ...patch }));
+  }
+  const missing = mapping(); delete missing.currency;
+  assert.throws(() => manualImportPayload('generic', 'payments', file, selection(), missing));
+  assert.throws(() => manualImportPayload('alipay', 'payments', file, selection(), mapping()));
+});
+
+test('column reader preserves blank, duplicate and Unicode labels without accepting wrong coordinates', () => {
+  const raw = selection(); raw.columns[0].label = '😀'.repeat(200); raw.columns[2].label = '';
+  const result = readImportColumnSelection(raw); assert.equal(result.columns[1].label, ''); assert.equal(result.columns[2].label, '');
+  raw.columns[1].label = 'mutated'; raw.suggestedMapping.date = null;
+  assert.equal(result.columns[1].label, ''); assert.equal(result.suggestedMapping.date, 0);
+  for (const patch of [{ headerLine: 61 }, { lineKind: 'guessed' }, { columns: [] },
+    { columns: [...selection().columns, selection().columns[0]] },
+    { columns: [{ index: 0, label: '日期', columnLabel: 'Z' }] },
+    { suggestedMapping: { ...selection().suggestedMapping, currency: 79 } },
+    { suggestedMapping: { date: 0, amount: 1, title: 2 } }]) assert.throws(() => readImportColumnSelection({ ...selection(), ...patch }));
+  assert.throws(() => readImportColumnSelection({ ...selection(), columns: [{ index: 0, columnLabel: 'A', label: '😀'.repeat(201) }] }));
+});
+
+test('a malformed or ambiguous column response cannot become a valid preview', () => {
+  assert.equal(canConfirmImport(readImportPreview(mappedPreview())), true);
+  for (const patch of [{ requiresColumnSelection: null }, { requiresColumnSelection: 'false' }, { columnSelection: undefined },
+    { columnSelection: selection() }, { requiresAmountSelection: true }, { amountSelection: { selectedIndex: 1, columns: [] } }])
+    assert.throws(() => readImportPreview({ ...mappedPreview(), ...patch }));
+  const raw = { ...preview(), rows: [], previewToken: null, requiresColumnSelection: true, columnSelection: selection() };
+  for (const patch of [{ rows: [row] }, { previewToken: 'not-discovery' }, { requiresSheetSelection: true },
+    { errorCount: 1 }, { columnSelection: { ...selection(), mapping: mapping() } }]) assert.throws(() => readImportPreview({ ...raw, ...patch }));
+});
+
+test('unknown confirmation retains a deep copy of the original four columns and signed preview', () => {
+  const payload = manualImportPayload('generic', 'payments', file, selection(), mapping());
+  const shown = readImportPreview(mappedPreview()), intent = confirmImportPayload(payload, shown, id);
+  payload.mapping.amount = 4; shown.columnSelection.mapping.amount = 4;
+  assert.deepEqual(intent.mapping, mapping()); assert.equal(intent.requestId, id); assert.equal(intent.previewToken, 'synthetic-signed-preview');
+  assert.equal(intent.file.contentBase64, file.contentBase64);
+  assert.equal(importRejectionIsDefinite(400, true), false);
+  assert.throws(() => confirmImportPayload(payload, readImportPreview(mappedPreview()), id));
+  assert.throws(() => confirmImportPayload({ ...intent, amountColumn: 1 }, readImportPreview(mappedPreview()), id));
+  assert.throws(() => confirmImportPayload({ ...intent, inspectColumns: false }, readImportPreview(mappedPreview()), id));
+  assert.throws(() => confirmImportPayload(importPayload('generic', 'payments', file), readImportPreview(mappedPreview()), id));
+});
+
+test('manual preview preserves server amounts, currencies, errors and physical row ranges', () => {
+  const raw = mappedPreview(); raw.rows = [{ ...row, title: '多行\n标题', currency: 'USD', amountCents: 1,
+    sourceLocation: { lineStart: 3, lineEnd: 4, lineKind: 'csv_lines' } }];
+  const value = readImportPreview(raw); assert.equal(importAmount(value.rows[0].amountCents, value.rows[0].currency), 'USD 0.01');
+  assert.equal(importSourceLabel(value.rows[0].sourceLocation), '原文件第 3–4 行');
+  assert.equal(value.rows[0].title, '多行\n标题');
+  const erroneous = readImportPreview({ ...raw, previewToken: null, errorCount: 1, errors: [{ line: 7, message: '缺少币种' }] });
+  assert.equal(canConfirmImport(erroneous), false); assert.throws(() => confirmImportPayload(manualImportPayload('generic', 'payments', file, selection(), mapping()), erroneous, id));
 });

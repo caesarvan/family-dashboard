@@ -1,13 +1,20 @@
 export type ImportSource = 'generic' | 'alipay' | 'wechat' | 'taobao' | 'pinduoduo';
 export type ImportKind = 'payments' | 'orders';
 export type ImportFile = { name: string; contentBase64: string; encoding: 'auto' | 'utf-8' | 'gb18030'; sheet?: string };
-export type ImportPayload = { source: ImportSource; kind: ImportKind; file: ImportFile; amountColumn?: number; inspectSheets?: boolean };
+export type ImportColumnField = 'date' | 'amount' | 'title' | 'currency';
+export type ImportColumnMapping = { version: 1; headerLine: number } & Record<ImportColumnField, number>;
+export type ImportColumnSelection = { headerLine: number; lineKind: 'csv_lines' | 'worksheet_rows';
+  columns: { index: number; label: string; columnLabel: string }[];
+  suggestedMapping: Record<ImportColumnField, number | null>; mapping?: ImportColumnMapping };
+export type ImportPayload = { source: ImportSource; kind: ImportKind; file: ImportFile; amountColumn?: number; inspectSheets?: boolean;
+  inspectColumns?: boolean; headerLine?: number; mapping?: ImportColumnMapping };
 export type ImportSourceLocation = { lineStart: number; lineEnd: number; lineKind: 'csv_lines' | 'worksheet_rows' };
 export type ImportRow = { line: number; sourceLocation: ImportSourceLocation; title: string; date: string; amountCents: number; currency: string; flow: string; externalId?: string; duplicate: boolean; conflict: boolean; orderItems?: { title: string; variant?: string; quantityText?: string; listedAmountText?: string }[] };
 export type ImportPreview = {
   rows: ImportRow[]; errors: { line: number; message: string }[]; errorCount: number; warnings: string[];
   newCount: number; duplicateCount: number; conflictCount: number; previewToken: string | null;
   requiresSheetSelection: boolean; requiresAmountSelection: boolean;
+  requiresColumnSelection?: boolean; columnSelection?: ImportColumnSelection | null;
   fileInfo?: { format?: string; encoding?: string; sheet?: string; sheets?: string[] };
   amountSelection?: { selectedIndex: number | null; columns: { index: number; label: string; columnLabel: string }[] } | null;
 };
@@ -27,6 +34,49 @@ export function importPayload(source: ImportSource, kind: ImportKind, file: Impo
   if (inspectSheets && amountColumn !== undefined) throw new Error('请先选工作表，再选择金额列。');
   if (amountColumn !== undefined && (!count(amountColumn) || amountColumn >= 80)) throw new Error('请重新选择入账金额列。');
   return { source, kind, file: { ...file }, ...(amountColumn === undefined ? {} : { amountColumn }), ...(inspectSheets ? { inspectSheets: true } : {}) };
+}
+const columnFields: ImportColumnField[] = ['date', 'amount', 'title', 'currency'];
+const columnIndex = (value: unknown): value is number => count(value) && Number(value) < 80;
+const headerLine = (value: unknown): value is number => count(value) && Number(value) >= 1 && Number(value) <= 60;
+function columnLabel(index: number) {
+  let label = '', value = index + 1;
+  while (value > 0) { --value; label = String.fromCharCode(65 + value % 26) + label; value = Math.floor(value / 26); }
+  return label;
+}
+function readMapping(value: unknown): ImportColumnMapping {
+  if (!object(value) || Object.keys(value).sort().join(',') !== 'amount,currency,date,headerLine,title,version'
+    || value.version !== 1 || !headerLine(value.headerLine) || !columnFields.every(field => columnIndex(value[field]))
+    || new Set(columnFields.map(field => value[field])).size !== 4) throw new Error('请选择四个不同的列，并核对表头所在行。');
+  return { version: 1, headerLine: value.headerLine, date: value.date, amount: value.amount, title: value.title, currency: value.currency };
+}
+export function readImportColumnSelection(value: unknown): ImportColumnSelection {
+  if (!object(value) || !headerLine(value.headerLine) || !['csv_lines', 'worksheet_rows'].includes(value.lineKind)
+    || !Array.isArray(value.columns) || !value.columns.length || value.columns.length > 80
+    || !object(value.suggestedMapping) || Object.keys(value.suggestedMapping).sort().join(',') !== 'amount,currency,date,title') throw new Error('表头无法核对，请重新读取。');
+  const columns = value.columns.map((column: unknown) => {
+    if (!object(column) || !columnIndex(column.index) || typeof column.label !== 'string' || Array.from(column.label).length > 200
+      || column.columnLabel !== columnLabel(column.index)) throw new Error('列信息无法核对，请重新读取表头。');
+    return { index: column.index, label: column.label, columnLabel: column.columnLabel as string };
+  });
+  const indices = new Set(columns.map(column => column.index));
+  if (indices.size !== columns.length || !columnFields.every(field => value.suggestedMapping[field] === null
+    || columnIndex(value.suggestedMapping[field]) && indices.has(value.suggestedMapping[field]))) throw new Error('建议列无法核对，请重新读取表头。');
+  const suggestedMapping = Object.fromEntries(columnFields.map(field => [field, value.suggestedMapping[field]])) as ImportColumnSelection['suggestedMapping'];
+  const mapping = value.mapping === undefined ? undefined : readMapping(value.mapping);
+  if (mapping && (mapping.headerLine !== value.headerLine || !columnFields.every(field => indices.has(mapping[field])))) throw new Error('所选列与当前表头不一致，请重新读取。');
+  return { headerLine: value.headerLine, lineKind: value.lineKind, columns, suggestedMapping, ...(mapping ? { mapping } : {}) };
+}
+export function inspectImportColumnsPayload(source: ImportSource, kind: ImportKind, file: ImportFile, line?: number): ImportPayload {
+  if (source !== 'generic') throw new Error('手动指定列仅适用于通用表格。');
+  if (line !== undefined && !headerLine(line)) throw new Error('表头所在行须为 1 至 60 的整数。');
+  if (/\.xlsx$/i.test(file.name) && !file.sheet) throw new Error('请先选择工作表。');
+  return { ...importPayload(source, kind, file), inspectColumns: true, ...(line === undefined ? {} : { headerLine: line }) };
+}
+export function manualImportPayload(source: ImportSource, kind: ImportKind, file: ImportFile, selection: ImportColumnSelection, value: unknown): ImportPayload {
+  const safe = readImportColumnSelection(selection), mapping = readMapping(value);
+  if (source !== 'generic' || /\.xlsx$/i.test(file.name) && !file.sheet) throw new Error('请使用通用表格，并先选择工作表。');
+  if (mapping.headerLine !== safe.headerLine || !columnFields.every(field => safe.columns.some(column => column.index === mapping[field]))) throw new Error('所选列与当前表头不一致，请重新读取。');
+  return { ...importPayload(source, kind, file), mapping };
 }
 export function readImportPreview(value: unknown): ImportPreview {
   if (!object(value) || !Array.isArray(value.rows) || value.rows.length > 5000 || !Array.isArray(value.errors)
@@ -48,10 +98,16 @@ export function readImportPreview(value: unknown): ImportPreview {
   if (value.requiresSheetSelection && (!Array.isArray(value.fileInfo?.sheets) || !value.fileInfo.sheets.every((v: unknown) => typeof v === 'string'))) throw new Error('工作表名单无法读取。');
   if (value.amountSelection && (!Array.isArray(value.amountSelection.columns)
     || !value.amountSelection.columns.every((v: unknown) => object(v) && count(v.index) && typeof v.label === 'string' && typeof v.columnLabel === 'string'))) throw new Error('金额列名单无法读取。');
-  return value as ImportPreview;
+  const requiresColumns = value.requiresColumnSelection === undefined ? false : value.requiresColumnSelection;
+  if (typeof requiresColumns !== 'boolean' || (value.requiresColumnSelection === undefined) !== (value.columnSelection === undefined)) throw new Error('字段选择状态无法核对。');
+  const selection = value.columnSelection == null ? null : readImportColumnSelection(value.columnSelection);
+  if (requiresColumns && (!selection || selection.mapping || value.previewToken !== null || value.rows.length || value.errors.length || value.errorCount
+    || value.requiresSheetSelection || value.requiresAmountSelection)) throw new Error('读取表头不能作为导入预览。');
+  if (selection && !requiresColumns && (!selection.mapping || value.requiresSheetSelection || value.requiresAmountSelection || value.amountSelection != null)) throw new Error('映射预览与所选列不一致。');
+  return { ...value, requiresColumnSelection: requiresColumns, columnSelection: selection } as ImportPreview;
 }
 export function canConfirmImport(preview: ImportPreview | null): preview is ImportPreview {
-  return !!preview && !preview.requiresSheetSelection && !preview.requiresAmountSelection && preview.errorCount === 0
+  return !!preview && !preview.requiresSheetSelection && !preview.requiresAmountSelection && !preview.requiresColumnSelection && preview.errorCount === 0
     && preview.rows.length > 0 && !!preview.previewToken;
 }
 export function importSourceLabel(location: ImportSourceLocation) {
@@ -63,8 +119,12 @@ export function importRejectionIsDefinite(status: number | undefined, wasUncerta
   return !wasUncertain && status !== undefined && [400, 413, 422].includes(status);
 }
 export function confirmImportPayload(payload: ImportPayload, preview: ImportPreview, requestId: string) {
-  if (!canConfirmImport(preview) || payload.inspectSheets || !isImportRequestId(requestId)) throw new Error('请重新核对文件预览后再保存。');
-  return { ...payload, file: { ...payload.file }, previewToken: preview.previewToken!, requestId };
+  if (!canConfirmImport(preview) || payload.inspectSheets || 'inspectColumns' in payload || 'headerLine' in payload || !isImportRequestId(requestId)) throw new Error('请重新核对文件预览后再保存。');
+  if (payload.mapping) {
+    const mapping = readMapping(payload.mapping), shown = preview.columnSelection && readImportColumnSelection(preview.columnSelection).mapping;
+    if (payload.source !== 'generic' || 'amountColumn' in payload || !shown || JSON.stringify(mapping) !== JSON.stringify(shown)) throw new Error('所选列已变化，请重新预览。');
+  } else if (preview.columnSelection) throw new Error('请重新核对所选列后再保存。');
+  return { ...payload, file: { ...payload.file }, ...(payload.mapping ? { mapping: readMapping(payload.mapping) } : {}), previewToken: preview.previewToken!, requestId };
 }
 export function readImportReceipt(value: unknown, expected: string): FinanceImportReceipt {
   if (!object(value) || !isImportRequestId(expected) || value.requestId !== expected
