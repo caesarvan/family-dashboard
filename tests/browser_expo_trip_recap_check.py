@@ -213,7 +213,7 @@ class Run(BaseRun):
             self.category(page, '旅行照片'); expect(page.get_by_text('这一页没有可见照片', exact=True)).to_be_visible()
             trip = self.get(ctx, '/api/journeys/' + journey['id'])['trip']
             self.write(ctx, 'DELETE', '/api/items/trips/' + trip['id'], {'revision': trip['revision']})
-            assert self.get(ctx, '/api/journeys/' + journey['id'])['trip'] is None
+            self.get(ctx, '/api/journeys/' + journey['id'], 404)
             self.get(ctx, self.list_path(journey, 'places'), 404)
             button(page, '刷新旅行回顾').click(); expect(page.get_by_role('alert')).to_be_visible(timeout=15000); self.assert_cleared(page)
             expect(button(page, '返回旅行详情')).to_be_enabled()
