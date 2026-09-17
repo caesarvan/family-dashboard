@@ -69,12 +69,26 @@
   }
   async function verifyPreferencesIdentity(identity) {
     if(mapActor()!==identity || isTV || isDemo || user?.role!=='member') throw new Error('登录状态已变化，请刷新后继续');
-    const session=await preferencesRequest('/me');
-    if(mapActor()!==identity || preferencesIdentity(session)!==identity) throw new Error('登录状态已变化，请刷新后继续');
+    try {
+      const session=await preferencesRequest('/me');
+      if(mapActor()!==identity || preferencesIdentity(session)!==identity) {
+        const error=new Error('登录状态已变化，请刷新后继续');error.identityChanged=true;throw error;
+      }
+    } catch(error) {if(error.identityChanged || [401,403].includes(error.status))losePreferencesIdentity(identity);throw error;}
+  }
+  function losePreferencesIdentity(identity) {
+    if(mapActor()!==identity)return;
+    if(document.querySelector('#ps-preferences-form') && document.querySelector('#dialog')?.open) {
+      closeModal();document.querySelector('#dialog').replaceChildren();
+    }
+    setTheme(DEFAULTS);prefIdentity='';preferencesLoadedAt=0;preferencesPromise=null;
+    void boot();
   }
   async function fetchPreferences(identity) {
     await verifyPreferencesIdentity(identity);
-    const next=readPreferences(await preferencesRequest('/preferences'));
+    let next;
+    try {next=readPreferences(await preferencesRequest('/preferences'));}
+    catch(error) {if([401,403].includes(error.status))losePreferencesIdentity(identity);throw error;}
     await verifyPreferencesIdentity(identity);
     return next;
   }
@@ -451,6 +465,7 @@
         if(!owns())return;
         preferencesLoadedAt=Date.now();closeModal();renderBoard();applyDefaultView();toast(isDemo?'演示外观已更新':'外观已保存，其他设备会自动读取');
       } catch(err) {
+        if([401,403].includes(err.status))losePreferencesIdentity(identity);
         if(!owns())return;error.textContent=err.message;
         if(dispatched){unresolved=true;error.textContent+='。草稿仍保留，请先检查已保存设置。';recoverButton('检查已保存设置',readBack);}
       } finally {busy=false;if(owns())enable();}
