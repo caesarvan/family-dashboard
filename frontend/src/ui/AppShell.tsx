@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import { ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
+import { Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Banner, BottomNavigation, Button, Divider, IconButton, Menu, Surface, Text, useTheme } from 'react-native-paper';
@@ -53,7 +53,7 @@ export default function AppShell(props: AppShellProps) {
             icon={({ color }) => <MaterialCommunityIcons name="home-outline" size={24} color={color} />}
             textColor={theme.colors.onSurface} labelStyle={styles.brandLabel} style={styles.brand}>家庭中枢</Button> :
             <View style={styles.mobileHeading}>
-              {tabIndex < 0 ? <IconButton icon="arrow-left" size={22} onPress={() => navigate('more')} accessibilityLabel="返回更多功能" style={styles.iconButton} /> :
+              {tabIndex < 0 ? <IconButton icon="arrow-left" size={22} onPress={() => navigate('more')} accessibilityLabel="返回更多功能" style={styles.iconButton} contentStyle={styles.iconContent} /> :
                 <MaterialCommunityIcons name="home-outline" size={24} color={theme.colors.onSurface} accessibilityElementsHidden />}
               <View style={styles.headerCopy}>
                 <Text variant="titleSmall" numberOfLines={1}>{route === 'home' ? props.householdName || '我们的家' : props.title}</Text>
@@ -76,14 +76,14 @@ export default function AppShell(props: AppShellProps) {
             </Menu>
           </View> : null}
           <View style={styles.headerActions}>
-            <IconButton icon="refresh" size={20} onPress={props.onRefresh} disabled={props.refreshing} loading={props.refreshing} accessibilityLabel="刷新家庭数据" style={styles.iconButton} />
+            <IconButton icon="refresh" size={20} onPress={props.onRefresh} disabled={props.refreshing} loading={props.refreshing} accessibilityLabel="刷新家庭数据" style={styles.iconButton} contentStyle={styles.iconContent} />
             <Menu theme={menuTheme} visible={menu === 'create'} onDismiss={() => setMenu(null)} anchor={wide ? (
               <Button mode="contained" icon="plus" onPress={() => setMenu('create')} style={styles.button} contentStyle={styles.buttonContent}>新建</Button>
-            ) : <IconButton icon="plus" mode="contained" containerColor={theme.colors.primary} iconColor={theme.colors.onPrimary} size={21} onPress={() => setMenu('create')} accessibilityLabel="新建记录" style={[styles.iconButton, styles.button]} />} contentStyle={styles.menu}>
+            ) : <IconButton icon="plus" mode="contained" containerColor={theme.colors.primary} iconColor={theme.colors.onPrimary} size={21} onPress={() => setMenu('create')} accessibilityLabel="新建记录" style={[styles.iconButton, styles.button]} contentStyle={styles.iconContent} />} contentStyle={styles.menu}>
               {creation.map(item => <Menu.Item key={item.kind} title={item.title} leadingIcon={item.icon} onPress={() => { setMenu(null); props.onCreate(item.kind); }} />)}
             </Menu>
             <Menu theme={menuTheme} visible={menu === 'account'} onDismiss={() => setMenu(null)} anchor={
-              <IconButton icon="account-circle-outline" size={23} onPress={() => setMenu('account')} accessibilityLabel={`${props.name}，账户菜单`} style={styles.iconButton} />
+              <IconButton icon="account-circle-outline" size={23} onPress={() => setMenu('account')} accessibilityLabel={`${props.name}，账户菜单`} style={styles.iconButton} contentStyle={styles.iconContent} />
             } contentStyle={styles.menu}>
               <Menu.Item title={props.name || '我的账户'} disabled /><Menu.Item title={props.householdName || '我们的家'} disabled />
               <Divider /><Menu.Item title="连接与账户" leadingIcon="link-variant" onPress={() => navigate('connections')} />
@@ -117,6 +117,9 @@ const styles = StyleSheet.create({
   reverse: { flexDirection: 'row-reverse' },
   mobileHeading: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }, headerCopy: { flex: 1, minWidth: 0, gap: 1 },
   headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 }, iconButton: { margin: 0 },
+  // Paper rounds the outer Surface only. Keep the inner keyboard focus ring
+  // inside that clipped circle instead of rendering four cut-off square edges.
+  iconContent: { borderRadius: 999, ...(Platform.OS === 'web' ? { outlineOffset: -3 } : {}) },
   button: { borderRadius: 999 }, buttonContent: { minHeight: 40 }, menu: { borderRadius: 20, minWidth: 210 },
   contentScroll: { flex: 1 }, scrollContent: { flexGrow: 1, alignItems: 'center' },
   content: { width: '100%', maxWidth: 1328, paddingBottom: 40 }, bottomBar: { borderTopWidth: 1 },
