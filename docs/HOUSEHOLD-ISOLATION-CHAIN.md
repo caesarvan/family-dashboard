@@ -1,6 +1,6 @@
 # D：家庭隔离与协作连续验收
 
-脚本：`tests/browser_household_isolation_chain_check.py`。作者基线 `caf34d5a825716fe2ff0aaf363df0d4412c71e91`。本次独立真实本地连续链单次 6/6 通过，Root 逐看三图后通过可见视口审查。脚本与本文待作为独立测试／文档批次合入，未包含在当前家庭成员发布包中；不把本地验收当作生产流程验证。
+脚本：`tests/browser_household_isolation_chain_check.py`。作者基线 `caf34d5a825716fe2ff0aaf363df0d4412c71e91`。本次独立真实本地连续链单次 6/6 通过，Root 逐看三图后通过可见视口审查。脚本与本文属于独立测试／文档批次，未包含在家庭成员发布包（main `08c0260b24e7ae917d5698dcbebde4fda6ff428d`）中；不把本地验收当作生产流程验证。
 
 ## 六个连续检查点
 
