@@ -18,6 +18,7 @@ import tempfile
 import time
 import traceback
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 from playwright.sync_api import expect, sync_playwright
 import browser_expo_trip_import_check as import_fixture
@@ -25,6 +26,7 @@ from browser_expo_trip_import_check import Run as ImportRun, APPLY, PREVIEW
 from browser_expo_finance_check import button, sha
 
 CHECKS = 2
+SCENARIOS = ('same_trip_chain', 'completed_write_lost_readback')
 TITLE = '合成本地整链旅行'
 PLACE_TITLE = '合成东京私人计划地点'
 ACTIVITY_TITLE = '合成东京日期级活动'
@@ -332,38 +334,66 @@ class Run(ImportRun):
 
     def completed_write_lost_readback(self, browser):
         with self.flow(browser) as (ctx, page):
+            timeline = []; began = time.monotonic(); request_ids = {}
+            self.report.setdefault('requestTimelines', {})[self.out.name] = timeline
+            def trace(event, request=None, **data):
+                if request is not None and not urlsplit(request.url).path.startswith('/api/'):
+                    return
+                assert len(timeline) < 1000, 'Bounded diagnostic request timeline exceeded'
+                if request is not None:
+                    request_ids.setdefault(request, len(request_ids) + 1)
+                    data.update(requestId=request_ids[request], method=request.method, path=urlsplit(request.url).path)
+                timeline.append(dict(sequence=len(timeline) + 1, elapsedMs=round((time.monotonic() - began) * 1000), event=event, **data))
+            ctx.on('request', lambda request: trace('browser-request', request))
+            ctx.on('response', lambda response: trace('browser-response', response.request, status=response.status))
+            ctx.on('requestfinished', lambda request: trace('browser-request-finished', request))
+            ctx.on('requestfailed', lambda request: trace('browser-request-failed', request, error=request.failure))
             original = self.import_one(page); item = original['tasks'][0]
             path = '/api/items/tasks/' + item['id']; url = self.base + '/api/journeys/' + original['id']
-            patches = self.count_requests('PATCH', path); lost = []; armed = [False]
+            patches = self.count_requests('PATCH', path); lost = []; armed = [False]; recovery_ready = False
             def drop_readback(route):
-                if not armed[0] or lost:
-                    route.continue_(); return
                 assert route.request.method == 'GET'
                 response = route.fetch(max_redirects=0); raw = response.body()
                 assert response.status == 200, raw
+                # A request begun before PATCH may finish after it. Decide at
+                # response time, and never let a later successful GET bypass the fault.
+                if not armed[0]:
+                    trace('actual-detail-forwarded-before-commit', route.request, status=response.status)
+                    route.fulfill(status=response.status, headers=response.headers, body=raw); return
                 detail = json.loads(raw)
-                assert next(row for row in detail['tasks'] if row['id'] == item['id'])['done'] is True
+                assert detail['id'] == original['id'] and len(lost) < 32
+                done = next(row for row in detail['tasks'] if row['id'] == item['id'])['done']
+                trace('actual-detail-200-discarded', route.request, status=response.status, completed=done)
                 lost.append(detail); route.abort('failed')
             def commit_then_arm(route):
                 assert route.request.method == 'PATCH' and route.request.post_data_json == {'revision': item['revision'], 'done': True}
                 response = route.fetch(max_redirects=0); raw = response.body()
                 assert response.status == 200, raw
                 armed[0] = True
+                trace('actual-patch-committed', route.request, status=response.status)
                 route.fulfill(status=response.status, headers=response.headers, body=raw)
             page.route(url, drop_readback); page.route(self.base + path, commit_then_arm)
             try:
                 page.get_by_role('checkbox', name='完成' + item['title'], exact=True).click()
-                self.settle(page, lambda: len(lost) == 1)
+                self.settle(page, lambda: len(lost) >= 1)
                 expect(page.get_by_text('旅行暂时无法读取', exact=True)).to_be_visible()
                 expect(button(page, '重试')).to_be_enabled()
                 expect(page.get_by_role('checkbox', name='完成' + item['title'], exact=True)).to_have_count(0)
                 expect(button(page, '管理清单')).to_have_count(0)
+                trace('readback-unavailable-controls-cleared')
+                assert armed[0] and self.count_requests('PATCH', path) == patches + 1
+                assert any(next(row for row in detail['tasks'] if row['id'] == item['id'])['done'] is True for detail in lost)
+                # APIRequestContext reads the real server separately; it does not
+                # bypass the still-blocked UI or manufacture a browser success.
+                committed = self.detail(ctx, original['id'])
+                saved_task = next(row for row in committed['tasks'] if row['id'] == item['id'])
+                assert saved_task['done'] is True and saved_task['revision'] == item['revision'] + 1
+                trace('independent-server-read-confirms-completion')
+                before = self.snapshot(); recovery_ready = True
             finally:
                 page.unroute(url, drop_readback); page.unroute(self.base + path, commit_then_arm)
-            assert armed[0] and len(lost) == 1 and self.count_requests('PATCH', path) == patches + 1
-            committed = self.detail(ctx, original['id'])
-            assert committed == lost[0]
-            before = self.snapshot(); button(page, '重试').click()
+                trace('fault-released-for-explicit-read' if recovery_ready else 'fault-cleaned-after-test-failure')
+            trace('user-clicks-read-only-retry'); button(page, '重试').click()
             card = page.get_by_test_id('section-card-content').filter(has=page.get_by_role('heading', name=TITLE, exact=True))
             expect(card.get_by_role('button', name='查看', exact=True)).to_be_enabled()
             card.get_by_role('button', name='查看', exact=True).click(); self.current_ready(page, TITLE)
@@ -374,13 +404,14 @@ class Run(ImportRun):
             assert self.count_requests('POST', APPLY) == 1
             assert entity_ids(committed) == entity_ids(original)
             assert committed['shopping'] == original['shopping'] and committed['budget'] == original['budget']
-            self.no_cloud(); self.proof('completed_readback_recovered', committed, mutationCount=1)
+            trace('fresh-ui-completion-restored', patchCount=self.count_requests('PATCH', path) - patches)
+            self.no_cloud(); self.proof('completed_readback_recovered', committed, mutationCount=1, discardedDetailResponses=len(lost))
             self.capture_view(page, 'readback-recovered')
-            self.passed('A real completion PATCH commits once; a lost actual detail response removes stale controls and manual readback recovers without another PATCH')
+            self.passed('A real completion PATCH commits once; blocked actual detail responses clear stale controls and explicit readback recovers without another PATCH')
 
     @classmethod
-    def run_scenarios(cls, root, bundle, report, out, browser):
-        for name in ('same_trip_chain', 'completed_write_lost_readback'):
+    def run_scenarios(cls, root, bundle, report, out, browser, scenarios):
+        for name in scenarios:
             case_out = out / name; case_out.mkdir(); folder = None
             before = (len(report['checks']), len(report['pageErrors']), len(report['externalRequests']))
             case = dict(name=name, passed=False, temporaryFixtureRemoved=False)
@@ -403,16 +434,18 @@ class Run(ImportRun):
             finally:
                 case['temporaryFixtureRemoved'] = folder is not None and not folder.exists()
                 report['scenarioResults'].append(case)
-        assert not report['scenarioFailures'], 'Both independent cases must pass; failures retained'
+        assert not report['scenarioFailures'], 'Every selected case must pass; failures retained'
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--expected-harness-head', required=True)
     parser.add_argument('--expected-harness-sha256', required=True)
+    parser.add_argument('--scenario', choices=('all', *SCENARIOS), default='all', help='Explicit subset; never reported as both cases passing')
     parser.add_argument('--source-root', required=True, type=Path); parser.add_argument('--expected-head', required=True)
     parser.add_argument('--bundle', required=True, type=Path); parser.add_argument('--expected-build-evidence', required=True)
     args = parser.parse_args(); root, bundle = args.source_root.resolve(), args.bundle.resolve()
+    scenarios = SCENARIOS if args.scenario == 'all' else (args.scenario,)
     assert all(re.fullmatch('[a-f0-9]{40}', value) for value in (args.expected_head, args.expected_harness_head))
     assert all(re.fullmatch('[a-f0-9]{64}', value) for value in (args.expected_build_evidence, args.expected_harness_sha256))
     harness_root = Path(__file__).resolve().parents[1]
@@ -437,11 +470,12 @@ def main():
     out.mkdir(parents=True); shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], screenshots=[], scenarioResults=[], scenarioFailures=[], head=head, tree=evidence['sourceTree'],
         sourceRoot=str(root), harnessRoot=str(harness_root), harnessHead=harness_head,
+        selectedScenarios=list(scenarios), requestedChecks=len(scenarios), fullSuite=False,
         harnessTree=harness_git('rev-parse', 'HEAD^{tree}'), harnessSourceHashesBefore=harness_hashes(),
         harnessPathPresentInApplicationHead='tests/browser_expo_travel_chain_check.py' in names,
         buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'), sourceHashesBefore=hashes(), bundleHashesBefore=exports(),
         productionWrites=0, realFinancialData=False, realCloud=False, realAI=False, physicalTelevision=False,
-        scope='Two independent real Flask/SQLite/HTTPS/Edge cases. One same-trip UI chain and one lost readback seam. Synthetic JSON and calendar accounts; no worker, provider call or calendar confirmation. Task/purchase completion is not proof of an actual completed trip. Captures cover visible viewports only.')
+        scope='Explicitly selected real Flask/SQLite/HTTPS/Edge cases from the two-case local chain suite. Readback faults discard actual 200 responses until explicit recovery. Synthetic JSON and calendar accounts; no worker, provider call or calendar confirmation. Task/purchase completion is not proof of an actual completed trip. Captures cover visible viewports only.')
     original_connect = socket.socket.connect
     def local_connect(sock, address):
         if isinstance(address, tuple) and address[0] not in ('127.0.0.1', '::1', 'localhost'):
@@ -451,8 +485,8 @@ def main():
         with patch.object(socket.socket, 'connect', local_connect), sync_playwright() as pw:
             browser = pw.chromium.launch(channel='msedge', headless=True)
             try:
-                Run.run_scenarios(root, bundle, report, out, browser)
-                assert len(report['checks']) == CHECKS and len(report['screenshots']) == CHECKS
+                Run.run_scenarios(root, bundle, report, out, browser, scenarios)
+                assert len(report['checks']) == len(scenarios) and len(report['screenshots']) == len(scenarios)
                 assert len(report['fixtureHashes']) == 7
                 assert not report['pageErrors'] and not report['externalRequests']; report['passed'] = True
             finally: browser.close()
@@ -470,8 +504,9 @@ def main():
             and sha(Path(__file__)) == args.expected_harness_sha256)
         report['fixtureHashesAfter'] = {name: sha(Path(path)) for name, path in report.get('fixtureActualPaths', {}).items()}
         report['fixturesUnchanged'] = len(report.get('fixtureHashes', {})) == 7 and report['fixtureHashesAfter'] == report['fixtureHashes']
-        report['temporaryFixtureRemoved'] = len(report['scenarioResults']) == CHECKS and all(case['temporaryFixtureRemoved'] for case in report['scenarioResults'])
+        report['temporaryFixtureRemoved'] = len(report['scenarioResults']) == len(scenarios) and all(case['temporaryFixtureRemoved'] for case in report['scenarioResults'])
         report['passed'] = report['passed'] and report['sourceUnchanged'] and report['bundleUnchanged'] and report['sourceStillFrozen'] and report['harnessStillFrozen'] and report['fixturesUnchanged'] and report['temporaryFixtureRemoved']
+        report['fullSuite'] = report['passed'] and len(scenarios) == CHECKS
         with (out / 'result.json').open('x', encoding='utf-8') as stream:
             stream.write(json.dumps(report, ensure_ascii=False, indent=2) + '\n')
         print(json.dumps({'passed': report['passed'], 'checks': len(report['checks']), 'report': str(out / 'result.json')}, ensure_ascii=False), flush=True)
