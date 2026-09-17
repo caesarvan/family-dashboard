@@ -72,6 +72,13 @@ test('only actual PUT rejection with successful after-identity is definitive', a
     await assert.rejects(checkedLayoutWrite(guard, async () => layout()), error => error instanceof LayoutError && !(error instanceof LayoutRejected));
   }
 });
+test('failed pre-write identity read never invokes the write or marks an uncertain mutation', async () => {
+  const value = session(), fence = new HomeLayoutFence(layoutSignature(value));
+  let attempted = 0, uncertain = null;
+  const guard = write => fence.run(async () => { throw new LayoutError('identity network failure'); }, write, () => true);
+  await assert.rejects(checkedLayoutWrite(guard, async () => { attempted++; uncertain = layout(); return layout(); }), LayoutError);
+  assert.equal(attempted, 0); assert.equal(uncertain, null);
+});
 test('transport restricts routes and sends same-origin CAS PUT once without automatic retry', async () => {
   const original = globalThis.fetch, calls = [];
   try {

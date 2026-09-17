@@ -92,16 +92,19 @@ function Workspace(props: Props & { identityKey: string }) {
     if (!current() || working.current || live.current.unknown || live.current.blocked || !live.current.draft || !dirty(live.current)) return;
     const intent = homeLayoutPayload(live.current.draft);
     await job(async (ticket, signal) => {
-      install({ unknown: intent, review: null }); setMessage('');
+      setMessage('');
       try {
-        const result = await checkedLayoutWrite<HomeLayout>(operation => guard(ticket, signal, operation), async csrf => readHomeLayout(await layoutRequest('/dashboard-layout', signal, intent, csrf)));
+        const result = await checkedLayoutWrite<HomeLayout>(operation => guard(ticket, signal, operation), async csrf => {
+          install({ unknown: intent, review: null });
+          return readHomeLayout(await layoutRequest('/dashboard-layout', signal, intent, csrf));
+        });
         if (!current(ticket)) return;
         install({ base: result, draft: result, review: null, unknown: null, blocked: false }); setMessage('首页布局已保存。');
         void latest.current.household.refresh();
       } catch (caught) {
         if (!current(ticket)) return;
         if (caught instanceof LayoutRejected) { install({ unknown: null, blocked: caught.status === 409 }); setError(caught.message); }
-        else { setMessage('保存结果尚未确定。请读取当前布局核对；不会自动重复保存。'); throw caught; }
+        else { if (live.current.unknown) setMessage('保存结果尚未确定。请读取当前布局核对；不会自动重复保存。'); throw caught; }
       }
     });
   }
