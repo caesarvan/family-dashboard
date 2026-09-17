@@ -30,6 +30,10 @@
 
 ## 验证记录
 
-专项使用真实临时两户 Flask／SQLite、非空资产账户与回执、资料 BLOB 和序列间隙；覆盖原五列保全、普通成员角色重启保持、两户完整备份／恢复、部分迁移拒绝重放、DDL 后角色更新失败整户回滚、真实 SQL 篡改及不可变备份保护。首轮在固定组合 `d0998d8da8d12c9f7251a5b2f30d7b2d880e6f3c` 实际通过，原件 `test-results/members-migration-r1/` 保留；随后公开只读 `users_projection` 接口供发布后 immutable 备份校验，并补快照间并发改变与 DDL 前拒绝漂移检查，最终结果待下轮记录。未进行生产、真实云或恢复覆盖。
+专项使用真实临时两户 Flask／SQLite、非空资产账户与回执、资料 BLOB 和序列间隙；覆盖原五列保全、普通成员角色重启保持、两户完整备份／恢复、部分迁移拒绝重放、DDL 后角色更新失败整户回滚、真实 SQL 篡改及不可变备份保护。首轮在固定组合 `d0998d8da8d12c9f7251a5b2f30d7b2d880e6f3c` 实际 24／24 通过，原件 `test-results/members-migration-r1/` 保留；随后公开只读 `users_projection` 接口供发布后 immutable 备份校验，并补快照间并发改变与 DDL 前拒绝漂移检查。
+
+最终在 `833cf2c602535685982f46089f862c8b646c0915` 执行 `python -B -X utf8 -m pytest -q tests/test_household_members_migration.py --junitxml=<新结果路径>`，**27／27 通过、零失败／错误／跳过**，pytest 报告 26.39 秒。314 个 tracked Python 源文件前后散列一致，测试结束 HEAD 未变且工作树干净；此后仅补本文结果，不再改变执行字节。实际单一来源包括已审 API 与 app 注册依赖，未使用浮动文件或成功业务 mock。
+
+原件 `test-results/members-migration-r2/`：`results.xml` SHA `a3777ad8abee5f240fa1f79c1c63eb5e447720e01ea32dc4599eb62c64c442c2`；`result.json` SHA `3e5c5ef0cc5d9eb6ce46eb6df7bff1946b8baf5107b0122ac1f33172a2da9bdb`。两轮不相加为新总数。生产迁移、生产备份覆盖恢复、真实云和前端组合均未执行。
 
 依赖：成员 API `d995f39109ff23e0b04ab72f7711a044ed5df321` 与实际 app 注册 `2f1e2d8474a6d7256ce8fde4c2c3e84a96cf6cc5` 均经非作者审查；只在本独立分支按集成人授权合入后运行，不使用浮动源或混合模块导入。接口详见[成员管理](HOUSEHOLD-MEMBERS.md)。
