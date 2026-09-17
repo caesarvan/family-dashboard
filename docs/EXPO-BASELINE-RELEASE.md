@@ -1,6 +1,6 @@
 # Expo 本人资产与来源报告：55→55 发布适配器
 
-本适配器是下一批候选，只在本地生成未绑定审查稿，没有执行打包、远端阶段或部署。父 segments 已于 2026-09-17 21:12:18（北京时间）激活，21:12:47 TLS 及 21:16:20 独立读回通过，见[父发布验收](EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md#expo-segments-release)；本批仍需独立绑定和执行。
+本适配器先生成本地未绑定审查稿；其后已完成独立审查、实际绑定和五阶段发布，见[发布验收](EXPO-BASELINE-ACCEPTANCE.md#expo-baseline-release)。实际实例 `expo-baseline-tools-20260917-r1` 的五阶段已使用，不可重放。父 segments 已于 2026-09-17 21:12:18（北京时间）激活，21:12:47 TLS 及 21:16:20 独立读回通过，见[父发布验收](EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md#expo-segments-release)；以下保留该批固定父身份与生成契约；后续发布须重新绑定届时实际安装基线。
 
 ## 固定输入与范围
 
@@ -46,4 +46,4 @@ post 保留原 29 个唯一匿名路径，新增以下五项，合计 34；每�
 
 原件在作者 worktree 的 ignored `test-results/`：`baseline-release-r1.xml` 和 `baseline-release-pinned-r1.json`。它们分别是 24 项测试与实际固定原件检查，不累加成业务或 Linux 验证通过数。
 
-最终 Linux 范围为 10 个模块：两个会话专项、原 baseline／source bridge／spending observation 三模块、frontend runtime、家庭隔离、平台备份、持仓迁移和本适配器；准确数量由最终 collection 提供。当前未运行本批服务器验证、未绑定新包，也不代表真实账号导入、外部同步、实体电视或原生设备验收。页面实际本地证据见 [候选验收](EXPO-BASELINE-ACCEPTANCE.md)。
+最终 Linux 范围为 10 个模块：两个会话专项、原 baseline／source bridge／spending observation 三模块、frontend runtime、家庭隔离、平台备份、持仓迁移和本适配器；最终 collection 为 348 项，服务器实际 347 通过、1 项精确 Windows 跳过，五阶段均已完成。该结果不代表真实账号导入、外部同步、实体电视或原生设备验收。最终包、镜像、数据保全和 TLS 原件见 [发布验收](EXPO-BASELINE-ACCEPTANCE.md#expo-baseline-release)。

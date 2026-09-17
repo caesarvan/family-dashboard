@@ -1,6 +1,6 @@
 # 财务来源导入：会话与未知结果恢复
 
-本候选只调整 `finance_source_bridge.py`、`spending_observations.py` 的现有 status／preview／confirm；无新表、路由、依赖或金额算法。尚未部署。完整资产基线与独立消费观察仍使用各自的回执、版本和来源摘要；消费观察继续核对两条版本线，不写资产、共享汇总、实付账本或荷包。
+本批只调整 `finance_source_bridge.py`、`spending_observations.py` 的现有 status／preview／confirm；无新表、路由、依赖或金额算法。已随资产报告于 2026-09-17 21:58:49（北京时间）部署，见[发布验收](EXPO-BASELINE-ACCEPTANCE.md#expo-baseline-release)；新版前端恢复交互仍在独立候选验收。完整资产基线与独立消费观察仍使用各自的回执、版本和来源摘要；消费观察继续核对两条版本线，不写资产、共享汇总、实付账本或荷包。
 
 ## 接口增量
 
