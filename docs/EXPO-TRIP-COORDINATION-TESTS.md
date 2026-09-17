@@ -1,6 +1,6 @@
 # Expo 旅行地点与日历组合验收
 
-本文件描述新增 `tests/browser_expo_trip_coordination_check.py` 的待执行验收方案。编写基线为 `f48c02dc51b6610a1f2af20a3b8dbc44286efda7`；提交、语法检查或旧测试通过均不代表本脚本已实际通过。必须由集成人给出包含新界面和本脚本的冻结 source、独立导出 bundle 与 build evidence 后执行，保留失败原件。
+本文件保留 `tests/browser_expo_trip_coordination_check.py` 的测试设计及前两轮历史失败。第三轮 source `5d8a0c4d5e96a209ad80e6dddd80a086969f31d9` 已实际通过全部 20 组，随后于 2026-09-17 09:25:21（北京时间）上线，09:25:52 正常 TLS 读回通过；冻结构建、报告和视觉范围见 [发布验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md)。编写基线为 `f48c02dc51b6610a1f2af20a3b8dbc44286efda7`；后续运行仍必须绑定当次 source、独立导出 bundle 与 build evidence，并保留失败原件，不能以旧结果替代。
 
 ## 真实部分与夹具
 
@@ -26,9 +26,9 @@
 
 401／403 后检失败必须立即隐藏本人来源、旅行内容与预览／对照，只保留重新读取入口；429 可保留只读未知状态。三者原确认按钮均消失；明确读取当前状态不产生第二个 POST，同一队列仍在。随后实际登录另一成员并读回，旧私人来源清空。报告逐项记录注入一次、周期轮询延后、原业务响应未替换及实际成员切换结果。它证明这一受控交错，不声称所有后台计时交错均已覆盖；原十四组继续使用正常周期轮询。
 
-首轮 source `54cd7718f2d0fb8a51b2233fff6c3c88b23a8be4` 已实际运行：第一组旅行保存通过，随后因图标计入“旅行地点”按钮可访问名称而定位超时，未进入地点保存。原件保留于 `expo-trip-coordination-20260917T002740842189Z/result.json`，SHA256 `51d4ff8aa4fbba35ab69ff8a94a9ed2dd60f319c4dfc2de1a3d0dc98d3d6d358`；source/bundle 前后不变。定位修订复用已审 `icon_button`，仍要求真实 button 唯一、可操作，不放宽业务断言。完整通过与十二截图仍须新冻结构建复跑，不能用这一首轮宣称。
+首轮 source `54cd7718f2d0fb8a51b2233fff6c3c88b23a8be4` 已实际运行：第一组旅行保存通过，随后因图标计入“旅行地点”按钮可访问名称而定位超时，未进入地点保存。原件保留于 `expo-trip-coordination-20260917T002740842189Z/result.json`，SHA256 `51d4ff8aa4fbba35ab69ff8a94a9ed2dd60f319c4dfc2de1a3d0dc98d3d6d358`；source/bundle 前后不变。定位修订复用已审 `icon_button`，仍要求真实 button 唯一、可操作，不放宽业务断言。当时完整通过与十二截图尚待新冻结构建复跑，不能用这一首轮宣称；第三轮结果另列。
 
-第二轮 source `21ca1a9d5f34bfb4d53743e0775d55e365a7441f` 实际通过 Microsoft 的七组主链并产生十二截图，新增身份后检 fixture 因 `destinations:[]` 被真实预览接口 400「至少填写一个目的地」拒绝；这是测试数据错误，尚未执行该故障注入。修订仅补一个合成目的地，保留空分段使日程仍只有概览。原件 `expo-trip-coordination-20260917T003234435777Z/result.json`，SHA256 `71147ce9d0f62664e0621ad0275ec1c5ed600e5c37346c35f516d10d0aa406da`；零页面异常／外部请求，source/bundle 前后不变。Google 和附加六组仍待新冻结候选执行。
+第二轮 source `21ca1a9d5f34bfb4d53743e0775d55e365a7441f` 实际通过 Microsoft 的七组主链并产生十二截图，新增身份后检 fixture 因 `destinations:[]` 被真实预览接口 400「至少填写一个目的地」拒绝；这是测试数据错误，当轮尚未执行该故障注入。修订仅补一个合成目的地，保留空分段使日程仍只有概览。原件 `expo-trip-coordination-20260917T003234435777Z/result.json`，SHA256 `71147ce9d0f62664e0621ad0275ec1c5ed600e5c37346c35f516d10d0aa406da`；零页面异常／外部请求，source/bundle 前后不变。当时 Google 和附加六组仍待新冻结候选执行，后续第三轮已通过。
 
 ## 执行与原件
 
@@ -45,4 +45,4 @@
 
 输出到测试 worktree 下唯一时间戳目录：`test-results/expo-trip-coordination-*/result.json`、实际执行脚本副本、截图；失败额外保留 `failure.png` 与 `failure-aria.txt`。报告核对 source 和 bundle 前后全部字节，保存构建身份与夹具 SHA。截图为 Microsoft 路径三个关键页面（私人计划地点、发布预览、时间复核）各 320／390／1040／1440 四宽，共十二张预期截图；Google 独立执行相同业务链。截图仅当前内部滚动位置的可见内容，不覆盖所有长表单；生成后仍须实际查看。
 
-不操作生产、不测试真实 OAuth／Microsoft／Google 账户、不调用实际模型或地理编码、不证明物理电视/native，也不改变真实云日历。真实云写权限授权、实际创建与改期需本人另行验收。
+本浏览器脚本不操作生产、不测试真实 OAuth／Microsoft／Google 账户、不调用实际模型或地理编码、不证明物理电视/native，也不改变真实云日历。后续部署证据单独记录，真实云写权限授权、实际创建与改期仍需本人另行验收。
