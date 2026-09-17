@@ -30,7 +30,7 @@ OLD_MANIFEST = '0d07e455fbda2e22ddd69a47e733afbd2e6f520eba2a8fc315e6409286e4f384
 OLD_ARCHIVE = '8b3d994670549e8353714e0874870f2bb446876a0bd2223183aa724e59ae7373'
 PARENT_IMAGE = 'sha256:b83c0d9c272c00932d10a21640f0902776189bbfbef6e82a8dc05463330c6250'
 PREVIOUS_TESTS = previous.REQUIRED_TESTS
-REQUIRED_TESTS = PREVIOUS_TESTS | {'tests/test_device_sessions.py', 'tests/test_tv_display.py',
+REQUIRED_TESTS = PREVIOUS_TESTS | {'tests/test_device_sessions.py', 'tests/test_tv_display.py', 'tests/test_app.py',
     'tests/test_media_playback.py', 'tests/test_expo_devices_release.py'}
 FORBIDDEN_TESTS = previous.FORBIDDEN_TESTS
 REQUIRED_CHANGED = {'app.py', 'frontend/src/lib/types.ts', 'frontend/src/screens/HouseholdApp.tsx',
