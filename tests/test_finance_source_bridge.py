@@ -1,5 +1,6 @@
 """Synthetic source files and temporary databases only; never refresh real reports."""
 from copy import deepcopy
+from contextlib import closing, contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
 import csv
@@ -12,11 +13,12 @@ import sqlite3
 import subprocess
 import sys
 
-from flask import Flask, g, jsonify, request
 import pytest
 
-from finance_baseline import register_finance_baseline, shared_baselines
-from finance_source_bridge import (normalize_candidate, register_finance_source_bridge,
+from app import create_app
+from test_app import member
+from finance_baseline import shared_baselines
+from finance_source_bridge import (normalize_candidate,
                                    REPORT_PATHS, SourceError)
 
 
@@ -43,71 +45,46 @@ def synthetic_candidate(as_of='2026-09-14', amount_cents=12000):
                                       'refundCents': 200, 'netSpendCents': 1000, 'transactionCount': 3}], 'quality': q}}
 
 
-class Problem(Exception):
-    def __init__(self, message, status=400):
-        self.message, self.status = message, status
-
-
 def make_app(path, household='default'):
-    app = Flask(__name__)
-    app.config.update(TESTING=True, SECRET_KEY='synthetic-source-bridge-secret', HOUSEHOLD_INFO={'id': household})
-    def db():
-        if not hasattr(g, 'conn'):
-            g.conn = sqlite3.connect(path, isolation_level=None)
-            g.conn.execute('PRAGMA foreign_keys=ON')
-        return g.conn
-    @app.teardown_appcontext
-    def close(_):
-        conn = g.pop('conn', None)
-        if conn:
-            conn.close()
-    with app.app_context():
-        db().executescript('''CREATE TABLE IF NOT EXISTS users(id TEXT PRIMARY KEY);
-            INSERT OR IGNORE INTO users VALUES('member1'),('member2');
-            CREATE TABLE IF NOT EXISTS settings(id TEXT PRIMARY KEY,data TEXT,revision INTEGER);
-            INSERT OR IGNORE INTO settings VALUES('meta','{}',1),('finance','{"wallet":17}',1);
-            CREATE TABLE IF NOT EXISTS private_finance(owner TEXT PRIMARY KEY,data TEXT);
-            INSERT OR IGNORE INTO private_finance VALUES('member1','{"income":29}');
-            CREATE TABLE IF NOT EXISTS hub_transactions(id TEXT PRIMARY KEY,data TEXT);
-            CREATE TABLE IF NOT EXISTS hub_investments(id TEXT PRIMARY KEY,data TEXT);
-            INSERT OR IGNORE INTO hub_investments VALUES('existing','{"untouched":true}');
-            CREATE TABLE IF NOT EXISTS audit(action TEXT,target TEXT);''')
-    @app.before_request
-    def actor():
-        who = request.headers.get('X-Synthetic-Actor')
-        g.actor = {'id': who, 'role': 'tv' if who == 'screen' else 'member'} if who else None
-        if request.method == 'POST' and request.headers.get('X-CSRF-Token') != 'synthetic-csrf':
-            raise Problem('CSRF', 403)
-    @app.errorhandler(Problem)
-    def error(exc):
-        return jsonify(error=exc.message), exc.status
-    def require_member():
-        if not g.actor:
-            raise Problem('login', 401)
-        if g.actor['role'] != 'member':
-            raise Problem('member', 403)
-    def body():
-        return request.get_json()
-    def audit(action, target):
-        db().execute('INSERT INTO audit VALUES(?,?)', (action, target))
-    register_finance_baseline(app, db, require_member)
-    register_finance_source_bridge(app, db, Problem, body, require_member, audit)
+    assert path.name == 'household.sqlite3'
+    app = create_app({'TESTING': True, 'SECRET_KEY': 'synthetic-source-bridge-secret',
+                      'DATA_DIR': str(path.parent), 'HOUSEHOLD_INFO': {'id': household},
+                      'SESSION_COOKIE_SECURE': False, 'MEMBER1_PASSWORD': 'testing-password-one',
+                      'MEMBER2_PASSWORD': 'testing-password-two'})
+    with database(path) as con:
+        con.execute("""UPDATE settings SET data='{"wallet":17}' WHERE id='finance'""")
+        con.execute("""INSERT OR IGNORE INTO private_finance(owner,data) VALUES('member1','{"income":29}')""")
+        con.execute("""INSERT OR IGNORE INTO hub_investments(id,owner,data,updated_at)
+                       VALUES('existing','member1','{"untouched":true}','2026-09-14')""")
     return app
+
+
+@contextmanager
+def database(path):
+    with closing(sqlite3.connect(path)) as con:
+        with con:
+            yield con
+
+
+def signed_client(app, number=1):
+    client, headers = member(app, number)
+    client.source_headers = headers
+    return client
 
 
 @pytest.fixture
 def setup(tmp_path):
     path = tmp_path / 'household.sqlite3'
     app = make_app(path)
-    return app, app.test_client(), path
+    return app, signed_client(app), path
 
 
-H = {'X-Synthetic-Actor': 'member1', 'X-CSRF-Token': 'synthetic-csrf'}
+H = {}  # GET identity comes from the real HttpOnly session cookie.
 BASE = '/api/finance-baseline/imports/'
 
 
 def preview(client, candidate=None, headers=None):
-    headers = headers or H
+    headers = client.source_headers if headers is None else headers
     state = client.get(BASE + 'status', headers=headers).json['current']
     return client.post(BASE + 'preview', headers=headers, json={
         'candidate': candidate or synthetic_candidate(), 'expectedRevision': state['revision'] if state else 0,
@@ -115,7 +92,7 @@ def preview(client, candidate=None, headers=None):
 
 
 def confirm(client, planned, candidate=None, headers=None):
-    return client.post(BASE + 'confirm', headers=headers or H,
+    return client.post(BASE + 'confirm', headers=client.source_headers if headers is None else headers,
                        json={'candidate': candidate or synthetic_candidate(), 'previewToken': planned.json['previewToken']})
 
 
@@ -128,18 +105,18 @@ def test_preview_has_no_write_recomputes_shared_then_confirm_is_persistent(setup
     assert p.json['shared']['recordedLiabilityCents'] == 4500
     assert p.json['shared']['netCents'] is None
     assert 'SYNTHETIC_PRIVATE' not in json.dumps(p.json['shared'])
-    with sqlite3.connect(path) as conn:
+    with database(path) as conn:
         assert conn.execute('SELECT count(*) FROM finance_baselines').fetchone()[0] == 0
         assert conn.execute('SELECT count(*) FROM finance_source_receipts').fetchone()[0] == 0
     done = confirm(client, p)
     assert done.status_code == 200, done.json
     assert done.json['status'] == 'imported' and done.json['revision'] == 1
-    restarted = make_app(path).test_client()
+    restarted = signed_client(make_app(path))
     state = restarted.get(BASE + 'status', headers=H).json
     assert state['lastReceipt']['receiptId'] == done.json['receiptId']
     assert 'SYNTHETIC_PRIVATE' not in json.dumps(state)
     assert restarted.get('/api/finance-baseline/private', headers=H).json['assets'][0]['amountCents'] == 12000
-    with sqlite3.connect(path) as conn:
+    with database(path) as conn:
         assert conn.execute('SELECT count(*) FROM hub_transactions').fetchone()[0] == 0
         assert conn.execute('SELECT data FROM hub_investments').fetchone()[0] == '{"untouched":true}'
         assert conn.execute("SELECT data FROM settings WHERE id='finance'").fetchone()[0] == '{"wallet":17}'
@@ -152,7 +129,7 @@ def test_replay_and_repreview_identical_candidate_do_not_bump_baseline(setup):
     replay = confirm(c, p)
     assert replay.json['replayed'] is True and replay.json['receiptId'] == first.json['receiptId']
     assert confirm(c, preview(c)).json['status'] == 'unchanged'
-    with sqlite3.connect(path) as conn:
+    with database(path) as conn:
         assert conn.execute('SELECT revision FROM finance_baselines').fetchone()[0] == 1
         assert 'previewToken' not in ' '.join(x[1] for x in conn.execute('PRAGMA table_info(finance_source_receipts)'))
 
@@ -164,31 +141,32 @@ def test_two_previews_use_atomic_compare_and_swap(setup):
     assert confirm(c, pa, a).status_code == 200
     assert confirm(c, pb, b).status_code == 409
     assert confirm(c, preview(c, b), b).json['revision'] == 2
-    with sqlite3.connect(path) as conn:
+    with database(path) as conn:
         assert conn.execute('SELECT count(*) FROM finance_source_receipts').fetchone()[0] == 2
 
 
 @pytest.mark.parametrize('path', ['status', 'preview', 'confirm'])
 def test_tv_and_anonymous_cannot_access_bridge(setup, path):
-    _, c, _ = setup
-    for actor, expected in [(None, 401), ('screen', 403)]:
-        h = {'X-CSRF-Token': 'synthetic-csrf'}
-        if actor:
-            h['X-Synthetic-Actor'] = actor
-        r = c.get(BASE + path, headers=h) if path == 'status' else c.post(BASE + path, headers=h, json={})
+    app, c, _ = setup
+    tv = app.test_client()
+    pair = tv.post('/api/pair/start', json={}).json
+    assert c.post('/api/pair/approve', json={'code': pair['code'], 'name': 'Synthetic TV'}, headers=c.source_headers).status_code == 200
+    assert tv.post('/api/pair/poll', json={'secret': pair['secret']}).json['approved']
+    for target, expected in [(app.test_client(), 401), (tv, 403)]:
+        r = target.get(BASE + path) if path == 'status' else target.post(BASE + path, json={})
         assert r.status_code == expected
 
 
 def test_csrf_owner_and_household_binding(setup, tmp_path):
-    _, c, path = setup
+    app, c, path = setup
     p = preview(c)
-    other_headers = {**H, 'X-Synthetic-Actor': 'member2'}
-    assert confirm(c, p, headers=other_headers).status_code == 403
-    other = make_app(tmp_path / 'other.sqlite3', 'different-household').test_client()
+    partner = signed_client(app, 2)
+    assert confirm(partner, p).status_code == 403
+    other = signed_client(make_app(tmp_path / 'other' / 'household.sqlite3', 'different-household'))
     assert confirm(other, p).status_code == 403
-    assert c.post(BASE + 'preview', headers={'X-Synthetic-Actor': 'member1'}, json={}).status_code == 403
+    assert c.post(BASE + 'preview', json={}).status_code == 403
     assert confirm(c, p).status_code == 200
-    assert c.get(BASE + 'status?owner=member1', headers=other_headers).json['current'] is None
+    assert partner.get(BASE + 'status?owner=member1').json['current'] is None
 
 
 @pytest.mark.parametrize('mutation', ['owner', 'shared', 'unknown_manifest', 'duplicate_id', 'foreign_include', 'null_include',
@@ -216,7 +194,7 @@ def test_rejects_bad_candidates_without_mutation(setup, mutation):
     elif mutation == 'unexplained_exclusion': x['assets'][0]['includedInRecordedSubtotal'] = False
     elif mutation == 'missing_date': x['assets'][0]['asOf'] = ''
     assert preview(c, x).status_code == 400
-    with sqlite3.connect(path) as conn:
+    with database(path) as conn:
         assert conn.execute('SELECT count(*) FROM finance_baselines').fetchone()[0] == 0
 
 
@@ -248,7 +226,7 @@ def test_legacy_mapping_preserves_identity_and_foreign_values_do_not_sum(setup):
     assert p.json['shared']['recordedAssetCents'] == 0
     assert p.json['shared']['excluded']['foreignCurrencyConversion'] is True
     assert confirm(c, p, x).status_code == 200
-    with sqlite3.connect(path) as conn:
+    with database(path) as conn:
         assert 'SYNTHETIC_PRIVATE' not in json.dumps(shared_baselines(conn))
 
 
@@ -257,13 +235,14 @@ def test_tampered_candidate_and_failed_database_write_keep_receipt_and_data_atom
     p = preview(c)
     x = synthetic_candidate(amount_cents=12001)
     assert confirm(c, p, x).status_code == 403
-    with sqlite3.connect(path) as conn:
+    with database(path) as conn:
         conn.execute("CREATE TRIGGER deny_receipt BEFORE INSERT ON finance_source_receipts BEGIN SELECT RAISE(FAIL,'synthetic failure'); END")
+        audit_count = conn.execute('SELECT count(*) FROM audit').fetchone()[0]
     with pytest.raises(sqlite3.DatabaseError):
         confirm(c, p)
-    with sqlite3.connect(path) as conn:
+    with database(path) as conn:
         assert conn.execute('SELECT count(*) FROM finance_baselines').fetchone()[0] == 0
-        assert conn.execute('SELECT count(*) FROM audit').fetchone()[0] == 0
+        assert conn.execute('SELECT count(*) FROM audit').fetchone()[0] == audit_count
 
 
 def load_prepare():
@@ -422,11 +401,14 @@ def test_concurrent_confirm_only_one_candidate_wins(setup):
     p1, p2 = preview(c, first), preview(c, second)
     def send(pair):
         p, candidate = pair
-        return confirm(app.test_client(), p, candidate).status_code
+        target = app.test_client()
+        target.set_cookie(app.config['SESSION_COOKIE_NAME'], c.get_cookie(app.config['SESSION_COOKIE_NAME']).value)
+        target.source_headers = c.source_headers
+        return confirm(target, p, candidate).status_code
     with ThreadPoolExecutor(max_workers=2) as pool:
         results = list(pool.map(send, [(p1, first), (p2, second)]))
     assert sorted(results) == [200, 409]
-    with sqlite3.connect(path) as conn:
+    with database(path) as conn:
         assert conn.execute('SELECT revision FROM finance_baselines').fetchone()[0] == 1
 
 
@@ -506,26 +488,26 @@ def test_mixed_bank_types_through_cli_preview_and_confirm_do_not_touch_other_fin
     assert all(debts[key]['category'] == 'liability' for key in ('debt-positive','debt-negative','debt-foreign'))
     assert next(x for x in candidate['assets'] if x['id']=='bank-one')['amountCents'] == 12000
     assert 'recordType' not in output.read_text('utf-8') and 'match' not in output.read_text('utf-8')
-    _, client, database = setup
+    app, client, database_path = setup
     planned = preview(client, candidate)
     assert planned.status_code == 200, planned.json
     assert planned.json['shared']['recordedAssetCents'] == 12000
     assert planned.json['shared']['recordedLiabilityCents'] == 11500
     assert planned.json['shared']['netCents'] is None
     assert 'SYNTHETIC_PRIVATE' not in json.dumps(planned.json['shared'])
-    with sqlite3.connect(database) as con:
+    with database(database_path) as con:
         assert con.execute('SELECT count(*) FROM finance_baselines').fetchone()[0] == 0
     accepted = confirm(client, planned, candidate)
     assert accepted.status_code == 200, accepted.json
     assert confirm(client, planned, candidate).json['replayed'] is True
-    with sqlite3.connect(database) as con:
+    with database(database_path) as con:
         assert con.execute('SELECT count(*) FROM hub_transactions').fetchone()[0] == 0
         assert con.execute('SELECT data FROM hub_investments').fetchone()[0] == '{"untouched":true}'
         assert con.execute("SELECT data FROM settings WHERE id='finance'").fetchone()[0] == '{"wallet":17}'
         assert con.execute('SELECT data FROM private_finance').fetchone()[0] == '{"income":29}'
-    assert client.get('/api/finance-baseline/private', headers={'X-Synthetic-Actor':'member2'}).json is None
+    assert signed_client(app, 2).get('/api/finance-baseline/private').json is None
     assert client.post(BASE+'preview', json={'candidate':candidate,'expectedRevision':1,'expectedSourceDigest':accepted.json['sourceDigest']},
-                       headers={'X-Synthetic-Actor':'screen','X-CSRF-Token':'synthetic-csrf'}).status_code == 403
+                       headers={'X-Display-Mode':'tv', **client.source_headers}).status_code == 401
 
 
 @pytest.mark.parametrize('value,sign,expected', [('37.25','positive',3725),('-37.25','negative',3725),
@@ -620,7 +602,7 @@ def test_existing_bank_liability_legacy_id_updates_within_same_collection(tmp_pa
 def test_cross_collection_asset_to_liability_still_rejects_and_preserves_baseline(tmp_path, setup, rename_with_legacy):
     _, _, config_path, config, _ = source_files(tmp_path)
     module = load_prepare(); output = tmp_path/'candidate.json'; module.prepare(config_path, output)
-    original = json.loads(output.read_bytes()); _, client, database = setup
+    original = json.loads(output.read_bytes()); _, client, database_path = setup
     assert confirm(client, preview(client, original), original).status_code == 200
     before = client.get('/api/finance-baseline/private', headers=H).json
     mapping = config['sources'][0]['records'][0]
@@ -629,7 +611,7 @@ def test_cross_collection_asset_to_liability_still_rejects_and_preserves_baselin
     _write_config(config_path, config); module.prepare(config_path, output)
     assert preview(client, json.loads(output.read_bytes())).status_code == 409
     assert client.get('/api/finance-baseline/private', headers=H).json == before
-    with sqlite3.connect(database) as con:
+    with database(database_path) as con:
         assert con.execute('SELECT count(*) FROM finance_source_receipts').fetchone()[0] == 1
 
 
