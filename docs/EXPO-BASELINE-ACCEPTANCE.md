@@ -61,7 +61,7 @@ R2 对上述同一源码和新构建单次执行原浏览器脚本，**9/9 通�
 | app／sync／media 镜像 | `sha256:4e3de8d45b39e251a7c0d3a068847c758617957028652b2f7dcc1f80e01cc5f2` |
 | Linux JUnit 原件 | `30c10fab27aafbf771c05f560ad1c93d925dad86c900e9851c617b20274972c4` |
 | activation.json 原件 | `f805d5deb72996ea1f51eb327780309e21404560e6f909aa00d6ee3df0730e2c` |
-| post.json 原件 | `9d03ed3d7b7704156753742d7aa3f4c6eb82709db6bf6f95bb2d669ba0d4000b` |
+| post-readback.json 原件 | `9d03ed3d7b7704156753742d7aa3f4c6eb82709db6bf6f95bb2d669ba0d4000b` |
 | 启动数据保全报告 | `9b8c0b9b4a06a13554fe04eaea9580ea0fa0fec6585e922f9a4ba1e09c407bfc` |
 
 私有实例 `expo-baseline-tools-20260917-r1/` 完成 build、validate、stage、activate、post_readback，五阶段各执行一次、均退出 0；固定算子不可重放。包共 **661 文件＝638 源文件＋23 Expo 导出**。独立审计将全部源码与最终 Git 逐一比对，核对 182 构建输入与全部导出；R2 浏览器至最终源码精确相差 16 个 Markdown 文件，collection 至最终源码精确相差 6 个 Markdown 文件，无可执行例外。浏览器 639 项跟踪采样中仅 `frontend/.gitignore` 未进入 638 项包源码选择器，包独有项为空；不是仅凭数量认定相同。
@@ -78,4 +78,4 @@ Linux 实际 **348 项＝347 通过＋1 跳过，0 失败／错误／排除**，
 - `readback.json` SHA256 `b06e2a674b7203f897ce88876e05323b6ec4f0e6ed4a6027c88b522119d48e40`。
 - `fresh-readback.json` SHA256 `04143def1fa381164487b712ee2438c00d79953bddeedf3f70526f975729957b`。
 
-实际本人财务公网操作、真实云来源刷新、手机原生文件交互及实体电视仍未验收。服务器回执记录数量为零不构成真实导入成功；本地合成财务的流程与生产部署证据分别成立。完整资产账户、估值历史和跨平台持续同步仍属于后续工作。
+实际本人财务公网操作、真实云来源刷新、手机原生文件交互及实体电视仍未验收。本地合成财务的流程与生产部署证据分别成立，不代表本人真实来源导入已验收。完整资产账户、估值历史和跨平台持续同步仍属于后续工作。
