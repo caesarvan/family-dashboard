@@ -29,11 +29,11 @@
 
 后台使用可见性事件模拟，断网使用浏览器 offline；到期由真实 signer 时间夹具推进，未等待真实 20 分钟。本人真实财务文件、银行／邮箱访问、新云操作、实体电视和原生设备均未验收。完整使用与恢复语义见 [操作说明](EXPO-FINANCE-SOURCE-IMPORT.md)、[入口接线](EXPO-FINANCE-SOURCE-INTEGRATION.md) 和 [浏览器范围](EXPO-FINANCE-SOURCE-BROWSER.md)。
 
-## 当前线上父版本
+## R1 开发时的线上父版本
 
 父 baseline 已于 2026-09-17 21:58:49 激活、21:59:22 TLS 读回、22:01:55 独立只读核验通过（北京时间）。实际 main `0bd330a6`／source `f0317fb6`／tree `f9f14984`，镜像、archive 和 manifest 见 [发布适配器](EXPO-FINANCE-SOURCE-RELEASE.md)。独立审计 `A/expo-baseline-published-audit-20260917T135020363048Z/audit.json` SHA `86358d4a77f074f9ff581c0efdab7e3c5ef2aed4d096494658a245f7afb8ac87` 已核。
 
-父版本实际 Linux 347 passed＋1 精确 Windows junction skip、55 张户内表及注册库保持、1 户两库备份，四服务运行／零重启，仅 app 配置 healthcheck 且 healthy；发布后逐库在线备份不等于全局事务或重新核对 live 全组快照。这些是父发布事实，不是本批来源 UI 的生产验证。新组合正式合入、freeze、九工具独立审查、Linux 和发布仍待完成。
+父版本实际 Linux 347 passed＋1 精确 Windows junction skip、55 张户内表及注册库保持、1 户两库备份，四服务运行／零重启，仅 app 配置 healthcheck 且 healthy；发布后逐库在线备份不等于全局事务或重新核对 live 全组快照。这些是父发布事实，不是本批来源 UI 的生产验证。该历史阶段的新组合正式合入、freeze、九工具独立审查、Linux 和发布当时尚待完成；后续结果见下方 R2 正式发布记录。
 
 
 ## R1 服务器验证失败：测试提交竞态
@@ -90,7 +90,7 @@ R2 构建／浏览器到最终 tree 只有本文的已审 Markdown 增量，所�
 `/app`、`/app/finance`、`/app/tv` 与 `/classic` 入口正常，电视转向及经典回退保持。
 
 激活停止所有写入者，完成 **1 家庭／2 数据库**的完整停写备份。
-原 55 张业务表、`sqlite_sequence`、注册库两表的行及 schema 在新 app 启动核对时保持。
+原 55 张户内表、`sqlite_sequence`、注册库两表的行及 schema 在新 app 启动核对时保持。
 `before.json` 与 `after-app.json` 原件 SHA 均为
 `19caa52de52566e6b1d1c5f382396ad5c08923339f2dc4efb3a0f3a568b5c69c`；
 preservation SHA `9b8c0b9b4a06a13554fe04eaea9580ea0fa0fec6585e922f9a4ba1e09c407bfc`。
