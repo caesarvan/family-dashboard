@@ -1,12 +1,14 @@
-# 本人手动资产账户与日期估值 API（候选）
+# 本人手动资产账户与日期估值 API
 
-本模块独立开发于 `944a712d69375c209ec7a63fe28b3a2287df8beb`，尚未接入生产。仅新增 [finance_accounts.py](../finance_accounts.py)、专项测试与本文；app、Docker、导出调用和正式迁移由独立分支接线。它记录本人提供的资产／负债，不推断机构类型、访问银行、换汇、执行交易或将记录与来源基线、持仓、消费及公共荷包相加。
+已于 **2026-09-18 00:23:38（北京时间）上线**，00:24:23 正常 TLS 读回通过。当前为 58 张户内表；实际安装身份、组合检查及验证边界见 [发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。
+
+本模块最初独立开发于 `944a712d69375c209ec7a63fe28b3a2287df8beb`，其后 app、Docker、导出及迁移各分支已审查合入并发布。它记录本人提供的资产／负债，不推断机构类型、访问银行、换汇、执行交易或将记录与来源基线、持仓、消费及公共荷包相加。
 
 ## 注册与存储
 
 `register_finance_accounts(app, db, Problem, body, require_member, audit, *, initialize=True)` 遵循现有依赖注入；要求 app 已配置真实 `member_sessions` 及 API 的成员／Origin／CSRF 守卫。复用 `finance_source_bridge.ImportSession` 的实际 captured-session 核验。`initialize=True` 在注册时调用 `init_schema(con)` 并提交；已经由发布迁移完成初始化的调用方可传 `False`。
 
-`FINANCE_ACCOUNTS_SCHEMA_SQL` 是唯一显式 DDL：新增 `finance_accounts`、`finance_account_valuations`、`finance_account_operations` 三表。`init_schema(con)` 不自行提交、不调用应用工厂，仅逐条执行这份 DDL；调用方可以在事务中核验后提交或回滚。正式 55→58 迁移、原55表／注册库保全与恢复须另行验证。本次没有执行任何服务器迁移。
+`FINANCE_ACCOUNTS_SCHEMA_SQL` 是唯一显式 DDL：新增 `finance_accounts`、`finance_account_valuations`、`finance_account_operations` 三表。`init_schema(con)` 不自行提交、不调用应用工厂，仅逐条执行这份 DDL；调用方可以在事务中核验后提交或回滚。正式 55→58 迁移与原55表／注册库保全已完成；恢复仅做合成演练，未覆盖恢复生产。
 
 账户按户内 `owner` 关联 `users`；估值以 `(owner,account_id,as_of)` 唯一并通过复合外键指向同一 owner 的账户。操作键以 `(owner,request_id)` 唯一。禁止物理删除；归档与恢复都是可逆 CAS 更新。每人最多300账户（含归档），每账户3660日期估值，每人20000回执、回执JSON合计32 MiB。容量限制不阻止已有回执读取／相同请求重放，同日估值纠正不新增历史日期数。
 
@@ -45,10 +47,10 @@
 
 ## 本人导出接缝
 
-`export_owned_accounts(con, owner)` 是不写入、不提交的纯读函数，调用方负责授权与一致快照／fresh检查。返回 `{accounts,valuations,operations}`；accounts为上述Account白名单，包含归档；valuations仅 `{accountId,asOf,amountCents,source,updatedAt}`；operations仅 `{operation,accountId,completedAt}`。估值和回执都通过owner＋accountId关联本人账户，不导出payload_hash、requestId、原请求／result或认证上下文。不能加入shared导出；不影响已有已批准基线汇总。本模块尚未修改data_portability接线。
+`export_owned_accounts(con, owner)` 是不写入、不提交的纯读函数，调用方负责授权与一致快照／fresh检查。返回 `{accounts,valuations,operations}`；accounts为上述Account白名单，包含归档；valuations仅 `{accountId,asOf,amountCents,source,updatedAt}`；operations仅 `{operation,accountId,completedAt}`。估值和回执都通过owner＋accountId关联本人账户，不导出payload_hash、requestId、原请求／result或认证上下文。不能加入shared导出；不影响已有已批准基线汇总。data_portability 已调用此投影提供本人账户副本。
 
 ## 验证状态
 
 专项 [test_finance_accounts.py](../tests/test_finance_accounts.py) 使用真实应用工厂、登录／配对／家庭HTTP接口与独立临时SQLite；仅在测试注册本模块，不伪造actor或认证结果。覆盖按日原币记录、未知／零、归档恢复、精确超JS安全范围汇总、CAS和幂等、权限隔离、读快照撤权、写锁竞争、审计／到期回滚、本人导出、新应用实例读回，以及提交成功但响应前撤权后的历史恢复。
 
-实际命令为主仓虚拟环境 Python `-B -X utf8 -m pytest tests/test_finance_accounts.py -q --junitxml=test-results/finance-accounts-api-r4/results.xml`：**81 passed，0 failed/error/skip，55.40秒，exit 0**。XML SHA-256 `372c62cc154bfa27a884356efd6c7562c4d1f5e68295a04e8274f854ba0e8a48`；运行前后两份Python源hash相同，产品源码自r1未变。r1保留77通过／1失败原件（测试误将6次合法audit的sqlite_sequence递增视为旧表变化）；r2保留80通过／1失败原件（新增提交后撤权探针未先建立g.db）。两处只修测试，未跳过或削弱权限与事务断言。r3的81通过原件也保留；r4仅为注册fixture兼容后续正式app接线，防止组合时重复注册，不增加通过数。浏览器、正式迁移、生产及真实本人数据均未验。
+实际命令为主仓虚拟环境 Python `-B -X utf8 -m pytest tests/test_finance_accounts.py -q --junitxml=test-results/finance-accounts-api-r4/results.xml`：**81 passed，0 failed/error/skip，55.40秒，exit 0**。XML SHA-256 `372c62cc154bfa27a884356efd6c7562c4d1f5e68295a04e8274f854ba0e8a48`；运行前后两份Python源hash相同，产品源码自r1未变。r1保留77通过／1失败原件（测试误将6次合法audit的sqlite_sequence递增视为旧表变化）；r2保留80通过／1失败原件（新增提交后撤权探针未先建立g.db）。两处只修测试，未跳过或削弱权限与事务断言。r3的81通过原件也保留；r4仅为注册fixture兼容后续正式app接线，防止组合时重复注册，不增加通过数。以上是 API 作者阶段的局部记录；后续浏览器、迁移与生产读回见发布验收，真实本人数据仍未验。

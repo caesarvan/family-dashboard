@@ -1,11 +1,11 @@
-# 本人手动资产账户浏览器验收（待执行）
+# 本人手动资产账户浏览器验收
 
 脚本 [browser_expo_finance_accounts_check.py](../tests/browser_expo_finance_accounts_check.py) 在
 `5de5e999711a71709307c36a114593c6aba3a1e3` 的已审 API、UI 与接线组合上编写。
-目前仅完成静态编译，**尚未运行浏览器，不代表下列场景通过**。须先由非作者审查脚本，
-再由集成人提供干净固定源码、完整 Expo 导出与构建证据 SHA。
+脚本经非作者审查后已执行 R1／R2 两轮：R1 功能通过但桌面备注标签重叠；
+修正后 R2 的 12 流程与 12 图通过，详见 [完整验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md)。
 
-计划 12 个独立流程，每组使用自己的真实临时 Flask、SQLite、HTTPS loopback 和 Edge：
+实际验收包含 12 个独立流程，每组使用自己的真实临时 Flask、SQLite、HTTPS loopback 和 Edge：
 
 1. UI 创建未知／明确零账户，刷新、重启后端、同成员另一浏览器读取；其他财务表不变。
 2. 日期估值、未来记录排除、同日纠正、未知不回退旧金额，实际 51 条历史第二页。
