@@ -153,6 +153,46 @@ class Run(BaseRun):
         expect(button(page, '读取当前计划')).to_be_enabled(timeout=15000)
         expect(page.get_by_test_id('routine-detail')).to_be_visible()
 
+    def write_then_lose_readback(self, page, action, method, path):
+        # Business success comes from the real endpoint. Discard only the first
+        # subsequent real context response; never substitute a successful DTO.
+        dropped = []
+        def lose_read(route):
+            response = route.fetch(max_redirects=0)
+            assert response.status == 200, response.text()
+            dropped.append(response.json())
+            route.abort('failed')
+        page.route(self.base + BASE + '/context?*', lose_read, times=1)
+        before_writes = self.count_requests(method, path)
+        with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == method) as pending:
+            button(page, action).click()
+        response = pending.value
+        assert response.status == 200, response.text()
+        self.settle(page, lambda: len(dropped) == 1)
+        # The recovery button becomes enabled only after the failed read and
+        # final identity check settle. Old detail/actions must stay unavailable.
+        expect(button(page, '读取当前计划')).to_have_count(1)
+        expect(button(page, '读取当前计划')).to_be_enabled(timeout=15000)
+        expect(page.get_by_test_id('routine-detail')).to_have_count(0)
+        for name in ('暂停计划', '恢复计划', '编辑例行计划', '完成当前待办', '标记当前采购已买到', '跳过本期并保留事项', '归档计划'):
+            expect(button(page, name)).to_have_count(0)
+        expect(page.get_by_test_id('routines-unknown')).to_have_count(0)
+        if method == 'POST':
+            expect(page.get_by_test_id('routines-receipt')).to_be_visible()
+        else:
+            expect(page.get_by_test_id('routines-current-unavailable')).to_be_visible()
+        assert self.count_requests(method, path) == before_writes + 1
+        after_write = self.snapshot()
+        with page.expect_response(lambda r: urlsplit(r.url).path == BASE + '/context' and r.request.method == 'GET') as reread:
+            button(page, '读取当前计划').click()
+        assert reread.value.status == 200
+        expect(page.get_by_test_id('routine-detail')).to_be_visible(timeout=15000)
+        expect(button(page, '刷新当前计划')).to_be_enabled(timeout=15000)
+        assert self.snapshot() == after_write and self.count_requests(method, path) == before_writes + 1
+        self.report.setdefault('readbackLoss', []).append({'method': method, 'successfulWriteStatus': 200,
+            'discardedActualContextResponses': len(dropped), 'oldDetailRemoved': True, 'explicitGetRecovery': True})
+        return response.json(), dropped[0]
+
     def shot(self, page, label, width, target):
         page.set_viewport_size({'width': width, 'height': 1080 if width >= 1280 else 844})
         page.evaluate('() => document.fonts.ready')
@@ -227,10 +267,10 @@ class Run(BaseRun):
             self.open_panel(page); self.detail(page, plan)
             path = '/api/items/tasks/' + original_id
             count = self.count_requests('PATCH', path)
-            with page.expect_response(lambda r: urlsplit(r.url).path == path and r.request.method == 'PATCH') as changed:
-                button(page, '完成当前待办').click()
-            assert changed.value.status == 200
-            expect(button(page, '刷新当前计划')).to_be_enabled(timeout=15000)
+            changed, lost_context = self.write_then_lose_readback(page, '完成当前待办', 'PATCH', path)
+            assert changed['ok'] is True
+            assert next(p for p in lost_context['plans'] if p['id'] == plan['id'])['current']['entity']['done'] is True
+            expect(button(page, '完成当前待办')).to_have_count(0)
             assert self.count_requests('PATCH', path) == count + 1
             assert self.entity(ctx, 'tasks', original_id)['done'] is True
             assert self.plan(ctx, plan['id'])['current']['entityId'] == original_id
@@ -241,7 +281,12 @@ class Run(BaseRun):
             assert next_plan['current']['scheduledOn'] == (date.fromisoformat(plan['current']['scheduledOn']) + timedelta(days=7)).isoformat()
             assert next(h for h in next_plan['history'] if h['entityId'] == original_id)['state'] == 'completed'
             self.refresh_plan(page); expect(button(page, '暂停计划')).to_be_enabled()
-            self.preview(page, '暂停计划'); self.confirm(page)
+            self.preview(page, '暂停计划')
+            paused, lost_context = self.write_then_lose_readback(page, '确认例行计划操作', 'POST', BASE + '/confirm')
+            assert paused['plan']['state'] == 'paused'
+            assert next(p for p in lost_context['plans'] if p['id'] == plan['id'])['state'] == 'paused'
+            expect(button(page, '恢复计划')).to_be_enabled()
+            expect(button(page, '暂停计划')).to_have_count(0)
             paused_id = self.plan(ctx, plan['id'])['current']['entityId']
             with page.expect_response(lambda r: urlsplit(r.url).path == '/api/items/tasks/' + paused_id and r.request.method == 'PATCH') as completed:
                 button(page, '完成当前待办').click()
@@ -265,7 +310,7 @@ class Run(BaseRun):
             assert self.snapshot()['entities'] == all_entities
             assert self.application.extensions['household_routines'].tick()['generated'] == 0
             self.report['worker'] = {'actualTickCalled': True, 'realWallClockSchedulingVerified': False}
-            self.passed('UI completion writes once; real worker creates exactly one successor; pause/resume/skip/archive require previews and preserve prior entities and history')
+            self.passed('Real completion/pause success followed by dropped context removes old details/actions until explicit GET; worker generates exactly one successor and pause/resume/skip/archive preserve prior entities/history')
 
     def boundaries(self, browser):
         with self.flow(browser) as (ctx, page), ExitStack() as stack:
