@@ -1,18 +1,20 @@
 # 电视精选照片轮播与手机控制
 
-本候选提供照片轮播、手机控制、持久化状态和短授权显示。依赖 `household_media.py` 的媒体库与独立电视许可；开始播放不会新增共享或许可。视频播放、实体电视、真实 Google 账号与生产发布仍未验收。
+照片轮播、手机控制、持久化状态和短授权显示已纳入现有应用与发布版本，当前安装身份见 [README](../README.md)。依赖 `household_media.py` 的媒体库与独立电视许可；开始播放不会新增共享或许可。视频播放和实体电视仍未验收；本模块的临时环境测试不代表真实 Google 账号的完整轮播链路验收。
+
+2026-09-17 本地设备会话加固候选尚未发布，范围见 [电视显示设置](TV-DISPLAY.md)。本候选不改变播放接口、许可规则或数据库结构。
 
 ## 注册与交付边界
 
-由集成人在每个家庭应用注册媒体库后调用 `register_media_playback(app)`，返回 `MediaPlayback` 并写入 `app.extensions['media_playback']`。本候选不修改应用工厂、静态入口、Docker、导出或发布控制器，不会在现有工厂自动新增表。浏览器测试明确使用临时应用注册和测试 HTML 注入。
+现有应用工厂已在每个家庭注册媒体库后调用 `register_media_playback(app)`，返回 `MediaPlayback` 并写入 `app.extensions['media_playback']`。播放模块和静态入口已集成；首次专项浏览器测试使用临时应用注册和测试 HTML 注入，不能把该测试方式当作当前工厂尚未注册的依据。
 
-控制器依赖已冻结媒体库 `e3a0cc12314b7736c8798dd2980c7d7ecef0d2ae` 的 `transaction`、`_member`、`_tv`、`_authority`、`_item`、`_item_dto`、`_audit`、`ITEM_VIEW` 和 `MediaError`。后续引擎协议变更需组合验证。电视读取先用 `_tv` 验证实际 `household_tv` cookie；客户端不能提交设备 ID 来替代电视身份。成员读取与修改均在事务中重新验证真实成员会话及家庭。保留应用现有 CSRF、Origin、只读电视和 no-store 响应规则。
+控制器依赖当前同版本媒体库的 `transaction`、`_member`、`_tv`、`_authority`、`_item`、`_item_dto`、`_audit`、`ITEM_VIEW` 和 `MediaError`。后续引擎协议变更需组合验证。电视读取先用 `_tv` 验证实际 `household_tv` cookie；客户端不能提交设备 ID 来替代电视身份。成员读取与修改均在事务中重新验证真实成员会话及家庭。保留应用现有 CSRF、Origin、只读电视和 no-store 响应规则。
 
-静态入口需加载 `media-tv.css` 与 `media-tv.js`。脚本在 `tv-display.js` 之前加载；两者均可 defer。当前仅在 `TVDisplay.render` 追加控制区，在 `TVDisplay.applyBoard` 调用显示挂载；看板布局契约不变。需将 `media_playback.py` 加入 Docker 的精确源码清单，并在独立迁移、备份/恢复、路由清单与发布审查中纳入本表。此文档不是生产操作说明。
+现有静态入口已加载 `media-tv.css` 与 `media-tv.js`，脚本在 `tv-display.js` 之前 defer 加载。`TVDisplay.render` 追加控制区，`TVDisplay.applyBoard` 调用显示挂载；看板布局契约不变。`media_playback.py` 已列入 Docker 精确源码清单，现有完整备份与恢复包含播放表。本轮不重新执行首次建表迁移；此文档不是生产操作说明。
 
 ## 数据与事务
 
-一个家庭的 SQLite 库新增一张 `media_playback` 表：
+每个家庭使用既有 `media_playback` 表（首次引入时新增，目前已包含在 55 张业务表内）：
 
 | 列 | 含义 |
 | --- | --- |
