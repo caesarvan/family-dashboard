@@ -228,8 +228,8 @@ class Run(BaseRun):
         with self.flow(browser) as (ctx, page):
             self.open_import(page); before = self.snapshot(); posts = self.count_requests('POST', PREVIEW)
             for raw, error in (('', None), ('{invalid', '有效的 JSON'), ('界' * 66667, '200,000'),
-                (json.dumps({'plan': self.plan(), 'journeyId': '0' * 24}), '包装对象仅可包含 plan'),
-                (json.dumps({'plan': self.plan(), 'previewToken': 'forbidden'}), '包装对象仅可包含 plan')):
+                (json.dumps({'plan': self.plan(), 'journeyId': '0' * 24}), '仅支持新建旅行，请移除已有旅行编号、版本、令牌或操作选项'),
+                (json.dumps({'plan': self.plan(), 'previewToken': 'forbidden'}), '仅支持新建旅行，请移除已有旅行编号、版本、令牌或操作选项')):
                 self.paste(page, raw)
                 if button(page, '预览导入').is_enabled(): button(page, '预览导入').click()
                 if error: expect(page.get_by_role('alert')).to_contain_text(error)
