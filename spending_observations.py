@@ -5,10 +5,11 @@ import hashlib
 import json
 import re
 
-from flask import g, jsonify
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from flask import g, jsonify, request
+from itsdangerous import URLSafeTimedSerializer
 
 from finance_baseline import BaselineError, _amount, _date
+from finance_source_bridge import ImportSession, signed_preview, require_fresh_preview, expected_fields, text_field
 
 MODE = 'spending_observation'
 VERSION = 'spending-observation-v1'
@@ -209,15 +210,8 @@ class SpendingObservations:
         with app.app_context():
             db().executescript(SCHEMA_SQL); db().commit()
 
-    def identity(self, con):
-        self.require_member()
-        sessions = self.app.extensions.get('member_sessions')
-        current = sessions.current(con) if sessions else None
-        if (not current or current['owner'] != g.actor['id'] or current['auth_version'] != g.actor.get('auth_version')
-                or g.actor.get('householdId') != self.app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
-            fail('登录状态已改变，请重新登录后预览', 401)
-        return digest({'owner': current['owner'], 'household': self.app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default'),
-                       'session': current['id'], 'credential': current['credential_hash'], 'authVersion': current['auth_version']})
+    def session(self):
+        return ImportSession(self.app, self.db, self.Problem, self.require_member)
 
     def baseline(self, con, owner):
         row = con.execute('SELECT private_data,revision,source_digest FROM finance_baselines WHERE owner=?', (owner,)).fetchone()
@@ -241,16 +235,33 @@ class SpendingObservations:
 
     def status(self):
         def run():
-            self.require_member(); con = self.db(); self.identity(con)
-            private, current, expected = self.version(con, g.actor['id'])
-            selected, origin, warnings = selected_spending(private, current)
-            old_known = known_spending(selected)
-            return jsonify(mode=MODE, expected=expected, current=({k: current[k] for k in ('revision','sourceDigest','acceptedAt')} if current else None),
-                           baseline={'exists': private is not None, 'asOf': (private or {}).get('asOf'),
-                                     'balanceAsOfStart': (private or {}).get('balanceAsOfStart'), 'balanceAsOfEnd': (private or {}).get('balanceAsOfEnd')},
-                           previousCoverageKnown=old_known, requiresUnknownCoverageAcknowledgement=bool(selected) and not old_known,
-                           spending=({k: selected[k] for k in ('generatedAt','requestedStart','requestedEnd')} if old_known else None), warnings=warnings)
+            session = self.session()
+            operation = request.args.get('operationId')
+            if operation is not None:
+                hash_value(operation)
+                if len(request.args.getlist('operationId')) != 1:
+                    fail('操作编号格式不正确')
+            with session.read() as con:
+                if operation is not None:
+                    old = con.execute('SELECT id,status,observation_revision,source_digest,candidate_digest,accepted_at FROM finance_spending_receipts WHERE id=? AND owner=?',
+                                      (operation, session.owner)).fetchone()
+                    result = dict(mode=MODE, operationId=operation, found=old is not None,
+                                  receipt=self.receipt(old) if old else None)
+                else:
+                    private, current, expected = self.version(con, session.owner)
+                    selected, origin, warnings = selected_spending(private, current)
+                    old_known = known_spending(selected)
+                    result = dict(mode=MODE, expected=expected, current=({k: current[k] for k in ('revision','sourceDigest','acceptedAt')} if current else None),
+                                  baseline={'exists': private is not None, 'asOf': (private or {}).get('asOf'),
+                                            'balanceAsOfStart': (private or {}).get('balanceAsOfStart'), 'balanceAsOfEnd': (private or {}).get('balanceAsOfEnd')},
+                                  previousCoverageKnown=old_known, requiresUnknownCoverageAcknowledgement=bool(selected) and not old_known,
+                                  spending=({k: selected[k] for k in ('generatedAt','requestedStart','requestedEnd')} if old_known else None), warnings=warnings)
+            return jsonify(result)
         return self.checked(run)
+
+    def receipt(self, row):
+        return dict(zip(('receiptId','status','revision','sourceDigest','candidateDigest','acceptedAt'), row)) | {
+            'replayed': True, 'assetBaselineUnchanged': True}
 
     def assess(self, private, current, candidate, acknowledgement):
         if private is None:
@@ -294,16 +305,19 @@ class SpendingObservations:
             exact(payload, ('mode','candidate','expectedRevision','expectedSourceDigest','expectedBaselineRevision','expectedBaselineSourceDigest','acknowledgeUnknownPreviousCoverage'))
             if payload['mode'] != MODE or type(payload['acknowledgeUnknownPreviousCoverage']) is not bool:
                 fail()
-            con = self.db(); context = self.identity(con); owner = g.actor['id']
-            private, current, expected = self.version(con, owner)
-            if any(payload[k] != v or type(payload[k]) is not type(v) for k,v in expected.items()):
-                fail('财产基线或消费观察已改变，请保留文件并重新预览', 409)
+            session = self.session()
             candidate, candidate_digest, source_digest = normalize_spending_candidate(payload['candidate'])
-            changes, warnings = self.assess(private, current, candidate, payload['acknowledgeUnknownPreviousCoverage'])
-            signed = {'owner': owner, 'context': context, 'candidateDigest': candidate_digest, **expected,
-                      'acknowledgeUnknownPreviousCoverage': payload['acknowledgeUnknownPreviousCoverage']}
-            token = self.signer.dumps(signed)
-            return jsonify(mode=MODE, previewToken=token, candidateDigest=candidate_digest, sourceDigest=source_digest,
+            with session.read() as con:
+                context = session.check()
+                private, current, expected = self.version(con, session.owner)
+                if any(payload[k] != v or type(payload[k]) is not type(v) for k,v in expected.items()):
+                    fail('财产基线或消费观察已改变，请保留文件并重新预览', 409)
+                changes, warnings = self.assess(private, current, candidate, payload['acknowledgeUnknownPreviousCoverage'])
+                signed = {'owner': session.owner, 'household': session.household, 'context': context,
+                          'candidateDigest': candidate_digest, **expected,
+                          'acknowledgeUnknownPreviousCoverage': payload['acknowledgeUnknownPreviousCoverage']}
+                token = self.signer.dumps(signed)
+            return jsonify(mode=MODE, previewToken=token, operationId=digest(signed), candidateDigest=candidate_digest, sourceDigest=source_digest,
                            expected=expected, spending=candidate['spending'], changes=changes, warnings=warnings,
                            baseline={'asOf':private['asOf'],'balanceAsOfStart':private['balanceAsOfStart'],'balanceAsOfEnd':private['balanceAsOfEnd']},
                            assetBaselineUnchanged=True, expiresIn=1200)
@@ -314,40 +328,60 @@ class SpendingObservations:
             exact(payload, ('mode','candidate','previewToken'))
             if payload['mode'] != MODE or not isinstance(payload['previewToken'],str) or len(payload['previewToken'])>4000:
                 fail()
-            try:
-                signed = self.signer.loads(payload['previewToken'], max_age=1200)
-            except (BadSignature, SignatureExpired):
-                fail('消费观察预览已失效，请重新预览', 409)
+            signed, issued = signed_preview(self.signer, payload['previewToken'])
+            keys = {'owner', 'context', 'candidateDigest', 'expectedRevision', 'expectedSourceDigest',
+                    'expectedBaselineRevision', 'expectedBaselineSourceDigest', 'acknowledgeUnknownPreviousCoverage'}
+            if set(signed) not in (keys, keys | {'household'}):
+                fail()
+            text_field(signed['owner'])
+            if 'household' in signed:
+                text_field(signed['household'])
+            hash_value(signed['context']); hash_value(signed['candidateDigest'])
+            expected_fields(signed)
+            expected_fields({'expectedRevision': signed['expectedBaselineRevision'],
+                             'expectedSourceDigest': signed['expectedBaselineSourceDigest']})
+            if type(signed['acknowledgeUnknownPreviousCoverage']) is not bool:
+                fail()
             candidate, candidate_digest, source_digest = normalize_spending_candidate(payload['candidate'])
-            con = self.db(); owner = g.actor['id']; con.execute('BEGIN IMMEDIATE')
-            try:
-                context = self.identity(con)
-                if signed.get('owner') != owner or signed.get('context') != context or signed.get('candidateDigest') != candidate_digest:
-                    fail('预览不属于当前会话、成员、家庭或文件', 403)
+            session = self.session()
+            owner = session.owner
+            if (signed.get('owner') != owner or signed.get('candidateDigest') != candidate_digest
+                    or ('household' in signed and signed['household'] != session.household)):
+                fail('预览不属于当前成员、家庭或文件', 403)
+            with session.write() as con:
                 receipt_id = digest(signed)
                 old = con.execute('SELECT id,status,observation_revision,source_digest,candidate_digest,accepted_at FROM finance_spending_receipts WHERE id=? AND owner=?', (receipt_id,owner)).fetchone()
                 if old:
-                    con.rollback()
-                    return jsonify(dict(zip(('receiptId','status','revision','sourceDigest','candidateDigest','acceptedAt'),old)) | {'replayed':True,'assetBaselineUnchanged':True})
-                private,current,expected = self.version(con,owner)
-                if any(signed.get(k)!=v for k,v in expected.items()):
-                    fail('财产基线或消费观察已改变，请保留文件并重新预览',409)
-                self.assess(private,current,candidate,signed.get('acknowledgeUnknownPreviousCoverage'))
-                unchanged = bool(current and current['candidateDigest']==candidate_digest)
-                revision = expected['expectedRevision'] + (0 if unchanged else 1)
-                accepted = datetime.now(timezone.utc).isoformat(timespec='seconds')
-                if not unchanged:
-                    con.execute('''INSERT INTO finance_spending_observations VALUES(?,?,?,?,?,?)
-                        ON CONFLICT(owner) DO UPDATE SET revision=excluded.revision,source_digest=excluded.source_digest,
-                        candidate_digest=excluded.candidate_digest,candidate_json=excluded.candidate_json,accepted_at=excluded.accepted_at''',
-                        (owner,revision,source_digest,candidate_digest,encode(candidate),accepted))
-                status = 'unchanged' if unchanged else 'imported'
-                con.execute('INSERT INTO finance_spending_receipts VALUES(?,?,?,?,?,?,?,?,?)',
-                            (receipt_id,owner,candidate_digest,source_digest,expected['expectedRevision'],expected['expectedBaselineRevision'],revision,status,accepted))
-                self.audit('finance.spending_observation',receipt_id)
-                con.commit()
-                return jsonify(receiptId=receipt_id,status=status,revision=revision,sourceDigest=source_digest,
-                               candidateDigest=candidate_digest,acceptedAt=accepted,replayed=False,assetBaselineUnchanged=True)
-            except Exception:
-                con.rollback(); raise
+                    if old[3] != source_digest or old[4] != candidate_digest:
+                        fail('保存回执与候选不一致', 409)
+                    result = self.receipt(old)
+                else:
+                    result = self.apply(con, session, signed, issued, candidate, candidate_digest, source_digest, receipt_id)
+            if old:
+                session.fresh()
+            return jsonify(result)
         return self.checked(run)
+
+    def apply(self, con, session, signed, issued, candidate, candidate_digest, source_digest, receipt_id):
+        owner = session.owner
+        require_fresh_preview(self.signer, issued)
+        if signed.get('context') != session.check():
+            fail('预览不属于当前会话、成员、家庭或文件', 403)
+        private,current,expected = self.version(con,owner)
+        if any(signed.get(k)!=v for k,v in expected.items()):
+            fail('财产基线或消费观察已改变，请保留文件并重新预览',409)
+        self.assess(private,current,candidate,signed.get('acknowledgeUnknownPreviousCoverage'))
+        unchanged = bool(current and current['candidateDigest']==candidate_digest)
+        revision = expected['expectedRevision'] + (0 if unchanged else 1)
+        accepted = datetime.now(timezone.utc).isoformat(timespec='seconds')
+        if not unchanged:
+            con.execute('''INSERT INTO finance_spending_observations VALUES(?,?,?,?,?,?)
+                ON CONFLICT(owner) DO UPDATE SET revision=excluded.revision,source_digest=excluded.source_digest,
+                candidate_digest=excluded.candidate_digest,candidate_json=excluded.candidate_json,accepted_at=excluded.accepted_at''',
+                (owner,revision,source_digest,candidate_digest,encode(candidate),accepted))
+        status = 'unchanged' if unchanged else 'imported'
+        con.execute('INSERT INTO finance_spending_receipts VALUES(?,?,?,?,?,?,?,?,?)',
+                    (receipt_id,owner,candidate_digest,source_digest,expected['expectedRevision'],expected['expectedBaselineRevision'],revision,status,accepted))
+        self.audit('finance.spending_observation',receipt_id)
+        return dict(receiptId=receipt_id,status=status,revision=revision,sourceDigest=source_digest,
+                    candidateDigest=candidate_digest,acceptedAt=accepted,replayed=False,assetBaselineUnchanged=True)

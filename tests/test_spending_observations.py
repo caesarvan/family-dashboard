@@ -1,5 +1,6 @@
 """Dated synthetic reports only; real Flask/session/SQLite and no network."""
 from copy import deepcopy
+from contextlib import closing, contextmanager
 from concurrent.futures import ThreadPoolExecutor
 from datetime import date, timedelta
 from datetime import datetime, timezone
@@ -29,8 +30,11 @@ def no_network(monkeypatch):
     monkeypatch.setattr(socket.socket,'connect',denied)
 
 
+@contextmanager
 def database(app):
-    return sqlite3.connect(Path(app.config['DATA_DIR'])/'household.sqlite3',timeout=20)
+    with closing(sqlite3.connect(Path(app.config['DATA_DIR'])/'household.sqlite3',timeout=20)) as con:
+        with con:
+            yield con
 
 
 def observation(end='2026-09-15',net=1100):
