@@ -18,10 +18,12 @@
 
 请求成功与错误均经过前后 `/me` 复核，包含家庭、成员、认证版本、CSRF 与当前代次；离线、后台、路由失焦隐藏私人内容，恢复只读取并核对，不自动重发。完整身份变化重新挂载并清除旧输入。
 
+只有写入 HTTP 明确拒绝、且随后身份核验成功，才能解除本次新建意图。写入后的 `/me` 错误、401／408、无法校验的回执均保留原 requestId；身份暂时无法核对时，原输入与冻结意图只留在隐藏内存，必须重新核验同一完整身份后才能恢复。已确认保存之后的列表读取若遇到身份或权限失效，也会清除并隐藏旧地点；普通网络错误不会把已经确认的保存改成未知。
+
 ## 验证边界
 
 `tests/test_expo_journey_places.mjs` 使用合成 DTO 验证白名单、最多 20 个目的地、Unicode／日期／坐标、planned/private 默认值、到访确认、两种 revision、未知意图保留和身份 fence。`tests/test_journey_place_source_revision.py` 使用实际临时 Flask／SQLite 验证事务版本冲突、原摘要兼容、历史重放及零写失败，另跑既有地点 API 回归。
 
 组件作者的 Node／语法和 API 检查不代替组合 TypeScript、浏览器、四宽视觉或真实用户验收。地图底图与坐标选取沿用原地图入口；云日历、真实模型、实体电视及完整跨模块场景不在本增量范围。
 
-本分支作者实际验证：Node 11 项通过，helper 严格 TypeScript 与 TSX 语法检查通过；两组 API 共 115 项通过（64.92 秒）。首轮 114 通过、1 项失败，原因是既有工厂测试仍断言旧 53 表；改为当前 `check_investment_operation_migration` 的精确 55 表集合后完整重跑，未忽略额外或缺失表。原件保留于 ignored `test-results/journey-place-source-revision-r1.xml`／`r2.xml`，两次不相加。
+本分支作者实际验证：修订后 Node 17 项通过，包含写入前后身份错误、非法回执和保存后权限失效边界；helper 严格 TypeScript 与 TSX 语法检查通过。两组 API 共 115 项通过（64.92 秒），本次前端修订未重复运行。首轮 114 通过、1 项失败，原因是既有工厂测试仍断言旧 53 表；改为当前 `check_investment_operation_migration` 的精确 55 表集合后完整重跑，未忽略额外或缺失表。原件保留于 ignored `test-results/journey-place-source-revision-r1.xml`／`r2.xml`，两次不相加。

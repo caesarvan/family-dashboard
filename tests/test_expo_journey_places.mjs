@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { destinationEditor, failedPlaceIntent, journeyPlacePayload, journeyPlaceView, readJourneyPlaceSource } from '../frontend/src/lib/journeyPlaces.ts';
-import { PlaceFence, PlaceDiscarded, placeSignature } from '../frontend/src/lib/places.ts';
+import { checkedPlaceMutation, destinationEditor, failedPlaceIntent, journeyPlacePayload, journeyPlaceView, placeReadbackNeedsConceal, PlaceWriteRejected, PlaceWriteUnverified, readJourneyPlaceSource } from '../frontend/src/lib/journeyPlaces.ts';
+import { PlaceFence, PlaceDiscarded, placeSignature, validatePlace } from '../frontend/src/lib/places.ts';
+import { ApiError } from '../frontend/src/lib/api.ts';
 
 const jid = '1'.repeat(24), tripId = '2'.repeat(24), pid = '3'.repeat(24);
 const raw = () => ({ id: jid, tripId, revision: 1, plan: { title: '合成旅行', start: '2027-01-01', end: '2027-01-03',
@@ -60,9 +61,9 @@ test('owned edits retain separate place revision and require explicit changed vi
 });
 test('unknown result keeps original immutable intent through a later definitive rejection', () => {
   const original = { method: 'POST', path: '/journey-places', body: Object.freeze({ requestId: 'same-key', expectedJourneyRevision: 1 }), state: 'unknown', uncertain: false };
-  const unknown = failedPlaceIntent(original, 0), later = failedPlaceIntent(unknown, 409);
+  const unknown = failedPlaceIntent(original, new ApiError('network', 0)), later = failedPlaceIntent(unknown, new PlaceWriteRejected(409, 'revision'));
   assert.equal(later.state, 'unknown'); assert.equal(later.uncertain, true); assert.equal(later.body, original.body);
-  assert.equal(failedPlaceIntent(original, 409).state, 'rejected'); assert.equal(failedPlaceIntent(original, 503).state, 'unknown');
+  assert.equal(failedPlaceIntent(original, new PlaceWriteRejected(409, 'revision')).state, 'rejected'); assert.equal(failedPlaceIntent(original, new ApiError('after/me', 409)).state, 'unknown');
 });
 test('map navigation contains authorized IDs and filter state only and preserves a selected page', () => {
   assert.deepEqual(journeyPlaceView(jid, pid, 24), { filters: { scope: 'visible', status: '', year: '', owner: '', journeyId: jid }, offset: 24, selected: pid });
@@ -82,4 +83,59 @@ test('focus epoch invalidation discards a delayed success and delayed failure af
     const promise = fence.run(async () => { await wait; if (failure) throw new Error('old'); return 'old'; }, () => true);
     await Promise.resolve(); fence.invalidate(); release(); await assert.rejects(promise, PlaceDiscarded);
   }
+});
+
+const intent = () => ({ method: 'POST', path: '/journey-places', body: Object.freeze({ requestId: 'f'.repeat(32), expectedJourneyRevision: 1 }), state: 'unknown', uncertain: false });
+const httpStatus = failure => failure instanceof ApiError ? failure.status : undefined;
+async function thrown(action) { try { await action(); assert.fail('expected rejection'); } catch (failure) { return failure; } }
+
+test('only mutation rejection followed by successful identity verification unlocks a fresh create', async () => {
+  const first = session(); let reads = 0;
+  const fence = new PlaceFence(async () => { ++reads; return first; }, placeSignature(first));
+  const failure = await thrown(() => checkedPlaceMutation(job => fence.run(job, () => true), async () => { throw new ApiError('source changed', 409); }, httpStatus));
+  assert.equal(reads, 2); assert.ok(failure instanceof PlaceWriteRejected);
+  assert.equal(failedPlaceIntent(intent(), failure).state, 'rejected');
+});
+test('committed mutation followed by /me 401 403 408 429 keeps the exact original intent unknown', async () => {
+  for (const status of [401, 403, 408, 429]) {
+    const first = session(), original = intent(); let reads = 0, submitted = 0;
+    const fence = new PlaceFence(async () => { if (++reads === 2) throw new ApiError('identity unavailable', status); return first; }, placeSignature(first));
+    const failure = await thrown(() => checkedPlaceMutation(job => fence.run(job, () => true), async () => { ++submitted; return { place: 'committed' }; }, httpStatus));
+    assert.equal(submitted, 1); assert.ok(failure instanceof PlaceWriteUnverified);
+    const failed = failedPlaceIntent(original, failure); assert.equal(failed.state, 'unknown'); assert.equal(failed.body, original.body);
+    assert.equal(failed.body.requestId, 'f'.repeat(32)); assert.equal(failed.body.expectedJourneyRevision, 1);
+  }
+});
+test('failed pre-identity and failed post-identity cannot be mistaken for a mutation rejection', async () => {
+  for (const failAt of [1, 2]) {
+    const first = session(); let reads = 0, calls = 0;
+    const fence = new PlaceFence(async () => { if (++reads === failAt) throw new ApiError('rate limit', 429); return first; }, placeSignature(first));
+    const failure = await thrown(() => checkedPlaceMutation(job => fence.run(job, () => true), async () => { ++calls; throw new ApiError('source conflict', 409); }, httpStatus));
+    assert.equal(calls, failAt === 1 ? 0 : 1); assert.ok(failure instanceof PlaceWriteUnverified);
+    assert.equal(failedPlaceIntent(intent(), failure).state, 'unknown');
+  }
+});
+test('mutation 401 408 and malformed success receipt retain the original request identity', async () => {
+  for (const status of [401, 408, 500]) {
+    const first = session(), fence = new PlaceFence(async () => first, placeSignature(first));
+    const failure = await thrown(() => checkedPlaceMutation(job => fence.run(job, () => true), async () => { throw new ApiError('uncertain', status); }, httpStatus));
+    assert.ok(!(failure instanceof PlaceWriteRejected)); assert.equal(failedPlaceIntent(intent(), failure).state, 'unknown');
+  }
+  const first = session(), fence = new PlaceFence(async () => first, placeSignature(first));
+  const result = await checkedPlaceMutation(job => fence.run(job, () => true), async () => ({ place: null }), httpStatus);
+  const original = intent();
+  const failure = await thrown(async () => validatePlace(result.place));
+  assert.equal(result.place, null); assert.equal(failedPlaceIntent(original, failure).body, original.body);
+  assert.equal(failedPlaceIntent(original, failure).state, 'unknown');
+});
+test('post-success readback identity failures require conceal while network failures preserve confirmed success', () => {
+  for (const status of [401, 403]) assert.equal(placeReadbackNeedsConceal(new ApiError('no identity', status), false), true);
+  assert.equal(placeReadbackNeedsConceal(new PlaceDiscarded('identity'), true), true);
+  for (const status of [0, 408, 429, 500]) assert.equal(placeReadbackNeedsConceal(new ApiError('network', status), false), false);
+});
+test('actual signature change after mutation is distinguishable from temporarily unavailable identity', async () => {
+  const first = session(); let me = first;
+  const fence = new PlaceFence(async () => me, placeSignature(first));
+  const failure = await thrown(() => checkedPlaceMutation(job => fence.run(job, () => true), async () => { me = { ...first, csrf: 'new-member' }; return { place: 'old-member-place' }; }, httpStatus));
+  assert.ok(failure instanceof PlaceWriteUnverified); assert.ok(failure.reason instanceof PlaceDiscarded); assert.equal(failure.reason.message, 'identity');
 });

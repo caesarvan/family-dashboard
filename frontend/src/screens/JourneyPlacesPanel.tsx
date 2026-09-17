@@ -6,7 +6,7 @@ import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import { newKey } from '../lib/trips';
 import { PlaceDiscarded, PlaceFence, emptyPlacePage, placeDraft, placeLabels, validatePlace, validatePlacePage, type MapView, type Place, type PlaceDraft, type PlacePage, type PlaceSession } from '../lib/places';
-import { destinationEditor, failedPlaceIntent, journeyPlacePayload, journeyPlaceView, readJourneyPlaceSource, type JourneyPlaceEditor, type JourneyPlaceSource, type PlaceIntent } from '../lib/journeyPlaces';
+import { checkedPlaceMutation, destinationEditor, failedPlaceIntent, journeyPlacePayload, journeyPlaceView, placeReadbackNeedsConceal, PlaceWriteRejected, PlaceWriteUnverified, readJourneyPlaceSource, type JourneyPlaceEditor, type JourneyPlaceSource, type PlaceIntent } from '../lib/journeyPlaces';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
 
@@ -79,7 +79,7 @@ function Workspace(props: Props & { identityKey: string }) {
         if (state.current.pending?.uncertain) await guarded(async () => true, ticket);
         else await reload(ticket);
         if (current(ticket)) setVisible(true);
-      } catch (failure) { fail(failure, ticket); if (current(ticket)) setVisible(true); }
+      } catch (failure) { fail(failure, ticket); if (current(ticket)) conceal(); }
       finally { if (current(ticket)) { working.current = false; setBusy(false); } }
     })();
   }
@@ -118,17 +118,35 @@ function Workspace(props: Props & { identityKey: string }) {
     // Before sending, the in-memory recovery state assumes the reply can be lost.
     setPending({ ...intent, state: 'unknown', uncertain: true });
     try {
-      const response = await guarded(csrf => request<{ place: Place; replayed?: boolean }>(intent.path, { method: intent.method, body: JSON.stringify(intent.body) }, csrf), ticket);
+      const response = await checkedPlaceMutation(action => guarded(action, ticket),
+        csrf => request<{ place: Place; replayed?: boolean }>(intent.path, { method: intent.method, body: JSON.stringify(intent.body) }, csrf),
+        failure => failure instanceof ApiError ? failure.status : undefined);
       const place = validatePlace(response.place); if (intent.id && intent.id !== place.id) throw new Error('地点保存结果无法核对。');
       if (!current(ticket)) return;
       setPending(null); setEditor(null); setReview(null); setSaved(place); setNotice(response.replayed ? '已核对原创建，没有重复添加。' : '地点已保存。');
       // A confirmed write is not made uncertain by a failing follow-up GET.
-      try { await reload(ticket, 0); } catch (failure) { if (current(ticket)) setError('地点已保存；' + message(failure)); }
+      try { await reload(ticket, 0); }
+      catch (failure) {
+        if (current(ticket)) {
+          if (placeReadbackNeedsConceal(failure, failure instanceof PlaceDiscarded)) fail(failure, ticket);
+          else setError('地点已保存；' + message(failure));
+        }
+      }
     } catch (failure) {
       if (!current(ticket)) return;
-      if (failure instanceof PlaceDiscarded || failure instanceof ApiError && [401, 403].includes(failure.status)) { fail(failure, ticket); return; }
-      const status = failure instanceof ApiError ? failure.status : 0;
-      setPending(failedPlaceIntent(intent, status));
+      const original = failure instanceof PlaceWriteUnverified ? failure.reason : failure;
+      if (original instanceof PlaceDiscarded) { fail(original, ticket); return; }
+      const nextPending = failedPlaceIntent(intent, failure);
+      setPending(nextPending);
+      if (failure instanceof PlaceWriteUnverified || original instanceof ApiError && [401, 403].includes(original.status)) {
+        // Clear displayed snapshots, but keep the frozen input/intent hidden
+        // until the SAME complete identity is verified again. A real identity
+        // mismatch clears everything; it cannot hand this intent to a new user.
+        conceal(); setSource(null); setPage(emptyPlacePage()); setSaved(null); setReview(null); setNotice(''); setPending(nextPending);
+        setError('身份核对暂未完成，地点已隐藏。原操作标识仍保留；重新核对身份后才能恢复。');
+        void latest.current.refresh(); return;
+      }
+      const status = failure instanceof PlaceWriteRejected ? failure.status : 0;
       if ([404, 410].includes(status)) { setTerminal(true); setError('地点或关联旅行已删除，不能自动重新创建。请返回旅行核对。'); }
       else setError(status === 409 ? '旅行或地点版本已变化。原输入仍保留，请核对最新版本。' : '保存尚未核实，请先核对原操作。');
     } finally { if (current(ticket)) { working.current = false; setBusy(false); } }

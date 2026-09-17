@@ -60,8 +60,39 @@ export function journeyPlaceView(journeyId: string, selected?: string, offset = 
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > 3000) throw new Error('地点页码无法核对。');
   return { filters: { scope: 'visible', status: '', year: '', owner: '', journeyId: id(journeyId) }, offset, ...(selected ? { selected: id(selected) } : {}) };
 }
+export class PlaceWriteRejected extends Error {
+  constructor(readonly status: number, message: string) { super(message); }
+}
+export class PlaceWriteUnverified extends Error {
+  constructor(readonly reason: unknown) { super('地点写入前后的身份暂时无法核对。'); }
+}
+type MutationOutcome<T> = { ok: true; value: T } | { ok: false; failure: unknown };
+/** Only a mutation rejection that survives BOTH identity checks is definitive. */
+export async function checkedPlaceMutation<T>(
+  guard: <R>(action: (csrf: string) => Promise<R>) => Promise<R>,
+  action: (csrf: string) => Promise<T>,
+  httpStatus: (failure: unknown) => number | undefined,
+): Promise<T> {
+  let outcome: MutationOutcome<T>;
+  try {
+    outcome = await guard(async csrf => {
+      try { return { ok: true as const, value: await action(csrf) }; }
+      catch (failure) { return { ok: false as const, failure }; }
+    });
+  } catch (reason) { throw new PlaceWriteUnverified(reason); }
+  if (outcome.ok) return outcome.value;
+  const status = httpStatus(outcome.failure);
+  if (status !== undefined && [400, 403, 404, 409, 410, 413, 415, 422, 429].includes(status)) {
+    throw new PlaceWriteRejected(status, outcome.failure instanceof Error ? outcome.failure.message : '地点保存被拒绝。');
+  }
+  throw outcome.failure;
+}
 // A later HTTP rejection cannot disprove an earlier request with no response.
-export function failedPlaceIntent(intent: PlaceIntent, status: number): PlaceIntent {
-  const uncertain = intent.uncertain || status === 0 || status >= 500;
+// Raw HTTP errors may come from /me, so they NEVER unlock a new create intent.
+export function failedPlaceIntent(intent: PlaceIntent, failure: unknown): PlaceIntent {
+  const uncertain = intent.uncertain || !(failure instanceof PlaceWriteRejected);
   return { ...intent, uncertain, state: uncertain ? 'unknown' : 'rejected' };
+}
+export function placeReadbackNeedsConceal(failure: unknown, identityFailure: boolean): boolean {
+  return identityFailure || !!failure && typeof failure === 'object' && 'status' in failure && [401, 403].includes(Number(failure.status));
 }
