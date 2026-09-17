@@ -17,18 +17,22 @@ import JourneyPlacesPanel from './JourneyPlacesPanel';
 import JourneyReschedulePanel from './JourneyReschedulePanel';
 import MapScreen from './MapScreen';
 import TripPhotosScreen from './TripPhotosScreen';
+import JourneyDocumentsPanel from './JourneyDocumentsPanel';
 
 type Props=ScreenProps & {tripRequest?:{key:number;id?:string}; onReturnMap?:()=>void; initialDraft?:Draft; onExitPlanning?:()=>void; onReschedulePending?: (pending:boolean)=>void};
 type Pending={previewToken:string;idempotencyKey:string};
-type TravelPanel={kind:'calendar'|'places'|'reschedule';journeyId:string;tripId:string}|{kind:'map';view:MapView;tripId:string}|{kind:'photos';journeyId:string;view:MapView;tripId:string};
+type TravelPanel={kind:'calendar'|'places'|'reschedule'|'documents';journeyId:string;tripId:string}|{kind:'map';view:MapView;tripId:string}|{kind:'photos';journeyId:string;view:MapView;tripId:string};
 export default function TripsScreen(props:Props) {
   const {mutate,refresh,online,identityKey}=useHousehold(), theme=useTheme();
   const [panel,setPanel]=useState<TravelPanel|null>(null),[mapReturn,setMapReturn]=useState<MapView|undefined>();
   const panelOpen=useRef(false);panelOpen.current=!!panel;
+  const panelRef=useRef(panel);panelRef.current=panel;
   const reschedulePending=useRef(false);
+  const documentsPending=useRef(false);
   const pendingReschedule=(value:boolean)=>{reschedulePending.current=value;props.onReschedulePending?.(value);};
+  const pendingDocuments=useCallback((value:boolean)=>{documentsPending.current=value;props.onDocumentsPending?.(value);},[props.onDocumentsPending]);
   const focused=useRef(false),session=useRef(identityKey);session.current=identityKey;
-  useFocusEffect(useCallback(()=>{focused.current=true;return()=>{focused.current=false;setPanel(current=>current?.kind==='reschedule'?current:null);setMapReturn(undefined);};},[identityKey]));
+  useFocusEffect(useCallback(()=>{focused.current=true;return()=>{focused.current=false;setPanel(current=>current?.kind==='reschedule'||current?.kind==='documents'&&documentsPending.current?current:null);setMapReturn(undefined);};},[identityKey]));
   const actor=memberKey(props.user), identity=useRef(actor); identity.current=actor;
   const initial=useRef<{actor:string;present:boolean;invalidated:boolean;draft:Draft|null;error:string}|null>(null);
   if(initial.current===null){
@@ -46,6 +50,9 @@ export default function TripsScreen(props:Props) {
   const editing=useRef(false); editing.current=!!draft;
   const selected=useRef(''); selected.current=detail?.id||'';
   const current=(key:string)=>alive.current&&identity.current===key;
+  const notifyDocumentPending=useCallback((value:boolean)=>{
+    if(alive.current&&identity.current===actor&&panelRef.current===panel)pendingDocuments(value);
+  },[actor,panel,pendingDocuments]);
   const message=(failure:unknown)=>failure instanceof Error?failure.message:'暂时无法读取旅行';
   const locked=!!busy||uncertain||!online;
 
@@ -74,7 +81,7 @@ export default function TripsScreen(props:Props) {
     const useSeed=!seed.invalidated&&seed.actor===actor;
     alive.current=true;setPanel(null);setMapReturn(undefined);setJourneys(null);setDetail(null);setLegacy(null);setDraft(useSeed?seed.draft:null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setBusy('');setError(useSeed?seed.error:'');setNotice('');setQuery('');
     if(props.user.role==='member'&&!(useSeed&&seed.present))void load();
-    return()=>{alive.current=false;++readVersion.current;pendingReschedule(false);};
+    return()=>{alive.current=false;++readVersion.current;pendingReschedule(false);pendingDocuments(false);};
   },[actor]);
   // An explicit detail read owns readVersion until it finishes. A concurrent
   // household refresh must not supersede it with a background list-only read.
@@ -84,15 +91,15 @@ export default function TripsScreen(props:Props) {
     if(!incoming||incoming.key===requestKey.current)return;
     requestKey.current=incoming.key;
     if(initial.current?.present)return;
-    if(editing.current||writing.current||reschedulePending.current||panelOpen.current){setNotice('请先完成或返回当前旅行操作，再打开另一趟旅行。');return;}
+    if(editing.current||writing.current||reschedulePending.current||documentsPending.current||panelOpen.current){setNotice('请先完成或返回当前旅行操作，再打开另一趟旅行。');return;}
     if(!incoming.id)startNew();
     else void openTrip(incoming.id);
   },[props.tripRequest?.key]);
 
   function clearEditor(){setDraft(null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setError('');}
-  function startNew(){if(writing.current||reschedulePending.current||props.user.role!=='member')return;++readVersion.current;setPanel(null);setMapReturn(undefined);setReading(false);setDetail(null);setLegacy(null);clearEditor();setDraft(newDraft(props.state.people,dayKey()));setNotice('');}
+  function startNew(){if(writing.current||reschedulePending.current||documentsPending.current||props.user.role!=='member')return;++readVersion.current;setPanel(null);setMapReturn(undefined);setReading(false);setDetail(null);setLegacy(null);clearEditor();setDraft(newDraft(props.state.people,dayKey()));setNotice('');}
   async function openTrip(tripId:string,edit=false){
-    if(writing.current||editing.current||reschedulePending.current)return;
+    if(writing.current||editing.current||reschedulePending.current||documentsPending.current)return;
     const key=actor,ticket=++readVersion.current;setReading(true);setError('');setDetail(null);setLegacy(null);setNotice('');
     try{
       const values=await read<{journeys:Journey[]}>('/journeys',key), linked=values.journeys.find(row=>row.tripId===tripId);
@@ -157,7 +164,10 @@ export default function TripsScreen(props:Props) {
   // performs a fresh session-fenced read; late callbacks cannot reopen a panel.
   const canNavigate=()=>current(actor)&&focused.current&&session.current===identityKey;
   const backToTrip=(tripId:string)=>{if(!canNavigate())return;setPanel(null);void openTrip(tripId);};
-  const openPanel=(kind:'calendar'|'places'|'reschedule')=>{if(!canNavigate()||!detail||busy||reading||draft)return;++readVersion.current;setPanel({kind,journeyId:detail.id,tripId:detail.tripId});};
+  const openPanel=(kind:'calendar'|'places'|'reschedule'|'documents')=>{if(!canNavigate()||!detail||busy||reading||draft||documentsPending.current)return;++readVersion.current;setPanel({kind,journeyId:detail.id,tripId:detail.tripId});};
+  if(panel?.kind==='documents')return <JourneyDocumentsPanel key={'documents-'+panel.journeyId} journeyId={panel.journeyId}
+    onPendingChange={notifyDocumentPending}
+    onBack={()=>{if(!canNavigate()||panelRef.current!==panel)return;pendingDocuments(false);backToTrip(panel.tripId);}}/>;
   if(panel?.kind==='reschedule')return <JourneyReschedulePanel journeyId={panel.journeyId} onPendingChange={pendingReschedule} onBack={()=>backToTrip(panel.tripId)} onSaved={result=>{if(!canNavigate()||result.journeyId!==panel.journeyId)return;void refresh();backToTrip(panel.tripId);}}/>;
   if(panel?.kind==='calendar')return <JourneyCalendarPanel journeyId={panel.journeyId} onBack={()=>backToTrip(panel.tripId)} onConnections={()=>{if(canNavigate())props.onNavigate('connections');}}/>;
   if(panel?.kind==='places')return <JourneyPlacesPanel journeyId={panel.journeyId} onBack={()=>backToTrip(panel.tripId)} onOpenMap={view=>{if(canNavigate())setPanel({kind:'map',view:safeMapView(view),tripId:panel.tripId});}}/>;
@@ -212,12 +222,12 @@ export default function TripsScreen(props:Props) {
       <View style={styles.wrap}><Button icon="arrow-left" disabled={!!busy} onPress={()=>{++readVersion.current;setDetail(null);setLegacy(null);void load();}}>全部旅行</Button><Button mode="contained" icon="pencil-outline" disabled={!!busy||reading||!online} onPress={()=>{if(active)void openTrip(active.id,true);}}>编辑旅行</Button><Button disabled={!!busy||reading} onPress={()=>{if(active)void openTrip(active.id);}}>刷新</Button></View>
       <SectionCard title={active?.title||detail?.plan.title||'旅行'}><View style={styles.fields}><Text variant="titleMedium">{active?.destination||detail?.plan.destinations.map(row=>row.city).join(' → ')}</Text><Text>{active?.start||detail?.plan.start} — {active?.end||detail?.plan.end}（包含返程日）</Text>{!!active?.note&&<Text>{active.note}</Text>}<Text>预算 {money(detail?.budget.total??active?.budget)} · 已付 {money(detail?.budget.paid??active?.paid)}</Text><Text>已留备用金 {money(detail?.budget.reserved??active?.saved)}</Text></View></SectionCard>
       {detail?<>
-        <View style={styles.wrap}><Button mode="outlined" icon="calendar-edit" accessibilityLabel="调整日期" disabled={!!busy||reading||!online} onPress={()=>openPanel('reschedule')}>调整日期</Button><Button mode="outlined" icon="map-marker-outline" disabled={!!busy||reading||!online} onPress={()=>openPanel('places')}>旅行地点</Button><Button mode="outlined" icon="calendar-sync-outline" disabled={!!busy||reading||!online} onPress={()=>openPanel('calendar')}>同步到日历</Button></View>
+        <View style={styles.wrap}><Button mode="outlined" icon="file-document-outline" accessibilityLabel="旅行资料" contentStyle={{minHeight:44}} disabled={!!busy||reading||!online} onPress={()=>openPanel('documents')}>旅行资料</Button><Button mode="outlined" icon="calendar-edit" accessibilityLabel="调整日期" disabled={!!busy||reading||!online} onPress={()=>openPanel('reschedule')}>调整日期</Button><Button mode="outlined" icon="map-marker-outline" disabled={!!busy||reading||!online} onPress={()=>openPanel('places')}>旅行地点</Button><Button mode="outlined" icon="calendar-sync-outline" disabled={!!busy||reading||!online} onPress={()=>openPanel('calendar')}>同步到日历</Button></View>
         <SectionCard title={`准备 · ${detail.progress.done}/${detail.progress.total}`} action={<Button disabled={!!busy||!online} onPress={()=>setDraft(editDraft(detail))}>管理清单</Button>}>{detail.tasks.length?group(detail.tasks,'tasks'):<Text>没有准备事项。可以在编辑旅行中添加。</Text>}</SectionCard>
         <SectionCard title={`采购 · ${detail.progress.purchased}/${detail.progress.purchaseCount}`}>{detail.shopping.length?group(detail.shopping,'shopping'):<Text>这趟旅行尚未安排采购。</Text>}<Text variant="bodySmall">计划采购 {money(detail.budget.purchaseBudget)}{detail.budget.unknownPurchaseBudgets?`，另有 ${detail.budget.unknownPurchaseBudgets} 件未填预算`:''} · 已买实付 {money(detail.budget.purchaseActual)}{detail.budget.unknownPurchaseActuals?`，另有 ${detail.budget.unknownPurchaseActuals} 件未填实付`:''}</Text><Text variant="bodySmall">{detail.budget.note}</Text></SectionCard>
         <SectionCard title="本地行程">{detail.events.map(event=><View style={styles.event} key={event.id}><Text variant="titleMedium">{event.title}</Text><Text>{eventDates(event)}</Text>{!!event.location&&<Text>{event.location}</Text>}{!!event.note&&<Text variant="bodySmall">{event.note}</Text>}<Divider/></View>)}<Text variant="bodySmall">这里显示看板本地安排。点击「同步到日历」选择云日历，并查看发布进度。</Text></SectionCard>
       </>:<SectionCard title="完善行程"><Text>这是一条基础旅行记录。编辑后可预览生成本地行程与准备清单，原旅行和已有本地准备记录会保留。</Text></SectionCard>}
-      <Button icon="open-in-app" onPress={()=>props.onLegacy('trips')}>高级分段与资料（经典旅行）</Button>{!props.onReturnMap&&!mapReturn&&<Button icon="map-outline" onPress={()=>props.onNavigate('map')}>足迹地图</Button>}
+      <Button icon="open-in-app" onPress={()=>props.onLegacy('trips')}>高级分段（经典旅行）</Button>{!props.onReturnMap&&!mapReturn&&<Button icon="map-outline" onPress={()=>props.onNavigate('map')}>足迹地图</Button>}
     </>:<>
       <Searchbar placeholder="搜索旅行或目的地" value={query} onChangeText={setQuery}/>
       {journeys===null?<EmptyState title={reading?'正在读取旅行':'旅行暂时无法读取'} action={!reading?<Button onPress={()=>void load()}>重试</Button>:undefined}/>:props.state.trips.filter(trip=>[trip.title,trip.destination||''].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).sort((a,b)=>a.start.localeCompare(b.start)).map(trip=><SectionCard key={trip.id} title={trip.title} action={<Button disabled={reading} onPress={()=>void openTrip(trip.id)}>查看</Button>}><Text>{trip.destination}</Text><Text>{trip.start} — {trip.end}</Text><Text variant="bodySmall">预算 {money(trip.budget)} · 已付 {money(trip.paid)}</Text></SectionCard>)}
