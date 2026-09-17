@@ -49,6 +49,11 @@ function CalendarWorkspace(props:Props&{identityKey:string}){
       if(failure.message==='identity'){conceal(true);denied.current=true;setError('登录身份已变化，请重新打开旅行。');void latest.current.refresh();}
       return;
     }
+    if(failure instanceof ApiError&&[401,403].includes(failure.status)){
+      // A session rejection can arrive after the write committed. Hide private
+      // snapshots immediately without resetting the submitted/unknown state.
+      conceal();setError('身份或访问权限暂时无法核对，日历内容已隐藏。请重新读取当前状态。');void latest.current.refresh();return;
+    }
     setError(errorText(failure));
   }
   async function guarded<T>(action:(csrf:string)=>Promise<T>,ticket=epoch.current){
