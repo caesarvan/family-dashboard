@@ -10,7 +10,7 @@ import { checkedRescheduleWrite, clockText, failedRescheduleIntent, impactLabels
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
 
-type Props = { journeyId: string; onBack: () => void; onSaved: (result: { journeyId: string; revision: number }) => void };
+type Props = { journeyId: string; onBack: () => void; onSaved: (result: { journeyId: string; revision: number }) => void; onPendingChange?: (pending: boolean) => void };
 const connected = () => typeof navigator === 'undefined' || navigator.onLine !== false;
 const description = (failure: unknown) => failure instanceof Error ? failure.message : '暂时无法核对改期。';
 const groups: ImpactKind[] = ['overview', 'destination', 'segment', 'task', 'place', 'shopping'];
@@ -32,7 +32,7 @@ function Workspace(props: Props & { identityKey: string }) {
   const [warningPage, setWarningPage] = useState(0), [issuePage, setIssuePage] = useState(0);
   const [conflict, setConflict] = useState(false), [terminal, setTerminal] = useState(false), [leaving, setLeaving] = useState(false), [pages, setPages] = useState<Partial<Record<ImpactKind, number>>>({});
   const live = useRef({ source, draft, review, preview, pending, receipt }); live.current = { source, draft, review, preview, pending, receipt };
-  const setIntent = (intent: Intent | null) => { live.current.pending = intent; setPending(intent); };
+  const setIntent = (intent: Intent | null) => { live.current.pending = intent; props.onPendingChange?.(!!intent); setPending(intent); };
   const current = (ticket = epoch.current) => alive.current && focus.current && active.current && foreground.current && connected() && latest.current.online
     && ticket === epoch.current && latest.current.identityKey === props.identityKey && (typeof document === 'undefined' || !document.hidden);
   const locked = busy || !!pending || !!review || !!receipt || conflict || terminal || !household.online;

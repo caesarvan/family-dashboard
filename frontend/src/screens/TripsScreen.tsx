@@ -18,15 +18,17 @@ import JourneyReschedulePanel from './JourneyReschedulePanel';
 import MapScreen from './MapScreen';
 import TripPhotosScreen from './TripPhotosScreen';
 
-type Props=ScreenProps & {tripRequest?:{key:number;id?:string}; onReturnMap?:()=>void; initialDraft?:Draft; onExitPlanning?:()=>void};
+type Props=ScreenProps & {tripRequest?:{key:number;id?:string}; onReturnMap?:()=>void; initialDraft?:Draft; onExitPlanning?:()=>void; onReschedulePending?: (pending:boolean)=>void};
 type Pending={previewToken:string;idempotencyKey:string};
 type TravelPanel={kind:'calendar'|'places'|'reschedule';journeyId:string;tripId:string}|{kind:'map';view:MapView;tripId:string}|{kind:'photos';journeyId:string;view:MapView;tripId:string};
 export default function TripsScreen(props:Props) {
   const {mutate,refresh,online,identityKey}=useHousehold(), theme=useTheme();
   const [panel,setPanel]=useState<TravelPanel|null>(null),[mapReturn,setMapReturn]=useState<MapView|undefined>();
   const panelOpen=useRef(false);panelOpen.current=!!panel;
+  const reschedulePending=useRef(false);
+  const pendingReschedule=(value:boolean)=>{reschedulePending.current=value;props.onReschedulePending?.(value);};
   const focused=useRef(false),session=useRef(identityKey);session.current=identityKey;
-  useFocusEffect(useCallback(()=>{focused.current=true;return()=>{focused.current=false;setPanel(null);setMapReturn(undefined);};},[identityKey]));
+  useFocusEffect(useCallback(()=>{focused.current=true;return()=>{focused.current=false;setPanel(current=>current?.kind==='reschedule'?current:null);setMapReturn(undefined);};},[identityKey]));
   const actor=memberKey(props.user), identity=useRef(actor); identity.current=actor;
   const initial=useRef<{actor:string;present:boolean;invalidated:boolean;draft:Draft|null;error:string}|null>(null);
   if(initial.current===null){
@@ -70,7 +72,7 @@ export default function TripsScreen(props:Props) {
     const useSeed=!seed.invalidated&&seed.actor===actor;
     alive.current=true;setPanel(null);setMapReturn(undefined);setJourneys(null);setDetail(null);setLegacy(null);setDraft(useSeed?seed.draft:null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setBusy('');setError(useSeed?seed.error:'');setNotice('');setQuery('');
     if(props.user.role==='member'&&!(useSeed&&seed.present))void load();
-    return()=>{alive.current=false;++readVersion.current;};
+    return()=>{alive.current=false;++readVersion.current;pendingReschedule(false);};
   },[actor]);
   useEffect(()=>{if(props.user.role==='member'&&!initial.current?.error&&!editing.current&&!writing.current&&!panelOpen.current)void load(selected.current||undefined);},[props.state.revision]);
   useEffect(()=>{
@@ -78,15 +80,15 @@ export default function TripsScreen(props:Props) {
     if(!incoming||incoming.key===requestKey.current)return;
     requestKey.current=incoming.key;
     if(initial.current?.present)return;
-    if(editing.current||writing.current){setNotice('请先完成或取消当前旅行编辑，再打开另一趟旅行。');return;}
+    if(editing.current||writing.current||reschedulePending.current||panelOpen.current){setNotice('请先完成或返回当前旅行操作，再打开另一趟旅行。');return;}
     if(!incoming.id)startNew();
     else void openTrip(incoming.id);
   },[props.tripRequest?.key]);
 
   function clearEditor(){setDraft(null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setError('');}
-  function startNew(){if(writing.current||props.user.role!=='member')return;++readVersion.current;setPanel(null);setMapReturn(undefined);setReading(false);setDetail(null);setLegacy(null);clearEditor();setDraft(newDraft(props.state.people,dayKey()));setNotice('');}
+  function startNew(){if(writing.current||reschedulePending.current||props.user.role!=='member')return;++readVersion.current;setPanel(null);setMapReturn(undefined);setReading(false);setDetail(null);setLegacy(null);clearEditor();setDraft(newDraft(props.state.people,dayKey()));setNotice('');}
   async function openTrip(tripId:string,edit=false){
-    if(writing.current||editing.current)return;
+    if(writing.current||editing.current||reschedulePending.current)return;
     const key=actor,ticket=++readVersion.current;setReading(true);setError('');setDetail(null);setLegacy(null);setNotice('');
     try{
       const values=await read<{journeys:Journey[]}>('/journeys',key), linked=values.journeys.find(row=>row.tripId===tripId);
@@ -152,7 +154,7 @@ export default function TripsScreen(props:Props) {
   const canNavigate=()=>current(actor)&&focused.current&&session.current===identityKey;
   const backToTrip=(tripId:string)=>{if(!canNavigate())return;setPanel(null);void openTrip(tripId);};
   const openPanel=(kind:'calendar'|'places'|'reschedule')=>{if(!canNavigate()||!detail||busy||reading||draft)return;++readVersion.current;setPanel({kind,journeyId:detail.id,tripId:detail.tripId});};
-  if(panel?.kind==='reschedule')return <JourneyReschedulePanel journeyId={panel.journeyId} onBack={()=>backToTrip(panel.tripId)} onSaved={result=>{if(!canNavigate()||result.journeyId!==panel.journeyId)return;void refresh();backToTrip(panel.tripId);}}/>;
+  if(panel?.kind==='reschedule')return <JourneyReschedulePanel journeyId={panel.journeyId} onPendingChange={pendingReschedule} onBack={()=>backToTrip(panel.tripId)} onSaved={result=>{if(!canNavigate()||result.journeyId!==panel.journeyId)return;void refresh();backToTrip(panel.tripId);}}/>;
   if(panel?.kind==='calendar')return <JourneyCalendarPanel journeyId={panel.journeyId} onBack={()=>backToTrip(panel.tripId)} onConnections={()=>{if(canNavigate())props.onNavigate('connections');}}/>;
   if(panel?.kind==='places')return <JourneyPlacesPanel journeyId={panel.journeyId} onBack={()=>backToTrip(panel.tripId)} onOpenMap={view=>{if(canNavigate())setPanel({kind:'map',view:safeMapView(view),tripId:panel.tripId});}}/>;
   if(panel?.kind==='photos')return <TripPhotosScreen {...props} journeyId={panel.journeyId} onBack={()=>{if(canNavigate())setPanel({kind:'map',view:panel.view,tripId:panel.tripId});}}/>;
