@@ -127,5 +127,9 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
       </View>}
       {route==='home'?<HomeScreen {...props}/>:route==='calendar'?<CalendarScreen {...props}/>:route==='tasks'||route==='shopping'?<ListScreen key={route} kind={route} {...props}/>:route==='finance'?<FinanceScreen {...props}/>:route==='investments'?<InvestmentsScreen {...props}/>:route==='trips'?<TripsScreen {...props} onReschedulePending={onReschedulePending}/>:route==='photos'?<PhotosScreen {...props}/>:route==='assistant'?<AssistantScreen {...props}/>:route==='inventory'?<InventoryScreen {...props}/>:route==='map'?<MapWorkspace {...props}/>:route==='connections'?<AccountsScreen {...props} authResult={authResult}/>:route==='devices'?<DevicesScreen {...props}/>:<MoreScreen {...props}/>}
     </View>
-  </AppShell>{editor&&<ItemEditor key={actor+':'+editor.key} kind={editor.kind} item={editor.item} onDismiss={()=>setEditor(current=>current?.key===editor.key?null:current)}/>}<Snackbar visible={!!notice} onDismiss={()=>setNotice('')} duration={5000} action={{label:'知道了',onPress:()=>setNotice('')}}>{notice}</Snackbar></>;
+  </AppShell>{editor&&<ItemEditor key={actor+':'+editor.key} kind={editor.kind} item={editor.item} onDismiss={()=>setEditor(current=>current?.key===editor.key?null:current)}/>}
+    {/* Unmount dismissed notices so Paper's previous hide animation cannot hide the next one. */}
+    {!!notice&&<Snackbar key={actor+':'+notice} visible onDismiss={()=>setNotice(current=>current===notice?'':current)} duration={5000}
+      action={{label:'知道了',onPress:()=>setNotice(current=>current===notice?'':current)}}>{notice}</Snackbar>}
+  </>;
 }
