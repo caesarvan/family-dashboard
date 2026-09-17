@@ -581,31 +581,63 @@ def create_app(config=None):
             response.set_cookie("household_tv", key, secure=app.config["SESSION_COOKIE_SECURE"], httponly=True, samesite="Strict", max_age=90*86400)
         return response
 
+    def device_member(con):
+        """Verify the actual credential inside the caller's fresh transaction."""
+        require_member()
+        current = sessions.current(con)
+        original = getattr(g, 'member_session', {})
+        if (current['owner'] != g.actor['id'] or current['auth_version'] != g.actor.get('auth_version')
+                or current['id'] != original.get('id')
+                or g.actor.get('householdId') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+            raise Problem('会话已失效，请重新登录', 401)
+
     @app.post("/api/pair/approve")
     def pair_approve():
+        require_member()
         limited("pair_approve", 20)
         data = body()
-        focus = data.get("focus", g.actor["id"])
-        check_owner(focus, db)
-        row = db().execute("SELECT * FROM devices WHERE code=? AND approved=0 AND expires>?", (str(data.get("code", "")).replace(" ", "").upper(), time.time())).fetchone()
-        if not row:
-            raise Problem("配对码不正确或已过期")
+        code = str(data.get("code", "")).replace(" ", "").upper()
         name = text_field(data.get("name", "家庭电视"), "设备名称", 30)
         view = calendar_view(data.get('calendarView', 'today'))
-        db().execute("UPDATE devices SET approved=1,code=NULL,name=?,focus=?,calendar_view=?,expires=? WHERE id=?", (name, focus, view, time.time()+90*86400, row["id"]))
-        audit("pair_device", row["id"])
-        db().commit()
+        con = db()
+        con.execute('BEGIN IMMEDIATE')
+        try:
+            device_member(con)
+            focus = data.get("focus", g.actor["id"])
+            check_owner(focus, db)
+            row = con.execute("SELECT id FROM devices WHERE code=? AND approved=0 AND expires>?", (code, time.time())).fetchone()
+            if not row:
+                raise Problem("配对码不正确或已过期")
+            # A code is consumed once, including competing member approvals.
+            n = con.execute("UPDATE devices SET approved=1,code=NULL,name=?,focus=?,calendar_view=?,expires=? WHERE id=? AND code=? AND approved=0 AND expires>?",
+                            (name, focus, view, time.time()+90*86400, row['id'], code, time.time())).rowcount
+            if not n:
+                raise Problem("配对码不正确或已过期")
+            audit("pair_device", row['id'])
+            device_member(con)
+            con.commit()
+        except BaseException:
+            con.rollback()
+            raise
         return jsonify(ok=True)
 
     @app.get("/api/devices")
     def devices():
         require_member()
-        rows = db().execute("SELECT id,name,focus,calendar_view AS calendarView,revision,created_at,display_layout FROM devices WHERE approved=1 AND expires>?", (time.time(),))
-        result = []
-        for row in rows:
-            item = dict(row)
-            item['layout'] = stored_layout(item.pop('display_layout'))
-            result.append(item)
+        con = db()
+        con.execute('BEGIN')
+        try:
+            device_member(con)
+            rows = con.execute("SELECT id,name,focus,calendar_view AS calendarView,revision,created_at,display_layout FROM devices WHERE approved=1 AND expires>?", (time.time(),))
+            result = []
+            for row in rows:
+                item = dict(row)
+                item['layout'] = stored_layout(item.pop('display_layout'))
+                result.append(item)
+        finally:
+            con.rollback()
+        # A concurrent logout must be observed outside the earlier read snapshot.
+        device_member(con)
         return jsonify(result)
 
     @app.patch('/api/devices/<uid>')
@@ -617,27 +649,42 @@ def create_app(config=None):
         layout = validate_layout(data['layout'], Problem) if 'layout' in data else None
         con = db()
         con.execute('BEGIN IMMEDIATE')
-        row = con.execute('SELECT * FROM devices WHERE id=? AND approved=1 AND expires>?', (uid, time.time())).fetchone()
-        if not row:
-            raise Problem('电视不存在或配对已过期', 404)
-        name = text_field(data.get('name', row['name']), '设备名称', 30)
-        focus = data.get('focus', row['focus'])
-        check_owner(focus, db)
-        view = calendar_view(data.get('calendarView', row['calendar_view']))
-        layout_json = json.dumps(layout, ensure_ascii=False) if layout is not None else row['display_layout']
-        n = con.execute('UPDATE devices SET name=?,focus=?,calendar_view=?,display_layout=?,revision=revision+1 WHERE id=? AND revision=? AND approved=1 AND expires>?',
-                         (name, focus, view, layout_json, uid, data['revision'], time.time())).rowcount
-        if not n:
-            raise Problem('电视设置已更新，请刷新后重试', 409)
-        audit('update_device', uid)
-        con.commit()
+        try:
+            device_member(con)
+            row = con.execute('SELECT * FROM devices WHERE id=? AND approved=1 AND expires>?', (uid, time.time())).fetchone()
+            if not row:
+                raise Problem('电视不存在或配对已过期', 404)
+            name = text_field(data.get('name', row['name']), '设备名称', 30)
+            focus = data.get('focus', row['focus'])
+            check_owner(focus, db)
+            view = calendar_view(data.get('calendarView', row['calendar_view']))
+            layout_json = json.dumps(layout, ensure_ascii=False) if layout is not None else row['display_layout']
+            n = con.execute('UPDATE devices SET name=?,focus=?,calendar_view=?,display_layout=?,revision=revision+1 WHERE id=? AND revision=? AND approved=1 AND expires>?',
+                             (name, focus, view, layout_json, uid, data['revision'], time.time())).rowcount
+            if not n:
+                raise Problem('电视设置已更新，请刷新后重试', 409)
+            audit('update_device', uid)
+            device_member(con)
+            con.commit()
+        except BaseException:
+            con.rollback()
+            raise
         return jsonify(ok=True)
 
     @app.delete("/api/devices/<uid>")
     def revoke_device(uid):
-        db().execute("DELETE FROM devices WHERE id=?", (uid,))
-        audit("revoke_device", uid)
-        db().commit()
+        require_member()
+        con = db()
+        con.execute('BEGIN IMMEDIATE')
+        try:
+            device_member(con)
+            con.execute("DELETE FROM devices WHERE id=?", (uid,))
+            audit("revoke_device", uid)
+            device_member(con)
+            con.commit()
+        except BaseException:
+            con.rollback()
+            raise
         return jsonify(ok=True)
 
     register_accounts(app, db, Problem, body, require_member, limited)
