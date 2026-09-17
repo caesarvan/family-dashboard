@@ -1,6 +1,6 @@
 # D：家庭隔离与协作连续验收
 
-脚本：`tests/browser_household_isolation_chain_check.py`。作者基线 `caf34d5a825716fe2ff0aaf363df0d4412c71e91`。这是下一批验收候选，仅做静态检查，尚未运行浏览器；不影响当前家庭成员发布。
+脚本：`tests/browser_household_isolation_chain_check.py`。作者基线 `caf34d5a825716fe2ff0aaf363df0d4412c71e91`。本次独立真实本地连续链单次 6/6 通过，Root 逐看三图后通过可见视口审查。脚本与本文待作为独立测试／文档批次合入，未包含在当前家庭成员发布包中；不把本地验收当作生产流程验证。
 
 ## 六个连续检查点
 
@@ -26,6 +26,25 @@
 输出独占 `test-results/household-isolation-chain-<UTC>/`，包含执行脚本、完整结果与三张有限可见视口截图：共享地图、管理员未知状态、新登录的本人账户。截图不自动视为人工视觉通过，也不扩展为全站尺寸／主题矩阵。
 
 脚本必须单独传作者 `--expected-harness-head` 与 `--expected-harness-sha256`；受验应用另传 `--source-root`、`--expected-head`、`--bundle`、`--expected-build-evidence`。执行前后核对双方 Git HEAD、tree、clean、作者两文件、全部受验 tracked 源码、构建输入、导出文件及实际复用 fixture 字节。受验应用可以不包含本次新脚本，不把作者 HEAD 当成应用 HEAD。只能在非作者审查后按协调者给定的最终应用与构建身份运行。
+
+## 本次实际结果
+
+2026-09-18 05:34:44（北京时间）结束，单次 30.930 秒、exit 0、stderr 为空；上述六个检查点全部 `passed`，无失败或未执行项。脚本先经 contract 非作者源码审查，再按 Root 授权执行一次，没有重跑。
+
+| 固定身份／原件 | 值 |
+| --- | --- |
+| 受验应用 HEAD／tree | `93535bced1a3f0181a3ee37a53c15243ca192e9d`／`64c02ab1996836a5e6cc783b17f279c9637499f5` |
+| R2 build evidence SHA | `dcff1b639f1ae3f9d9447258404025b9fb47938aaf0c37f43b347dd136b18b3f` |
+| 执行 harness HEAD／文件 SHA | `e53e497c9020de9e0649e93605a7ad771229ec71`／`40396c4edc68974c9e3a6020f26634fb10ec311be6a837edda03d263e60d51e9` |
+| 浏览器 result SHA | `17c96dad0dd17d9f398c0dd899f67f483e0092af757b3bd22982a6deea2ecfbf` |
+| invocation result SHA | `b5db803a83031a6fce407fc71da60f5f6e4f760e2d86497b2f801a6b7adf263d` |
+| Root visual review SHA | `728d2d5fefc4b5ffb869b88ed4ef3b4c6213508971e6e55c424e572c96d4211c` |
+
+原件分别保存在作者 worktree 的 `test-results/household-isolation-chain-20260917T213414781654Z/` 与 `test-results/d-chain-invocation-20260917T213413989643Z/`；后者保留精确命令和 stdout/stderr。独立视觉报告为私有 access 目录的 `household-isolation-chain-visual-review-20260918-r1.json`，绑定上述报告及三图 SHA。
+
+实际撤销 A2 两个会话，authVersion 从 2 到 3；两个旧 cookie 的 18 次读取和 2 次写入均返回 401。A/B 两户业务摘要与 B 户认证状态保持，旧图片 blob 已释放，新登录读取本人数据成功。730 个 tracked 源文件、23 个导出和 9 个 fixture 前后相同；双方 HEAD／clean、构建输入与证据绑定守卫通过，临时目录已清理，页面错误／外网请求／生产写入均为 0。
+
+Root 实际查看 `shared-map-1280.png`、`revoke-unknown-390.png`、`fresh-owner-account-390.png`，结论为 `PASS_VISIBLE_VIEWPORT`。可见的共享地点详情／地图下部、撤销结果未知状态和新登录本人账户无视觉阻断；未覆盖整张地图或全部内部滚动内容。
 
 ## 解释边界
 
