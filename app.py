@@ -257,7 +257,6 @@ def create_app(config=None):
     frontend_home = register_frontend_runtime(app, ROOT / 'static')
 
     @app.get("/")
-    @app.get("/tv")
     @app.get("/demo")
     def index():
         if request.path == '/':
