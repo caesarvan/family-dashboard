@@ -45,6 +45,14 @@
 <a id="投资持仓导入候选接口"></a>
 
 
+## 旅行分段编辑快照（开发候选）
+
+本批不新增路由或表。`GET /api/journeys/templates` 增加 `capabilities.editSourceSnapshot:true`；新版编辑同时要求它与 `supportedSchemaVersions` 中的 2。`GET /api/journeys/<id>` 返回同一数据库快照内的计划及关联记录。
+
+`POST /api/journeys/preview` 针对已有 `journeyId` 可带 `expectedEntities`，即进入编辑时全部关联 trip、准备、采购及日程的实体编号→revision。新版必须提交该原始版本表；工作流版本、任一实体版本或完整关联集合变化返回 `409 stale_edit_source`，不能悄悄改用新版本覆盖草稿。省略字段的旧客户端保持兼容；格式错误为 400。
+
+普通旅行预览有效期为 1800 秒，过期 apply 为 409。未知提交只按原 token／idempotencyKey 核对或重试；历史回执不等于当前详情，也不证明云端已同步。真实事务、撤权与兼容测试见 [快照契约](EXPO-JOURNEY-SEGMENTS-API.md)及[验收](EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md)，此段不表示候选已发布。
+
 ## 家庭例行计划接口
 
 新版家庭例行计划已于 2026-09-17 19:21:11（北京时间）发布，复用原三张表，补充确认回执读回及过期恢复。前端恢复契约见 [Expo 例行计划 API](EXPO-ROUTINES-API.md)，实际安装状态仍以 [HANDOFF](HANDOFF.md) 为准。

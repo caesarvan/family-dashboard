@@ -409,6 +409,7 @@ node --test tests/test_calendar_views.js
 | [旅行资料与预订凭证](docs/JOURNEY-DOCUMENTS.md) | 文件格式、五个接口、私有与共享范围、幂等重放、删除旅行保留资料及迁移 |
 | [旅行资料发布控制器](docs/JOURNEY-DOCUMENTS-RELEASE.md) | 一次性 42→43、候选与镜像绑定、READY 和原始证据合同、失败保全与运维边界 |
 | [项目规则](AGENTS.md)／[Git 分支与审查流程](docs/GIT-WORKFLOW.md) | 独立 worktree、任务分支、审查记录、集成与主分支合并；Git bundle 联合开发 |
+| [新版旅行分段](docs/EXPO-JOURNEY-SEGMENTS.md)／[快照 API](docs/EXPO-JOURNEY-SEGMENTS-API.md)／[验收](docs/EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md) | 开发候选；城市、航班、住宿、活动，明确预览与保存、并发核对和原操作恢复，尚未上线 |
 | [家庭例行计划](docs/ROUTINES.md)／[新版界面](docs/EXPO-ROUTINES.md)／[验收](docs/EXPO-ROUTINES-ACCEPTANCE.md) | 周期模板、未来日期、预览确认、下一期生成、共享导出与成员权限；新版已发布，证据见验收页 |
 | [采购实付核对](docs/SHOPPING-SETTLEMENT.md) | 本人来源、CNY 整项替换、独立完成状态、预览／确认／撤销、旅行保护与私有导出 |
 | [同步状态与问题处理](docs/SYNC-HEALTH.md) | 全来源新鲜度、本人问题详情、只读接口、失败快照和原模块处理入口 |
