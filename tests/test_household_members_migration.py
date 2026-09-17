@@ -176,6 +176,32 @@ def test_initializer_rolls_back_ddl_if_role_update_fails(group, monkeypatch):
     assert migration.snapshot(root) == before
 
 
+def test_snapshot_rejects_users_change_between_complete_and_projected_reads(group, monkeypatch):
+    root, _, _, _, _ = group
+    original = migration.users_projection
+    def changed(path, expected, **kwargs):
+        with closing(sqlite3.connect(path)) as con:
+            con.execute("UPDATE users SET name='new synthetic name' WHERE id='member1'"); con.commit()
+        return original(path, expected, **kwargs)
+    monkeypatch.setattr(migration, 'users_projection', changed)
+    with pytest.raises(RuntimeError, match='users_changed_during_snapshot'): migration.snapshot(root)
+
+
+@pytest.mark.parametrize('damage', ['live-row','backup-row'])
+def test_preflight_refuses_drift_before_any_initializer(group, monkeypatch, damage):
+    root, before, backup, schema, _ = group
+    target = root/'household.sqlite3'
+    if damage == 'backup-row':
+        manifest = json.loads((root/'backups'/backup['manifest']).read_text())
+        target = root/next(x['path'] for x in manifest['snapshots'] if x['path'].startswith('backups/household-'))
+    with closing(sqlite3.connect(target)) as con:
+        con.execute("UPDATE users SET password='changed synthetic password' WHERE id='member1'"); con.commit()
+    retained = migration.snapshot(root)
+    monkeypatch.setattr(household_members, 'init_schema', lambda *_: pytest.fail('Preflight must finish before DDL'))
+    with pytest.raises(RuntimeError): migration.migrate(root, before, backup, schema)
+    assert migration.snapshot(root) == retained
+
+
 @pytest.mark.parametrize('damage', ['user-row','audit-row','sequence','user-schema','other-schema','registry','missing-household','roles'])
 def test_live_sql_tampering_is_rejected_by_exact_migration_or_restore(group, damage):
     root, before, backup, schema, _ = group

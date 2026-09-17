@@ -48,7 +48,7 @@ def schema_definition():
             'baseColumns': old_columns, 'columns': columns, 'foreignKeys': []}
 
 
-def _users_projection(path, expected, *, immutable=False):
+def users_projection(path, expected, *, immutable=False):
     """Bind an extra projection to the unchanged complete users fingerprint."""
     uri = Path(path).resolve(strict=True).as_uri() + '?mode=ro' + ('&immutable=1' if immutable else '')
     with closing(sqlite3.connect(uri, uri=True)) as con:
@@ -74,7 +74,7 @@ def snapshot(root):
     result = media.snapshot(root)
     # The existing registry/tables/schema/rows fingerprints remain intact.
     # Only hashes and counts of the original columns/roles are added, no PII.
-    result['usersProjection'] = {uid: _users_projection(media.checked_path(root, media.relative_database(uid)), value['tables']['users'])
+    result['usersProjection'] = {uid: users_projection(media.checked_path(root, media.relative_database(uid)), value['tables']['users'])
                                  for uid, value in result['households'].items()}
     return result
 
@@ -151,7 +151,7 @@ def validate_backup(root, before, backup):
         match = re.fullmatch(r'(backups|spaces/([a-f0-9]{24})/backups)/(household|platform)-[0-9TZ]+\.sqlite3', item['path'])
         if match[3] == 'household':
             uid = match[2] or 'default'
-            projected = _users_projection(media.checked_path(root, item['path']), before['households'][uid]['tables']['users'], immutable=True)
+            projected = users_projection(media.checked_path(root, item['path']), before['households'][uid]['tables']['users'], immutable=True)
             need(projected == before['usersProjection'][uid], 'backup_users_projection_changed')
     return proof
 
