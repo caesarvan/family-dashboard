@@ -23,6 +23,7 @@ export type ScreenProps = {
   onAppearancePending?: (message: string | null) => void;
   onDocumentsPending?: (pending: boolean) => void;
   onRoutinesPending?: (pending: boolean) => void;
+  onMembersPending?: (pending: boolean) => void;
   onSegmentsPending?: (pending: boolean) => void;
   onTripImportPending?: (pending: boolean) => void;
   onFinanceSourcePending?: (pending: boolean) => void;
