@@ -1,6 +1,6 @@
 # 财务中枢 HTTP 契约
 
-**历史发布记录：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 当时为 106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。当前实际部署以 [README](../README.md) 为准；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。账本分页与文件金额校验已于 2026-09-16 13:24:33（北京时间）发布，当前共 107 个方法／路径模板，不增加表或依赖。
+**历史发布记录：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 当时为 106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。当前实际部署以 [README](../README.md) 为准；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。账本分页与文件金额校验已于 2026-09-16 13:24:33（北京时间）发布，当次共 107 个方法／路径模板，不增加表或依赖。当前线上仍为 55 张户内表；下述手动账户 58 表候选尚未发布。
 
 按 [finance_hub.py](../finance_hub.py) 核对。该文件直接声明既有 15 个 HTTP 操作及完整账本分页 GET，共 16 个；其中 2 个账单／订单文件导入接口详见 [FINANCE-IMPORT](FINANCE-IMPORT.md)，本文补齐读取、共享汇总、交易核对、订单/支付/退款关联、预算和投资记录。基础财务快照 `/api/finance`、`/api/private-finance` 与历史基线接口仍见 [API](API.md)，不能与新账本重复相加。
 
@@ -8,7 +8,17 @@
 
 **投资增量已于 2026-09-15 08:56:01 发布：** 新 [investment_import.py](../investment_import.py) 由 `register_finance_hub()` 登记三个持仓模板／预览／确认接口，完整契约见 [投资持仓整理表导入](INVESTMENT-IMPORT.md)。不改变已发布账单／订单导入的请求和签名规则。
 
+## 本人手动资产／负债账户（候选）
+
+候选通过独立 `/api/finance-accounts` 提供列表、新建、修改／归档、按日估值、历史分页和精确操作回执六个方法／路径；[操作索引](API.md)、[完整 DTO](FINANCE-ACCOUNTS-API.md) 和[三表关系](DATA-MODEL.md#finance-accounts58)分别说明。它不属于下文 finance-hub 的原币字符串／币种别名规则：写入 `amountCents` 为 null 或 `0..100000000000000` 的严格整数分，currency 为三位大写字母，kind 为 asset／liability；币种与 kind 创建后固定，不查询机构、不自动连接银行。
+
+列表必须提供 asOf，可选当前归档范围 status（默认 active）。每账户显示不晚于该日期的最近估值及其实际日期；null 金额、零值和日期前无记录不混同。响应 scope 固定 `manual_accounts_only`；totals 的 knownAssetCents／knownLiabilityCents／knownNetCents 为精确十进制字符串，净额可负，各币种独立。known／unknown／missing 计数区分覆盖，olderCount 提醒估值日期较早；仅为所选账户已知部分，不宣称完整当日资产负债，更不与来源基线、持仓、消费或公共资金重复相加。
+
+本人权限、同源／CSRF、账户 revision 和持久 requestId 同时生效。POST／PATCH／PUT 返回 Receipt，读取回执后仍需 GET 当前列表／估值历史；`GET /api/finance-accounts/operations/<requestId>` 的 found=false 不是未提交证明。没有 DELETE；归档可恢复，但历史回执不回滚当前状态。账户与估值只进本人数据，候选个人 ZIP 已接入归档账户、全部估值及最小操作摘要，不扩展 includeShared 权限，见 [导出白名单](FINANCE-ACCOUNTS-PORTABILITY.md)。
+
 ## 通用约定
+
+以下金额输入与币种归一化约定适用于本文件既有 finance-hub 操作；上节账户模块遵循其独立严格 DTO。
 
 - 所有接口要求成员登录，电视无权访问；所有写请求为 JSON，带有效 `X-CSRF-Token` 且同源。
 - 当前成员由服务端会话确定。个人交易、订单、投资、预算、批次仅该成员可读写，不能通过 `owner` 参数选择他人；多家庭由外层空间路由隔离数据库。
