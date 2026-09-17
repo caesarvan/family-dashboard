@@ -17,6 +17,7 @@ def historical_without_investment_operations(monkeypatch):
     """This suite models schemas predating the 55th operation-receipt table."""
     import investment_operations
     monkeypatch.setattr(investment_operations, "INVESTMENT_OPERATIONS_SCHEMA_SQL", "")
+    monkeypatch.setattr('app.register_finance_accounts', lambda *_args, **_kwargs: None)
 
 
 @pytest.fixture(params=['media47','media48'])
