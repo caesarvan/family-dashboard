@@ -1,6 +1,6 @@
 # Expo 日程与清单触控、密度
 
-本轮为前端候选，基线 `ab35be37a06931135d05f2ef886eda98a2db10d3`；R2 真实临时浏览器 5／5 流程通过，18 图可见区域已逐张视查，尚未部署。仅调整 `CalendarScreen.tsx`、`ListScreen.tsx`，沿用[官网风格](EXPO-SITE-STYLE.md)和[成员外观](EXPO-APPEARANCE.md)；冻结身份、原件与失败修正见 [集中验收](EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md)。
+本轮已于 2026-09-17 18:13:25（北京时间）随旅行资料版发布；R2 真实临时浏览器 5／5 流程通过，18 图可见区域已逐张视查。仅调整 `CalendarScreen.tsx`、`ListScreen.tsx`，沿用[官网风格](EXPO-SITE-STYLE.md)和[成员外观](EXPO-APPEARANCE.md)；最终运行文件与受验字节一致，实际安装身份、原件与失败修正见 [集中验收](EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md#expo-documents-release)。
 
 ## 使用变化
 

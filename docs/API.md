@@ -1,10 +1,10 @@
 # 家庭看板接口文档
 
-当前部署身份见 [HANDOFF](HANDOFF.md)，已发布结构为 55 张户内表与两张平台注册表。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。本轮 Expo 旅行资料候选复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+当前部署身份见 [HANDOFF](HANDOFF.md)，已发布结构为 55 张户内表与两张平台注册表。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
 
-## 本地已验持仓候选：三条新增读取接口
+## 已发布持仓：三条读取接口
 
-候选源码 `753c7a3` 尚未部署，完整字段和状态码见 [持仓 API](INVESTMENTS-API.md)，使用见 [Expo 持仓](EXPO-INVESTMENTS.md)，实际验证见 [候选验收](VALIDATION.md#expo-holdings-candidate)。
+这三条接口已于 2026-09-17 06:15:34 随持仓版发布，完整字段和状态码见 [持仓 API](INVESTMENTS-API.md)，使用见 [Expo 持仓](EXPO-INVESTMENTS.md)，实际验证见 [持仓发布验收](VALIDATION.md#expo-holdings-release)。
 
 | 方法 | 路径 | 用途 |
 | --- | --- | --- |
@@ -12,7 +12,7 @@
 | GET | `/api/finance-hub/investments/operations/<rid>` | 按 32 位原 requestId 读取手工操作的历史结果；不接受查询参数 |
 | GET | `/api/finance-hub/investments/imports/receipts` | 仅接受唯一的 `sourceName`、`sourceDigest`，读取原文件的历史确认回执 |
 
-三者均仅本人当前家庭可读：匿名 401、电视 403；未找到回执返回 404，但不能据此认定在途写入不会提交。原 POST／PATCH／DELETE 路径保留，新界面附原 requestId 并在重试时保持完整内容与版本；原文件确认仍只提交 previewToken。读到回执后另读当前持仓，不根据历史结果复活记录。持久化需 [54→55 候选迁移](DATA-MODEL.md#investment-operations55)，没有新银行或云账户连接。
+三者均仅本人当前家庭可读：匿名 401、电视 403；未找到回执返回 404，但不能据此认定在途写入不会提交。原 POST／PATCH／DELETE 路径保留，新界面附原 requestId 并在重试时保持完整内容与版本；原文件确认仍只提交 previewToken。读到回执后另读当前持仓，不根据历史结果复活记录。持久化需 [已完成的 54→55 迁移说明](DATA-MODEL.md#investment-operations55)，没有新银行或云账户连接。
 
 **历史版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 当时旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
 
@@ -59,11 +59,11 @@
 
 ## 投资持仓导入接口
 
-2026-09-15 08:56:01 发布新增 GET /api/finance-hub/investments/imports/template、POST /api/finance-hub/investments/imports/preview 及 POST /api/finance-hub/investments/imports/confirm，均要求本人成员身份；POST 适用同源与 CSRF 校验，电视无权访问。接口完整请求、响应、文件列、金额/日期规则、来源映射、预览期限、409 和重复确认见 [投资持仓契约](INVESTMENT-IMPORT.md)。该增量已发布；当前完整索引结构为 106 个 Flask 方法/路径模板、43 张户内表与 2 张平台表，基础契约和历次版本不混同，实际验收见 [VALIDATION](VALIDATION.md)。
+2026-09-15 08:56:01 发布新增 GET /api/finance-hub/investments/imports/template、POST /api/finance-hub/investments/imports/preview 及 POST /api/finance-hub/investments/imports/confirm，均要求本人成员身份；POST 适用同源与 CSRF 校验，电视无权访问。接口完整请求、响应、文件列、金额/日期规则、来源映射、预览期限、409 和重复确认见 [投资持仓契约](INVESTMENT-IMPORT.md)。该增量已发布；现行完整结构见 [路由与存储索引](PLATFORM-ROUTES.md)，基础契约和历次版本不混同，实际验收见 [VALIDATION](VALIDATION.md)。
 
 ## 同步状态增量接口
 
-2026-09-15 10:43:53 已发布只读 `GET /api/sync-health`（成员专用），以及既有 `GET /api/state` 中的 `sync.health`（家庭聚合，TV 可读）。它不写数据库、不访问第三方、不重试队列；完整字段、原因码、5 分钟阈值、发布问题权限与 503 见 [同步状态契约](SYNC-HEALTH.md)。该 10:43:53 历史版本总计 95 个 Flask 方法/路径模板且无 schema 变化；当前版本结构为 106 个方法/路径模板、43 张户内表与 2 张平台表。
+2026-09-15 10:43:53 已发布只读 `GET /api/sync-health`（成员专用），以及既有 `GET /api/state` 中的 `sync.health`（家庭聚合，TV 可读）。它不写数据库、不访问第三方、不重试队列；完整字段、原因码、5 分钟阈值、发布问题权限与 503 见 [同步状态契约](SYNC-HEALTH.md)。该 10:43:53 历史版本总计 95 个 Flask 方法/路径模板且无 schema 变化；当时后续版本扩展到 106 个方法/路径模板、43 张户内表与 2 张平台表；现行结构见页首及路由索引。
 
 ## 1. 通用约定
 
