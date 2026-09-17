@@ -189,8 +189,11 @@ class Run(DeviceRun):
         self.configure(phone, first, theme='light', density='compact', hide_finance=True, tasks_first=True)
         # No television reload: observe actual polling installing the phone change.
         expect(screen1.get_by_test_id('tv-card-finance')).to_have_count(0, timeout=16000)
-        assert screen1.locator('[data-testid^="tv-card-"]').evaluate_all(
-            '(nodes)=>nodes.map(n=>n.dataset.testid)') == ['tv-card-tasks', 'tv-card-calendar', 'tv-card-shopping', 'tv-card-trips']
+        # Paper Card also emits <testID>-container/-outer-layer wrappers.
+        # Compare the five real card contents, not their implementation layers.
+        actual_order = screen1.get_by_test_id(re.compile(r'^tv-card-(calendar|finance|tasks|shopping|trips)$')).evaluate_all(
+            '(nodes)=>nodes.map(n=>n.dataset.testid)')
+        assert actual_order == ['tv-card-tasks', 'tv-card-calendar', 'tv-card-shopping', 'tv-card-trips'], actual_order
         assert screen1.get_by_test_id(BOARD).evaluate('(n)=>getComputedStyle(n).backgroundColor') == 'rgb(255, 255, 255)'
         assert self.device(phone.context, second) == before_second
         assert self.get(phone.context, '/api/dashboard-layout') == member_layout
@@ -525,6 +528,9 @@ def main():
                                 try:
                                     screen.screenshot(path=str(out / f'failure-tv-{n+1}.png'), full_page=False)
                                     (out / f'failure-tv-{n+1}-aria.txt').write_text(screen.locator('body').aria_snapshot(), encoding='utf-8')
+                                    (out / f'failure-tv-{n+1}-card-ids.json').write_text(json.dumps(
+                                        screen.locator('[data-testid^="tv-card-"]').evaluate_all('(nodes)=>nodes.map(n=>n.dataset.testid)'),
+                                        ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
                                 except Exception:
                                     pass  # Preserve the original failure if a closed page cannot be captured.
                         raise
