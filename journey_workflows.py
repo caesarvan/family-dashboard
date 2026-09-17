@@ -321,11 +321,21 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                 raise Problem('冲突选择已失效或包含未知字段，请重新预览', 409)
         return effective, conflicts, preserved, resolved, holds
 
-    def current_member(con, expected=None):
+    def member_identity():
         require_member()
+        actor, original = g.actor, getattr(g, 'member_session', {})
+        identity = (original.get('id'), actor['id'], actor['auth_version'], actor.get('householdId', 'default'))
+        if (not identity[0] or original.get('owner') != identity[1] or original.get('auth_version') != identity[2]
+                or identity[3] != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+            raise Problem('登录状态已变化，请重新登录并重新预览', 401)
+        return identity
+
+    def current_member(con, expected=None, captured=None):
+        original = member_identity() if captured is None else captured
+        if member_identity() != original:
+            raise Problem('登录状态已变化，请重新登录并重新预览', 401)
         member = app.extensions['member_sessions'].current(con)
-        if (member['owner'] != g.actor['id'] or member['auth_version'] != g.actor['auth_version']
-                or g.actor.get('householdId', 'default') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')
+        if ((member['id'], member['owner'], member['auth_version'], original[3]) != original
                 or expected is not None and expected != {'id': member['id'], 'authVersion': member['auth_version']}):
             raise Problem('登录状态已变化，请重新登录并重新预览', 401)
         return {'id': member['id'], 'authVersion': member['auth_version']}
@@ -335,20 +345,22 @@ def register_journeys(app, db, Problem, body, require_member, audit):
 
     @contextmanager
     def edit_read_snapshot(member=True):
+        captured = member_identity() if member else None
         con = ready()
         # Legacy-cookie resolution can leave an implicit UPDATE transaction.
         # Never carry that earlier snapshot into this request's source reads.
         con.rollback()
         try:
-            con.execute('BEGIN')
-            claim = None
             if member:
-                captured = getattr(g, 'member_session', {})
-                claim = current_member(con, {'id': captured.get('id'), 'authVersion': captured.get('auth_version')})
+                current_member(con, captured=captured)
+            # Authentication itself can write for legacy cookies. Domain reads
+            # must not retain that write lock or its earlier snapshot.
+            con.rollback()
+            con.execute('BEGIN')
             yield con
             con.rollback()
             if member:
-                current_member(con, claim)
+                current_member(con, captured=captured)
         finally:
             # The fresh check may itself open a legacy-cookie UPDATE transaction.
             con.rollback()
@@ -456,19 +468,12 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         require_member()
         if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}', key):
             raise RescheduleError('操作标识格式不正确')
-        con = ready()
-        try:
-            con.execute('BEGIN')
-            session_claim = current_member(con)
+        with edit_read_snapshot() as con:
             row = con.execute('SELECT result FROM journey_actions WHERE actor=? AND action_key=?', (g.actor['id'], key)).fetchone()
             result = json.loads(row['result']) if row else None
-            con.rollback()
-            current_member(con, session_claim)
             if result is None:
                 return jsonify(error='尚未找到此操作的保存回执；原请求仍可能在处理中', code='operation_not_found'), 404
             return jsonify(found=True, idempotencyKey=key, result=result)
-        finally:
-            con.rollback()
 
     def detail(con, uid):
         row = find_workflow(con, uid)
@@ -613,7 +618,9 @@ def register_journeys(app, db, Problem, body, require_member, audit):
     @app.post('/api/journeys/apply')
     def journey_apply():
         require_member()
+        captured = member_identity()
         con = ready()
+        con.rollback()
         value = body()
         token = value.get('previewToken')
         key = value.get('idempotencyKey')
@@ -651,16 +658,19 @@ def register_journeys(app, db, Problem, body, require_member, audit):
             con.execute('BEGIN IMMEDIATE')
             # Cookie authentication may have been revoked while waiting for
             # account locks. Check it under the same lock as writes and replay.
-            current_member(con, claims.get('session') if claims.get('operation') == 'reschedule' else None)
+            session_claim = current_member(con, claims.get('session') if claims.get('operation') == 'reschedule' else None,
+                                           captured=captured)
             previous = con.execute('SELECT * FROM journey_actions WHERE actor=? AND action_key=?', (g.actor['id'], key)).fetchone()
             if previous:
                 if previous['digest'] != digest:
                     raise Problem('该幂等键已用于其他预览，请重新预览', 409)
                 con.rollback()
+                current_member(con, session_claim, captured=captured)
                 return jsonify(**json.loads(previous['result']), replayed=True)
             previous = con.execute('SELECT * FROM journey_actions WHERE operation_id=?', (claims['operationId'],)).fetchone()
             if previous:
                 con.rollback()
+                current_member(con, session_claim, captured=captured)
                 return jsonify(**json.loads(previous['result']), replayed=True)
             if expired:
                 raise RescheduleError('预览已过期且尚无保存回执，请重新预览', 'stale_preview', 409)
@@ -694,6 +704,7 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                           'calendar': {'local': 'updated', 'cloud': 'status_not_checked', 'icsUrl': f'/api/journeys/{uid}/calendar.ics'}}
                 con.execute('INSERT INTO journey_actions(actor,action_key,operation_id,digest,result,created_at) VALUES(?,?,?,?,?,?)',
                             (g.actor['id'], key, claims['operationId'], digest, pack(result), changed_at))
+                current_member(con, session_claim, captured=captured)
                 con.commit()
                 return jsonify(**result, replayed=False)
             uid, trip_id, plan = claims['journeyId'], claims['tripId'], claims['plan']
@@ -768,12 +779,14 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                       'calendar': {'local': 'created', 'cloud': 'not_requested', 'icsUrl': f'/api/journeys/{uid}/calendar.ics'}}
             con.execute('INSERT INTO journey_actions(actor,action_key,operation_id,digest,result,created_at) VALUES(?,?,?,?,?,?)',
                         (g.actor['id'], key, claims['operationId'], digest, pack(result), changed_at))
+            current_member(con, session_claim, captured=captured)
             con.commit()
             return jsonify(**result, replayed=False), (200 if current else 201)
         except Exception:
             con.rollback()
             raise
         finally:
+            con.rollback()  # Discard legacy resolution writes after a read-only replay.
             locks.close()
 
     @app.get('/api/journeys/<uid>/calendar')
