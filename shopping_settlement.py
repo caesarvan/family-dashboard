@@ -9,6 +9,7 @@ import hashlib
 import json
 import re
 import secrets
+from contextlib import contextmanager
 from datetime import datetime, timezone
 
 from flask import g, jsonify, request
@@ -87,19 +88,42 @@ def register_shopping_settlement(app, db, Problem, body, require_member, audit):
 
     signer = URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='shopping-settlement-preview-v1')
 
-    def authenticated(con):
+    def authenticated(con, expected=None):
         require_member()
         sessions = app.extensions.get('member_sessions')
         if sessions is None:
             raise Problem('暂时无法核对登录状态，请稍后重试', 503)
         current = sessions.current(con)
+        captured = getattr(g, 'member_session', None) or {}
         household = app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')
-        if (current['owner'] != g.actor['id'] or current['auth_version'] != g.actor.get('auth_version')
+        if (current['id'] != captured.get('id') or current['owner'] != captured.get('owner')
+                or current['credential_hash'] != captured.get('credential_hash')
+                or current['auth_version'] != captured.get('auth_version')
+                or current['owner'] != g.actor['id'] or current['auth_version'] != g.actor.get('auth_version')
                 or household != g.actor.get('householdId')):
             raise Problem('登录或家庭已变化，请重新打开', 401)
-        return current['owner'], digest({'household': household, 'owner': current['owner'],
-                                       'session': current['id'], 'credential': current['credential_hash'],
-                                       'authVersion': current['auth_version']})
+        identity = current['owner'], digest({'household': household, 'owner': current['owner'],
+                                            'session': current['id'], 'credential': current['credential_hash'],
+                                            'authVersion': current['auth_version']})
+        if expected is not None and identity != expected:
+            raise Problem('登录或家庭已变化，请重新打开', 401)
+        return identity
+
+    @contextmanager
+    def read_snapshot():
+        con = db()
+        # The global guard already committed registration/bootstrap. Resolving
+        # a legacy cookie may UPDATE expiry; release that write before reading.
+        con.rollback()
+        try:
+            identity = authenticated(con)
+            con.rollback()
+            con.execute('BEGIN')
+            yield con, identity
+            con.rollback()
+            authenticated(con, identity)
+        finally:
+            con.rollback()
 
     def identifier(value, label):
         if not isinstance(value, str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,100}', value):
@@ -285,10 +309,7 @@ def register_shopping_settlement(app, db, Problem, body, require_member, audit):
             raise Problem('搜索或页码格式不正确')
         page = int(request.args.get('page', '0'))
         ids = {key: identifier(request.args[key], '编号') for key in ('transactionId', 'shoppingId', 'linkId') if key in request.args}
-        con = db()
-        try:
-            con.execute('BEGIN')
-            uid, _ = authenticated(con)
+        with read_snapshot() as (con, (uid, _)):
             state = load(con, uid)
             target = state['transactions'].get(ids.get('transactionId'))
             if 'transactionId' in ids and target is None:
@@ -336,27 +357,16 @@ def register_shopping_settlement(app, db, Problem, body, require_member, audit):
                       'payments': payments, 'shopping': shopping, 'links': links, 'warnings': warnings,
                       'pageInfo': {'page': page, 'pageSize': PAGE_SIZE, 'paymentsMore': more_pay,
                                    'shoppingMore': more_shop, 'linksMore': more_links}}
-            con.commit()
             return jsonify(result)
-        except BaseException:
-            con.rollback()
-            raise
 
     @app.post(PREFIX + '/preview')
     def settlement_preview():
         plan = normalized(body())
-        con = db()
-        try:
-            con.execute('BEGIN')
-            uid, context = authenticated(con)
+        with read_snapshot() as (con, (uid, context)):
             *_, dependencies, output = assess(con, uid, plan)
             token = signer.dumps({'version': 1, 'owner': uid, 'context': context, 'plan': plan,
                                   'dependencies': dependencies, 'nonce': secrets.token_hex(24)})
-            con.commit()
             return jsonify(**output, previewToken=token, expiresInSeconds=PREVIEW_SECONDS)
-        except BaseException:
-            con.rollback()
-            raise
 
     @app.post(PREFIX + '/confirm')
     def settlement_confirm():
@@ -376,17 +386,22 @@ def register_shopping_settlement(app, db, Problem, body, require_member, audit):
             raise Problem('预览格式不正确')
         plan = normalized(signed['plan'])
         con = db()
+        con.rollback()
         try:
             con.execute('BEGIN IMMEDIATE')
-            uid, context = authenticated(con)
+            identity = authenticated(con)
+            uid, context = identity
             if signed['owner'] != uid or not secrets.compare_digest(str(signed['context']), context):
                 raise Problem('登录或家庭已变化，请重新预览', 403)
             nonce = digest(signed['nonce'])
             old = con.execute('SELECT result FROM hub_shopping_settlement_receipts WHERE owner=? AND nonce_digest=?', (uid, nonce)).fetchone()
             if old:
                 result = json.loads(old['result'])
-                con.commit()
-                return jsonify(**{**result, 'replayed': True})
+                response = jsonify(**{**result, 'replayed': True})
+                con.rollback()
+                authenticated(con, identity)
+                con.rollback()
+                return response
             try:
                 state, link, pid, sid, dependencies, output = assess(con, uid, plan)
             except Problem as exc:
@@ -446,6 +461,7 @@ def register_shopping_settlement(app, db, Problem, body, require_member, audit):
             con.execute('INSERT INTO hub_shopping_settlement_receipts VALUES(?,?,?,?,?,?,?)',
                         (secrets.token_hex(16), uid, nonce, operation, rid, canonical(result), moment))
             audit('finance.shopping.' + operation, rid)
+            authenticated(con, identity)
             con.commit()
             return jsonify(result)
         except BaseException:
