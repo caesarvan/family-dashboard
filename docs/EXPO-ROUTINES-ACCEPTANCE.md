@@ -1,6 +1,6 @@
 # Expo 家庭例行计划验收
 
-本轮把已有周期家务／采购规则接入新版「更多 → 家庭例行计划」。规则、worker 与表结构保持；预览给出后续三期，明确确认才生成事项。计划在家庭共享，负责人是分工；操作回执只由发起成员读取。尚未发布，真实家庭、云端、长期调度和实体设备未验。
+本轮把已有周期家务／采购规则接入新版「更多 → 家庭例行计划」。规则、worker 与表结构保持；预览给出后续三期，明确确认才生成事项。计划在家庭共享，负责人是分工；操作回执只由发起成员读取。本地 R3 十组真实流程已通过，Linux 与发布仍待完成；真实家庭、云端、长期调度和实体设备未验。
 
 ## 固定实现与审查
 
@@ -35,7 +35,17 @@
 
 R1 已生成的 12 张图覆盖 320／390／1280／1920 的浅色编辑／确认与深色详情，由非执行作者逐张实际查看，可见区域无视觉阻断。`visual-review.json` SHA256 `2195a29ffd2a6ad48233ba91d06e76770c883fb0bb24184b5733f6c19acc9308`；Root 另抽看 390 编辑、1920 确认和 320 深色详情。部分内部滚动区、编辑底部及详情底部未被拍到，不声称整页视觉覆盖；截图通过不改变 R1 功能失败。
 
-R2 已重新实际构建：source `8a9cbc1d85b966e051a64e4568006bce40af5695`／tree `ec0805099fc4055e6f356da2c0639925afda760e`，`expo-routines-build-20260917-r2/build-evidence.json` SHA256 `acce3f2521af2b5534f19051a686a1e8a3a95fe477ad85a8b51a4e7e812e2df0`。与 R1 的所有构建输入及 23 导出摘要逐项相同，变化仅为测试脚本；未重复已通过的 Node、API 或完整类型检查。R2 浏览器、Linux 和生产验收仍待完成，单独提交或合入 main 不代表已部署。
+R2 已重新实际构建：source `8a9cbc1d85b966e051a64e4568006bce40af5695`／tree `ec0805099fc4055e6f356da2c0639925afda760e`，`expo-routines-build-20260917-r2/build-evidence.json` SHA256 `acce3f2521af2b5534f19051a686a1e8a3a95fe477ad85a8b51a4e7e812e2df0`。与 R1 的所有构建输入及 23 导出摘要逐项相同，变化仅为测试脚本；未重复已通过的 Node、API 或完整类型检查。R2 浏览器实际 **3／10，整体失败**，其中原第三组的全部推进与恢复检查通过。第四组把同户另一成员与不同家庭的 token 拒绝都期望为 403；实际不同家庭使用独立签名密钥，先以精确 400「预览凭据无法核对，请保留草稿」拒绝，同户另一成员才返回 403。原件 `worktrees/expo-routines-browser/test-results/expo-routines-20260917T104317497397Z/result.json` SHA256 `5135a236ec20f66b849eb0615a39b077466c4d2bd41832fcb8dd55fc99472eb6` 保留，源码／导出未变，临时夹具清理、零外网／页面错误；12 图仍保留。R1/R2 产品代码及导出逐字节相同，沿用 R1 真实视觉范围，不把相同 UI 的重复截图另算验收。
+
+R2 九模块 collection 仍为 278 唯一项，未执行测试；source `8a9cbc1`，原件目录 `expo-routines-validation-20260917-r2`，collection SHA256 `4bb1b854f53cf66a95d2c09b3f6f070192cfbaf67e2dd470e902890143a786e9`，guard SHA256 `b1849a2014d31f840537f638c973f4832382975060af5b55c2a4c68c0a833938`。`e3290cd238612d34d7f54015416600fe616729aa` 修正两种精确拒绝码并增强零写断言；每组改用独立 Flask／SQLite／签名时钟及临时目录，资源清理后再开始下一组。任何场景或清理失败均保留原异常、移除该组完成数，并使整轮失败；其余独立组继续以便一次查齐问题。该测试与说明增量经 UI agent 非作者审查后合入。产品代码未改，前两轮失败不覆盖或拼接为通过。
+
+R3 实际构建 source `785db20b5abb1b7677fe02417cc055874772e651`／tree `b289eef94c2ed663a2b7f90f21579d859e7b0253`，build-evidence SHA256 `e7a3f3166576976799a7cc7ece81b98978df7a9aedc2f7bd61de869781811d0a`；174 输入与 23 导出继续逐项等于 R1/R2。R3 重新仅收集九模块 278 唯一项，604 源文件前后相同；`expo-routines-validation-20260917-r3/collection.json` SHA256 `0ac8979a387ae9cfa20f060e76f56c2c283f8568f0444953e95337c5fe0a8cb4`，guard SHA256 `5f5dd22286e96fa9c3adc2da620606e986d9e2c61b3a3ccbb1912fb0bb5bcc1b`。本轮来源和失败历史分别保留，不能把各轮的部分完成数相加。
+
+R3 真实临时 Flask／SQLite／Edge 实际 **10／10 独立流程通过**，退出 0。原件 `worktrees/expo-routines-browser/test-results/expo-routines-20260917T105419250478Z/result.json` SHA256 `63d9dd90b572957600fc24cae7afa7a849e92e8ca07b0b415c45dec3ecf4d493`，执行 harness SHA256 `8949911ca4cfea8c24c8d77deadeecf9fd03e415d5dd97ed8456d7da18afcd7c`。十组全部清理完成，scenarioFailures／pageErrors／externalRequests 均为空；604 源及 23 导出前后相同，零生产写入。12 PNG 实际生成并逐摘要核对；产品输入／导出与前两轮相同，沿用 R1/R2 的已视查范围，不重复作无变更视觉检查。
+
+实际通过涵盖待办创建与重启持久化、采购未知／零预算、完成与真实 worker 逐期推进、暂停／恢复／跳过／归档、保存成功但读回失败时旧操作失效、同户共享管理及跨户／TV 隔离、409 保留草稿、已提交／未到达的未知恢复、过期原请求重放与精确 410、后台／离线及迟到账户结果丢弃。每组使用独立虚构家庭，没有成功业务响应替身。签名时钟推进 601 秒、visibility 注入和显式 worker tick 是测试条件，不代表真实经过时间或长期调度验收。
+
+Linux 和生产验收仍待完成，单独提交或合入 main 不代表已部署。
 
 ## 范围边界
 

@@ -1,6 +1,6 @@
 # Expo 例行计划浏览器专项
 
-候选脚本 [`browser_expo_routines_check.py`](../tests/browser_expo_routines_check.py) 已编写，尚未执行。需要另一位作者审查固定提交，再由集成人提供组合源码 HEAD 和真实 Expo export／build-evidence SHA；本文件不代表功能通过或已发布。
+脚本 [`browser_expo_routines_check.py`](../tests/browser_expo_routines_check.py) 已实际执行 R1／R2／R3；R3 十组独立流程全部通过，前两轮失败保留。12 图实际生成，沿用同字节产品的既有视觉范围；Linux 与发布尚待完成。来源、原件、各轮差异及边界见 [集中验收](EXPO-ROUTINES-ACCEPTANCE.md)。
 
 复用现有 finance `BaseRun` 的真实临时 Flask／SQLite／Edge、成员登录及失败截图，不修改旧夹具。所有计划和家庭均为虚构；主操作由可见 UI 发出，辅助准备走真实 API。SQLite 快照比较规则、期次、回执、实体、audit、settings，预览及只读恢复不得改业务记录。故障只丢弃或延迟真实 HTTP 请求／响应，不替换成功业务 JSON。
 
