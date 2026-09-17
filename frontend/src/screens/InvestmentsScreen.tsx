@@ -27,6 +27,7 @@ const fields: { key: keyof InvestmentDraft; label: string; max: number; multilin
   { key: 'note', label: '持仓备注', max: 1000, multiline: true },
 ];
 function HoldingAmounts({ row }: { row: Investment }) {
+  const styles = useStyles();
   return <View style={styles.stackSmall}><Text>原币成本 · {formatInvestmentCents(row.costCents, row.currency)}</Text><Text variant="titleMedium">{row.valueCents === null ? '估值未知' : `已知估值 · ${formatInvestmentCents(row.valueCents, row.currency)}`}</Text><Text>核对日期 · {row.asOf}</Text></View>;
 }
 export default function InvestmentsScreen(props: ScreenProps) {
@@ -35,6 +36,7 @@ export default function InvestmentsScreen(props: ScreenProps) {
   return <InvestmentWorkspace key={household.identityKey} {...props} identityKey={household.identityKey} />;
 }
 function InvestmentWorkspace(props: ScreenProps & { identityKey: string }) {
+  const styles = useStyles();
   const household = useHousehold(), theme = useTheme(), { height } = useWindowDimensions();
   const latest = useRef(household); latest.current = household;
   const alive = useRef(false), active = useRef(false), focused = useRef(false), denied = useRef(false), running = useRef(false);
@@ -229,11 +231,14 @@ function InvestmentWorkspace(props: ScreenProps & { identityKey: string }) {
     </Portal>
   </View>;
 }
-const styles = StyleSheet.create({
-  page: { gap: 20, minWidth: 0 }, stack: { gap: 16 }, stackSmall: { gap: 8 },
-  controls: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
-  filter: { flexGrow: 1, flexShrink: 1, flexBasis: 200, minWidth: 0, backgroundColor: '#fff', marginBottom: 12 },
-  white: { backgroundColor: '#fff', borderRadius: 16, padding: 16, gap: 10, minWidth: 0 },
-  muted: { color: '#687076', fontSize: 13, lineHeight: 20 }, wrap: { flexShrink: 1 },
-  scrollArea: { paddingHorizontal: 0, flexShrink: 1 }, dialogBody: { paddingHorizontal: 24, paddingVertical: 18, gap: 16 }, inputOutline: { borderRadius: 8 },
-});
+function useStyles() {
+  const theme = useTheme();
+  return StyleSheet.create({
+    page: { gap: 20, minWidth: 0 }, stack: { gap: 16 }, stackSmall: { gap: 8 },
+    controls: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+    filter: { flexGrow: 1, flexShrink: 1, flexBasis: 200, minWidth: 0, backgroundColor: theme.colors.surface, marginBottom: 12 },
+    white: { backgroundColor: theme.colors.surface, borderRadius: 16, padding: 16, gap: 10, minWidth: 0 },
+    muted: { color: theme.colors.onSurfaceVariant, fontSize: 13, lineHeight: 20 }, wrap: { flexShrink: 1 },
+    scrollArea: { paddingHorizontal: 0, flexShrink: 1 }, dialogBody: { paddingHorizontal: 24, paddingVertical: 18, gap: 16 }, inputOutline: { borderRadius: 8 },
+  });
+}

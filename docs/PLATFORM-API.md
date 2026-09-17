@@ -232,13 +232,13 @@ POST `/api/spaces/redeem` 无需原成员会话或 CSRF，但要求 JSON、同�
 
 name 为 1～40 字；slug 为 3～32 位小写字母、数字或连字符，必须以字母开头且不能为 home；每个密码 12～128 字。201 返回 ok/name/entry，成员仍需登录。无效/过期/已用邀请返回 403，重复地址或达到默认 30 户容量返回 409。示例密码仅说明字段，不可用于真实部署。
 
-成员自己的 GET/PUT `/api/preferences` 使用同一对象：
+成员自己的 `GET /api/preferences` 返回以下平铺对象（当前源码契约，发布状态见 README）：
 
 ```json
-{"theme":"forest","density":"comfortable","homeView":"today"}
+{"theme":"forest","density":"comfortable","homeView":"today","colorMode":"light","revision":0}
 ```
 
-PUT 必须且只能提交完整三个字段：theme 为 forest/light/ocean，density 为 comfortable/compact，homeView 为 today/week/around。成功返回保存的对象。此接口没有 revision 参数，多个设备并发保存采用最后成功写入；UI 定期刷新偏好时须保留尚未保存的表单草稿。
+`PUT /api/preferences` 只接受 `{ "revision": 0, "changes": { "density": "compact" } }`。`changes` 为非空的已知字段子集；theme 为 forest/light/ocean，density 为 comfortable/compact，homeView 为 today/week/around，colorMode 为 light/dark。成功返回完整平铺对象。版本不符 409；旧无版本写法 400 并提示刷新；同版本同值不增加版本、不审计。经典主题与 Expo 明暗模式分开保存，客户端只提交改动字段。失败保留草稿，已发送后结果不明时先只读核对，不能自动重放。完整事务、存量兼容和错误边界见 [成员显示偏好 API](MEMBER-PREFERENCES-API.md)。
 
 损坏家庭路由 Cookie 的 API 响应为 400 JSON，已注册家庭数据库不可用为 503；响应含 error 和固定的 recoveryUrl `/space/home`。前端只允许这个已知恢复入口，不能跟随任意服务端字符串跳转。存储缺失时不会使用默认家庭密码偷偷重建成员。
 

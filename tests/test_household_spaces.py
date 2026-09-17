@@ -46,11 +46,11 @@ def test_invite_one_use_validation_and_preferences(app):
     assert b.post('/api/spaces/redeem', json={**payload, 'slug': '../../other'}).status_code == 400
     assert b.post('/api/spaces/redeem', json=payload, headers={'Origin': 'https://evil.example'}).status_code == 403
     c, h = member(app)
-    assert c.put('/api/preferences', json={'theme': 'light', 'density': 'compact', 'homeView': 'week'}, headers=h).status_code == 200
+    assert c.put('/api/preferences', json={'revision': 0, 'changes': {'theme': 'light', 'density': 'compact', 'homeView': 'week'}}, headers=h).status_code == 200
     assert c.get('/api/preferences').json['theme'] == 'light'
     other, _ = member(app, 2)
     assert other.get('/api/preferences').json['theme'] == 'forest'
-    assert c.put('/api/preferences', json={'theme': {'x': 1}, 'density': 'compact', 'homeView': 'week'}, headers=h).status_code == 400
+    assert c.put('/api/preferences', json={'revision': 1, 'changes': {'theme': {'x': 1}, 'density': 'compact', 'homeView': 'week'}}, headers=h).status_code == 400
     assert other.post('/api/spaces/invitations', json={}, headers={'X-CSRF-Token': other.get('/api/me').json['csrf']}).status_code == 403
 
 

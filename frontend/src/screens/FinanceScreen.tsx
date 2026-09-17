@@ -32,15 +32,18 @@ const time = (s: string | null | undefined) => s ? s.replace('T', ' ').replace(/
 const decimalDisplay = (value: number) => formatFinanceAmount(value, 'CNY');
 
 function Check({ label, checked, disabled, onPress }: { label: string; checked: boolean; disabled: boolean; onPress: () => void }) {
+  const styles = useStyles();
   const keyboard = Platform.OS === 'web' ? { onKeyDown: (e: React.KeyboardEvent<HTMLElement>) => { if (e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); e.stopPropagation(); if (!e.repeat && !disabled) onPress(); } } } : {};
   return <TouchableRipple {...keyboard} accessibilityRole="checkbox" accessibilityLabel={label} accessibilityState={{ checked, disabled }} aria-checked={checked} aria-disabled={disabled} disabled={disabled} onPress={onPress} style={styles.check}>
     <View style={styles.row} pointerEvents="none" aria-hidden accessibilityElementsHidden importantForAccessibility="no-hide-descendants"><Icon source={checked ? 'checkbox-marked' : 'checkbox-blank-outline'} size={24} /><Text style={styles.grow}>{label}</Text></View>
   </TouchableRipple>;
 }
 function Amount({ cents, currency, prominent = false }: { cents: number; currency: string; prominent?: boolean }) {
+  const styles = useStyles();
   return <Text variant={prominent ? 'headlineSmall' : 'bodyMedium'} style={styles.money}>{formatFinanceAmount(cents, currency)}</Text>;
 }
 function TransactionCopy({ row }: { row: Transaction }) {
+  const styles = useStyles();
   return <View style={styles.stackSmall}><Text variant="titleMedium" style={styles.wrap}>{row.title}</Text><Amount cents={row.amountCents} currency={row.currency} /><Text style={styles.muted}>{row.date} · {sourceLabel(row.source)} · {row.kind === 'orders' ? '订单' : flowLabels[row.flow]} · {row.category}</Text></View>;
 }
 
@@ -50,6 +53,7 @@ export default function FinanceScreen(props: ScreenProps) {
   return <FinanceWorkspace key={household.identityKey} {...props} identityKey={household.identityKey} />;
 }
 function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
+  const styles = useStyles();
   const household = useHousehold(), theme = useTheme(), { height, width } = useWindowDimensions();
   const latest = useRef(household); latest.current = household;
   const alive = useRef(false), active = useRef(false), focused = useRef(false), denied = useRef(false), writing = useRef(false), reading = useRef(false);
@@ -285,10 +289,13 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     </Portal>
   </View>;
 }
-const styles = StyleSheet.create({
-  page: { gap: 20 }, stack: { gap: 16 }, stackSmall: { gap: 7 }, row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }, grow: { flex: 1, minWidth: 0 }, wrap: { flexShrink: 1 }, muted: { color: '#60646c', flexShrink: 1 }, money: { fontVariant: ['tabular-nums'], flexShrink: 1 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, metric: { minWidth: 0, flexBasis: '45%', flexGrow: 1, gap: 6 }, full: { flexBasis: '100%' }, white: { backgroundColor: '#fff', borderRadius: 16, padding: 16, gap: 10, minWidth: 0 },
-  input: { minWidth: 0, backgroundColor: '#fff' }, search: { flexGrow: 1, flexShrink: 1, flexBasis: 180 }, monthInput: { flexGrow: 1, flexShrink: 1, maxWidth: 180, minWidth: 100 }, check: { padding: 8, borderRadius: 10 },
-  notice: { backgroundColor: '#f0f0f3', padding: 16, borderRadius: 16 }, warning: { backgroundColor: '#fff5df', padding: 14, borderRadius: 14, gap: 10 }, pagination: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  dialog: { width: '92%', maxWidth: 640, alignSelf: 'center', borderRadius: 24 }, dialogScroll: { paddingHorizontal: 0, flexShrink: 1 }, dialogContent: { padding: 20, gap: 16 },
-});
+function useStyles() {
+  const theme = useTheme();
+  return StyleSheet.create({
+    page: { gap: 20 }, stack: { gap: 16 }, stackSmall: { gap: 7 }, row: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 }, grow: { flex: 1, minWidth: 0 }, wrap: { flexShrink: 1 }, muted: { color: theme.colors.onSurfaceVariant, flexShrink: 1 }, money: { fontVariant: ['tabular-nums'], flexShrink: 1 },
+    grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 }, metric: { minWidth: 0, flexBasis: '45%', flexGrow: 1, gap: 6 }, full: { flexBasis: '100%' }, white: { backgroundColor: theme.colors.surface, borderRadius: 16, padding: 16, gap: 10, minWidth: 0 },
+    input: { minWidth: 0, backgroundColor: theme.colors.surface }, search: { flexGrow: 1, flexShrink: 1, flexBasis: 180 }, monthInput: { flexGrow: 1, flexShrink: 1, maxWidth: 180, minWidth: 100 }, check: { padding: 8, borderRadius: 10 },
+    notice: { backgroundColor: theme.colors.secondaryContainer, padding: 16, borderRadius: 16 }, warning: { backgroundColor: theme.dark ? theme.colors.tertiaryContainer : '#fff5df', padding: 14, borderRadius: 14, gap: 10 }, pagination: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+    dialog: { width: '92%', maxWidth: 640, alignSelf: 'center', borderRadius: 24 }, dialogScroll: { paddingHorizontal: 0, flexShrink: 1 }, dialogContent: { padding: 20, gap: 16 },
+  });
+}
