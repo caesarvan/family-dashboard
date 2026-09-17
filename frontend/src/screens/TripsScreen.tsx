@@ -18,10 +18,11 @@ import JourneyReschedulePanel from './JourneyReschedulePanel';
 import MapScreen from './MapScreen';
 import TripPhotosScreen from './TripPhotosScreen';
 import JourneyDocumentsPanel from './JourneyDocumentsPanel';
+import JourneySegmentsPanel from '../components/JourneySegmentsPanel';
 
 type Props=ScreenProps & {tripRequest?:{key:number;id?:string}; onReturnMap?:()=>void; initialDraft?:Draft; onExitPlanning?:()=>void; onReschedulePending?: (pending:boolean)=>void};
 type Pending={previewToken:string;idempotencyKey:string};
-type TravelPanel={kind:'calendar'|'places'|'reschedule'|'documents';journeyId:string;tripId:string}|{kind:'map';view:MapView;tripId:string}|{kind:'photos';journeyId:string;view:MapView;tripId:string};
+type TravelPanel={kind:'calendar'|'places'|'reschedule'|'documents'|'segments';journeyId:string;tripId:string}|{kind:'map';view:MapView;tripId:string}|{kind:'photos';journeyId:string;view:MapView;tripId:string};
 export default function TripsScreen(props:Props) {
   const {mutate,refresh,online,identityKey}=useHousehold(), theme=useTheme();
   const [panel,setPanel]=useState<TravelPanel|null>(null),[mapReturn,setMapReturn]=useState<MapView|undefined>();
@@ -29,10 +30,12 @@ export default function TripsScreen(props:Props) {
   const panelRef=useRef(panel);panelRef.current=panel;
   const reschedulePending=useRef(false);
   const documentsPending=useRef(false);
+  const segmentsPending=useRef(false);
   const pendingReschedule=(value:boolean)=>{reschedulePending.current=value;props.onReschedulePending?.(value);};
   const pendingDocuments=useCallback((value:boolean)=>{documentsPending.current=value;props.onDocumentsPending?.(value);},[props.onDocumentsPending]);
+  const pendingSegments=useCallback((value:boolean)=>{segmentsPending.current=value;props.onSegmentsPending?.(value);},[props.onSegmentsPending]);
   const focused=useRef(false),session=useRef(identityKey);session.current=identityKey;
-  useFocusEffect(useCallback(()=>{focused.current=true;return()=>{focused.current=false;setPanel(current=>current?.kind==='reschedule'||current?.kind==='documents'&&documentsPending.current?current:null);setMapReturn(undefined);};},[identityKey]));
+  useFocusEffect(useCallback(()=>{focused.current=true;return()=>{focused.current=false;setPanel(current=>current?.kind==='reschedule'||current?.kind==='documents'&&documentsPending.current||current?.kind==='segments'&&segmentsPending.current?current:null);setMapReturn(undefined);};},[identityKey]));
   const actor=memberKey(props.user), identity=useRef(actor); identity.current=actor;
   const initial=useRef<{actor:string;present:boolean;invalidated:boolean;draft:Draft|null;error:string}|null>(null);
   if(initial.current===null){
@@ -53,6 +56,9 @@ export default function TripsScreen(props:Props) {
   const notifyDocumentPending=useCallback((value:boolean)=>{
     if(alive.current&&identity.current===actor&&panelRef.current===panel)pendingDocuments(value);
   },[actor,panel,pendingDocuments]);
+  const notifySegmentPending=useCallback((value:boolean)=>{
+    if(alive.current&&identity.current===actor&&panelRef.current===panel)pendingSegments(value);
+  },[actor,panel,pendingSegments]);
   const message=(failure:unknown)=>failure instanceof Error?failure.message:'暂时无法读取旅行';
   const locked=!!busy||uncertain||!online;
 
@@ -81,7 +87,7 @@ export default function TripsScreen(props:Props) {
     const useSeed=!seed.invalidated&&seed.actor===actor;
     alive.current=true;setPanel(null);setMapReturn(undefined);setJourneys(null);setDetail(null);setLegacy(null);setDraft(useSeed?seed.draft:null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setBusy('');setError(useSeed?seed.error:'');setNotice('');setQuery('');
     if(props.user.role==='member'&&!(useSeed&&seed.present))void load();
-    return()=>{alive.current=false;++readVersion.current;pendingReschedule(false);pendingDocuments(false);};
+    return()=>{alive.current=false;++readVersion.current;pendingReschedule(false);pendingDocuments(false);pendingSegments(false);};
   },[actor]);
   // An explicit detail read owns readVersion until it finishes. A concurrent
   // household refresh must not supersede it with a background list-only read.
@@ -91,15 +97,15 @@ export default function TripsScreen(props:Props) {
     if(!incoming||incoming.key===requestKey.current)return;
     requestKey.current=incoming.key;
     if(initial.current?.present)return;
-    if(editing.current||writing.current||reschedulePending.current||documentsPending.current||panelOpen.current){setNotice('请先完成或返回当前旅行操作，再打开另一趟旅行。');return;}
+    if(editing.current||writing.current||reschedulePending.current||documentsPending.current||segmentsPending.current||panelOpen.current){setNotice('请先完成或返回当前旅行操作，再打开另一趟旅行。');return;}
     if(!incoming.id)startNew();
     else void openTrip(incoming.id);
   },[props.tripRequest?.key]);
 
   function clearEditor(){setDraft(null);setPreview(null);setPending(null);setUncertain(false);setBlocked(false);setError('');}
-  function startNew(){if(writing.current||reschedulePending.current||documentsPending.current||props.user.role!=='member')return;++readVersion.current;setPanel(null);setMapReturn(undefined);setReading(false);setDetail(null);setLegacy(null);clearEditor();setDraft(newDraft(props.state.people,dayKey()));setNotice('');}
+  function startNew(){if(writing.current||reschedulePending.current||documentsPending.current||segmentsPending.current||props.user.role!=='member')return;++readVersion.current;setPanel(null);setMapReturn(undefined);setReading(false);setDetail(null);setLegacy(null);clearEditor();setDraft(newDraft(props.state.people,dayKey()));setNotice('');}
   async function openTrip(tripId:string,edit=false){
-    if(writing.current||editing.current||reschedulePending.current||documentsPending.current)return;
+    if(writing.current||editing.current||reschedulePending.current||documentsPending.current||segmentsPending.current)return;
     const key=actor,ticket=++readVersion.current;setReading(true);setError('');setDetail(null);setLegacy(null);setNotice('');
     try{
       const values=await read<{journeys:Journey[]}>('/journeys',key), linked=values.journeys.find(row=>row.tripId===tripId);
@@ -164,7 +170,10 @@ export default function TripsScreen(props:Props) {
   // performs a fresh session-fenced read; late callbacks cannot reopen a panel.
   const canNavigate=()=>current(actor)&&focused.current&&session.current===identityKey;
   const backToTrip=(tripId:string)=>{if(!canNavigate())return;setPanel(null);void openTrip(tripId);};
-  const openPanel=(kind:'calendar'|'places'|'reschedule'|'documents')=>{if(!canNavigate()||!detail||busy||reading||draft||documentsPending.current)return;++readVersion.current;setPanel({kind,journeyId:detail.id,tripId:detail.tripId});};
+  const openPanel=(kind:'calendar'|'places'|'reschedule'|'documents'|'segments')=>{if(!canNavigate()||!detail||busy||reading||draft||documentsPending.current||segmentsPending.current)return;++readVersion.current;setPanel({kind,journeyId:detail.id,tripId:detail.tripId});};
+  if(panel?.kind==='segments')return <JourneySegmentsPanel key={'segments-'+panel.journeyId} journeyId={panel.journeyId}
+    onPendingChange={notifySegmentPending}
+    onBack={()=>{if(!canNavigate()||panelRef.current!==panel)return;pendingSegments(false);backToTrip(panel.tripId);}}/>;
   if(panel?.kind==='documents')return <JourneyDocumentsPanel key={'documents-'+panel.journeyId} journeyId={panel.journeyId}
     onPendingChange={notifyDocumentPending}
     onBack={()=>{if(!canNavigate()||panelRef.current!==panel)return;pendingDocuments(false);backToTrip(panel.tripId);}}/>;
@@ -192,7 +201,7 @@ export default function TripsScreen(props:Props) {
         {!!draft.journeyId&&<Text variant="bodySmall">需要一起调整行程、准备截止或地点日期时，请先结束本次编辑，再从旅行详情进入「调整日期」。</Text>}
         <View style={styles.wrap}>{props.state.people.map(person=><Chip key={person.id} selected={draft.plan.memberIds.includes(person.id)} disabled={locked} onPress={()=>change(plan=>{plan.memberIds=plan.memberIds.includes(person.id)?plan.memberIds.filter(id=>id!==person.id):[...plan.memberIds,person.id];})}>{person.name}</Chip>)}</View>
         <SelectionRow label="境外旅行" checked={draft.plan.international} disabled={locked} onPress={()=>change(plan=>{plan.international=!plan.international;})}/>
-        {draft.plan.destinations.map((dest,index)=><View style={styles.fields} key={dest.key}><Text variant="titleSmall">目的地 {index+1}</Text>{field('城市 '+(index+1),dest.city,value=>change(plan=>{plan.destinations[index].city=value;}),80)}{field('国家或地区 '+(index+1),dest.country,value=>change(plan=>{plan.destinations[index].country=value;}),60)}<View style={styles.columns}><View style={styles.column}>{field('抵达日期 '+(index+1),dest.arrival,value=>change(plan=>{plan.destinations[index].arrival=value;}),10)}</View><View style={styles.column}>{field('离开日期 '+(index+1),dest.departure,value=>change(plan=>{plan.destinations[index].departure=value;}),10)}</View></View>{dest.timeZone&&<Text variant="bodySmall">当地时区：{dest.timeZone}（高级编辑见经典旅行）</Text>}{draft.plan.destinations.length>1&&<Button disabled={locked} onPress={()=>change(plan=>{plan.destinations.splice(index,1);})}>移除目的地 {index+1}</Button>}</View>)}
+        {draft.plan.destinations.map((dest,index)=><View style={styles.fields} key={dest.key}><Text variant="titleSmall">目的地 {index+1}</Text>{field('城市 '+(index+1),dest.city,value=>change(plan=>{plan.destinations[index].city=value;}),80)}{field('国家或地区 '+(index+1),dest.country,value=>change(plan=>{plan.destinations[index].country=value;}),60)}<View style={styles.columns}><View style={styles.column}>{field('抵达日期 '+(index+1),dest.arrival,value=>change(plan=>{plan.destinations[index].arrival=value;}),10)}</View><View style={styles.column}>{field('离开日期 '+(index+1),dest.departure,value=>change(plan=>{plan.destinations[index].departure=value;}),10)}</View></View>{dest.timeZone&&<Text variant="bodySmall">当地时区：{dest.timeZone}（可在旅行详情的「行程分段」调整）</Text>}{draft.plan.destinations.length>1&&<Button disabled={locked} onPress={()=>change(plan=>{plan.destinations.splice(index,1);})}>移除目的地 {index+1}</Button>}</View>)}
         {draft.plan.schemaVersion!==2&&<Button icon="plus" disabled={locked||draft.plan.destinations.length>=20} onPress={()=>change(plan=>{plan.destinations.push({key:newKey(),city:'',country:'',arrival:plan.start,departure:plan.end});})}>增加目的地</Button>}
       </View></SectionCard>
       <List.Accordion title="预算" description={'总预算 '+draft.budget+' 元 · 可按需填写'}><View style={styles.fields}>{(['budget','paid','saved'] as const).map((name,index)=>field(['总预算（元）','已付金额（元）','已留备用金（元）'][index],draft[name],value=>amount(name,value),14))}<Text variant="bodySmall">人民币口径。准备金和已付金额单独记录，采购不会自动重复计为支出。</Text></View></List.Accordion>
@@ -202,7 +211,7 @@ export default function TripsScreen(props:Props) {
         </View>
       </List.Accordion>
       <List.Accordion title="分段行程与备注"><View style={styles.fields}>
-        {draft.plan.schemaVersion===2?<Text>已有航班、住宿、活动和时区将完整保留。本页可编辑基本安排；复杂分段请在保存或取消后打开经典旅行编辑。</Text>:draft.plan.segments===undefined?<Text>将按每个目的地生成全天停留安排。</Text>:<>{draft.plan.segments.map((row,index)=><View style={styles.fields} key={row.key}>{field('行程标题 '+(index+1),row.title,value=>change(plan=>{plan.segments![index].title=value;}))}{field('行程开始 '+(index+1),String(row.start||''),value=>change(plan=>{plan.segments![index].start=value;}),10)}{field('行程结束 '+(index+1),String(row.end||''),value=>change(plan=>{plan.segments![index].end=value;}),10)}{field('行程地点 '+(index+1),row.location||'',value=>change(plan=>{plan.segments![index].location=value;}),200)}<Button disabled={locked} onPress={()=>change(plan=>{plan.segments!.splice(index,1);})}>移出分段 {index+1}</Button></View>)}<Button icon="plus" disabled={locked||draft.plan.segments.length>=100} onPress={()=>change(plan=>{plan.segments!.push({key:newKey(),title:'',start:plan.start,end:plan.end,location:'',note:''});})}>增加分段</Button></>}
+        {draft.plan.schemaVersion===2?<Text>已有航班、住宿、活动和时区将完整保留。本页可编辑基本安排；保存或取消后，从旅行详情进入「行程分段」调整。</Text>:draft.plan.segments===undefined?<Text>将按每个目的地生成全天停留安排。</Text>:<>{draft.plan.segments.map((row,index)=><View style={styles.fields} key={row.key}>{field('行程标题 '+(index+1),row.title,value=>change(plan=>{plan.segments![index].title=value;}))}{field('行程开始 '+(index+1),String(row.start||''),value=>change(plan=>{plan.segments![index].start=value;}),10)}{field('行程结束 '+(index+1),String(row.end||''),value=>change(plan=>{plan.segments![index].end=value;}),10)}{field('行程地点 '+(index+1),row.location||'',value=>change(plan=>{plan.segments![index].location=value;}),200)}<Button disabled={locked} onPress={()=>change(plan=>{plan.segments!.splice(index,1);})}>移出分段 {index+1}</Button></View>)}<Button icon="plus" disabled={locked||draft.plan.segments.length>=100} onPress={()=>change(plan=>{plan.segments!.push({key:newKey(),title:'',start:plan.start,end:plan.end,location:'',note:''});})}>增加分段</Button></>}
         {field('旅行备注',draft.plan.note,value=>change(plan=>{plan.note=value;}),2000)}
       </View></List.Accordion>
       {preview&&<SectionCard title="确认变更"><View style={styles.fields}>
@@ -222,12 +231,12 @@ export default function TripsScreen(props:Props) {
       <View style={styles.wrap}><Button icon="arrow-left" disabled={!!busy} onPress={()=>{++readVersion.current;setDetail(null);setLegacy(null);void load();}}>全部旅行</Button><Button mode="contained" icon="pencil-outline" disabled={!!busy||reading||!online} onPress={()=>{if(active)void openTrip(active.id,true);}}>编辑旅行</Button><Button disabled={!!busy||reading} onPress={()=>{if(active)void openTrip(active.id);}}>刷新</Button></View>
       <SectionCard title={active?.title||detail?.plan.title||'旅行'}><View style={styles.fields}><Text variant="titleMedium">{active?.destination||detail?.plan.destinations.map(row=>row.city).join(' → ')}</Text><Text>{active?.start||detail?.plan.start} — {active?.end||detail?.plan.end}（包含返程日）</Text>{!!active?.note&&<Text>{active.note}</Text>}<Text>预算 {money(detail?.budget.total??active?.budget)} · 已付 {money(detail?.budget.paid??active?.paid)}</Text><Text>已留备用金 {money(detail?.budget.reserved??active?.saved)}</Text></View></SectionCard>
       {detail?<>
-        <View style={styles.wrap}><Button mode="outlined" icon="file-document-outline" accessibilityLabel="旅行资料" contentStyle={{minHeight:44}} disabled={!!busy||reading||!online} onPress={()=>openPanel('documents')}>旅行资料</Button><Button mode="outlined" icon="calendar-edit" accessibilityLabel="调整日期" disabled={!!busy||reading||!online} onPress={()=>openPanel('reschedule')}>调整日期</Button><Button mode="outlined" icon="map-marker-outline" disabled={!!busy||reading||!online} onPress={()=>openPanel('places')}>旅行地点</Button><Button mode="outlined" icon="calendar-sync-outline" disabled={!!busy||reading||!online} onPress={()=>openPanel('calendar')}>同步到日历</Button></View>
+        <View style={styles.wrap}><Button mode="outlined" icon="airplane" accessibilityLabel="行程分段" contentStyle={{minHeight:44}} disabled={!!busy||reading||!online} onPress={()=>openPanel('segments')}>行程分段</Button><Button mode="outlined" icon="file-document-outline" accessibilityLabel="旅行资料" contentStyle={{minHeight:44}} disabled={!!busy||reading||!online} onPress={()=>openPanel('documents')}>旅行资料</Button><Button mode="outlined" icon="calendar-edit" accessibilityLabel="调整日期" disabled={!!busy||reading||!online} onPress={()=>openPanel('reschedule')}>调整日期</Button><Button mode="outlined" icon="map-marker-outline" disabled={!!busy||reading||!online} onPress={()=>openPanel('places')}>旅行地点</Button><Button mode="outlined" icon="calendar-sync-outline" disabled={!!busy||reading||!online} onPress={()=>openPanel('calendar')}>同步到日历</Button></View>
         <SectionCard title={`准备 · ${detail.progress.done}/${detail.progress.total}`} action={<Button disabled={!!busy||!online} onPress={()=>setDraft(editDraft(detail))}>管理清单</Button>}>{detail.tasks.length?group(detail.tasks,'tasks'):<Text>没有准备事项。可以在编辑旅行中添加。</Text>}</SectionCard>
         <SectionCard title={`采购 · ${detail.progress.purchased}/${detail.progress.purchaseCount}`}>{detail.shopping.length?group(detail.shopping,'shopping'):<Text>这趟旅行尚未安排采购。</Text>}<Text variant="bodySmall">计划采购 {money(detail.budget.purchaseBudget)}{detail.budget.unknownPurchaseBudgets?`，另有 ${detail.budget.unknownPurchaseBudgets} 件未填预算`:''} · 已买实付 {money(detail.budget.purchaseActual)}{detail.budget.unknownPurchaseActuals?`，另有 ${detail.budget.unknownPurchaseActuals} 件未填实付`:''}</Text><Text variant="bodySmall">{detail.budget.note}</Text></SectionCard>
         <SectionCard title="本地行程">{detail.events.map(event=><View style={styles.event} key={event.id}><Text variant="titleMedium">{event.title}</Text><Text>{eventDates(event)}</Text>{!!event.location&&<Text>{event.location}</Text>}{!!event.note&&<Text variant="bodySmall">{event.note}</Text>}<Divider/></View>)}<Text variant="bodySmall">这里显示看板本地安排。点击「同步到日历」选择云日历，并查看发布进度。</Text></SectionCard>
       </>:<SectionCard title="完善行程"><Text>这是一条基础旅行记录。编辑后可预览生成本地行程与准备清单，原旅行和已有本地准备记录会保留。</Text></SectionCard>}
-      <Button icon="open-in-app" onPress={()=>props.onLegacy('trips')}>高级分段（经典旅行）</Button>{!props.onReturnMap&&!mapReturn&&<Button icon="map-outline" onPress={()=>props.onNavigate('map')}>足迹地图</Button>}
+      {!detail&&<Text variant="bodySmall">先完善并保存旅行，再从「行程分段」安排航班、住宿和活动。</Text>}{!props.onReturnMap&&!mapReturn&&<Button icon="map-outline" onPress={()=>props.onNavigate('map')}>足迹地图</Button>}
     </>:<>
       <Searchbar placeholder="搜索旅行或目的地" value={query} onChangeText={setQuery}/>
       {journeys===null?<EmptyState title={reading?'正在读取旅行':'旅行暂时无法读取'} action={!reading?<Button onPress={()=>void load()}>重试</Button>:undefined}/>:props.state.trips.filter(trip=>[trip.title,trip.destination||''].join(' ').toLocaleLowerCase().includes(query.toLocaleLowerCase())).sort((a,b)=>a.start.localeCompare(b.start)).map(trip=><SectionCard key={trip.id} title={trip.title} action={<Button disabled={reading} onPress={()=>void openTrip(trip.id)}>查看</Button>}><Text>{trip.destination}</Text><Text>{trip.start} — {trip.end}</Text><Text variant="bodySmall">预算 {money(trip.budget)} · 已付 {money(trip.paid)}</Text></SectionCard>)}
