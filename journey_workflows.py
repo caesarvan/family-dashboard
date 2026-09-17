@@ -16,6 +16,7 @@ import secrets
 from flask import Response, g, jsonify
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from journey_time import TimeIssue, normalize_segment, project, warnings as time_warnings, zone
+from journey_reschedule import RescheduleError, items_for as reschedule_items, prepare as prepare_reschedule
 
 
 POLICY_NOTICE = '准备事项是规划建议，不代表已核实的签证、入境或健康要求；请按出行人证件、目的地和日期向官方渠道核对。'
@@ -56,6 +57,11 @@ def register_journeys(app, db, Problem, body, require_member, audit):
     with app.app_context():
         initialize_journeys(db())
     signer = URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='household-journey-preview-v1')
+    snapshot_signer = URLSafeTimedSerializer(app.config['SECRET_KEY'], salt='household-journey-reschedule-snapshot-v1')
+
+    @app.errorhandler(RescheduleError)
+    def reschedule_error(exc):
+        return jsonify(error=str(exc), code=exc.code), exc.status
 
     @app.errorhandler(TimeIssue)
     def journey_time_error(exc):
@@ -124,9 +130,10 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         return [{'key': key, 'title': title, 'dueOffsetDays': offset, 'owner': 'shared',
                  'note': note, 'category': 'preparation'} for key, title, offset, note in entries]
 
-    def normalize(raw, con):
+    def normalize(raw, con, preserved_dates=None):
         if not isinstance(raw, dict):
             raise Problem('plan 应为对象')
+        preserved_dates = preserved_dates or {}
         version = raw.get('schemaVersion', 1)
         if type(version) is not int or version not in (1, 2):
             raise Problem('旅行计划版本不支持，请升级服务或保留原版本')
@@ -155,7 +162,8 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         for index, dest in enumerate(sequence(raw.get('destinations', []), '目的地', 20)):
             arrive = date_value(dest.get('arrival', start), '抵达日期')
             leave = date_value(dest.get('departure', end), '离开日期')
-            if arrive > leave or version == 1 and not start <= arrive <= leave <= end:
+            prior = preserved_dates.get('destinations', {}).get(dest.get('key'))
+            if arrive > leave or version == 1 and not start <= arrive <= leave <= end and prior != (arrive, leave):
                 raise Problem('每个目的地的日期须落在旅行日期内')
             plan['destinations'].append({'key': item_key(dest.get('key'), f'destination-{index + 1}'),
                                          'country': text(dest.get('country', ''), '国家或地区', 60, True),
@@ -168,10 +176,12 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         checklist = raw.get('checklist', defaults(international))
         for index, row in enumerate(sequence(checklist, '准备清单')):
             offset = row.get('dueOffsetDays', -7)
-            if type(offset) is not int or not -730 <= offset <= 366:
+            prior = preserved_dates.get('checklist', {}).get(row.get('key'))
+            keep_due = prior is not None and row.get('due') == prior
+            if type(offset) is not int or not -730 <= offset <= 366 and not keep_due:
                 raise Problem('相对截止天数须介于 -730 至 366 天')
             due = date_value(row['due'], '截止日期') if row.get('due') else (date.fromisoformat(start) + timedelta(days=offset)).isoformat()
-            if due > end:
+            if due > end and due != prior:
                 raise Problem('准备事项截止日期不得晚于旅行结束')
             plan['checklist'].append({'key': item_key(row.get('key'), f'task-{index + 1}'),
                                       'title': text(row.get('title'), '准备事项'),
@@ -199,7 +209,8 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                 continue
             begin = date_value(row.get('start'), '行程开始日期')
             finish = date_value(row.get('end', begin), '行程结束日期')
-            if not start <= begin <= finish <= end:
+            prior = preserved_dates.get('segments', {}).get(row.get('key'))
+            if begin > finish or not start <= begin <= finish <= end and prior != (begin, finish):
                 raise Problem('分段行程日期须落在旅行日期内')
             plan['segments'].append({'key': item_key(row.get('key'), f'segment-{index + 1}'),
                                      'title': text(row.get('title'), '行程标题'), 'start': begin, 'end': finish,
@@ -313,6 +324,121 @@ def register_journeys(app, db, Problem, body, require_member, audit):
     def entity_snapshot(con, uid):
         return {row['id']: row['revision'] for row in linked(con, uid).values()}
 
+    def current_member(con, expected=None):
+        require_member()
+        member = app.extensions['member_sessions'].current(con)
+        if (member['owner'] != g.actor['id'] or member['auth_version'] != g.actor['auth_version']
+                or g.actor.get('householdId', 'default') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')
+                or expected is not None and expected != {'id': member['id'], 'authVersion': member['auth_version']}):
+            raise Problem('登录状态已变化，请重新登录并重新预览', 401)
+        return {'id': member['id'], 'authVersion': member['auth_version']}
+
+    def namespace(con):
+        return json.loads(con.execute("SELECT data FROM settings WHERE id='journey_namespace'").fetchone()[0])
+
+    def reschedule_source(con, uid):
+        current = find_workflow(con, uid)
+        records = linked(con, uid)
+        if 'trip' not in records:
+            raise RescheduleError('旅行记录已删除，请重新打开', 'stale_snapshot', 409)
+        places = []
+        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='journey_places'").fetchone():
+            places = con.execute('SELECT * FROM journey_places WHERE journey_id=? AND owner=? AND deleted_at IS NULL ORDER BY id',
+                                 (uid, g.actor['id'])).fetchall()
+        bindings = []
+        if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='calendar_publications'").fetchone():
+            # Only target identity, never worker status/etag/pending progress. The
+            # opaque digest must not reveal another member's private calendar.
+            bindings = [dict(row) for row in con.execute('SELECT id,owner,journey_id,entity_id,source_id,account_id,provider,calendar_id '
+                                                        'FROM calendar_publications WHERE journey_id=? ORDER BY id', (uid,))]
+        snapshot = {'revision': current['revision'], 'entities': {row['id']: row['revision'] for row in records.values()},
+                    'links': {key: row['id'] for key, row in records.items()},
+                    'places': {row['id']: row['revision'] for row in places},
+                    'bindingsDigest': hashlib.sha256(pack(bindings).encode()).hexdigest()}
+        return current, records, places, snapshot
+
+    @app.get('/api/journeys/<uid>/reschedule')
+    def journey_reschedule_snapshot(uid):
+        require_member()
+        con = ready()
+        try:
+            con.execute('BEGIN')
+            session_claim = current_member(con)
+            current, records, places, source = reschedule_source(con, uid)
+            items = reschedule_items(json.loads(current['plan']), records, places)
+            claims = {'v': 1, 'actor': g.actor['id'], 'household': namespace(con), 'session': session_claim,
+                      'journeyId': uid, 'source': source}
+            result = {'journeyId': uid, 'revision': current['revision'], **items[0]['before'], 'items': items,
+                      'snapshotToken': snapshot_signer.dumps(claims), 'expiresIn': 1800,
+                      'warnings': [{'code': 'shopping_no_due', 'key': None, 'message': '采购没有截止日期字段，采购记录保持不变。'}],
+                      'capabilities': {'shoppingDue': False}}
+            con.rollback()
+            current_member(con, session_claim)
+            return jsonify(result)
+        finally:
+            con.rollback()
+
+    @app.post('/api/journeys/<uid>/reschedule-preview')
+    def journey_reschedule_preview(uid):
+        require_member()
+        value = body()
+        if set(value) - {'snapshotToken', 'start', 'end', 'selectedKeys', 'timeOverrides'}:
+            raise RescheduleError('改期请求包含不支持的字段')
+        token = value.get('snapshotToken')
+        if not isinstance(token, str) or len(token) > 150000:
+            raise RescheduleError('请提交有效的改期快照')
+        try:
+            claim = snapshot_signer.loads(token, max_age=1800)
+        except SignatureExpired:
+            raise RescheduleError('改期快照已过期，请重新读取', 'stale_snapshot', 409)
+        except BadSignature:
+            raise RescheduleError('改期快照无效')
+        con = ready()
+        try:
+            con.execute('BEGIN')
+            session_claim = current_member(con)
+            if claim.get('actor') != g.actor['id'] or claim.get('household') != namespace(con) or claim.get('journeyId') != uid:
+                raise RescheduleError('此快照属于其他成员、家庭或旅行', 'invalid_snapshot_owner', 403)
+            current_member(con, claim.get('session'))
+            current, records, places, source = reschedule_source(con, uid)
+            if claim.get('source') != source:
+                raise RescheduleError('旅行或关联项目已变化，请重新读取后选择', 'stale_snapshot', 409)
+            candidate = prepare_reschedule(json.loads(current['plan']), records, places, value.get('start'), value.get('end'),
+                                           value.get('selectedKeys', []), value.get('timeOverrides', {}), text, item_key)
+            claims = {'v': 1, 'operation': 'reschedule', 'actor': g.actor['id'], 'household': namespace(con),
+                      'session': session_claim, 'operationId': secrets.token_hex(16), 'journeyId': uid,
+                      'tripId': current['trip_id'], 'existing': True, 'revision': current['revision'],
+                      'entities': source['entities'], 'source': source,
+                      **{key: candidate[key] for key in ('plan', 'entityPatches', 'placePatches', 'changedKeys')}}
+            valid = not candidate['blockingIssues']
+            result = {'journeyId': uid, 'revision': current['revision'], 'start': candidate['plan']['start'], 'end': candidate['plan']['end'],
+                      **{key: candidate[key] for key in ('items', 'warnings', 'blockingIssues')},
+                      'canApply': valid, 'previewToken': signer.dumps(claims) if valid else None, 'expiresIn': 1800}
+            con.rollback()
+            current_member(con, session_claim)
+            return jsonify(result)
+        finally:
+            con.rollback()
+
+    @app.get('/api/journeys/operations/<key>')
+    def journey_operation_result(key):
+        require_member()
+        if not re.fullmatch(r'[A-Za-z0-9_-]{8,80}', key):
+            raise RescheduleError('操作标识格式不正确')
+        con = ready()
+        try:
+            con.execute('BEGIN')
+            session_claim = current_member(con)
+            row = con.execute('SELECT result FROM journey_actions WHERE actor=? AND action_key=?', (g.actor['id'], key)).fetchone()
+            result = json.loads(row['result']) if row else None
+            con.rollback()
+            current_member(con, session_claim)
+            if result is None:
+                return jsonify(error='尚未找到此操作的保存回执；原请求仍可能在处理中', code='operation_not_found'), 404
+            return jsonify(found=True, idempotencyKey=key, result=result)
+        finally:
+            con.rollback()
+
     def detail(con, uid):
         row = find_workflow(con, uid)
         records = linked(con, uid)
@@ -359,10 +485,20 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         require_member()
         con = ready()
         value = body()
-        plan = normalize(value.get('plan'), con)
         uid, trip_id = value.get('journeyId'), value.get('tripId')
         if uid is not None and not isinstance(uid, str) or trip_id is not None and not isinstance(trip_id, str):
             raise Problem('旅行标识格式不正确')
+        preserved_dates = None
+        if uid:
+            prior = json.loads(find_workflow(con, uid)['plan'])
+            # A confirmed reschedule may intentionally retain historical dates
+            # outside the overview. Only the server's unchanged dates qualify;
+            # new plans and newly edited dates keep the original validation.
+            preserved_dates = {
+                'destinations': {row['key']: (row['arrival'], row['departure']) for row in prior['destinations']},
+                'checklist': {row['key']: row['due'] for row in prior['checklist']},
+                'segments': {row['key']: (row['start'], row['end']) for row in prior['segments'] if 'kind' not in row}}
+        plan = normalize(value.get('plan'), con, preserved_dates)
         revisions = {}
         adoptions = {}
         expected_revision = None
@@ -427,12 +563,18 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         value = body()
         token = value.get('previewToken')
         key = value.get('idempotencyKey')
-        if not isinstance(token, str) or not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}', key):
+        if not isinstance(token, str) or len(token) > 500000 or not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9_-]{8,80}', key):
             raise Problem('请提交预览凭证和 8～80 位幂等键')
+        expired = False
         try:
             claims = signer.loads(token, max_age=1800)
         except SignatureExpired:
-            raise Problem('预览已过期，请重新预览', 409)
+            # A valid expired reschedule token may only read an already durable
+            # receipt. It never grants permission for a new write.
+            claims = signer.loads(token)
+            if claims.get('operation') != 'reschedule':
+                raise Problem('预览已过期，请重新预览', 409)
+            expired = True
         except BadSignature:
             raise Problem('预览凭证无效，请重新预览', 400)
         namespace = json.loads(con.execute("SELECT data FROM settings WHERE id='journey_namespace'").fetchone()[0])
@@ -455,13 +597,7 @@ def register_journeys(app, db, Problem, body, require_member, audit):
             con.execute('BEGIN IMMEDIATE')
             # Cookie authentication may have been revoked while waiting for
             # account locks. Check it under the same lock as writes and replay.
-            member = app.extensions['member_sessions'].current(con)
-            if (member['owner'] != g.actor['id']
-                    or member['auth_version'] != g.actor['auth_version']
-                    or g.actor.get('householdId', 'default') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
-                raise Problem('登录状态已变化，请重新登录', 401)
-            if accounts() != account_ids:
-                raise Problem('云日历绑定已变化，请重新预览', 409)
+            current_member(con, claims.get('session') if claims.get('operation') == 'reschedule' else None)
             previous = con.execute('SELECT * FROM journey_actions WHERE actor=? AND action_key=?', (g.actor['id'], key)).fetchone()
             if previous:
                 if previous['digest'] != digest:
@@ -472,6 +608,40 @@ def register_journeys(app, db, Problem, body, require_member, audit):
             if previous:
                 con.rollback()
                 return jsonify(**json.loads(previous['result']), replayed=True)
+            if expired:
+                raise RescheduleError('预览已过期且尚无保存回执，请重新预览', 'stale_preview', 409)
+            if accounts() != account_ids:
+                raise Problem('云日历绑定已变化，请重新预览', 409)
+            if claims.get('operation') == 'reschedule':
+                uid = claims['journeyId']
+                current, records, places, source = reschedule_source(con, uid)
+                if source != claims['source']:
+                    raise RescheduleError('旅行或关联项目已变化，请重新预览并再次确认', 'stale_preview', 409)
+                changed_at = stamp()
+                for item_key_, payload in claims['entityPatches'].items():
+                    old = records[item_key_]
+                    if json.loads(old['data']) != payload:
+                        con.execute('UPDATE entities SET data=?,revision=revision+1,updated_at=? WHERE id=?',
+                                    (pack(payload), changed_at, old['id']))
+                for place_id, bounds in claims['placePatches'].items():
+                    # Source CAS covers ownership, status, linkage and revision;
+                    # repeat the writable predicates as an additional invariant.
+                    changed = con.execute("UPDATE journey_places SET start_date=?,end_date=?,revision=revision+1,updated_at=? "
+                                          "WHERE id=? AND owner=? AND journey_id=? AND status='planned' AND deleted_at IS NULL AND revision=?",
+                                          (bounds['start'], bounds['end'], changed_at, place_id, g.actor['id'], uid, source['places'][place_id]))
+                    if changed.rowcount != 1:
+                        raise RescheduleError('地点权限或状态已变化，请重新预览', 'stale_preview', 409)
+                con.execute('UPDATE journey_workflows SET plan=?,revision=revision+1,updated_at=? WHERE id=?',
+                            (pack(claims['plan']), changed_at, uid))
+                audit('journey_reschedule', uid)
+                result = {'id': uid, 'tripId': current['trip_id'], 'revision': current['revision'] + 1,
+                          'operation': 'reschedule', 'reschedule': {'start': claims['plan']['start'], 'end': claims['plan']['end'],
+                                                                 'changedKeys': claims['changedKeys']},
+                          'calendar': {'local': 'updated', 'cloud': 'status_not_checked', 'icsUrl': f'/api/journeys/{uid}/calendar.ics'}}
+                con.execute('INSERT INTO journey_actions(actor,action_key,operation_id,digest,result,created_at) VALUES(?,?,?,?,?,?)',
+                            (g.actor['id'], key, claims['operationId'], digest, pack(result), changed_at))
+                con.commit()
+                return jsonify(**result, replayed=False)
             uid, trip_id, plan = claims['journeyId'], claims['tripId'], claims['plan']
             current = find_workflow(con, uid) if claims['existing'] else None
             if current and current['revision'] != claims['revision']:
