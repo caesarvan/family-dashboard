@@ -4,7 +4,7 @@
 
 本表描述**本地源码**，其与正式版本的差异见 [交接说明](HANDOFF.md)。表用于定位代码；字段、权限、错误和状态机参见 [README 文档导航](../README.md#文档导航)。
 
-Flask HTTP 方法与路径组合：**152**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
+Flask HTTP 方法与路径组合：**155**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
 
 | 方法 | 路径 | 实现 |
 |---|---|---|
@@ -100,7 +100,10 @@ Flask HTTP 方法与路径组合：**152**；另有 `GET /space/<slug>`。HEAD/O
 | GET | `/api/journeys/<uid>` | [journey_workflows.py](../journey_workflows.py) · `journey_detail` |
 | GET | `/api/journeys/<uid>/calendar` | [journey_workflows.py](../journey_workflows.py) · `journey_calendar` |
 | GET | `/api/journeys/<uid>/calendar.ics` | [journey_workflows.py](../journey_workflows.py) · `journey_calendar_ics` |
+| GET | `/api/journeys/<uid>/reschedule` | [journey_workflows.py](../journey_workflows.py) · `journey_reschedule_snapshot` |
+| POST | `/api/journeys/<uid>/reschedule-preview` | [journey_workflows.py](../journey_workflows.py) · `journey_reschedule_preview` |
 | POST | `/api/journeys/apply` | [journey_workflows.py](../journey_workflows.py) · `journey_apply` |
+| GET | `/api/journeys/operations/<key>` | [journey_workflows.py](../journey_workflows.py) · `journey_operation_result` |
 | POST | `/api/journeys/preview` | [journey_workflows.py](../journey_workflows.py) · `journey_preview` |
 | GET | `/api/journeys/templates` | [journey_workflows.py](../journey_workflows.py) · `journey_templates` |
 | POST | `/api/login` | [app.py](../app.py) · `login` |

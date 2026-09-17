@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-16T21:35:31.082685+00:00",
+  "generatedAt": "2026-09-17T02:16:53.122431+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -555,10 +555,28 @@
       "endpoint": "journey_calendar_ics"
     },
     {
+      "method": "GET",
+      "path": "/api/journeys/<uid>/reschedule",
+      "source": "journey_workflows.py",
+      "endpoint": "journey_reschedule_snapshot"
+    },
+    {
+      "method": "POST",
+      "path": "/api/journeys/<uid>/reschedule-preview",
+      "source": "journey_workflows.py",
+      "endpoint": "journey_reschedule_preview"
+    },
+    {
       "method": "POST",
       "path": "/api/journeys/apply",
       "source": "journey_workflows.py",
       "endpoint": "journey_apply"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journeys/operations/<key>",
+      "source": "journey_workflows.py",
+      "endpoint": "journey_operation_result"
     },
     {
       "method": "POST",
