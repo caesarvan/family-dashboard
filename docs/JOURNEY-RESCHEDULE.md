@@ -10,7 +10,7 @@
 4. 跨时区分段按当地日期平移。遇到不存在或出现两次的当地时刻，修改当地时间或选择明确的 UTC 偏移，再次预览。
 5. 明确确认后一次保存本地改动。已连接的日历沿用既有发布关系，由同步服务更新；本地保存成功不代表云端已确认，实际状态在「同步到日历」中查看。
 
-已完成任务、已到访地点、固定／已预订／已取消分段不随本流程移动。只列出本人地点，不根据地名或日期猜测目的地对应关系。地点的坐标、共享范围、到访确认以及各事项的负责人、备注和金额保持。
+已完成任务、已到访地点、固定／已预订／已取消分段不随本流程移动。只列出本人地点，不根据地名或日期猜测目的地对应关系。地点的坐标、共享范围、到访确认以及各事项的负责人、本人修改的备注和金额保持；系统生成的时刻说明随选中的分段更新。
 
 采购目前没有截止日期字段；改期页明确提示不适用。预算、实付与预订资料不会自动重算，仍需本人核对改退规则和新增费用。本流程不联系航司、酒店或商家，也不办理改签、取消或付款。
 
@@ -67,7 +67,7 @@
 
 平移天数等于新旧出发日期之差，从来源快照对应的当前记录计算；反复预览不会叠加平移。`selectedKeys` 只接受仍可调整的已列出对象。仅更改返程日时，日期平移量为零，但仍需核对总范围及警告。
 
-返回 `journeyId/revision/start/end/items/warnings/blockingIssues/canApply/previewToken/expiresIn`。每项在来源字段上增加 `selected` 和 `after:{start,end}`，以此显示实际前后差异。`warnings` 条目含 `code/key/message`。存在阻断问题时返回 HTTP 200、`canApply:false` 和空预览凭证；不可确认的预览不产生保存操作。
+返回 `journeyId/revision/start/end/items/warnings/blockingIssues/canApply/previewToken/expiresIn`。每项在来源字段上增加 `selected` 和 `after:{start,end}`，以此显示实际前后差异。定时分段和有已知时刻的住宿还提供 `timeBefore/timeAfter`，包含可用的 `start/end:{local,timeZone,offsetMinutes}`，在确认页核对当地时刻与偏移；同日改变时分或偏移也算实际变化。`warnings` 条目含 `code/key/message`。存在阻断问题时返回 HTTP 200、`canApply:false` 和空预览凭证；不可确认的预览不产生保存操作。
 
 时区问题在 `blockingIssues` 中给出 `code/key/message`，并可包含 `field:"start"|"end"`、`local`、`timeZone` 和 `choices:[{offsetMinutes,instant}]`。纠正后以同一快照重新预览：
 
