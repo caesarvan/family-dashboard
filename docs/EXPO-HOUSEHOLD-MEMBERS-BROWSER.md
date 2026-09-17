@@ -1,6 +1,6 @@
-# 家庭与成员：真实本地浏览器验收（待运行）
+# 家庭与成员：真实本地浏览器验收（候选已验证）
 
-脚本 `tests/browser_expo_household_members_check.py`，基于 `eda8632719a6f1a3202e6d5c2a9a986329c9c287` 独立分支开发。按 UI 固定 `b08ff47d523fdb86b4b06e88679f7169a91e4849` 和家庭成员三 API 合同编写；本文件不表示浏览器已执行、功能已通过或已发布。
+脚本 `tests/browser_expo_household_members_check.py`，基于 `eda8632719a6f1a3202e6d5c2a9a986329c9c287` 独立分支开发。按 UI 固定 `b08ff47d523fdb86b4b06e88679f7169a91e4849` 和家庭成员三 API 合同编写；R1 已实际执行 7／7 通过，8 张截图经 Root 独立视觉审查；当前仍为候选，未部署。
 
 ## 七组场景
 
@@ -25,6 +25,14 @@
 脚本自身提交／tree／两份源码 SHA 与被测应用提交／tree／全部 tracked 文件分别绑定，不声称独立脚本必已包含于应用提交。构建 `sourceHead/sourceTree/inputFiles/files` 必须逐项一致。四项实际 fixture 为本脚本、`browser_expo_finance_check.py`、`test_financial_files.py`、`test_app.py`；后三者加载字节必须等于被测应用，运行前后全部 fixture、应用和导出保持。复用的 fixture 源路径随报告保存。
 
 只在自己的 ignored `test-results/expo-household-members-<UTC>/` 排他保存执行脚本、各组报告、失败截图／ARIA、8 张范围内图片和总 `result.json`。运行方还应独占保存 stdout/stderr。源码、构建或临时清理不满足时整轮失败。没有自动重跑。
+
+## R1 实际结果
+
+单次运行于独立 `household-members-browser` 工作树，脚本提交 `5ffd087c4cd4f979369cce8e151280d58a2b18d9`、SHA `6710dcb0e9b9f0b052eaf6ba75990a452245e1874f992d0aa3f467e4bf93f623`。受验应用 `caf34d5a825716fe2ff0aaf363df0d4412c71e91`／tree `bfb9a1156931bd86225d5f220a6fed9c27a233ad`，构建 `household-members-build-20260918-r1/build-evidence.json` SHA `74b5a29e77cd088bd5a99a390330c3edd9a3c78d4c39ae9f5c2a9b69f19be0ee`。
+
+实际 7／7 通过、退出 0，8 张 PNG 的 SHA 已核对；727 项 tracked 文件、23 项导出、4 项实际 fixture 及独立脚本前后相同，HEAD／clean 守卫通过。7 个临时环境全部清理，页面异常与外网请求均为 0；没有自动重跑。原件 `test-results/expo-household-members-20260917T211621366932Z/result.json` SHA `2cae6c990087227f1ec9606ca0343ac5e1b4f542db6bd53fbc17ae75293657b5`；同工作树 `test-results/members-browser-command-r1-20260917T211620475215Z/` 排他保留调用参数及 stdout/stderr，stderr 为空。
+
+Root 实际逐张查看四宽浅色列表与深色紧凑确认框，结论 `PASS_VISIBLE_VIEWPORT`、无可见问题。私有 access 下 `household-members-visual-review-20260918-r1.json` SHA `6bb48de14a52ba544879aebc6c9125aca043c63d433ebe714688cf30144b6ccf`，绑定上述 report 和 8 图 SHA。320 浅色列表下方说明仍在内部滚动区，未做完整滚动视觉覆盖；不能外推实体设备或全站无障碍。
 
 ## 验证边界
 
