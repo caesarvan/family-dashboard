@@ -9,14 +9,37 @@ from types import SimpleNamespace
 import pytest
 from flask import g, request
 
-from test_journey_documents import app, no_network, setup, upload, payload, patch_value, path, login
+from test_journey_documents import app, no_network, setup, upload, payload, patch_value, path, login, PDF
 from test_device_sessions import database, install_connection, invalidate
+from test_member_sessions import legacy
 
 
 def snapshot(app):
     with closing(sqlite3.connect(database(app))) as con:
         return {table: con.execute('SELECT * FROM ' + table + ' ORDER BY rowid').fetchall()
                 for table in ('journey_documents', 'journey_workflows', 'entities', 'audit', 'settings')}
+
+
+@pytest.mark.parametrize('operation', ['file', 'upload', 'replay'])
+def test_legacy_document_session_can_start_the_next_transaction(app, setup, monkeypatch, operation):
+    owner, headers, journey = setup
+    document, original = upload(owner, headers, journey['id'])
+    client, raw, cookie = legacy(app, app.extensions['member_sessions'], monkeypatch)
+    legacy_headers = {'X-CSRF-Token': cookie['csrf'], 'Origin': 'http://localhost'}
+    listing = client.get('/api/journey-documents')
+    assert listing.status_code == 200 and listing.json['documents'][0]['id'] == document['id']
+    if operation == 'file':
+        response = client.get(document['downloadUrl'])
+        assert response.status_code == 200 and response.data == PDF
+    else:
+        value = original if operation == 'replay' else payload(journey['id'])
+        response = client.post('/api/journey-documents', json=value, headers=legacy_headers)
+        assert response.status_code == (200 if operation == 'replay' else 201)
+        assert response.json['replayed'] is (operation == 'replay')
+    assert client.get_cookie('session').value == raw
+    final = client.get('/api/journey-documents')
+    assert final.status_code == 200
+    assert len(final.json['documents']) == (2 if operation == 'upload' else 1)
 
 
 def prepared(setup, operation):

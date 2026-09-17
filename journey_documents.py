@@ -133,6 +133,10 @@ def register_journey_documents(app, db, Problem, body, require_member, limited, 
                 # and file bytes, before any response is returned.
                 con.rollback()
                 authenticated(con)
+                # Legacy-cookie resolution may refresh its expiry with UPDATE.
+                # Release that implicit transaction before another document
+                # transaction starts within this request.
+                con.rollback()
         except BaseException:
             con.rollback()
             raise

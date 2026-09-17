@@ -21,7 +21,9 @@
 
 **本轮会话加固候选，尚未部署：** 进一步比较请求最初捕获的具体 session ID；读取资料、文件和上传重放时，释放 SQLite 读快照后再核对当前会话；写事务在业务和审计完成后、提交前再核对有效期及凭据。下载还会在新的事务检查当前文件可见范围与 revision，避免 BLOB 读取期间取消共享、删除或修改后的旧文件响应；文件不可见返回 404，版本变化返回 409。最终检查之后已经开始发送的字节无法撤回，不据此承诺取消所有在途响应。接口形状与表结构保持。
 
-该候选已在真实临时 SQLite／Flask 中执行原资料 68 项及新增 [23 项会话边界检查](../tests/test_journey_document_sessions.py)，合计 **91 passed，134.87 秒**，无失败或跳过。新增检查使用独立数据库写入者、真实成员请求和受控过期时间，覆盖读取快照期间撤销、实际 session ID 不符、提交前过期回滚、等待写锁时撤销，以及伙伴下载期间取消共享／删除／修改资料。私有 `worktrees/expo-documents-sessions/test-results/document-sessions-r1.xml` SHA256：`9d595924148f9624483bb9107bff3a64a6af05ba9ec9d9575c05827e9460636b`。这是候选后端结果，尚不包含新版面板、真实下载设备或生产发布。
+首版候选在真实临时 SQLite／Flask 中执行原资料 68 项及新增 23 项会话边界检查，合计 **91 passed，134.87 秒**，无失败或跳过。独立审查随后发现合法旧版 Cookie 的认证续期会留下隐式事务，导致同请求的后续下载／上传事务无法开始；不能将这次通过视为最终接受。修正为读取结束的认证之后再释放可能出现的事务，并新增旧版 Cookie 下载、新上传和原请求重放回归。修正后的 [会话专项](../tests/test_journey_document_sessions.py) 实际 **26 passed，39.19 秒**，无失败或跳过；这次没有重跑原 68 项，不能写成一次 94 项通过。
+
+专项使用独立数据库写入者、真实成员请求和受控过期时间，覆盖读取快照期间撤销、实际 session ID 不符、提交前过期回滚、等待写锁时撤销，以及伙伴下载期间取消共享／删除／修改资料。私有 `worktrees/expo-documents-sessions/test-results/document-sessions-r1.xml` SHA256：`9d595924148f9624483bb9107bff3a64a6af05ba9ec9d9575c05827e9460636b`；后续修正结果为同目录 `document-sessions-r2.xml`。这是候选后端结果，尚不包含新版面板、真实下载设备或生产发布。
 
 私有资料对伙伴既不列出，也不返回标题、大小、分段或文件；按编号直接读取或修改返回 404。有效旅行中的 shared 资料可由本户伙伴读取，管理操作返回 403。所有文件内容响应使用 `Content-Disposition: attachment`、`Cache-Control: no-store` 和 `X-Content-Type-Options: nosniff`，不返回公共缓存 URL 或免登录签名链接。
 
