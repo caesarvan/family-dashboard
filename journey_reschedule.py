@@ -217,11 +217,12 @@ def prepare(plan, records, places, start, end, selected, overrides, text, item_k
             issues.append({'code': 'cloud_managed', 'key': 'trip', 'message': '旅行概览已由其他来源管理，不能直接改期。'})
         else:
             value['start'] = start + value['start'][10:]
-            value['end'] = shifted(end, 1 if value.get('allDay') else 0) + value['end'][10:]
+            exclusive_end = (date.fromisoformat(end) + timedelta(days=1)).isoformat()
+            value['end'] = (exclusive_end if value.get('allDay') else end) + value['end'][10:]
             if 'startDate' in value:
                 value['startDate'] = start
             if 'endDateExclusive' in value:
-                value['endDateExclusive'] = shifted(end, 1)
+                value['endDateExclusive'] = exclusive_end
             if value['end'] <= value['start']:
                 issues.append({'code': 'nonpositive_duration', 'key': 'trip', 'message': '旅行概览结束时刻须晚于开始时刻。'})
             patches['event:overview'] = value
@@ -251,7 +252,10 @@ def prepare(plan, records, places, start, end, selected, overrides, text, item_k
                 raise RescheduleError('v1 日期段不接受时刻覆盖')
             value = dict(current)
             for field in ('start', 'end'):
-                value[field] = shifted(current[field][:10], days) + current[field][10:]
+                # The derived exclusive timestamp may be 2101-01-01 for the
+                # valid final inclusive day 2100-12-31.
+                day = (date.fromisoformat(current[field][:10]) + timedelta(days=days)).isoformat()
+                value[field] = day + current[field][10:]
         else:
             live, issue = move_segment(live, days, overrides.get(key, {}), i, text, item_key)
             if issue:

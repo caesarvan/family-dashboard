@@ -495,9 +495,12 @@ def register_journeys(app, db, Problem, body, require_member, audit):
             # outside the overview. Only the server's unchanged dates qualify;
             # new plans and newly edited dates keep the original validation.
             preserved_dates = {
-                'destinations': {row['key']: (row['arrival'], row['departure']) for row in prior['destinations']},
-                'checklist': {row['key']: row['due'] for row in prior['checklist']},
-                'segments': {row['key']: (row['start'], row['end']) for row in prior['segments'] if 'kind' not in row}}
+                'destinations': {row['key']: (row['arrival'], row['departure']) for row in prior['destinations']
+                                 if not prior['start'] <= row['arrival'] <= row['departure'] <= prior['end']},
+                'checklist': {row['key']: row['due'] for row in prior['checklist'] if row.get('due') and
+                              (row['due'] > prior['end'] or not -730 <= row['dueOffsetDays'] <= 366)},
+                'segments': {row['key']: (row['start'], row['end']) for row in prior['segments'] if 'kind' not in row and
+                             not prior['start'] <= row['start'] <= row['end'] <= prior['end']}}
         plan = normalize(value.get('plan'), con, preserved_dates)
         revisions = {}
         adoptions = {}
