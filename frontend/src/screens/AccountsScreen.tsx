@@ -20,6 +20,7 @@ const errorMessage = (error: unknown) => error instanceof Error ? error.message 
 const consentLabel = '我确认共享所选的完整日程标题、地点和任务';
 
 function Check({ label, checked, disabled = false, onPress }: { label: string; checked: boolean; disabled?: boolean; onPress: () => void }) {
+  const styles = useStyles();
   const theme = useTheme();
   const keyboard = Platform.OS === 'web' ? { onKeyDown: (event: React.KeyboardEvent<HTMLElement>) => {
     if (event.key === ' ' || event.key === 'Spacebar') { event.preventDefault(); event.stopPropagation(); if (!disabled && !event.repeat) onPress(); }
@@ -41,6 +42,7 @@ export default function AccountsScreen(props: Props) {
 }
 
 function AccountsWorkspace(props: Props & { identityKey: string }) {
+  const styles = useStyles();
   const household = useHousehold(), theme = useTheme(), { width, height } = useWindowDimensions();
   const latest = useRef(household); latest.current = household;
   const alive = useRef(false), active = useRef(false), focused = useRef(false), denied = useRef(false);
@@ -355,16 +357,19 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
   </View>;
 }
 
-const styles = StyleSheet.create({
-  page: { gap: 18 }, stack: { gap: 14 }, muted: { color: '#60646c', flexShrink: 1 }, grow: { flex: 1, minWidth: 0 },
-  providers: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 }, provider: { width: '100%' }, providerWide: { flex: 1, minWidth: 0, width: 'auto' },
-  space: { marginTop: 12, marginBottom: 16 }, buttons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
-  sourceStatus: { backgroundColor: 'white', padding: 16, borderRadius: 16, gap: 6 },
-  sourceOption: { backgroundColor: 'white', padding: 12, borderRadius: 16, gap: 10 },
-  check: { borderWidth: 2, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 4 }, checkContent: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  input: { minWidth: 0, backgroundColor: 'white' }, inputOutline: { borderRadius: 8 }, notice: { backgroundColor: '#f0f0f3', padding: 16, borderRadius: 16 },
-  warning: { backgroundColor: '#fff5df', padding: 16, borderRadius: 16, gap: 12 },
-  pagination: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
-  dialog: { width: '92%', maxWidth: 640, alignSelf: 'center', borderRadius: 24 }, dialogScroll: { paddingHorizontal: 0, flexShrink: 1 },
-  dialogContent: { padding: 20, gap: 14 },
-});
+function useStyles() {
+  const theme = useTheme();
+  return StyleSheet.create({
+    page: { gap: 18 }, stack: { gap: 14 }, muted: { color: theme.colors.onSurfaceVariant, flexShrink: 1 }, grow: { flex: 1, minWidth: 0 },
+    providers: { flexDirection: 'row', flexWrap: 'wrap', gap: 16 }, provider: { width: '100%' }, providerWide: { flex: 1, minWidth: 0, width: 'auto' },
+    space: { marginTop: 12, marginBottom: 16 }, buttons: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: 8 },
+    sourceStatus: { backgroundColor: theme.colors.surface, padding: 16, borderRadius: 16, gap: 6 },
+    sourceOption: { backgroundColor: theme.colors.surface, padding: 12, borderRadius: 16, gap: 10 },
+    check: { borderWidth: 2, borderRadius: 10, paddingVertical: 8, paddingHorizontal: 4 }, checkContent: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+    input: { minWidth: 0, backgroundColor: theme.colors.surface }, inputOutline: { borderRadius: 8 }, notice: { backgroundColor: theme.colors.secondaryContainer, padding: 16, borderRadius: 16 },
+    warning: { backgroundColor: theme.dark ? theme.colors.tertiaryContainer : '#fff5df', padding: 16, borderRadius: 16, gap: 12 },
+    pagination: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: 8 },
+    dialog: { width: '92%', maxWidth: 640, alignSelf: 'center', borderRadius: 24 }, dialogScroll: { paddingHorizontal: 0, flexShrink: 1 },
+    dialogContent: { padding: 20, gap: 14 },
+  });
+}

@@ -4,6 +4,7 @@ import MaterialCommunityIcons from '@expo/vector-icons/MaterialCommunityIcons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Banner, BottomNavigation, Button, Divider, IconButton, Menu, Surface, Text, useTheme } from 'react-native-paper';
 import type { ItemKind, RouteName } from '../lib/types';
+import { useDisplayDensity } from './theme';
 
 type Action = () => void | Promise<void>;
 export type AppShellProps = {
@@ -37,6 +38,7 @@ export default function AppShell(props: AppShellProps) {
   const { width } = useWindowDimensions();
   const wide = width >= 1040;
   const theme = useTheme(); const insets = useSafeAreaInsets();
+  const density = useDisplayDensity();
   const scroll = useRef<ScrollView>(null);
   const [menu, setMenu] = useState<'create' | 'account' | 'more' | null>(null);
   const { route, onNavigate, onLegacy } = props;
@@ -48,7 +50,7 @@ export default function AppShell(props: AppShellProps) {
   return (
     <View style={[styles.frame, { backgroundColor: theme.colors.background, paddingTop: insets.top }]}>
       <Surface elevation={0} style={[styles.headerSurface, { backgroundColor: theme.colors.background }]}>
-        <View style={[styles.header, { paddingHorizontal: wide ? 24 : 12, minHeight: wide ? 72 : 64 }]}>
+        <View testID="app-header" style={[styles.header, { paddingHorizontal: wide ? 24 : 12, minHeight: wide ? density.headerHeight : density.headerHeightNarrow }]}>
           {wide ? <Button mode="text" onPress={() => navigate('home')} accessibilityLabel="家庭中枢首页"
             icon={({ color }) => <MaterialCommunityIcons name="home-outline" size={24} color={color} />}
             textColor={theme.colors.onSurface} labelStyle={styles.brandLabel} style={styles.brand}>家庭中枢</Button> :
@@ -97,7 +99,7 @@ export default function AppShell(props: AppShellProps) {
         连接暂时不可用。请刷新后核对最新内容。
       </Banner> : null}
       <ScrollView ref={scroll} style={styles.contentScroll} contentContainerStyle={styles.scrollContent} keyboardShouldPersistTaps="handled">
-        <View style={[styles.content, { paddingHorizontal: wide ? 24 : 16, paddingTop: wide ? 32 : 20 }]}>{props.children}</View>
+        <View testID="app-content" style={[styles.content, { paddingHorizontal: wide ? 24 : 16, paddingTop: wide ? density.contentTop : density.contentTopNarrow, paddingBottom: density.contentBottom }]}>{props.children}</View>
       </ScrollView>
       {!wide ? <BottomNavigation.Bar navigationState={{ index: tabIndex >= 0 ? tabIndex : 4, routes: navigation }}
         getAccessibilityLabel={({ route: item }) => item.title} onTabPress={({ route: next }) => navigate(next.key)}
@@ -110,17 +112,17 @@ export default function AppShell(props: AppShellProps) {
 const styles = StyleSheet.create({
   frame: { flex: 1, minHeight: 0 }, headerSurface: { alignItems: 'center' },
   header: { width: '100%', maxWidth: 1328, flexDirection: 'row', alignItems: 'center', gap: 14 },
-  brand: { borderRadius: 999, flexShrink: 0, marginLeft: -10 },
+  brand: { borderRadius: 999, flexShrink: 0, marginLeft: -10, minHeight: 44 },
   brandLabel: { fontSize: 20, lineHeight: 28, fontWeight: '600', letterSpacing: -0.5, marginHorizontal: 8 },
   navigation: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 2 },
-  navButton: { borderRadius: 999, minWidth: 52 }, navLabel: { fontSize: 14, marginHorizontal: 12, marginVertical: 10 },
+  navButton: { borderRadius: 999, minWidth: 52, minHeight: 44 }, navLabel: { fontSize: 14, marginHorizontal: 12, marginVertical: 10 },
   reverse: { flexDirection: 'row-reverse' },
   mobileHeading: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 }, headerCopy: { flex: 1, minWidth: 0, gap: 1 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 }, iconButton: { margin: 0 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 }, iconButton: { margin: 0, minWidth: 44, minHeight: 44 },
   // Paper rounds the outer Surface only. Keep the inner keyboard focus ring
   // inside that clipped circle instead of rendering four cut-off square edges.
   iconContent: { borderRadius: 999, ...(Platform.OS === 'web' ? { outlineOffset: -3 } : {}) },
-  button: { borderRadius: 999 }, buttonContent: { minHeight: 40 }, menu: { borderRadius: 20, minWidth: 210 },
+  button: { borderRadius: 999 }, buttonContent: { minHeight: 44 }, menu: { borderRadius: 20, minWidth: 210 },
   contentScroll: { flex: 1 }, scrollContent: { flexGrow: 1, alignItems: 'center' },
-  content: { width: '100%', maxWidth: 1328, paddingBottom: 40 }, bottomBar: { borderTopWidth: 1 },
+  content: { width: '100%', maxWidth: 1328 }, bottomBar: { borderTopWidth: 1 },
 });
