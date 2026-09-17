@@ -10,6 +10,7 @@ import { budgetPayload, centsToDecimal, decimalInput, flowLabels, formatFinanceA
 import type { ScreenProps } from '../lib/types';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import FinanceImportPanel from './FinanceImportPanel';
+import FinanceBaselinePanel from '../components/FinanceBaselinePanel';
 
 type Data = { overview: Overview; ledger: Ledger; shared: Totals[]; finance: SharedSnapshot };
 type Query = { month: string; q: string; page: number; snapshot?: string };
@@ -70,7 +71,9 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
   const [sharedEditor, setSharedEditorState] = useState<{ base: SharedSnapshot; inputs: Record<string, string>; conflict: boolean } | null>(null), sharedRef = useRef<typeof sharedEditor>(null);
   const [pending, setPendingState] = useState<Pending | null>(null), pendingRef = useRef<Pending | null>(null);
   const [importing, setImporting] = useState(false), [importMonths, setImportMonths] = useState<{ month: string; recordCount: number }[]>([]);
-  const current = () => alive.current && active.current && focused.current && appActive.current && !denied.current && latest.current.identityKey === props.identityKey && latest.current.online && online() && foreground();
+  const [baseline, setBaselineState] = useState(false), baselineRef = useRef(false);
+  const setBaseline = (value: boolean) => { baselineRef.current = value; setBaselineState(value); };
+  const current = () => alive.current && active.current && focused.current && appActive.current && !denied.current && !baselineRef.current && latest.current.identityKey === props.identityKey && latest.current.online && online() && foreground();
   const setDetail = (v: Reconciliation | null) => { detailRef.current = v; setDetailState(v); };
   const setEdit = (v: Edit | null) => { editRef.current = v; setEditState(v); };
   const setBudget = (v: BudgetDraft | null) => { budgetRef.current = v; setBudgetState(v); };
@@ -80,7 +83,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
   function conceal(clear = false) {
     active.current = false; ++epoch.current; fence.current.invalidate(); reading.current = false; writing.current = false;
     setVisible(false); setBusy(false); setData(null); setPreview(null); setRevoke(null);
-    if (clear) { closeDetail(); setBudget(null); setSharedEditor(null); setPending(null); setNotice(''); setError(''); setImporting(false); setImportMonths([]); }
+    if (clear) { closeDetail(); setBudget(null); setSharedEditor(null); setPending(null); setNotice(''); setError(''); setImporting(false); setImportMonths([]); setBaseline(false); }
   }
   function failure(caught: unknown) {
     if (!current()) return;
@@ -229,6 +232,15 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     {!!data?.overview.availableMonths.length && <ScrollView horizontal showsHorizontalScrollIndicator accessibilityLabel="已有记录的月份"><View style={styles.row}>{data.overview.availableMonths.map(m => <Button key={m.month} mode={query.current.month === m.month ? 'contained' : 'text'} disabled={locked} onPress={() => changeMonth(m.month)}>{m.month} · {m.recordCount}</Button>)}</View></ScrollView>}
   </View>;
 
+  function openBaseline() {
+    if (!current() || reading.current || writing.current || pendingRef.current || editRef.current || budgetRef.current || sharedRef.current) return;
+    ++epoch.current; fence.current.invalidate(); setVisible(false); setData(null); setError(''); setNotice(''); setBaseline(true);
+  }
+  function closeBaseline() {
+    if (!alive.current) return;
+    setBaseline(false); if (current()) void reload(true);
+  }
+  if (baseline) return <FinanceBaselinePanel onBack={closeBaseline} />;
   if (importing) return <FinanceImportPanel onClose={() => { setImporting(false); if (current()) void reload(true); }} onImported={(result: ImportedResult) => {
     if (!current()) return; setImporting(false); setTab('ledger'); setImportMonths(result.resultMonths); setNotice(`已导入 ${result.imported} 笔，重复 ${result.duplicates} 笔，保留冲突旧记录 ${result.conflicts} 笔。确认时间：${time(result.confirmedAt)}。`);
     if (result.resultMonths.length) changeMonth(result.resultMonths[0].month); else void reload(true);
@@ -257,7 +269,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
           </View></SectionCard>
         </>}
         {tab === 'budgets' && <SectionCard title={`${data.overview.month} 本人月预算`} action={<Button disabled={locked} onPress={() => openBudget()}>新增预算</Button>}><View style={styles.stack}><Text style={styles.muted}>预算按币种与分类独立管理。“全部”是该币种总预算，分类预算不再与总预算相加。花费来自已导入消费减退款，可能尚未覆盖全部支出。</Text>{data.overview.budgets.length ? data.overview.budgets.map(b => <View key={b.currency + b.category} testID={`finance-budget-${b.currency}-${b.category}`} style={styles.white}><Text variant="titleMedium">{b.category} · {b.currency}</Text><Amount cents={b.amountCents} currency={b.currency} prominent /><Text>已记录支出 {formatFinanceAmount(b.spentCents, b.currency)}</Text><Text style={b.remainingCents < 0 ? { color: theme.colors.error } : styles.muted}>剩余额度 {formatFinanceAmount(b.remainingCents, b.currency)}</Text><Button disabled={locked} onPress={() => openBudget(b)}>修改预算</Button></View>) : <EmptyState title="这个月还没有预算" description="可以先设置总预算，再按需要增加分类预算。" />}</View></SectionCard>}
-        <View style={styles.row}><Button icon="chart-donut" accessibilityLabel="我的持仓" disabled={locked} onPress={() => props.onNavigate('investments')}>我的持仓</Button><Button icon="folder-outline" accessibilityLabel="来源报告与高级财务" disabled={locked} onPress={() => props.onLegacy('finance')}>来源报告与高级财务</Button></View><Text style={styles.muted}>持仓记录与导入可在「我的持仓」管理。资产基线与来源报告仍在高级财务中查看。</Text>
+        <View style={styles.row}><Button icon="chart-donut" accessibilityLabel="我的持仓" disabled={locked} onPress={() => props.onNavigate('investments')}>我的持仓</Button><Button icon="folder-outline" accessibilityLabel="我的资产与来源报告" disabled={locked} onPress={openBaseline}>我的资产与来源报告</Button><Button accessibilityLabel="更新资产来源（高级）" disabled={locked} onPress={() => props.onLegacy('finance')}>更新资产来源（高级）</Button></View><Text style={styles.muted}>资产、负债和来源报告仅本人查看。持仓单独管理，金额不会与资产基线自动相加。</Text>
       </> : <>
         <SectionCard title="原始记录"><View style={styles.stack}><TransactionCopy row={detail.transaction} />{Object.entries({ 来源: sourceLabel(detail.transaction.source), 原始编号: detail.transaction.externalId, 商户订单号: detail.transaction.merchantOrderId, 支付号: detail.transaction.paymentId, 原交易号: detail.transaction.originalTransactionId, 原状态: detail.transaction.status, 入账时间: time(detail.transaction.importedAt), 最近核对: time(detail.transaction.checkedAt) }).filter(([, value]) => value).map(([label, value]) => <Text key={label} style={styles.wrap}>{label}：{value}</Text>)}
           {detail.transaction.provenance?.status === 'recorded' ? <View style={styles.white} testID="finance-provenance"><Text variant="titleMedium">导入来源</Text><Text selectable style={styles.wrap}>导入批次：{detail.transaction.provenance.batchId}</Text><Text style={styles.wrap}>文件名：{detail.transaction.provenance.fileName || '直接粘贴的 CSV 文本'}</Text><Text>文件格式：{detail.transaction.provenance.format.toUpperCase()}</Text>{!!detail.transaction.provenance.sheet && <Text>工作表：{detail.transaction.provenance.sheet}</Text>}<Text>{detail.transaction.provenance.lineKind === 'worksheet_rows' ? '工作表原行号' : 'CSV 物理行号'}：{detail.transaction.provenance.lineStart}–{detail.transaction.provenance.lineEnd}</Text><Text>首次入账：{time(detail.transaction.provenance.importedAt)}</Text><Text style={styles.muted}>重复导入与冲突核对保留首次来源。此处为来源索引，不保存原始附件。</Text></View> : <Text style={styles.muted}>历史来源批次未记录，不能从时间推断所属文件。</Text>}
