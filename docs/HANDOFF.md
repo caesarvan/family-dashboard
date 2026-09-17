@@ -1,11 +1,15 @@
 # 联合开发接手说明
 
-> **线上版本：2026-09-17 09:25:21（北京时间），09:25:52 正常 TLS 读回通过。** 旅行地点确认与日历同步已发布，55→55 无 schema 迁移。完整运行包身份、Linux 结果和备份／TLS 原件见 [本轮发布验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md#expo-trip-coordination-release)。本页为发布后本地文档，不改变已安装包或构建来源。
+**当前线上：旅行明确改期已于 2026-09-17 11:09:53（北京时间）激活，11:10:38 正常 TLS 读回通过。** 安装 main `2092cc43c4660df905755475706a88dfd62e7203`／source `0059cd9da2db43e1ad4f4cc95edc15b9bb3804a7`，与受验候选 `06f5bd` 同树 `07540964da68469d3861436afa04bb5dd8b36415`。`JourneyReschedulePanel` 经来源快照、逐项选择和预览后调用原 `journeys/apply`；`journey_reschedule.py` 处理当地日期与 DST，`journey_workflows.py` 原子保存并提供只读操作回执。默认保留可选日期，保护历史、金额和共享范围；未知提交保留原凭证与编号。接口见 [旅行改期](JOURNEY-RESCHEDULE.md)，运行身份、失败修订和外部边界集中在 [改期发布验收](JOURNEY-RESCHEDULE-ACCEPTANCE.md#journey-reschedule-release)。
+
+本地 38 新 API、182 既有回归、20 Node、21 发布工具与 16 浏览器检查分次通过；新镜像 Linux 603 通过加唯一精确 Windows 跳过，不相加为一套。实际 1 户两库完整备份、55 表及注册库行／schema／序列在 app 启动后保持，545 源／114 运行与 75 HTTPS 资源读回通过。后续逐库在线备份不是全局原子或再次 live 全组快照。新发布必须重新绑定实际安装基线，不能重放本次 [固定适配器](JOURNEY-RESCHEDULE-RELEASE.md)。本人真实云和实体电视仍另验；助理内嵌导航仅源码审查，地图内嵌恢复有本轮浏览器验证。
+
+> **此前线上版本：2026-09-17 09:25:21（北京时间），09:25:52 正常 TLS 读回通过。** 旅行地点确认与日历同步已发布，55→55 无 schema 迁移。完整运行包身份、Linux 结果和备份／TLS 原件见 [本轮发布验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md#expo-trip-coordination-release)。本页为发布后本地文档，不改变已安装包或构建来源。
 
 先读 [README](../README.md)，再按下方模块地图阅读接口和源码。此前 23:02 三模块与 21:59 首期身份分别保留于 [EXPO-NEXT-RELEASE](EXPO-NEXT-RELEASE.md)、[EXPO-RELEASE](EXPO-RELEASE.md)，历次证据见 [VALIDATION](VALIDATION.md)。
 
 <a id="expo-trip-coordination-release"></a>
-## 当前线上交接：旅行地点与日历同步
+## 此前线上交接：旅行地点与日历同步（09:25）
 
 已安装 main `f7126dd59348eecfc749534953423d1df45dea14`／source `5d8a0c4d5e96a209ad80e6dddd80a086969f31d9`，同树 `7a5ffaf5ea5f781f0b93c84901921363aab98a72`；源码、组件与接线经非作者审查。第二轮 Linux 544 通过、1 个精确 Windows 跳过，本地浏览器 20 组通过；第一轮空间不足失败原件保留。完整包、镜像、备份和真实云边界集中在 [本轮验收](EXPO-TRIP-COORDINATION-ACCEPTANCE.md)。
 
