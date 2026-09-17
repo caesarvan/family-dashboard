@@ -106,7 +106,7 @@ class Run(JourneyRun):
     def open_calendar(self, page, trip=None):
         if trip:
             self.show_saved(page, trip)
-        button(page, '同步到日历').click()
+        icon_button(page, '同步到日历').click()
         expect(page.get_by_role('heading', name='旅行日历同步', exact=True)).to_be_visible()
         expect(button(page, '刷新同步状态')).to_be_enabled()
 
@@ -153,7 +153,7 @@ class Run(JourneyRun):
     def places_roundtrip(self, page, receipt):
         ctx = page.context
         before = self.snapshot()
-        button(page, '旅行地点').click()
+        icon_button(page, '旅行地点').click()
         expect(page.get_by_test_id('journey-places-panel')).to_be_visible()
         button(page, '整理目的地：东京').click()
         expect(textfield(page, '纬度（可不填）')).to_have_value('')
@@ -228,7 +228,7 @@ class Run(JourneyRun):
         assert self.state(page.context, receipt['id'])['publications'][0]['id'] == rid
         # A new explicit preview+confirm must keep the existing queue identity.
         # The conservative unknown state remains locked until leaving the panel.
-        button(page, '返回旅行').click()
+        icon_button(page, '返回旅行').click()
         self.open_calendar(page)
         self.choose_source(page)
         self.calendar_preview(page)
@@ -248,7 +248,7 @@ class Run(JourneyRun):
         ctx = page.context
         old = self.detail(ctx, receipt['id'])
         remote_id = self.publication(rid)['remote_id']
-        button(page, '返回旅行').click()
+        icon_button(page, '返回旅行').click()
         icon_button(page, '编辑旅行').click()
         for name, value in [('出发日期（YYYY-MM-DD）', '2028-03-05'), ('返程日期（包含当天）', '2028-03-07'),
                 ('抵达日期 1', '2028-03-05'), ('离开日期 1', '2028-03-07')]:
@@ -493,6 +493,17 @@ class Run(JourneyRun):
                     or (concealed.count() and concealed.is_enabled()))
                 expect(button(page, '确认加入同步')).to_have_count(0)
                 expect(page.get_by_role('heading', name='确认同步内容', exact=True)).to_have_count(0)
+                if status in (401, 403):
+                    # Auth rejection must immediately conceal the old private
+                    # DTO, even when the real server cookie is still unchanged.
+                    expect(concealed).to_be_enabled()
+                    expect(page.locator('body')).not_to_contain_text('本人合成旅行日历')
+                    expect(page.locator('body')).not_to_contain_text(current['plan']['title'])
+                    expect(page.get_by_label('选择日历：本人合成旅行日历 · 合成账户', exact=True)).to_have_count(0)
+                    expect(page.get_by_role('heading', name='核对旅行时间变化', exact=True)).to_have_count(0)
+                    expect(page.get_by_role('heading', name='核对云端修改', exact=True)).to_have_count(0)
+                else:
+                    expect(unknown).to_be_enabled()
                 assert trace == ['real-confirm-committed-200', 'post-response-me-' + str(status)]
                 assert len(fault['result']['publicationIds']) == 1
                 rid = fault['result']['publicationIds'][0]
@@ -524,6 +535,7 @@ class Run(JourneyRun):
                 self.report.setdefault('postSessionFaults', []).append({'provider': self.provider,
                     'status': status, 'trace': trace, 'injectedResponses': fault['injected'],
                     'periodicPollsDelayed': True, 'businessConfirmResponsesSynthetic': False,
+                    'privateSnapshotConcealedOnSessionRejection': status in (401, 403),
                     'sameQueueRetained': True, 'actualMemberChangeConcealed': True})
                 self.passed(self.provider + ': committed confirmation followed by /me ' + str(status)
                     + ' stays unknown/read-only, preserves one queue and conceals on a real member change')
