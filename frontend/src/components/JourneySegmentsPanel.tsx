@@ -33,19 +33,19 @@ function Paged({ label, page, count, onChange, disabled = false }: { label: stri
   return <View style={styles.actions}><Button contentStyle={styles.touch} disabled={disabled || page === 0} accessibilityLabel={`${label}上一页`} onPress={() => onChange(page - 1)}>上一页</Button>
     <Text>{page + 1} / {pages}</Text><Button contentStyle={styles.touch} disabled={disabled || page + 1 >= pages} accessibilityLabel={`${label}下一页`} onPress={() => onChange(page + 1)}>下一页</Button></View>;
 }
-const groupNames: Record<string, string> = { timing: '日期、时间与时区', title: '标题', location: '地点', note: '备注' };
-const valueNames: Record<string, string> = { start: '开始', end: '结束', title: '标题', location: '地点', note: '备注', allDay: '全天',
+const groupNames: Record<string, string> = { timing: '日期、时间与时区', title: '标题', location: '地点', note: '备注', owner: '负责人' };
+const valueNames: Record<string, string> = { start: '开始', end: '结束', title: '标题', location: '地点', note: '备注', owner: '负责人', allDay: '全天',
   startDate: '开始日期', endDateExclusive: '结束日期（不含当天）', travelTiming: '当地时间', local: '当地时刻', timeZone: '时区',
   startLocal: '开始当地时刻', endLocal: '结束当地时刻', startTimeZone: '开始时区', endTimeZone: '结束时区',
   startOffsetMinutes: '开始 UTC 偏移分钟', endOffsetMinutes: '结束 UTC 偏移分钟', offsetMinutes: 'UTC 偏移分钟', instant: 'UTC 时刻',
   departure: '起飞', arrival: '抵达', airport: '机场', city: '城市', flightNumber: '航班号', propertyName: '住宿名称', address: '地址',
   checkInTime: '入住时间', checkOutTime: '退房时间', nights: '晚数', bookingState: '预订标记', datePolicy: '日期规则', kind: '类型' };
-function valueText(value: unknown, depth = 0): string {
+function valueText(value: unknown, people: readonly { id: string; name: string }[], depth = 0): string {
   if (value === null || value === undefined || value === '') return '未填写';
   if (typeof value === 'boolean') return value ? '是' : '否';
   if (typeof value === 'string') return ({ ...bookingNames, ...segmentKindNames, fixed: '固定日期', shift_with_trip: '可选择联动' } as Record<string, string>)[value] || value;
   if (typeof value === 'number') return String(value);
-  if (typeof value === 'object' && depth < 4) return Object.entries(value).filter(([key]) => key in valueNames).map(([key, item]) => `${valueNames[key]}：${valueText(item, depth + 1)}`).join('\n') || '无额外内容';
+  if (typeof value === 'object' && depth < 4) return Object.entries(value).filter(([key]) => key in valueNames).map(([key, item]) => `${valueNames[key]}：${key === 'owner' ? item === 'shared' ? '共同负责' : people.find(person => person.id === item)?.name || '负责人待核对' : valueText(item, people, depth + 1)}`).join('\n') || '无额外内容';
   return '请核对当前内容';
 }
 export default function JourneySegmentsPanel(props: Props) {
@@ -56,6 +56,7 @@ export default function JourneySegmentsPanel(props: Props) {
 }
 function Workspace(props: Props & { identityKey: string }) {
   const household = useHousehold(), theme = useTheme(), density = useDisplayDensity();
+  const describeValue = (value: unknown) => valueText(value, household.state?.people ?? []);
   const latest = useRef({ household, props }); latest.current = { household, props };
   const [model, setModel] = useState<Model>(empty), live = useRef(model);
   const [visible, setVisible] = useState(false), [busy, setBusy] = useState(false), [error, setError] = useState(''), [message, setMessage] = useState('');
@@ -268,7 +269,7 @@ function Workspace(props: Props & { identityKey: string }) {
       <Text>以下来自刚读取的当前详情；单独编辑的日程可能与旅行计划不同，分别列出供核对。</Text>
       {model.source.plan.segments.slice(pages.saved * PAGE, (pages.saved + 1) * PAGE).map(row => { const event = model.source!.events.find(item => item.workflowKey === 'segment:' + row.key); return <View key={row.key} style={styles.row}>
         <Text variant="titleSmall">{row.title}</Text><Text>旅行计划：{'kind' in row ? segmentText(row) : `${row.start} → ${row.end}（包含结束日）`}</Text>
-        <Text>当前日程：{event ? valueText(event) : '关联日程当前不存在，没有据旧计划重建'}</Text>
+        <Text>当前日程：{event ? describeValue(event) : '关联日程当前不存在，没有据旧计划重建'}</Text>
       </View>; })}{page('saved', model.source.plan.segments.length)}
     </View></SectionCard>}
     {model.missing && <Text>旅行当前不可读取。未保存草稿仍保留，可明确放弃；历史回执不会重建旅行。</Text>}
@@ -336,12 +337,12 @@ function Workspace(props: Props & { identityKey: string }) {
         {!!p.summary.preserved.length && <Text>{p.summary.preserved.length} 组单独编辑过的日程内容会保留。旅行计划与当前日程可能不同。</Text>}
         {[...p.summary.preserved, ...p.summary.resolved].slice(pages.comparisons * PAGE, (pages.comparisons + 1) * PAGE).map(row => <View key={row.itemKey + row.fieldGroup} style={styles.row}>
           <Text variant="titleSmall">{v2?.segments.find(item => 'segment:' + item.key === row.itemKey)?.title || '旅行日程'} · {groupNames[row.fieldGroup]}</Text>
-          <Text>{row.resolution === 'plan' ? '明确采用本页计划：' : '保留当前日程：'}{valueText(row.resolution === 'plan' ? row.proposed : row.current)}</Text>
+          <Text>{row.resolution === 'plan' ? '明确采用本页计划：' : '保留当前日程：'}{describeValue(row.resolution === 'plan' ? row.proposed : row.current)}</Text>
         </View>)}{page('comparisons', p.summary.preserved.length + p.summary.resolved.length)}
         {p.summary.warnings.slice(pages.warnings * PAGE, (pages.warnings + 1) * PAGE).map((warning, index) => <Text key={`${pages.warnings}-${index}`}>{warning.message}</Text>)}{page('warnings', p.summary.warnings.length)}
         {p.summary.conflicts.slice(pages.conflicts * PAGE, (pages.conflicts + 1) * PAGE).map(conflict => <View key={conflict.itemKey + conflict.fieldGroup} testID={`segment-conflict-${conflict.itemKey}-${conflict.fieldGroup}`} style={styles.row}>
           <Text variant="titleSmall">{v2?.segments.find(row => 'segment:' + row.key === conflict.itemKey)?.title || '旅行日程'} · {groupNames[conflict.fieldGroup] || '内容'}</Text>
-          <Text>原来：{valueText(conflict.base)}</Text><Text>当前日程：{valueText(conflict.current)}</Text><Text>本页计划：{valueText(conflict.proposed)}</Text>
+          <Text>原来：{describeValue(conflict.base)}</Text><Text>当前日程：{describeValue(conflict.current)}</Text><Text>本页计划：{describeValue(conflict.proposed)}</Text>
           <View accessibilityRole="radiogroup" accessibilityLabel="日程冲突选择">{(['current', 'plan'] as const).map(choice => <SelectionRow key={choice} kind="radio" label={choice === 'current' ? '保留当前日程' : '使用本页计划'}
             accessibilityLabel={`${choice === 'current' ? '保留当前日程' : '使用本页计划'}：${v2?.segments.find(row => 'segment:' + row.key === conflict.itemKey)?.title || '旅行日程'}：${groupNames[conflict.fieldGroup]}`} checked={model.choices[conflict.itemKey]?.[conflict.fieldGroup] === choice} disabled={locked}
             onPress={() => { if (!current() || locked) return; install({ choices: { ...live.current.choices, [conflict.itemKey]: { ...live.current.choices[conflict.itemKey], [conflict.fieldGroup]: choice } } }); }} />)}</View>
