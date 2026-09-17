@@ -6,6 +6,7 @@ The signed import preview is stateless: preview never writes a ledger row.
 from __future__ import annotations
 
 from collections import Counter
+from contextlib import contextmanager
 import csv
 import hashlib
 import io
@@ -257,6 +258,7 @@ def _order_details_signature(row):
 
 def _import_conflict(old, new):
     return (any(old.get(k) != new.get(k) for k in ('amountCents', 'currency', 'date'))
+            or (new.get('source') == 'generic' and new.get('sourceRowKey') and old.get('title') != new.get('title'))
             or _order_details_signature(old) != _order_details_signature(new)
             or (_is_grouped_order(new) and any(old.get(k) != new.get(k) for k in ('status', 'flow'))))
 
@@ -270,8 +272,7 @@ def _is_grouped_order(row):
 def _index_order(existing):
     index = {}
     for fingerprint, row in existing.items():
-        if row.get('source') == 'taobao' and row.get('kind') == 'orders' and row.get('externalId'):
-            index.setdefault(row['externalId'], []).append(fingerprint)
+        _index_import_row(index, {**row, 'fingerprint': fingerprint})
     return index
 
 
@@ -280,14 +281,108 @@ def _import_matches(row, existing, order_index):
     # intact, including any ambiguous old duplicates; never migrate or merge them.
     if _is_grouped_order(row) and row['externalId'] in order_index:
         return order_index[row['externalId']]
-    return [row['fingerprint']] if row['fingerprint'] in existing else []
+    matches = [row['fingerprint']] if row['fingerprint'] in existing else []
+    if row.get('sourceRowKey'):
+        matches.extend(order_index.get(('row', row['sourceRowKey']), []))
+    return list(dict.fromkeys(matches))
 
 
-def parse_import(payload):
+def _index_import_row(index, row):
+    if row.get('source') == 'taobao' and row.get('kind') == 'orders' and row.get('externalId'):
+        index.setdefault(row['externalId'], []).append(row['fingerprint'])
+    if row.get('sourceRowKey'):
+        index.setdefault(('row', row['sourceRowKey']), []).append(row['fingerprint'])
+
+
+COLUMN_FIELDS = ('date', 'amount', 'title', 'currency')
+
+
+def _column_controls(payload):
+    inspect = payload.get('inspectColumns', False)
+    if type(inspect) is not bool:
+        raise FinanceHubError('inspectColumns 必须为布尔值')
+    explicit = 'mapping' in payload
+    if not inspect and not explicit:
+        if 'headerLine' in payload:
+            raise FinanceHubError('headerLine 仅用于表头检查')
+        return False, None
+    if payload.get('source', 'generic') != 'generic':
+        raise FinanceHubError('四字段映射仅用于通用表格')
+    if 'amountColumn' in payload or 'inspectSheets' in payload or (explicit and 'inspectColumns' in payload):
+        raise FinanceHubError('工作表、金额列与四字段映射必须分步选择')
+    if explicit:
+        mapping = payload['mapping']
+        if type(mapping) is not dict or set(mapping) != {'version', 'headerLine', *COLUMN_FIELDS}:
+            raise FinanceHubError('mapping 必须包含 version、headerLine 和四个字段的列索引')
+        if type(mapping['version']) is not int or mapping['version'] != 1:
+            raise FinanceHubError('不支持此字段映射版本')
+        if 'headerLine' in payload:
+            raise FinanceHubError('映射表头行必须放在 mapping 内')
+        indices = [mapping[field] for field in COLUMN_FIELDS]
+        if any(type(ix) is not int or not 0 <= ix < 80 for ix in indices) or len(set(indices)) != 4:
+            raise FinanceHubError('日期、金额、标题、币种必须各选一个不同的有效列')
+        line = mapping['headerLine']
+    else:
+        line = payload.get('headerLine')
+    if line is not None and (type(line) is not int or not 1 <= line <= 60):
+        raise FinanceHubError('表头行必须为 1 至 60 的整数')
+    if explicit and line is None:
+        raise FinanceHubError('请选择实际表头行')
+    return inspect, line
+
+
+def _column_header(text, file_info, requested_line):
+    """Locate records by actual CSV physical lines, or XLSX worksheet rows."""
+    worksheet = bool(file_info and file_info['format'] == 'xlsx')
+    choices = []
+    for sep in (',', '\t', ';'):
+        previous = 0
+        reader = csv.reader(io.StringIO(text.lstrip('\ufeff'), newline=''), delimiter=sep, strict=True)
+        try:
+            for record, values in enumerate(reader, 1):
+                start = record if worksheet else previous + 1
+                previous = reader.line_num
+                if start > (requested_line or 60):
+                    break
+                if requested_line is not None and start != requested_line:
+                    continue
+                if not values or not any(value.strip() for value in values):
+                    if requested_line is not None:
+                        break
+                    continue
+                choices.append((len(values), sep, values, start, reader.line_num, record))
+                break
+        except csv.Error:
+            continue
+    if not choices:
+        raise FinanceHubError('未找到完整表头记录；请选择记录起始行并检查引号')
+    # A worksheet is serialized with commas. For CSV/TXT use the supported
+    # delimiter yielding the most header columns; never collapse blank labels.
+    chosen = choices[0] if worksheet else max(choices, key=lambda item: item[0])
+    _, sep, columns, line, end, record = chosen
+    if len(columns) > 80:
+        raise FinanceHubError('表头最多 80 列，请移除无关列')
+    if len(columns) < 4:
+        raise FinanceHubError('四字段映射需要至少四列，请检查表头起始行与分隔符')
+    labels = [clean(value, 200) for value in columns]
+    suggestions = {}
+    for name in COLUMN_FIELDS:
+        matches = [i for i, label in enumerate(labels)
+                   if header_key(label) in {header_key(alias) for alias in ALIASES[name]}]
+        suggestions[name] = matches[0] if len(matches) == 1 else None
+    selection = {'headerLine': line, 'lineKind': 'worksheet_rows' if worksheet else 'csv_lines',
+                 'columns': [{'index': i, 'label': label, 'columnLabel': column_label(i)}
+                             for i, label in enumerate(labels)], 'suggestedMapping': suggestions}
+    return columns, sep, end, record, selection
+
+
+def parse_import(payload, *, _legacy_identity=False):
     source = payload.get('source', 'generic')
     kind = payload.get('kind', 'payments')
     if not isinstance(source, str) or not isinstance(kind, str) or source not in SOURCES or kind not in KINDS:
         raise FinanceHubError('请选择有效的来源和账单类型')
+    inspect_columns, header_line = _column_controls(payload)
+    explicit_columns = 'mapping' in payload
     inspect_sheets = payload.get('inspectSheets', False)
     if type(inspect_sheets) is not bool:
         raise FinanceHubError('inspectSheets 必须为布尔值')
@@ -328,7 +423,23 @@ def parse_import(payload):
     mapping = None
     start = None
     delimiter = ','
-    for index, line in enumerate(lines[:60]):
+    column_selection, header_record = None, None
+    if inspect_columns or explicit_columns:
+        columns, delimiter, end, header_record, column_selection = _column_header(text, file_info, header_line)
+        if inspect_columns:
+            return {'source': source, 'kind': kind, 'rows': [], 'errors': [], 'fileInfo': file_info,
+                    'errorCount': 0, 'warnings': [], 'amountSelection': None,
+                    'requiresAmountSelection': False, 'requiresSheetSelection': False,
+                    'requiresColumnSelection': True, 'columnSelection': column_selection}
+        if any(payload['mapping'][field] >= len(columns) for field in COLUMN_FIELDS):
+            raise FinanceHubError('映射列超出当前表头范围，请重新选择')
+        mapping = {name: matches[0] for name, aliases in field_aliases.items()
+                   if (matches := [i for alias in aliases for i, label in enumerate(columns)
+                                   if header_key(label) == header_key(alias)])}
+        mapping.update({field: payload['mapping'][field] for field in COLUMN_FIELDS})
+        start = end - 1
+        column_selection['mapping'] = dict(payload['mapping'])
+    for index, line in enumerate(lines[:60] if mapping is None else []):
         for sep in [',', '\t', ';']:
             try:
                 columns = next(csv.reader([line], delimiter=sep, strict=True))
@@ -350,12 +461,12 @@ def parse_import(payload):
         raise FinanceHubError('表头最多 80 列，请移除无关列')
     amount_indices = sorted({i for i, label in enumerate(columns)
                              if header_key(label) in {header_key(alias) for alias in ALIASES['amount']}})
-    selected = amount_indices[0] if len(amount_indices) == 1 else None
+    selected = mapping['amount'] if explicit_columns or _legacy_identity else amount_indices[0] if len(amount_indices) == 1 else None
     if 'amountColumn' in payload:
         selected = payload['amountColumn']
         if type(selected) is not int or selected not in amount_indices:
             raise FinanceHubError('金额列选择无效，请从当前文件识别到的金额列中重新选择')
-    amount_selection = {'required': len(amount_indices) > 1, 'selectedIndex': selected,
+    amount_selection = None if explicit_columns else {'required': len(amount_indices) > 1, 'selectedIndex': selected,
                         'headerLine': start + 1,
                         'columns': [{'index': i, 'label': clean(columns[i], 200, required=True),
                                      'columnLabel': column_label(i)} for i in amount_indices]}
@@ -377,7 +488,11 @@ def parse_import(payload):
     if grouped is not None:
         warnings.append('已按明确合并范围分组；每个订单只统计一次实付金额，商品标价、数量和运费不作付款分摊。')
     try:
-        reader = csv.reader(io.StringIO('\n'.join(lines[start + 1:])), delimiter=delimiter, strict=True)
+        reader = csv.reader(io.StringIO(text.lstrip('\ufeff') if explicit_columns else
+                                       '\n'.join(lines[start + 1:]), newline=''), delimiter=delimiter, strict=True)
+        if explicit_columns:
+            for _ in range(header_record):
+                next(reader)
         # Keep the legacy end-line used by fingerprints while separately retaining
         # the actual source range. XLSX serialization emits one CSV record per
         # physical worksheet row, including gaps and cells containing newlines.
@@ -388,15 +503,17 @@ def parse_import(payload):
                 worksheet_rows[full_reader.line_num] = physical_row
         locations = {}
         def source_entries():
-            previous = 0
-            for values in reader:
-                end = start + 1 + reader.line_num
-                begin = start + 2 + previous
+            previous = reader.line_num if explicit_columns else 0
+            for record_offset, values in enumerate(reader, 1):
+                end = reader.line_num if explicit_columns else start + 1 + reader.line_num
+                begin = previous + 1 if explicit_columns else start + 2 + previous
                 previous = reader.line_num
-                physical = worksheet_rows.get(end)
-                locations[end] = {'lineStart': physical or begin, 'lineEnd': physical or end,
+                physical = (header_record + record_offset if header_record is not None and
+                            file_info and file_info['format'] == 'xlsx' else worksheet_rows.get(end))
+                line_number = physical if explicit_columns and physical else end
+                locations[line_number] = {'lineStart': physical or begin, 'lineEnd': physical or end,
                                   'lineKind': 'worksheet_rows' if physical else 'csv_lines'}
-                yield end, values, None
+                yield line_number, values, None
         entries = grouped if grouped is not None else source_entries()
         for line_number, row, order_metadata in entries:
             if not row or not any(value.strip() for value in row):
@@ -415,7 +532,16 @@ def parse_import(payload):
                 if not match:
                     raise FinanceHubError('日期格式不正确')
                 when = valid_date(f'{int(match[1]):04}-{int(match[2]):02}-{int(match[3]):02}')
-                amount = import_cents(cell('amount'))
+                # Internal compatibility pass produces identity only, never money
+                # for a preview/write. Old users could select another amount when
+                # the original column was unreadable, or predate strict commas.
+                if _legacy_identity:
+                    try:
+                        amount = cents(cell('amount'))
+                    except FinanceHubError:
+                        amount = None
+                else:
+                    amount = import_cents(cell('amount'))
                 currency = currency_code(cell('currency', 'CNY'))
                 if order_metadata:
                     items = order_metadata['orderItems']
@@ -467,9 +593,28 @@ def parse_import(payload):
         warnings.append(f'{unknown} 行方向或退款状态待核对，不计入支出或收入。')
     if kind == 'orders':
         warnings.append('订单单独统计采购金额，不再次计入支付账单支出，避免双重记账。')
+    if source == 'generic':
+        for row in result:
+            location = row['sourceLocation']
+            locator = [source, kind, file_digest, (file_info or {}).get('sheet'),
+                       location['lineKind'], location['lineStart'], location['lineEnd']]
+            row['sourceRowKey'] = hashlib.sha256(json.dumps(locator, ensure_ascii=False).encode()).hexdigest()
+        if explicit_columns:
+            # Reuse the historical identity rules independently of the selected
+            # monetary column. This one extra bounded pass supplies hashes only;
+            # its amounts must never enter totals, the public DTO or the ledger.
+            original = {k: v for k, v in payload.items() if k != 'mapping'}
+            try:
+                automatic = parse_import(original, _legacy_identity=True)
+                old = {row['sourceRowKey']: row['fingerprint'] for row in automatic['rows']}
+            except FinanceHubError:
+                old = {}
+            for row in result:
+                row['fingerprint'] = old.get(row['sourceRowKey'], row['fingerprint'] if row['externalId'] else row['sourceRowKey'])
     return {'source': source, 'kind': kind, 'rows': result, 'errors': errors[:50], 'fileInfo': file_info,
             'errorCount': len(errors), 'warnings': list(dict.fromkeys(warnings))[:30],
-            'amountSelection': amount_selection, 'requiresAmountSelection': False}
+            'amountSelection': amount_selection, 'requiresAmountSelection': False,
+            'requiresColumnSelection': False, 'columnSelection': column_selection}
 
 
 def _schema(conn):
@@ -637,6 +782,9 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
             content['amountColumn'] = payload['amountColumn']
         if 'inspectSheets' in payload:
             content['inspectSheets'] = payload['inspectSheets']
+        for field in ('mapping', 'inspectColumns', 'headerLine'):
+            if field in payload:
+                content[field] = payload[field]
         try:
             return hashlib.sha256(json.dumps(content, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
         except (UnicodeError, ValueError, RecursionError):
@@ -647,6 +795,23 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
             raise FinanceHubError('导入请求编号必须为 32 至 64 位小写十六进制字符')
         return value
 
+    def import_body():
+        value = body()
+        if any(field in value for field in ('mapping', 'inspectColumns', 'headerLine')):
+            def unique_object(pairs):
+                result = {}
+                for key, item in pairs:
+                    if key in result:
+                        raise FinanceHubError('字段映射请求不能含重复 JSON 字段')
+                    result[key] = item
+                return result
+            try:
+                json.loads(request.get_data(), object_pairs_hook=unique_object)
+            except (ValueError, UnicodeError, RecursionError):
+                raise FinanceHubError('字段映射请求 JSON 格式不正确') from None
+        _column_controls(value)
+        return value
+
     def import_identity(con):
         uid = owner()
         sessions = app.extensions.get('member_sessions')
@@ -654,10 +819,38 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
             # Standalone module adapters supply their own require_member guard.
             return (uid,)
         current = sessions.current(con)
-        if (current['owner'] != uid or current['auth_version'] != g.actor.get('auth_version') or
+        captured = getattr(g, 'member_session', None) or {}
+        if (g.actor.get('role') != 'member' or current['id'] != captured.get('id') or
+                current['owner'] != uid or current['owner'] != captured.get('owner') or
+                current['credential_hash'] != captured.get('credential_hash') or
+                current['auth_version'] != captured.get('auth_version') or
+                current['auth_version'] != g.actor.get('auth_version') or
                 g.actor.get('householdId') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
             raise Problem('登录成员或家庭已变化，请重新登录', 401)
-        return (uid, current['id'], current['credential_hash'], current['auth_version'])
+        return (uid, current['id'], current['credential_hash'], current['auth_version'], g.actor['householdId'])
+
+    def checked_import_identity(con, expected=None):
+        actual = import_identity(con)
+        if expected is not None and actual != expected:
+            raise Problem('登录状态已变化，请重新登录', 401)
+        return actual
+
+    @contextmanager
+    def import_read(expected=None):
+        # The app guard has already committed session registration/bootstrap.
+        # Legacy-cookie resolution can still UPDATE expiry: release that implicit
+        # write before a domain snapshot, then authenticate against fresh state.
+        con = db()
+        con.rollback()
+        try:
+            identity = checked_import_identity(con, expected)
+            con.rollback()
+            con.execute('BEGIN')
+            yield con, identity
+            con.rollback()
+            checked_import_identity(con, identity)
+        finally:
+            con.rollback()
 
     def saved_import_result(con, uid, request_id, digest=None, token_digest=None):
         row = con.execute('SELECT payload_digest,token_digest,result FROM hub_import_receipts WHERE owner=? AND request_id=?',
@@ -916,40 +1109,42 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
     @app.post('/api/finance-hub/imports/preview')
     def hub_preview():
         uid = owner()
-        identity = import_identity(db())
-        payload = body()
-        parsed = parse_import(payload)
-        if import_identity(db()) != identity:
-            raise Problem('登录状态已变化，请重新登录', 401)
-        parsed.setdefault('requiresSheetSelection', False)
-        seen = {r['fingerprint']: _row(r) for r in db().execute('SELECT * FROM hub_transactions WHERE owner=?', (uid,))}
-        order_index = _index_order(seen)
-        for row in parsed['rows']:
-            matches = _import_matches(row, seen, order_index)
-            row['duplicate'] = bool(matches)
-            row['conflict'] = bool(matches) and (len(matches) > 1 or any(_import_conflict(seen[key], row) for key in matches))
-            if not row['duplicate']:
-                seen[row['fingerprint']] = row
-                if row['source'] == 'taobao' and row['kind'] == 'orders' and row['externalId']:
-                    order_index.setdefault(row['externalId'], []).append(row['fingerprint'])
-        parsed['duplicateCount'] = sum(row['duplicate'] for row in parsed['rows'])
-        parsed['conflictCount'] = sum(row['conflict'] for row in parsed['rows'])
-        parsed['newCount'] = len(parsed['rows']) - parsed['duplicateCount']
-        parsed['totals'] = transaction_totals([row for row in parsed['rows'] if not row['duplicate']])
-        parsed['previewToken'] = signer.dumps({'owner': uid, 'digest': fingerprint_payload(payload)}) if not parsed['errorCount'] and not parsed['requiresAmountSelection'] and not parsed['requiresSheetSelection'] else None
-        parsed['expiresInSeconds'] = 1200
+        with import_read():
+            payload = import_body()
+            parsed = parse_import(payload)
+            parsed.setdefault('requiresSheetSelection', False)
+            parsed.setdefault('requiresColumnSelection', False)
+            parsed.setdefault('columnSelection', None)
+            seen = {r['fingerprint']: _row(r) for r in db().execute('SELECT * FROM hub_transactions WHERE owner=?', (uid,))}
+            order_index = _index_order(seen)
+            for row in parsed['rows']:
+                matches = _import_matches(row, seen, order_index)
+                row['duplicate'] = bool(matches)
+                row['conflict'] = bool(matches) and (len(matches) > 1 or any(_import_conflict(seen[key], row) for key in matches))
+                if not row['duplicate']:
+                    seen[row['fingerprint']] = row
+                    _index_import_row(order_index, row)
+            parsed['duplicateCount'] = sum(row['duplicate'] for row in parsed['rows'])
+            parsed['conflictCount'] = sum(row['conflict'] for row in parsed['rows'])
+            parsed['newCount'] = len(parsed['rows']) - parsed['duplicateCount']
+            parsed['totals'] = transaction_totals([row for row in parsed['rows'] if not row['duplicate']])
+            parsed['previewToken'] = signer.dumps({'owner': uid, 'digest': fingerprint_payload(payload)}) if not parsed['errorCount'] and not parsed['requiresAmountSelection'] and not parsed['requiresSheetSelection'] and not parsed['requiresColumnSelection'] else None
+            parsed['expiresInSeconds'] = 1200
         return jsonify(parsed)
 
     @app.post('/api/finance-hub/imports/confirm')
     def hub_confirm():
         uid = owner()
-        payload = body()
-        identity = import_identity(db())
+        payload = import_body()
+        with import_read() as (_con, identity):
+            pass
         request_id = import_request_id(payload['requestId']) if 'requestId' in payload else None
         if 'inspectSheets' in payload and type(payload['inspectSheets']) is not bool:
             raise FinanceHubError('inspectSheets 必须为布尔值')
         if payload.get('inspectSheets'):
             raise FinanceHubError('工作表列表不能确认入账，请选择工作表并重新预览')
+        if payload.get('inspectColumns'):
+            raise FinanceHubError('表头检查不能确认入账，请选择四字段并重新预览')
         token = payload.get('previewToken')
         if not isinstance(token, str) or len(token) > 2000:
             raise FinanceHubError('请先预览文件')
@@ -961,18 +1156,10 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
         if request_id:
             # A prior successful operation may be read after the preview expires,
             # but only with its exact original signed token and complete payload.
-            con = db()
-            con.execute('BEGIN')
-            try:
-                if import_identity(con) != identity:
-                    raise Problem('登录状态已变化，请重新登录', 401)
+            with import_read(identity) as (con, _identity):
                 previous = saved_import_result(con, uid, request_id, digest, token_digest)
-                con.commit()
-                if previous is not None:
-                    return previous
-            except Exception:
-                con.rollback()
-                raise
+            if previous is not None:
+                return previous
         try:
             signed = signer.loads(token, max_age=1200)
         except (BadSignature, SignatureExpired):
@@ -992,7 +1179,11 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
             if request_id:
                 previous = saved_import_result(conn, uid, request_id, digest, token_digest)
                 if previous is not None:
-                    conn.commit()
+                    conn.rollback()
+                    try:
+                        checked_import_identity(conn, identity)
+                    finally:
+                        conn.rollback()
                     return previous
                 capacity = conn.execute('SELECT count(*),coalesce(sum(length(CAST(result AS BLOB))),0) FROM hub_import_receipts WHERE owner=?', (uid,)).fetchone()
                 if capacity[0] >= MAX_IMPORT_RECEIPTS:
@@ -1026,8 +1217,7 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
                 conn.execute('INSERT INTO hub_transactions(id,owner,fingerprint,data,created_at) VALUES(?,?,?,?,?)',
                              (rid, uid, key, json.dumps(row, ensure_ascii=False), stamp()))
                 existing[key] = row
-                if row['source'] == 'taobao' and row['kind'] == 'orders' and row['externalId']:
-                    order_index.setdefault(row['externalId'], []).append(key)
+                _index_import_row(order_index, row)
                 result_keys.add(key)
                 inserted += 1
             # Count unique persisted records, including the retained version of a conflict.
@@ -1065,15 +1255,8 @@ def register_finance_hub(app, db, Problem, body, require_member, audit):
         request_id = import_request_id(request_id)
         if request.args:
             raise FinanceHubError('导入结果查询不接受其他参数')
-        con = db()
-        con.execute('BEGIN')
-        try:
-            import_identity(con)
+        with import_read() as (con, _identity):
             result = saved_import_result(con, uid, request_id)
-            con.commit()
-        except Exception:
-            con.rollback()
-            raise
         return result if result is not None else (jsonify(error='尚未找到此请求的导入回执，请保留原请求并稍后核对',
                                                         code='import_result_not_found'), 404)
 
