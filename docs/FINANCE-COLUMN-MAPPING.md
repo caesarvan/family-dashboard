@@ -1,6 +1,6 @@
 # 通用财务文件四字段映射
 
-独立候选，尚未部署。只扩展既有 `finance_hub.py` 的本人文件导入；无新表、机构连接、外部调用或汇率计算。`financial_files.py` 的文件安全读取与原精确金额解析保持原实现。已有自动列识别、工作表选择及金额列选择继续兼容。
+已于北京时间 2026-09-18 06:56:39 发布，06:57:18 正常 TLS 读回通过；组合与实际发布证据集中在[本批验收](FINANCE-COLUMN-MAPPING-ACCEPTANCE.md)。只扩展既有 `finance_hub.py` 的本人文件导入；无新表、机构连接、外部调用或汇率计算。`financial_files.py` 的文件安全读取与原精确金额解析保持原实现。已有自动列识别、工作表选择及金额列选择继续兼容。
 
 ## HTTP 契约
 
@@ -79,8 +79,8 @@
 
 真实 Flask、Cookie、临时 SQLite 基线复现 9 个失败：guard 后替换同成员另一有效 cookie 的五入口，以及业务 SELECT 后撤销的四读/回放入口。只修导入 preview/confirm/results：固定原 session ID、owner、credential、auth version 和家庭；读前释放旧 cookie 解析的隐式写事务，完整业务快照释放后再 fresh 验证；确认取得写锁后和审计后提交前复核；锁内回放也先释放再 fresh。普通会话活动不视为身份更换。首次旧 cookie 注册已由应用 guard 提交，读操作不撤销该必要初始化。
 
-专项原件保存在作者树忽略目录 `test-results/column-mapping-*`，失败不覆盖。修复前候选 `f70f7da` 的 `column-mapping-combined-r3` 同轮实际 **393/393 通过**（新增映射 46、会话 21、原 8 个导入模块 326），0 failure/error/skip，pytest 91.26 秒；完整 Python 输入运行前后哈希相同。JUnit SHA-256 `5db3b36ff60894e7e19d1c9fcb2c0c06f80f75de77d0f769d5bb70448aa8c10d`，`record.json` SHA-256 `ebe9dc81d9b2fba5516527ebdbde7c120e3d2f999ffe1d00db179dc64aede71d`。覆盖文件安全、金额、金额列、工作表、回执/导航和淘宝分组兼容；基线 9 失败及中间 61/65 通过原件保留。本轮不修改 `financial_files.py`，不运行浏览器、真实文件或生产服务，也不声称全仓测试已通过。
+专项原件保存在作者树忽略目录 `test-results/column-mapping-*`，失败不覆盖。修复前候选 `f70f7da` 的 `column-mapping-combined-r3` 同轮实际 **393/393 通过**（新增映射 46、会话 21、原 8 个导入模块 326），0 failure/error/skip，pytest 91.26 秒；完整 Python 输入运行前后哈希相同。JUnit SHA-256 `5db3b36ff60894e7e19d1c9fcb2c0c06f80f75de77d0f769d5bb70448aa8c10d`，`record.json` SHA-256 `ebe9dc81d9b2fba5516527ebdbde7c120e3d2f999ffe1d00db179dc64aede71d`。覆盖文件安全、金额、金额列、工作表、回执/导航和淘宝分组兼容；基线 9 失败及中间 61/65 通过原件保留。上述后端专项不修改 `financial_files.py`，不运行浏览器、真实文件或生产服务，也不声称全仓测试已通过；后续组合与发布另见本页顶部验收链接。
 
-非作者真实复现发现 `f70f7da` 手动映射的数据短行会继承旧 `CNY` 默认值。本次仅将手动映射的缺币种默认值改为空并拒绝，旧自动/平台行为保持；新增 CSV/XLSX 的短尾缺值与显式空值四例，均实际预览错误、令牌为空、确认拒绝且业务表/回执/审计零写。修复后 `column-mapping-currency-r4` 实际 **228/228 通过**（映射 50 + 原 hub/file/amount 178），0 failure/error/skip，38.38 秒，完整 Python 输入前后不变。JUnit SHA-256 `04bc98560c96eb6ee8fd76806416d32d747580e27f8ab23feae40d04d0b1c56e`，`record.json` SHA-256 `d69e7d72a8d39515bbbf45e1603a8b23aeb2b34d56ef97c0640ab6177f56671a`。本轮未重跑其余会话/兼容模块，不把前一轮 393 写成修复后全量结果；审查复现原件独立保留。
+非作者真实复现发现 `f70f7da` 手动映射的数据短行会继承旧 `CNY` 默认值。本次仅将手动映射的缺币种默认值改为空并拒绝，旧自动/平台行为保持；新增 CSV/XLSX 的短尾缺值与显式空值四例，均实际预览错误、令牌为空、确认拒绝且业务表/回执/审计零写。修复后 `column-mapping-currency-r4` 实际 **228/228 通过**（映射 50 + 原 hub/file/amount 178），0 failure/error/skip，38.38 秒，完整 Python 输入前后不变。JUnit SHA-256 `04bc98560c96eb6ee8fd76806416d32d747580e27f8ab23feae40d04d0b1c56e`，`record.json` SHA-256 `d69e7d72a8d39515bbbf45e1603a8b23aeb2b34d56ef97c0640ab6177f56671a`。该轮未重跑其余会话/兼容模块，不把前一轮 393 写成修复后全量结果；审查复现原件独立保留。
 
 相关：[现有文件导入](FINANCE-IMPORT.md)、[财务 API](FINANCE-API.md)、[新映射专项](../tests/test_finance_column_mapping.py)、[真实会话专项](../tests/test_finance_column_mapping_sessions.py)。

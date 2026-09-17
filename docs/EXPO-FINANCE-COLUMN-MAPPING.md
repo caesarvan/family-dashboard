@@ -1,6 +1,6 @@
-# Expo 通用账单四列映射（候选）
+# Expo 通用账单四列映射
 
-本批从 `08c0260b24e7ae917d5698dcbebde4fda6ff428d` 开发，仅修改导入客户端模型、现有 `FinanceImportPanel`、同模块 Node 测试及本文。默认自动识别保留；候选尚未组合浏览器验收或发布，不改变金融机构连接、金额算法、共享范围和数据库。
+本批从 `08c0260b24e7ae917d5698dcbebde4fda6ff428d` 开发，仅修改导入客户端模型、现有 `FinanceImportPanel`、同模块 Node 测试及本文。默认自动识别保留；最终组合浏览器与发布状态集中在[本批验收](FINANCE-COLUMN-MAPPING-ACCEPTANCE.md)，已于北京时间 2026-09-18 06:56:39 激活，06:57:18 正常 TLS 读回通过。不改变金融机构连接、金额算法、共享范围和数据库结构。
 
 ## 使用流程
 
@@ -38,4 +38,4 @@
 
 类型检查使用原应用／测试两配置，依赖通过只读路径映射指向已物理安装的 `household-members-integration/frontend/node_modules`，不安装、不复制业务源码、不建 junction、不改 package 或配置。Node 为客户端合成模型断言，不冒充真实 API 或浏览器成功。
 
-最终客户端代码已实际重新执行完整两配置类型检查，仍均零诊断；`test-results/column-mapping-final/result.json` SHA `f81c4d18cc9ce3a2fd04dde143c5d0da7ab5c544513e1166f7db85ebabeffa98`。最终模型及 Node 测试与 R1 逐字节相同，因此保留原 14／14 证据，不重复执行或累加；最终源码前后散列保持。组合浏览器、真实后端映射／去重／会话回归及最终构建由集成候选另行验证；本人真实平台文件、云写入、原生设备与实体电视未在本批验收。
+最终客户端代码已实际重新执行完整两配置类型检查，仍均零诊断；`test-results/column-mapping-final/result.json` SHA `f81c4d18cc9ce3a2fd04dde143c5d0da7ab5c544513e1166f7db85ebabeffa98`。最终模型及 Node 测试与 R1 逐字节相同，因此保留原 14／14 证据，不重复执行或累加；最终源码前后散列保持。后续组合 R2 浏览器已实际 6/6 通过，八图可见区域由 Root 实际查看；构建复用与 R1 失败分别记录于[集中验收](FINANCE-COLUMN-MAPPING-ACCEPTANCE.md)。本人真实平台文件、云写入、原生设备与实体电视未在本批验收。
