@@ -1,6 +1,6 @@
 # 私有资产与来源报告：读取会话边界
 
-独立候选，基线 `7713ad1fd091d7390612c52d434b97e54e99f54b`。本分支仅加固现有 `GET /api/finance-baseline/private`；此后的组合状态见[候选验收](EXPO-BASELINE-ACCEPTANCE.md)，本批仍未部署。
+独立开发基线 `7713ad1fd091d7390612c52d434b97e54e99f54b`。本分支仅加固现有 `GET /api/finance-baseline/private`；现已随资产报告部署，组合及生产证据见[发布验收](EXPO-BASELINE-ACCEPTANCE.md#expo-baseline-release)。
 
 ## 接口保持
 
