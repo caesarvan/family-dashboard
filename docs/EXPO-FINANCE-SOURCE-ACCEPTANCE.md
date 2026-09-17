@@ -12,7 +12,7 @@
 | 实证 | 实际结果与固定原件 |
 | --- | --- |
 | Node 模型 | 固定真实 API `05ee6568` 的临时 Flask／SQLite 合成来源，15 passed／0 failed。`W/expo-finance-source-ui/test-results/source-import-node-final.tap` SHA `bd59a03f0fff6a3fbde9b9f7df14bc32cc1384fb7eef01db72adb97e07e2e3f1`；原作者调试 r1–r5 日志保留，不合计。 |
-| TypeScript | 严格 model／Panel 定向 0 诊断；组合 `npm run typecheck` 全量 exit 0，包含主配置与测试配置。`A/expo-finance-source-typecheck-r1.log` SHA `e06b5185cf9fa8d032487267733caf2325010e36aa77dbb49fbb7d34726c23fc`。 |
+| TypeScript | 严格 model／Panel 定向 0 诊断；组合 `4b6d6c5aeba98386e0aafe712313a3fce2524359` 直接执行 `node frontend/typecheck.mjs` exit 0（主配置＋测试配置），其前端字节与 `c1486996` 相同。`A/expo-finance-source-typecheck-r1.log` SHA `e06b5185cf9fa8d032487267733caf2325010e36aa77dbb49fbb7d34726c23fc`。 |
 | Expo 构建 | `A/expo-finance-source-build-20260917-r1/build-evidence.json` SHA `c73d2bb7d578f040472a0583a07307a6c54d4907fdb6d39f2b25fe72da0020e9`；来源为上述 head／tree，184 个构建输入、23 个导出。 |
 | 浏览器功能 R1 | 一次真实运行 12／12、12 PNG。`W/expo-finance-source-browser/test-results/expo-finance-source-20260917T140931825859Z/result.json` SHA `ba01e02acccecdd6ed7643c7bdc2902356a131bdff0d1ee8e890e13a0e90fd03`。源码／导出前后 649／23 相同、clean、12 案例清理完成；0 页面错误／外部请求／生产写入。 |
 | 视觉 | 同一浏览器目录的 `visual-review.json` SHA `40d6fd64e8236d8574ffed4f454d1f7954a203ead258991e0abd3d3d18cf85c3`；审查者 `/root/expo_finance_ui` 实际查看全部 12 PNG，没有重跑浏览器。 |
