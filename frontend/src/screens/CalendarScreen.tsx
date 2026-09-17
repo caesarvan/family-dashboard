@@ -22,9 +22,9 @@ export function RangeControls({ props }: { props: ScreenProps }) {
   }
   return <View testID="calendar-range-controls" style={[styles.controls, { gap: density.rowPadding }]}>
     <SegmentedButtons value={props.mode} onValueChange={change} density="regular" buttons={[
-      { value: 'today', label: '今日', disabled: pending, style: styles.rangeButton, labelStyle: styles.segmentLabel },
-      { value: 'week', label: '本周', disabled: pending, style: styles.rangeButton, labelStyle: styles.segmentLabel },
-      { value: 'around', label: '前后 3 天', disabled: pending, style: [styles.rangeButton, styles.longRangeButton], labelStyle: styles.segmentLabel }]} />
+      { value: 'today', label: '今日', accessibilityLabel: props.mode === 'today' ? '今日，已选择' : '今日', disabled: pending, style: styles.rangeButton, labelStyle: styles.segmentLabel },
+      { value: 'week', label: '本周', accessibilityLabel: props.mode === 'week' ? '本周，已选择' : '本周', disabled: pending, style: styles.rangeButton, labelStyle: styles.segmentLabel },
+      { value: 'around', label: '前后 3 天', accessibilityLabel: props.mode === 'around' ? '前后 3 天，已选择' : '前后 3 天', disabled: pending, style: [styles.rangeButton, styles.longRangeButton], labelStyle: styles.segmentLabel }]} />
     <Text variant="labelMedium">日程侧重</Text>
     <View style={styles.people} accessibilityRole="radiogroup" accessibilityLabel="日程侧重">{props.state.people.map(person =>
       <View key={person.id} style={styles.person}><SelectionRow kind="radio" label={person.name}
