@@ -6,6 +6,7 @@ import hashlib
 import json
 import re
 import secrets
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -309,12 +310,36 @@ def register_routines(app, db, Problem, body, require_member, audit):
         if sessions is None:
             raise Problem("暂时无法核对登录状态，请稍后重试", 503)
         current = sessions.current(con)
+        original = getattr(g, "member_session", {})
         household = app.config.get("HOUSEHOLD_INFO", {}).get("id", "default")
         if (current["owner"] != g.actor["id"] or current["auth_version"] != g.actor.get("auth_version")
+                or current["id"] != original.get("id")
                 or household != g.actor.get("householdId")):
             raise Problem("登录或家庭已变化，请重新打开", 401)
         return current["owner"], digest({"household": household, "owner": current["owner"],
             "session": current["id"], "credential": current["credential_hash"], "authVersion": current["auth_version"]})
+
+    @contextmanager
+    def transaction(*, write=False):
+        con = db()
+        try:
+            con.execute("BEGIN IMMEDIATE" if write else "BEGIN")
+            owner, context = authenticated(con)
+            yield con, owner, context
+            if write:
+                # Revocation cannot acquire this writer lock; expiry and the
+                # captured session must still be checked after business/audit.
+                authenticated(con)
+                con.commit()
+            else:
+                # Observe revocation committed while this read snapshot lived.
+                con.rollback()
+                authenticated(con)
+                # Legacy-cookie resolution may open an implicit UPDATE.
+                con.rollback()
+        except BaseException:
+            con.rollback()
+            raise
 
     def identifier(value):
         if not isinstance(value, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,100}", value):
@@ -457,10 +482,7 @@ def register_routines(app, db, Problem, body, require_member, audit):
         if include not in {"true", "false"}:
             raise Problem("归档筛选须为 true 或 false")
         plan_id = identifier(request.args["planId"]) if "planId" in request.args else None
-        con = db()
-        try:
-            con.execute("BEGIN")
-            authenticated(con)
+        with transaction() as (con, _, _):
             where = "" if include == "true" else "WHERE state!='archived'"
             rows = [dict(row) for row in con.execute(
                 "SELECT * FROM household_routines " + where + " ORDER BY created_at DESC,id LIMIT ? OFFSET ?",
@@ -473,28 +495,41 @@ def register_routines(app, db, Problem, body, require_member, audit):
                       "limit": {"activePlans": MAX_PLANS, "itemsPerKind": MAX_ITEMS},
                       "plans": [engine.public(con, row, day, counts) for row in rows],
                       "pageInfo": {"page": page, "pageSize": PAGE_SIZE, "more": more}}
-            con.commit()
             return jsonify(result)
-        except BaseException:
-            con.rollback()
-            raise
 
     @app.post(PREFIX + "/preview")
     def routine_preview():
         require_member()
-        con = db()
-        try:
-            con.execute("BEGIN")
-            owner, context = authenticated(con)
+        with transaction() as (con, owner, context):
             value = normalize(body(), con)
             dependencies, output = assess(con, value, today())
-            token = signer.dumps({"version": 1, "owner": owner, "context": context, "nonce": secrets.token_hex(24),
+            nonce = secrets.token_hex(24)
+            token = signer.dumps({"version": 1, "owner": owner, "context": context, "nonce": nonce,
                                   "request": value, "dependencies": dependencies})
-            con.commit()
-            return jsonify(**output, previewToken=token, expiresInSeconds=PREVIEW_SECONDS)
-        except BaseException:
-            con.rollback()
-            raise
+            return jsonify(**output, previewToken=token, operationKey=digest(nonce), expiresInSeconds=PREVIEW_SECONDS)
+
+    @app.get(PREFIX + "/operations/<operation_key>")
+    def routine_operation(operation_key):
+        require_member()
+        if not re.fullmatch(r"[a-f0-9]{64}", operation_key) or request.args:
+            raise Problem("操作编号或查询参数格式不正确")
+        with transaction() as (con, owner, _):
+            row = con.execute("SELECT operation,plan_id,result,created_at FROM routine_receipts "
+                              "WHERE owner=? AND nonce_digest=?", (owner, operation_key)).fetchone()
+            if row is None:
+                response = jsonify(error="尚未找到此操作的回执；原请求仍可能在处理中",
+                                   code="routine_receipt_not_found")
+                response.status_code = 404
+            else:
+                saved = json.loads(row["result"])
+                generated = saved["generated"]
+                response = jsonify(found=True, operationKey=operation_key, operation=row["operation"],
+                                   planId=row["plan_id"], revision=saved["plan"]["revision"],
+                                   generated=None if generated is None else
+                                   {key: generated[key] for key in ("id", "kind", "revision", "scheduledOn")},
+                                   createdAt=row["created_at"])
+            response.headers["Cache-Control"] = "no-store"
+            return response
 
     @app.post(PREFIX + "/confirm")
     def routine_confirm():
@@ -505,22 +540,28 @@ def register_routines(app, db, Problem, body, require_member, audit):
         if not isinstance(token, str) or not 1 <= len(token) <= 12000:
             raise Problem("预览凭据格式不正确")
         try:
-            signed = signer.loads(token, max_age=PREVIEW_SECONDS)
-        except (SignatureExpired, BadSignature):
-            raise Problem("预览已失效，请保留草稿并重新预览", 400) from None
-        if not isinstance(signed, dict) or signed.get("version") != 1:
+            # Authenticate the envelope now, but decide expiry only after the
+            # writer lock and receipt lookup. A lost response can outlive TTL.
+            signed = signer.loads(token)
+        except BadSignature:
+            raise Problem("预览凭据无法核对，请保留草稿", 400) from None
+        if (not isinstance(signed, dict) or signed.get("version") != 1
+                or not isinstance(signed.get("nonce"), str) or not re.fullmatch(r"[a-f0-9]{48}", signed["nonce"])):
             raise Problem("预览凭据格式不正确")
-        con = db()
-        try:
-            con.execute("BEGIN IMMEDIATE")
-            owner, context = authenticated(con)
+        with transaction(write=True) as (con, owner, context):
             if signed.get("owner") != owner or signed.get("context") != context:
                 raise Problem("预览属于其他成员、家庭或会话，请重新预览", 403)
             nonce = digest(signed["nonce"])
             previous = con.execute("SELECT result FROM routine_receipts WHERE owner=? AND nonce_digest=?", (owner, nonce)).fetchone()
             if previous:
-                con.commit()
-                return jsonify(**{**json.loads(previous["result"]), "replayed": True})
+                return jsonify(**{**json.loads(previous["result"]), "operationKey": nonce, "replayed": True})
+            try:
+                signer.loads(token, max_age=PREVIEW_SECONDS)
+            except SignatureExpired:
+                # Other confirms serialize on this lock and check expiry here
+                # too. A missing GET alone cannot establish this outcome.
+                return jsonify(error="原预览已过期，且核实尚未执行；请保留草稿重新预览",
+                               code="preview_expired_unapplied"), 410
             day = today()
             try:
                 value = normalize(signed["request"], con)
@@ -550,9 +591,5 @@ def register_routines(app, db, Problem, body, require_member, audit):
             con.execute("INSERT INTO routine_receipts VALUES(?,?,?,?,?,?,?)",
                         (secrets.token_hex(16), owner, nonce, operation, plan_id, pack(result), moment))
             audit("routines." + operation, plan_id)
-            con.commit()
-            return jsonify(result)
-        except BaseException:
-            con.rollback()
-            raise
+            return jsonify(**result, operationKey=nonce)
     return engine

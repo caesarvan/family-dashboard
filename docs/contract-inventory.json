@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T02:16:53.122431+00:00",
+  "generatedAt": "2026-09-17T10:09:45.785043+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -801,6 +801,12 @@
       "endpoint": "routine_context"
     },
     {
+      "method": "GET",
+      "path": "/api/routines/operations/<operation_key>",
+      "source": "household_routines.py",
+      "endpoint": "routine_operation"
+    },
+    {
       "method": "POST",
       "path": "/api/routines/preview",
       "source": "household_routines.py",
@@ -929,8 +935,8 @@
     {
       "method": "GET",
       "path": "/tv",
-      "source": "app.py",
-      "endpoint": "index"
+      "source": "frontend_runtime.py",
+      "endpoint": "television_frontend"
     }
   ],
   "wsgiRoutes": [

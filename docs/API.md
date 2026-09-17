@@ -47,9 +47,12 @@
 
 ## 家庭例行计划接口
 
+本轮本地候选复用原三张表，补充确认回执读回及过期恢复；尚未发布。前端恢复契约见 [Expo 例行计划 API](EXPO-ROUTINES-API.md)，实际安装状态仍以 [HANDOFF](HANDOFF.md) 为准。
+
 - `GET /api/routines/context`：成员只读共享计划、当前项、未来日期和最近十期；可选 planId/page/includeArchived，每页 40，不在 GET 生成。
-- `POST /api/routines/preview`：create/update/pause/resume/skip/archive，返回未来三期、当前操作将生成的事项及十分钟预览签名。
-- `POST /api/routines/confirm`：仅 previewToken；原子重验会话、家庭、规则和当前实体版本、日期、容量，提交与回执同事务。相同成功 token 只重放历史结果。
+- `POST /api/routines/preview`：create/update/pause/resume/skip/archive，返回未来三期、当前操作将生成的事项、十分钟预览签名和 `operationKey`。
+- `POST /api/routines/confirm`：仅 previewToken；原子重验会话、家庭、规则和当前实体版本、日期、容量，提交与回执同事务。相同成功 token 即使过期也只重放历史结果；只有持写锁确认过期且未执行时，才返回 410 `preview_expired_unapplied`，允许重新预览。
+- `GET /api/routines/operations/<operation_key>`：发起者本人只读历史摘要，64 位小写十六进制编号；404 `routine_receipt_not_found` 不证明在途请求不会提交。当前计划另从 context 核对，不用历史回执恢复旧事项。
 
 全家共享管理，但另一成员不能确认发起者的 token；TV 无管理读取或写权限，只通过原 state 看已生成共享实体。preview 字段、状态／错误、月末和 nextDates 语义见 [完整契约](ROUTINES.md)。新表初始为空，用户未确认计划前不产生事项；不调用云写入器，既有来源配置不能替代每期待办发布确认。
 
