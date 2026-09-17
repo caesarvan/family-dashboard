@@ -1,16 +1,19 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Button, Dialog, Divider, Portal, SegmentedButtons, Text, TouchableRipple, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Dialog, Divider, Portal, SegmentedButtons, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import { PhotoReadDiscarded, PhotoReadFence, type PhotoSession } from '../lib/photos';
-import { canConfirmImport, confirmImportPayload, importAmount, importPayload, importRejectionIsDefinite, importSourceLabel, newImportRequestId, readImportPreview, readImportReceipt,
-  type FinanceImportReceipt, type ImportFile, type ImportKind, type ImportPayload, type ImportPreview, type ImportSource } from '../lib/financeImport';
+import { canConfirmImport, confirmImportPayload, importAmount, importPayload, importRejectionIsDefinite, importSourceLabel, inspectImportColumnsPayload, manualImportPayload, newImportRequestId, readImportPreview, readImportReceipt,
+  type FinanceImportReceipt, type ImportColumnField, type ImportColumnSelection, type ImportFile, type ImportKind, type ImportPayload, type ImportPreview, type ImportSource } from '../lib/financeImport';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
+import { useDisplayDensity } from '../ui/theme';
 
 type Props = { onClose: () => void; onImported: (receipt: FinanceImportReceipt) => void };
 type Pending = { requestId: string; payload: ReturnType<typeof confirmImportPayload>; uncertain: boolean };
+const mappingLabels: Record<ImportColumnField, string> = { date: '日期列', amount: '金额列', title: '标题列', currency: '币种列' };
+const emptyMapping = (): Record<ImportColumnField, number | null> => ({ date: null, amount: null, title: null, currency: null });
 const sources: Record<ImportSource, string> = { generic: '通用表格', alipay: '支付宝', wechat: '微信', taobao: '淘宝', pinduoduo: '拼多多' };
 const flows: Record<string, string> = { expense: '支出', income: '收入', refund: '退款', transfer: '转账／还款', unknown: '待核对', excluded: '不计收支' };
 const front = () => typeof document === 'undefined' || !document.hidden;
@@ -47,7 +50,7 @@ export default function FinanceImportPanel(props: Props) {
   return <ImportWorkspace key={household.identityKey} {...props} identityKey={household.identityKey} user={household.user} />;
 }
 function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { identityKey: string; user: NonNullable<PhotoSession['user']> }) {
-  const household = useHousehold(), latest = useRef(household), theme = useTheme(), { height } = useWindowDimensions(); latest.current = household;
+  const household = useHousehold(), latest = useRef(household), theme = useTheme(), density = useDisplayDensity(), { height } = useWindowDimensions(); latest.current = household;
   const mounted = useRef(false), focused = useRef(false), active = useRef(false), denied = useRef(false);
   const appActive = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
   const fence = useRef(new PhotoReadFence(() => request<PhotoSession>('/me'), user, identityKey));
@@ -57,6 +60,8 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
   const [source, setSource] = useState<ImportSource>('generic'), [kind, setKind] = useState<ImportKind>('payments');
   const [file, setFile] = useState<ImportFile | null>(null), [sheets, setSheets] = useState<string[]>([]), [sheet, setSheet] = useState('');
   const [column, setColumn] = useState<number | undefined>(), [preview, setPreview] = useState<ImportPreview | null>(null);
+  const [manual, setManual] = useState(false), [header, setHeader] = useState('');
+  const [columns, setColumns] = useState<ImportColumnSelection | null>(null), [mapping, setMapping] = useState(emptyMapping);
   const previewRef = useRef<{ value: ImportPreview; payload: ImportPayload } | null>(null);
   const [pending, setPendingState] = useState<Pending | null>(null), [receipt, setReceipt] = useState<FinanceImportReceipt | null>(null);
   const [notFound, setNotFound] = useState(false), [menu, setMenu] = useState(''), [page, setPage] = useState(0), [errorPage, setErrorPage] = useState(0), [leaving, setLeaving] = useState(false);
@@ -64,9 +69,10 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
     && latest.current.identityKey === identityKey && latest.current.online && front() && connected();
   const setPending = (value: Pending | null) => { pendingRef.current = value; setPendingState(value); };
   function invalidatePreview() { ++draftEpoch.current; previewRef.current = null; setPreview(null); setPage(0); setErrorPage(0); setError(''); }
-  function resetAll() { invalidatePreview(); setFile(null); setSheets([]); setSheet(''); setColumn(undefined); setPending(null); setReceipt(null); setNotFound(false); }
+  function clearColumns() { setColumns(null); setMapping(emptyMapping()); setHeader(''); }
+  function resetAll() { clearColumns(); setManual(false); invalidatePreview(); setFile(null); setSheets([]); setSheet(''); setColumn(undefined); setPending(null); setReceipt(null); setNotFound(false); }
   function conceal(clear = false) {
-    active.current = false; ++generation.current; fence.current.invalidate(); setVisible(false); setBusy(false); setMenu(''); setLeaving(false);
+    active.current = false; ++generation.current; ++draftEpoch.current; fence.current.invalidate(); setVisible(false); setBusy(false); setMenu(''); setLeaving(false);
     if (clear) { resetAll(); picker.current?.abort(); }
   }
   function failed(error: unknown) {
@@ -107,7 +113,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
       const selected = await browserFile(picker.current.signal); if (!selected || !mounted.current || epoch !== draftEpoch.current) return;
       if (writing.current || reading.current || pendingRef.current) return;
       invalidatePreview(); epoch = draftEpoch.current;
-      setFile(null); setSheets([]); setSheet(''); setColumn(undefined); setReceipt(null); setNotFound(false);
+      clearColumns(); setFile(null); setSheets([]); setSheet(''); setColumn(undefined); setReceipt(null); setNotFound(false);
       reading.current = true; startedReading = true; setBusy(true);
       const next = await fileData(selected); if (!current() || epoch !== draftEpoch.current) return;
       await guarded(async () => true); if (!current() || epoch !== draftEpoch.current) return;
@@ -115,18 +121,29 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
     } catch (error) { if (epoch === draftEpoch.current) failed(error); }
     finally { if (startedReading) { reading.current = false; if (current()) setBusy(writing.current); } }
   }
-  async function inspect() {
+  async function inspect(mode: 'auto' | 'columns' | 'mapped' = 'auto') {
     if (!file || !current() || reading.current || writing.current || pendingRef.current) return;
-    const payload = importPayload(source, kind, { ...file, ...(sheet ? { sheet } : {}) }, column, /\.xlsx$/i.test(file.name) && !sheet);
     invalidatePreview(); const epoch = draftEpoch.current; const ticket = generation.current;
     reading.current = true; setBusy(true);
     try {
+      const input = { ...file, ...(sheet ? { sheet } : {}) };
+      if (mode === 'columns' && header !== '' && !/^(?:[1-9]|[1-5][0-9]|60)$/.test(header)) throw new Error('表头所在行须为 1 至 60 的整数。');
+      const payload = mode === 'columns' ? inspectImportColumnsPayload(source, kind, input, header === '' ? undefined : Number(header))
+        : mode === 'mapped' ? manualImportPayload(source, kind, input, columns!, { version: 1, headerLine: columns?.headerLine, ...mapping })
+        : importPayload(source, kind, input, column, /\.xlsx$/i.test(file.name) && !sheet);
       const result = readImportPreview(await guarded(() => latest.current.mutate<unknown>('/finance-hub/imports/preview', 'POST', payload), ticket));
-      if (!current() || epoch !== draftEpoch.current) return;
-      previewRef.current = { value: result, payload }; setPreview(result);
+      if (!current() || epoch !== draftEpoch.current || ticket !== generation.current) return;
+      if (mode === 'columns') {
+        if (!result.requiresColumnSelection || !result.columnSelection) throw new Error('未能读取表头，请重试或使用自动识别。');
+        setColumns(result.columnSelection); setHeader(String(result.columnSelection.headerLine)); setMapping({ ...result.columnSelection.suggestedMapping });
+      } else {
+        // Only a preview tied to the same explicit selection can be confirmed.
+        if (mode === 'mapped' && JSON.stringify(result.columnSelection?.mapping) !== JSON.stringify(payload.mapping)) throw new Error('所选列与预览不一致，请重新读取表头。');
+        previewRef.current = { value: result, payload }; setPreview(result);
+      }
       if (result.requiresSheetSelection) setSheets(result.fileInfo?.sheets || []);
       if (result.amountSelection?.selectedIndex !== null && result.amountSelection?.selectedIndex !== undefined) setColumn(result.amountSelection.selectedIndex);
-    } catch (error) { if (epoch === draftEpoch.current) failed(error); }
+    } catch (error) { if (epoch === draftEpoch.current && ticket === generation.current) failed(error); }
     finally { reading.current = false; if (current()) setBusy(writing.current); }
   }
   async function send(intent: Pending) {
@@ -135,7 +152,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
     try {
       const result = readImportReceipt(await guarded(() => latest.current.mutate<unknown>('/finance-hub/imports/confirm', 'POST', intent.payload), ticket), intent.requestId);
       if (!current()) return;
-      setReceipt(result); setPending(null); previewRef.current = null; setPreview(null); setFile(null); setSheets([]); setSheet(''); setColumn(undefined);
+      setReceipt(result); setPending(null); clearColumns(); previewRef.current = null; setPreview(null); setFile(null); setSheets([]); setSheet(''); setColumn(undefined);
     } catch (error) {
       if (importRejectionIsDefinite(error instanceof ApiError ? error.status : undefined, intent.uncertain) && current()) { setPending(null); invalidatePreview(); failed(error); }
       else { intent.uncertain = true; failed(error); if (current() && !(error instanceof PhotoReadDiscarded)) setError('保存结果尚未确认，请先核对保存结果。'); }
@@ -156,7 +173,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
     try {
       const result = readImportReceipt(await guarded(() => request<unknown>('/finance-hub/imports/results/' + intent.requestId), ticket), intent.requestId);
       if (!current() || pendingRef.current !== intent) return;
-      setReceipt(result); setPending(null); previewRef.current = null; setPreview(null); setFile(null); setSheets([]); setSheet(''); setColumn(undefined);
+      setReceipt(result); setPending(null); clearColumns(); previewRef.current = null; setPreview(null); setFile(null); setSheets([]); setSheet(''); setColumn(undefined);
     } catch (error) {
       if (current() && error instanceof ApiError && error.status === 404 && error.code === 'import_result_not_found') { setNotFound(true); setError('暂未找到本次保存回执，原请求也可能仍在处理。可以继续核对，或使用同一请求重试。'); }
       else failed(error);
@@ -179,11 +196,11 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
     } catch (error) { failed(error); }
   }
   const disabled = busy || !!pending || !!receipt;
-  const dropdown = (id: 'source' | 'encoding' | 'sheet' | 'amount', label: string, items: { key: string; title: string }[], change: (value: string) => void) =>
-    <><Button mode="outlined" disabled={disabled} onPress={() => setMenu(id)} contentStyle={styles.buttonContent}>{label}</Button>
+  const dropdown = (id: string, label: string, items: { key: string; title: string }[], change: (value: string) => void, accessibilityLabel?: string) =>
+    <><Button mode="outlined" accessibilityLabel={accessibilityLabel} disabled={disabled} onPress={() => { if (current() && !reading.current && !writing.current && !pendingRef.current) setMenu(id); }} contentStyle={styles.buttonContent}>{label}</Button>
       <Portal><Dialog visible={visible && menu === id} onDismiss={() => setMenu('')} style={{ maxWidth: 560, width: '92%', maxHeight: height - 40, alignSelf: 'center', borderRadius: 24, backgroundColor: theme.colors.surface }}>
-        <Dialog.Title>{{ source: '选择文件来源', encoding: '选择文件编码', sheet: '选择工作表', amount: '选择金额列' }[id] || '请选择'}</Dialog.Title>
-        <Dialog.ScrollArea style={{ paddingHorizontal: 0, flexShrink: 1 }}><ScrollView style={{ maxHeight: Math.min(420, height * .6) }}>{items.map(item => <TouchableRipple key={item.key} accessibilityRole="menuitem" accessibilityLabel={item.title} disabled={disabled} onPress={() => { if (!current() || disabled) return; setMenu(''); change(item.key); }} style={{ paddingHorizontal: 24, paddingVertical: 16, minHeight: 48 }}><Text>{item.title}</Text></TouchableRipple>)}</ScrollView></Dialog.ScrollArea>
+        <Dialog.Title>{({ source: '选择文件来源', encoding: '选择文件编码', sheet: '选择工作表', amount: '选择金额列' } as Record<string, string>)[id] || accessibilityLabel || '请选择'}</Dialog.Title>
+        <Dialog.ScrollArea style={{ paddingHorizontal: 0, flexShrink: 1 }}><ScrollView style={{ maxHeight: Math.min(420, height * .6) }}>{items.map(item => <TouchableRipple key={item.key} accessibilityRole="menuitem" accessibilityLabel={item.title} disabled={disabled} onPress={() => { if (!current() || disabled || reading.current || writing.current || pendingRef.current) return; setMenu(''); change(item.key); }} style={{ paddingHorizontal: 24, paddingVertical: 16, minHeight: 48 }}><Text>{item.title}</Text></TouchableRipple>)}</ScrollView></Dialog.ScrollArea>
         <Dialog.Actions><Button onPress={() => setMenu('')}>取消</Button></Dialog.Actions>
       </Dialog></Portal></>;
   const back = () => { if (file || pendingRef.current) setLeaving(true); else onClose(); };
@@ -203,17 +220,49 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
       {notFound && <Button mode="outlined" disabled={busy} onPress={() => void send(pending)}>使用原请求重试</Button>}
     </SectionCard> : <>
       <SectionCard title="选择文件"><View style={styles.page}>
-        <View style={styles.controls}>{dropdown('source', '文件来源：' + sources[source], Object.entries(sources).map(([key, title]) => ({ key, title })), value => { invalidatePreview(); setSource(value as ImportSource); setSheets([]); setSheet(''); setColumn(undefined); })}</View>
-        <SegmentedButtons value={kind} onValueChange={value => { invalidatePreview(); setKind(value as ImportKind); setSheets([]); setSheet(''); setColumn(undefined); }} buttons={[{ value: 'payments', label: '支付账单', disabled }, { value: 'orders', label: '订单记录', disabled }]} />
+        <View style={styles.controls}>{dropdown('source', '文件来源：' + sources[source], Object.entries(sources).map(([key, title]) => ({ key, title })), value => { invalidatePreview(); clearColumns(); setManual(false); setSource(value as ImportSource); setSheets([]); setSheet(''); setColumn(undefined); })}</View>
+        <SegmentedButtons value={kind} onValueChange={value => { if (!current() || reading.current || writing.current || pendingRef.current) return; invalidatePreview(); clearColumns(); setKind(value as ImportKind); setSheets([]); setSheet(''); setColumn(undefined); }} buttons={[{ value: 'payments', label: '支付账单', disabled }, { value: 'orders', label: '订单记录', disabled }]} />
         <Button mode="outlined" icon="file-upload-outline" accessibilityLabel="选择账单文件" disabled={disabled} onPress={() => void choose()}>选择账单文件</Button>
         <Text>{file?.name || '支持 CSV、TXT、无宏 XLSX，最大 2 MiB。'}</Text>
         <Button disabled={disabled} onPress={() => void template()}>下载通用模板</Button>
-        {file && !/\.xlsx$/i.test(file.name) && dropdown('encoding', '编码：' + ({ auto: '自动识别', 'utf-8': 'UTF-8', gb18030: 'GB18030' })[file.encoding], [{ key: 'auto', title: '自动识别' }, { key: 'utf-8', title: 'UTF-8' }, { key: 'gb18030', title: 'GB18030' }], value => { invalidatePreview(); setFile({ ...file, encoding: value as ImportFile['encoding'] }); setColumn(undefined); })}
-        {sheets.length > 0 && <>{dropdown('sheet', sheet || '选择账单工作表', sheets.map(name => ({ key: name, title: name })), value => { invalidatePreview(); setSheet(value); setColumn(undefined); })}<Text variant="bodySmall">工作表名称不代表内容已校验；选择后读取账单。</Text></>}
-        {preview?.amountSelection && preview.amountSelection.columns.length > 1 && dropdown('amount', column === undefined ? '选择入账金额列' : (() => { const c = preview.amountSelection!.columns.find(c => c.index === column); return c ? c.columnLabel + ' 列 · ' + c.label : '选择入账金额列'; })(), preview.amountSelection.columns.map(c => ({ key: String(c.index), title: c.columnLabel + ' 列 · ' + c.label })), value => { ++draftEpoch.current; previewRef.current = null; setColumn(Number(value)); setPreview(old => old ? { ...old, previewToken: null, rows: [], newCount: 0, duplicateCount: 0, conflictCount: 0, requiresAmountSelection: true } : null); setError(''); setPage(0); })}
-        <Button mode="contained" disabled={!file || disabled || sheets.length > 0 && !sheet || !!preview?.requiresAmountSelection && column === undefined} loading={busy} onPress={() => void inspect()}>{sheets.length > 0 && !preview?.amountSelection ? '读取所选工作表' : preview?.requiresAmountSelection ? '按所选金额预览' : '预览文件'}</Button>
+        {file && !/\.xlsx$/i.test(file.name) && dropdown('encoding', '编码：' + ({ auto: '自动识别', 'utf-8': 'UTF-8', gb18030: 'GB18030' })[file.encoding], [{ key: 'auto', title: '自动识别' }, { key: 'utf-8', title: 'UTF-8' }, { key: 'gb18030', title: 'GB18030' }], value => { invalidatePreview(); clearColumns(); setFile({ ...file, encoding: value as ImportFile['encoding'] }); setColumn(undefined); })}
+        {sheets.length > 0 && <>{dropdown('sheet', sheet || '选择账单工作表', sheets.map(name => ({ key: name, title: name })), value => { invalidatePreview(); clearColumns(); setSheet(value); setColumn(undefined); })}<Text variant="bodySmall">工作表名称不代表内容已校验；选择后读取账单。</Text></>}
+        {!manual && preview?.amountSelection && preview.amountSelection.columns.length > 1 && dropdown('amount', column === undefined ? '选择入账金额列' : (() => { const c = preview.amountSelection!.columns.find(c => c.index === column); return c ? c.columnLabel + ' 列 · ' + c.label : '选择入账金额列'; })(), preview.amountSelection.columns.map(c => ({ key: String(c.index), title: c.columnLabel + ' 列 · ' + c.label })), value => { ++draftEpoch.current; previewRef.current = null; setColumn(Number(value)); setPreview(old => old ? { ...old, previewToken: null, rows: [], newCount: 0, duplicateCount: 0, conflictCount: 0, requiresAmountSelection: true } : null); setError(''); setPage(0); })}
+        {(!manual || !!file && /\.xlsx$/i.test(file.name) && !sheet) && <Button mode="contained" contentStyle={styles.buttonContent} disabled={!file || disabled || sheets.length > 0 && !sheet || !!preview?.requiresAmountSelection && column === undefined} loading={busy} onPress={() => void inspect()}>{sheets.length > 0 && !preview?.amountSelection ? '读取所选工作表' : preview?.requiresAmountSelection ? '按所选金额预览' : '预览文件'}</Button>}
+        {source === 'generic' && <Button mode="outlined" disabled={disabled} contentStyle={styles.buttonContent} onPress={() => {
+          if (!current() || reading.current || writing.current || pendingRef.current) return;
+          invalidatePreview(); clearColumns(); setColumn(undefined); setManual(value => !value);
+        }}>{manual ? '使用自动识别' : '手动指定列'}</Button>}
+        {manual && source === 'generic' && <View testID="finance-column-mapping" style={{ gap: density.sectionGap }}>
+          <Text variant="titleMedium">指定表格中的四列</Text>
+          <Text>先读取表头，再核对日期、金额、标题和币种。四个字段各选不同的一列；金额和错误行由服务端校验。</Text>
+          <TextInput mode="outlined" label="表头所在行" accessibilityLabel="表头所在行" value={header} keyboardType="number-pad" disabled={disabled}
+            placeholder="留空自动查找，或填写 1–60" outlineStyle={{ borderRadius: 8 }} onChangeText={value => {
+              if (!current() || reading.current || writing.current || pendingRef.current) return;
+              invalidatePreview(); setColumns(null); setMapping(emptyMapping()); setHeader(value);
+            }} />
+          {file && /\.xlsx$/i.test(file.name) && !sheet && <Text>请先预览文件并选择工作表，再读取表头。</Text>}
+          <Button mode="outlined" contentStyle={styles.buttonContent} disabled={disabled || !file || /\.xlsx$/i.test(file.name) && !sheet}
+            onPress={() => void inspect('columns')}>读取表头</Button>
+          {columns && <>
+            <Text variant="bodySmall">{columns.lineKind === 'worksheet_rows' ? '工作表' : '原文件'}第 {columns.headerLine} 行为表头。列名重复或为空时，请按列字母选择。</Text>
+            {(Object.entries(mappingLabels) as [ImportColumnField, string][]).map(([field, label]) => {
+              const chosen = columns.columns.find(item => item.index === mapping[field]);
+              return <View key={field} style={styles.row}>
+                {dropdown('mapping-' + field, label, columns.columns.map(item => ({ key: String(item.index), title: item.columnLabel + ' 列 · ' + (item.label || '无标题') })), value => {
+                  invalidatePreview(); setMapping(old => ({ ...old, [field]: Number(value) }));
+                }, label)}
+                <Text>{chosen ? chosen.columnLabel + ' 列 · ' + (chosen.label || '无标题') : '请选择'}</Text>
+              </View>;
+            })}
+            {Object.values(mapping).some(value => value === null) ? <Text>请选择全部四列，币种列也必须指定。</Text>
+              : new Set(Object.values(mapping)).size !== 4 && <Text>四个字段需要选择不同的列。</Text>}
+            <Button mode="contained" contentStyle={styles.buttonContent} disabled={disabled || Object.values(mapping).some(value => value === null) || new Set(Object.values(mapping)).size !== 4}
+              onPress={() => void inspect('mapped')}>按所选列预览</Button>
+          </>}
+        </View>}
       </View></SectionCard>
-      {preview && !preview.requiresSheetSelection && !preview.requiresAmountSelection && <SectionCard title="核对预览"><View style={styles.page}>
+      {preview && !preview.requiresSheetSelection && !preview.requiresAmountSelection && !preview.requiresColumnSelection && <SectionCard title="核对预览"><View style={styles.page}>
         <Text>新增 {preview.newCount} 条 · 重复 {preview.duplicateCount} 条 · 冲突 {preview.conflictCount} 条 · 错误 {preview.errorCount} 条</Text>
         <Text variant="bodySmall">重复项不再次入账，冲突项保留原值；订单与付款分别核对。</Text>
         {!!preview.fileInfo && <Text variant="bodySmall">{[preview.fileInfo.format, preview.fileInfo.encoding, preview.fileInfo.sheet].filter(Boolean).join(' · ')}</Text>}
