@@ -1,10 +1,10 @@
-# Expo 家庭例行计划发布候选：55 → 55
+# Expo 家庭例行计划发布：55 → 55
 
-本适配器只生成本地、未绑定的审查稿，尚未用于例行计划发布。接口见 [例行计划](ROUTINES.md) 与 [Expo 操作恢复契约](EXPO-ROUTINES-API.md)。不连接服务器、不运行 Docker，也不执行打包、绑定或生产阶段。
+本适配器生成本地、未绑定的审查稿；其最终生成物已独立审查、绑定并于 2026-09-17 19:21:11（北京时间）完成一次实际发布，19:21:45 TLS 读回通过。证据见 [发布验收](EXPO-ROUTINES-ACCEPTANCE.md#expo-routines-release)，已完成的固定阶段不可重放。接口见 [例行计划](ROUTINES.md) 与 [Expo 操作恢复契约](EXPO-ROUTINES-API.md)。生成器自身不连接服务器、不运行 Docker，也不执行打包、绑定或生产阶段；这些操作由集成人另行运行审查后的算子完成。
 
 ## 固定父版本与保护范围
 
-[`prepare.py`](../deploy/expo_routines_release/prepare.py) 固定 `expo-documents-tools-20260917-r1` 的七个算子、实际包生成器和绑定器，校验九份原始文件的完整 SHA。父旅行资料版本已由发布执行者确认于北京时间 2026-09-17 18:13:25 激活、18:13:50 完成正常 TLS 读回；以下固定身份与实际安装一致。本适配器自身仍是未发布候选。
+[`prepare.py`](../deploy/expo_routines_release/prepare.py) 固定 `expo-documents-tools-20260917-r1` 的七个算子、实际包生成器和绑定器，校验九份原始文件的完整 SHA。父旅行资料版本已由发布执行者确认于北京时间 2026-09-17 18:13:25 激活、18:13:50 完成正常 TLS 读回；以下固定身份对应当时实际安装的父包，现为本次发布前的历史基线；新安装身份见集中验收。
 
 - 父 archive：`68eefe89a79deb6373cdeacc9f115c9e29a8fde27481b3b22ca2089911a006e4`。
 - 父 manifest：`9fe4a665f724c1e54a9d28b93bdaeb94df0ec8b39f027c15b669547e02dd5b92`。

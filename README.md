@@ -1,6 +1,8 @@
 # 家庭中枢 · Family Dashboard
 
-**最新上线：旅行资料与日程／清单优化，2026-09-17 18:13:25（北京时间）激活，18:13:50 正常 TLS 读回通过。** 从旅行详情打开「旅行资料」，或到「更多 → 我的旅行资料」管理凭证；默认仅本人可见，支持明确共享、下载和重新关联。日程及清单支持标准／紧凑间距，按钮与键盘操作已实际检查。本地资料 9 条流程／12 图和日程 5 条流程／18 图分别通过；服务器 235 项通过、1 项精确 Windows 跳过，55→55 原数据保持。使用见 [旅行资料](docs/EXPO-JOURNEY-DOCUMENTS.md)、[日程与清单](docs/EXPO-CALENDAR-DENSITY.md)，完整身份、失败修正与未验边界见 [发布验收](docs/EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md#expo-documents-release)。实体电视仍待验收。
+**最新上线：家庭例行计划，2026-09-17 19:21:11（北京时间）激活，19:21:45 正常 TLS 读回通过。** 从「更多 → 家庭例行计划」创建每日／每周／每月家务或采购，预览后三期并确认，支持当前事项完成、暂停／恢复、跳过和归档。R3 本地十组流程及服务器 277 项通过、1 项精确 Windows 跳过分别核验；55→55 数据与账户配置保持。使用见 [家庭例行计划](docs/EXPO-ROUTINES.md)，运行身份及边界见 [发布验收](docs/EXPO-ROUTINES-ACCEPTANCE.md#expo-routines-release)。真实家庭长期调度、真实云与实体电视仍另验。
+
+**此前上线：旅行资料与日程／清单优化，2026-09-17 18:13:25（北京时间）激活，18:13:50 正常 TLS 读回通过。** 从旅行详情打开「旅行资料」，或到「更多 → 我的旅行资料」管理凭证；默认仅本人可见，支持明确共享、下载和重新关联。日程及清单支持标准／紧凑间距，按钮与键盘操作已实际检查。本地资料 9 条流程／12 图和日程 5 条流程／18 图分别通过；服务器 235 项通过、1 项精确 Windows 跳过，55→55 原数据保持。使用见 [旅行资料](docs/EXPO-JOURNEY-DOCUMENTS.md)、[日程与清单](docs/EXPO-CALENDAR-DENSITY.md)，完整身份、失败修正与未验边界见 [发布验收](docs/EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md#expo-documents-release)。实体电视仍待验收。
 
 **此前版本：成员外观于 2026-09-17 16:17:28（北京时间）激活，16:17:57 正常 TLS 读回通过。** 从「更多 → 外观设置」选择本人浅色／深色、标准／紧凑密度，明确保存后应用；伴侣与每台电视设置独立。R1 本地浏览器 11 条流程／17 图及 Linux 226 项通过、1 项精确 Windows 跳过分别核验；595 包文件／114 运行文件／75 HTTPS 静态资源读回通过，55→55 数据与配置保持。操作见 [成员外观](docs/EXPO-APPEARANCE.md)，完整运行身份、证据与未验边界见 [本轮验收](docs/EXPO-APPEARANCE-ACCEPTANCE.md#expo-appearance-release)。
 
@@ -276,7 +278,7 @@ family-dashboard/
 
 ## 接口与数据契约
 
-当前源码接口索引为 **156 个 Flask 方法／路径模板**，含本轮例行操作回执 GET；其中本轮增量尚未部署，线上仍为 155 个。另有 WSGI `GET /space/<slug>`，HEAD/OPTIONS 不重复计数。见 [路由索引](docs/PLATFORM-ROUTES.md)和[托管契约](docs/EXPO-WEB.md)；机器结构由实际应用生成，字段与权限仍见各模块契约。
+当前源码与本次安装版本接口索引为 **156 个 Flask 方法／路径模板**，含家庭例行操作回执 GET。另有 WSGI `GET /space/<slug>`，HEAD/OPTIONS 不重复计数。见 [路由索引](docs/PLATFORM-ROUTES.md)和[托管契约](docs/EXPO-WEB.md)；机器结构由实际应用生成，字段与权限仍见各模块契约。
 
 | 接口族 | 内容与权限 |
 |---|---|
@@ -407,7 +409,7 @@ node --test tests/test_calendar_views.js
 | [旅行资料与预订凭证](docs/JOURNEY-DOCUMENTS.md) | 文件格式、五个接口、私有与共享范围、幂等重放、删除旅行保留资料及迁移 |
 | [旅行资料发布控制器](docs/JOURNEY-DOCUMENTS-RELEASE.md) | 一次性 42→43、候选与镜像绑定、READY 和原始证据合同、失败保全与运维边界 |
 | [项目规则](AGENTS.md)／[Git 分支与审查流程](docs/GIT-WORKFLOW.md) | 独立 worktree、任务分支、审查记录、集成与主分支合并；Git bundle 联合开发 |
-| [家庭例行计划](docs/ROUTINES.md)／[新版界面](docs/EXPO-ROUTINES.md)／[验收](docs/EXPO-ROUTINES-ACCEPTANCE.md) | 周期模板、未来日期、预览确认、下一期生成、共享导出与成员权限；新版候选进度见验收页 |
+| [家庭例行计划](docs/ROUTINES.md)／[新版界面](docs/EXPO-ROUTINES.md)／[验收](docs/EXPO-ROUTINES-ACCEPTANCE.md) | 周期模板、未来日期、预览确认、下一期生成、共享导出与成员权限；新版已发布，证据见验收页 |
 | [采购实付核对](docs/SHOPPING-SETTLEMENT.md) | 本人来源、CNY 整项替换、独立完成状态、预览／确认／撤销、旅行保护与私有导出 |
 | [同步状态与问题处理](docs/SYNC-HEALTH.md) | 全来源新鲜度、本人问题详情、只读接口、失败快照和原模块处理入口 |
 | [电视布局与外观](docs/TV-DISPLAY.md) | 按屏幕配置卡片、主题、密度、预览与版本冲突；只读与家庭隔离边界 |
