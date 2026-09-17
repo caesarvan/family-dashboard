@@ -1,6 +1,6 @@
 # Expo 本人资产来源浏览器验收
 
-此页记录新增脚本和执行边界；**当前仅编写、静态检查，尚未运行浏览器，不代表功能或视觉通过**。待独立审查及完整源码、Expo 导出冻结后执行。
+此页记录脚本与执行边界。R1 已实际完成九组流程与 12 图，独立视查通过；后端会话修复后的 R2 结果另记于[候选验收](EXPO-BASELINE-ACCEPTANCE.md)。不得将脚本计划当作真实设备或生产验收。
 
 脚本：[browser_expo_baseline_check.py](../tests/browser_expo_baseline_check.py)。复用已存在的 `browser_expo_finance_check.Run` 启动真实临时 Flask、SQLite、HTTPS loopback 和 Edge。每组单独应用、数据库、监听端口、上下文和 `ExitStack`，结束关闭浏览器上下文、停止并 join 服务、恢复 patch、移除临时目录；失败保留并继续其余独立组，整轮仍失败。
 
