@@ -28,6 +28,8 @@
 
 首轮 source `54cd7718f2d0fb8a51b2233fff6c3c88b23a8be4` 已实际运行：第一组旅行保存通过，随后因图标计入“旅行地点”按钮可访问名称而定位超时，未进入地点保存。原件保留于 `expo-trip-coordination-20260917T002740842189Z/result.json`，SHA256 `51d4ff8aa4fbba35ab69ff8a94a9ed2dd60f319c4dfc2de1a3d0dc98d3d6d358`；source/bundle 前后不变。定位修订复用已审 `icon_button`，仍要求真实 button 唯一、可操作，不放宽业务断言。完整通过与十二截图仍须新冻结构建复跑，不能用这一首轮宣称。
 
+第二轮 source `21ca1a9d5f34bfb4d53743e0775d55e365a7441f` 实际通过 Microsoft 的七组主链并产生十二截图，新增身份后检 fixture 因 `destinations:[]` 被真实预览接口 400「至少填写一个目的地」拒绝；这是测试数据错误，尚未执行该故障注入。修订仅补一个合成目的地，保留空分段使日程仍只有概览。原件 `expo-trip-coordination-20260917T003234435777Z/result.json`，SHA256 `71147ce9d0f62664e0621ad0275ec1c5ed600e5c37346c35f516d10d0aa406da`；零页面异常／外部请求，source/bundle 前后不变。Google 和附加六组仍待新冻结候选执行。
+
 ## 执行与原件
 
 只对集成人当次给出的冻结 source 和 bundle 执行；以下占位不可直接运行：
