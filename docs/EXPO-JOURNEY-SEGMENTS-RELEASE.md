@@ -12,7 +12,9 @@
 
 保持 55 张户内表与两张平台注册表，无 DDL、迁移或新增依赖。`UNCHANGED` 仅移除本批编辑来源快照 API 的 `journey_workflows.py`；父 tuple 其余顺序与字节守卫均保留，Dockerfile 仍必须与已安装包完全一致。
 
-必需修改该后端和五个前端接线文件（types、HouseholdApp、TripsScreen、MapWorkspace、AssistantScreen）；必需新增分段 model、其 Node 测试、Panel／Fields、API 快照专项、浏览器脚本和本适配器／测试。最低集合不替代最终完整 changed／added／removed 核验。
+必需修改该后端和五个前端接线文件（types、HouseholdApp、TripsScreen、MapWorkspace、AssistantScreen）；必需新增分段 model、Node 测试、Panel／Fields、API 快照专项、浏览器脚本和本适配器／测试。最低集合不替代最终完整 changed／added／removed 核验。
+
+首份实际 freeze 因 Node 测试不在父包选择器中而被拒绝，发生在创建输出目录之前；未产生工具目录或服务器操作，失败记录保留。本批仅对生成包选择器增加恰好三个必须已跟踪的来源文件：`frontend/tests/journeySegments.test.ts`、`frontend/tsconfig.tests.json`、`frontend/typecheck.mjs`。它们归档用于复现已验证构建；不在 Python 镜像执行 Node 测试。全局 `deploy/prepare_release.py`、纯合同、Docker 及完整构建输入逐项核对均不改，不开放其他测试文件、node_modules 或生成目录。
 
 ## 生成与验证边界
 
@@ -34,8 +36,10 @@ python -B deploy/expo_segments_release/prepare.py --source-root <私有access绝
 
 [`test_expo_segments_release.py`](../tests/test_expo_segments_release.py) 继承父适配器的纯合成路径／固定散列、独占输出、输入竞争、freeze、递归 AST／DDL 拒绝和 Docker 全字节守卫，并核精确新增匿名端点仅接受 401。
 
-本分支实际 24 项合成测试通过，0.88 秒；JUnit `test-results/segments-release-r1.xml` SHA-256：`b41785d9d3d0494db7d8115f128a362483042c9e9f9baa4ce681af33b9808637`。
+首版实际 24 项合成测试通过，0.88 秒；JUnit `test-results/segments-release-r1.xml` SHA-256：`b41785d9d3d0494db7d8115f128a362483042c9e9f9baa4ce681af33b9808637`。
 
 另显式私有原件检查读取固定父包和 Git `7713ad1fd091d7390612c52d434b97e54e99f54b` 的 Docker blob，在临时目录生成九文件：33 项错误 freeze／漏项及七个未绑定／缺少审查材料入口均拒绝，29 个唯一匿名端点与新项严格 401、关键阶段字节、896／640 资源和递归语法全部核对通过。报告 `test-results/segments-release-pinned-r1.json` SHA-256：`051cadf870118a38d7a4342eefe1b2a409599a5e149b50850738085a8a01aef2`。
+
+三文件来源白名单修正后，实际 **26 项通过，0.46 秒**，JUnit `test-results/segments-release-r2.xml` SHA-256 `235a6ff8bab9a7caae51f41f6bc4e22d4e6c11e812a21160e92c96784beb8227`。私有检查调用固定父原件和生成包的真实 `selected_sources`，对 Git `d415e8f8e373c9f4c5ba2b0ca47ae4903d9d0e8b` 与已验构建 `c7248a60…` 核全部 180 输入可选择、差集精确三个文件、缺一拒绝及其他私密／依赖／生成路径排除。报告 `test-results/segments-release-pinned-r2.json` SHA-256 `3a791a6b8289ba1f4e2332083a57ef13558516527d7b49af55fb5acf3cdcf157`；没有传入最终新版 freeze，其接受状态仍待单独核验。最终 collection 必须随测试修订重新收集，不能沿用旧 259 项。
 
 生成代码运行期间阻断网络和进程调用，没有建立真实包或绑定。合成计数 9991 只验证配置透传，不是实际测试数量。上述结果不替代最终源码 collection、Linux、浏览器、实际云或本轮上线验收。
