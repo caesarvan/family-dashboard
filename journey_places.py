@@ -225,6 +225,22 @@ def register_journey_places(app, db, Problem, body, require_member, audit):
         data = json.loads(row['data'])
         return {'id': row['id'], 'tripId': row['trip_id'], 'title': data['title']}
 
+    def source_revision(value):
+        if 'expectedJourneyRevision' not in value:
+            return None
+        return revision(value['expectedJourneyRevision'])
+
+    def check_source_revision(con, uid, expected):
+        if expected is None:
+            return
+        if uid is None:
+            raise Problem('旅行版本核对必须指定关联旅行')
+        row = con.execute('SELECT revision FROM journey_workflows WHERE id=?', (uid,)).fetchone()
+        if row is None:
+            raise Problem('旅行不存在或不可关联', 404)
+        if row['revision'] != expected:
+            raise Problem('旅行计划已更新，请核对最新旅行后再保存地点', 409)
+
     def visible_row(con, uid, owner, manage=False, include_deleted=False):
         identifier(uid)
         row = con.execute('SELECT * FROM journey_places WHERE id=?', (uid,)).fetchone()
@@ -301,12 +317,20 @@ def register_journey_places(app, db, Problem, body, require_member, audit):
     @app.post('/api/journey-places')
     def create_journey_place():
         value = body()
-        fields(value, BUSINESS_FIELDS | {'requestId', 'confirmVisited'}, {'requestId', 'name'})
+        fields(value, BUSINESS_FIELDS | {'requestId', 'confirmVisited', 'expectedJourneyRevision'}, {'requestId', 'name'})
         key = value['requestId']
         if not isinstance(key, str) or not re.fullmatch(r'[A-Za-z0-9_-]{16,100}', key):
             raise Problem('创建请求标识不正确')
         clean, confirm = normalized(value)
-        digest = hashlib.sha256(json.dumps({'place': clean, 'confirmVisited': confirm}, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+        expected = source_revision(value)
+        if expected is not None and clean['journey_id'] is None:
+            raise Problem('旅行版本核对必须指定关联旅行')
+        intent = {'place': clean, 'confirmVisited': confirm}
+        # Do not change legacy digests. The optional source revision is part of
+        # a new intent, so a retry cannot silently adopt a different plan.
+        if expected is not None:
+            intent['expectedJourneyRevision'] = expected
+        digest = hashlib.sha256(json.dumps(intent, ensure_ascii=False, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
         with transaction(True) as (con, owner):
             # The receipt precedes mutable parent validation: unlink cannot
             # invalidate replay or cause the original request to create again.
@@ -318,6 +342,7 @@ def register_journey_places(app, db, Problem, body, require_member, audit):
                     raise Problem('该创建请求对应的地点已删除，不能重复创建', 410)
                 return jsonify(place=serialize(con, existing, owner), replayed=True)
             journey(con, clean['journey_id'])
+            check_source_revision(con, clean['journey_id'], expected)
             if con.execute('SELECT count(*) FROM journey_places').fetchone()[0] >= MAX_PLACE_RECORDS:
                 raise Problem('地点记录及历史创建回执已达上限，请联系维护者处理', 409)
             uid, now = secrets.token_hex(12), stamp()
@@ -332,8 +357,9 @@ def register_journey_places(app, db, Problem, body, require_member, audit):
     @app.patch('/api/journey-places/<uid>')
     def update_journey_place(uid):
         value = body()
-        fields(value, BUSINESS_FIELDS | {'revision', 'confirmVisited'}, {'revision'})
+        fields(value, BUSINESS_FIELDS | {'revision', 'confirmVisited', 'expectedJourneyRevision'}, {'revision'})
         incoming_revision = revision(value['revision'])
+        expected = source_revision(value)
         if not (set(value) & BUSINESS_FIELDS or value.get('confirmVisited') is True):
             raise Problem('请提供要修改的地点内容')
         with transaction(True) as (con, owner):
@@ -342,6 +368,7 @@ def register_journey_places(app, db, Problem, body, require_member, audit):
                 raise Problem('地点已更新，请重新读取后再保存', 409)
             clean, confirm = normalized(value, row)
             journey(con, clean['journey_id'])
+            check_source_revision(con, clean['journey_id'], expected)
             now = stamp()
             confirmed_at, confirmed_by = row['visited_confirmed_at'], row['visited_confirmed_by']
             if clean['status'] != 'visited':
