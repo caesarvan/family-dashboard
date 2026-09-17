@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { checkedRescheduleWrite, clockText, failedRescheduleIntent, initialRescheduleDraft, localOverride, offsetText, pageItems, readRescheduleOperation, readReschedulePreview, readRescheduleReceipt, readRescheduleSnapshot, rebaseRescheduleDraft, reschedulePayload, RescheduleRejected, RescheduleUnverified, snapshotVersion, validRescheduleDay } from '../frontend/src/lib/journeyReschedule.ts';
+import { checkedRescheduleWrite, clockText, failedRescheduleIntent, initialRescheduleDraft, localOverride, mayExitReschedule, offsetText, pageItems, readRescheduleOperation, readReschedulePreview, readRescheduleReceipt, readRescheduleSnapshot, rebaseRescheduleDraft, reschedulePayload, RescheduleRejected, RescheduleUnverified, snapshotVersion, validRescheduleDay } from '../frontend/src/lib/journeyReschedule.ts';
 import { PlaceDiscarded, PlaceFence, placeSignature } from '../frontend/src/lib/places.ts';
 
 const jid = 'a'.repeat(24), tripId = 'b'.repeat(24), operation = 'c'.repeat(32);
@@ -97,6 +97,13 @@ test('historical receipt is bound to original operation and proposed dates, with
   assert.equal(readRescheduleOperation({ found: true, idempotencyKey: operation, result: value }, jid, original).id, jid);
   for (const patch of [{ found: false }, { idempotencyKey: 'e'.repeat(32) }, { result: { ...value, id: tripId } }, { result: { ...value, operation: 'create' } }, { result: { ...value, reschedule: { ...value.reschedule, start: '2027-03-21' } } }]) assert.throws(() => readRescheduleOperation({ found: true, idempotencyKey: operation, result: value, ...patch }, jid, original));
 });
+test('real persisted receipt omits transport replayed; only a matching operation lookup normalizes it', () => {
+  const stored = receipt(); delete stored.replayed;
+  assert.throws(() => readRescheduleReceipt(stored, jid, intent()));
+  const found = readRescheduleOperation({ found: true, idempotencyKey: operation, result: stored }, jid, intent());
+  assert.equal(found.replayed, true); assert.equal(found.revision, 8); assert.equal(Object.hasOwn(stored, 'replayed'), false);
+  assert.throws(() => readRescheduleOperation({ found: true, idempotencyKey: 'd'.repeat(32), result: stored }, jid, intent()));
+});
 test('endpoint rejection is definitive only after both identity reads succeed', async () => {
   const who = session(); let reads = 0; const fence = new PlaceFence(async () => { reads++; return who; }, placeSignature(who));
   let failure; try { await checkedRescheduleWrite(action => fence.run(action, () => true), async () => { throw apiError(409, 'stale_preview'); }, http); } catch (error) { failure = error; }
@@ -108,6 +115,13 @@ test('lost success or invalid receipt keeps the exact original key; later 400/40
     const pending = failedRescheduleIntent(original, failure); assert.equal(pending.uncertain, true); assert.equal(pending.body, original.body);
     for (const status of [400, 409, 410]) { const later = failedRescheduleIntent(pending, new RescheduleRejected(status, 'expired')); assert.equal(later.body, original.body); assert.equal(later.uncertain, true); }
   }
+});
+test('internal exit stays locked while a write is in flight or any original intent remains unresolved', () => {
+  assert.equal(mayExitReschedule(null, true), false); assert.equal(mayExitReschedule(intent(), false), false);
+  const unresolved = failedRescheduleIntent(intent(), apiError(0)); assert.equal(mayExitReschedule(unresolved, false), false);
+  const later = failedRescheduleIntent(unresolved, new RescheduleRejected(400, 'expired')); assert.equal(mayExitReschedule(later, false), false);
+  const rejected = failedRescheduleIntent(intent(), new RescheduleRejected(409, 'stale')); assert.equal(mayExitReschedule(rejected, false), true);
+  assert.equal(mayExitReschedule(null, false), true);
 });
 test('post-write identity failures 401/403/408/429 conceal and preserve unknown instead of unlocking a retry with a new key', async () => {
   for (const status of [401, 403, 408, 429]) {

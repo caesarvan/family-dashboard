@@ -105,7 +105,9 @@ export function readRescheduleReceipt(raw: unknown, journeyId: string, intent: I
 }
 export function readRescheduleOperation(raw: unknown, journeyId: string, intent: Intent) {
   const value = object(raw); if (value.found !== true || value.idempotencyKey !== intent.body.idempotencyKey) throw error();
-  return readRescheduleReceipt(value.result, journeyId, intent);
+  // Stored results predate the transport-only replayed flag. A successful
+  // operation lookup confirms that original historical receipt, not a new write.
+  return readRescheduleReceipt({ ...object(value.result), replayed: true }, journeyId, intent);
 }
 export class RescheduleRejected extends Error { constructor(readonly status: number, message: string, readonly code = '') { super(message); } }
 export class RescheduleUnverified extends Error { constructor(readonly reason: unknown) { super('改期保存前后的身份暂时无法核对。'); } }
@@ -119,6 +121,7 @@ export async function checkedRescheduleWrite<T>(guard: <R>(action: (csrf: string
   throw outcome.failure;
 }
 export const failedRescheduleIntent = (intent: Intent, failure: unknown): Intent | null => intent.uncertain || !(failure instanceof RescheduleRejected) ? { ...intent, uncertain: true } : null;
+export const mayExitReschedule = (pending: Intent | null, working: boolean) => !pending && !working;
 export function impactReason(item: Impact) {
   if (item.kind === 'overview') return '旅行总日期会更新';
   if (item.kind === 'shopping') return '采购没有截止日期，保持原记录';
