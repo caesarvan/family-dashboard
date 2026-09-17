@@ -4,7 +4,7 @@
 
 本表描述**本地源码**，其与正式版本的差异见 [交接说明](HANDOFF.md)。表用于定位代码；字段、权限、错误和状态机参见 [README 文档导航](../README.md#文档导航)。
 
-Flask HTTP 方法与路径组合：**155**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
+Flask HTTP 方法与路径组合：**156**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
 
 | 方法 | 路径 | 实现 |
 |---|---|---|
@@ -141,6 +141,7 @@ Flask HTTP 方法与路径组合：**155**；另有 `GET /space/<slug>`。HEAD/O
 | POST | `/api/profile` | [app.py](../app.py) · `profile` |
 | POST | `/api/routines/confirm` | [household_routines.py](../household_routines.py) · `routine_confirm` |
 | GET | `/api/routines/context` | [household_routines.py](../household_routines.py) · `routine_context` |
+| GET | `/api/routines/operations/<operation_key>` | [household_routines.py](../household_routines.py) · `routine_operation` |
 | POST | `/api/routines/preview` | [household_routines.py](../household_routines.py) · `routine_preview` |
 | GET | `/api/sessions` | [member_sessions.py](../member_sessions.py) · `sessions_list` |
 | DELETE | `/api/sessions/<session_id>` | [member_sessions.py](../member_sessions.py) · `session_delete` |
@@ -162,7 +163,7 @@ Flask HTTP 方法与路径组合：**155**；另有 `GET /space/<slug>`。HEAD/O
 | GET | `/demo` | [app.py](../app.py) · `index` |
 | GET | `/healthz` | [app.py](../app.py) · `health` |
 | GET | `/static/<path:name>` | [app.py](../app.py) · `asset` |
-| GET | `/tv` | [app.py](../app.py) · `index` |
+| GET | `/tv` | [frontend_runtime.py](../frontend_runtime.py) · `television_frontend` |
 
 ## 每户业务数据表
 
