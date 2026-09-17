@@ -1,5 +1,5 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet, View, useWindowDimensions } from 'react-native';
 import { ActivityIndicator, Text } from 'react-native-paper';
 import { isTVPhotoId, readTVPlayback, TVPhotoIdentityChanged, TVPhotoLease, TV_PHOTO_MAX_BYTES,
   TV_PHOTO_POLL_MS, TV_PHOTO_TIMEOUT_MS, type TVPhotoPlayerProps } from './TVPhotoPlayer.model';
@@ -54,6 +54,7 @@ function decode(image: HTMLImageElement, signal: AbortSignal) {
 }
 
 export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPhotoPlayerProps) {
+  const size = useWindowDimensions(), scale = Math.max(0.65, Math.min(size.width / 1920, size.height / 1080));
   const image = useRef<HTMLImageElement>(null), paint = useRef<(() => void) | null>(null);
   const failImage = useRef<(() => void) | null>(null), props = useRef({ deviceId, active, onUnauthorized });
   props.current = { deviceId, active, onUnauthorized };
@@ -163,16 +164,18 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
   return <View testID="tv-photo-player" accessibilityLabel="已授权照片轮播" style={styles.overlay}>
     <img ref={image} data-testid="tv-photo-image" alt="已授权的家庭照片" hidden onError={() => failImage.current?.()}
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
-    {!!message && <View style={styles.message}>
-      {view.status === 'loading' && <ActivityIndicator color="#fff" size="large" />}
-      <Text testID="tv-photo-status" accessibilityLiveRegion="polite" style={styles.text}>{message}</Text>
+    {!!message && <View style={[styles.message, { gap: 20 * scale, maxWidth: 840 * scale, padding: 32 * scale }]}>
+      {view.status === 'loading' && <ActivityIndicator color="#fff" size={36 * scale} />}
+      <Text testID="tv-photo-status" accessibilityLiveRegion="polite" style={[styles.text, { fontSize: 28 * scale, lineHeight: 40 * scale }]}>{message}</Text>
     </View>}
-    {view.count > 0 && <Text testID="tv-photo-position" style={styles.position}>{view.position + 1} / {view.count}{view.paused ? ' · 已暂停' : ''}</Text>}
+    {view.count > 0 && <Text testID="tv-photo-position" style={[styles.position, { bottom: 24 * scale, right: 24 * scale,
+      paddingVertical: 10 * scale, paddingHorizontal: 18 * scale, borderRadius: 24 * scale,
+      fontSize: 20 * scale, lineHeight: 28 * scale }]}>{view.position + 1} / {view.count}{view.paused ? ' · 已暂停' : ''}</Text>}
   </View>;
 }
 const styles = StyleSheet.create({
   overlay: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, zIndex: 30, backgroundColor: '#090b0e', alignItems: 'center', justifyContent: 'center' },
-  message: { gap: 20, maxWidth: 840, padding: 32, alignItems: 'center' },
-  text: { color: '#f4f4f5', textAlign: 'center', fontSize: 28, lineHeight: 40 },
-  position: { position: 'absolute', bottom: 24, right: 24, paddingVertical: 10, paddingHorizontal: 18, borderRadius: 24, backgroundColor: '#090b0e', color: '#fff', fontSize: 20 },
+  message: { alignItems: 'center' },
+  text: { color: '#f4f4f5', textAlign: 'center' },
+  position: { position: 'absolute', backgroundColor: '#090b0e', color: '#fff' },
 });
