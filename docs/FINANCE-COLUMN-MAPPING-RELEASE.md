@@ -1,6 +1,6 @@
 # 财务列映射发布适配器
 
-本适配器从已安装的家庭成员版本九份固定工具派生，只准备未绑定发布工具。打包、非作者算子审查、绑定、服务器验证和发布是之后的独立步骤；本文件不表示它们已执行。
+本适配器从家庭成员版本九份固定工具派生，生成阶段只准备未绑定工具。本批随后已于北京时间 2026-09-18 06:56:39 激活，06:57:18 正常 TLS 读回通过；实际安装身份与独立审计状态见[集中验收记录](FINANCE-COLUMN-MAPPING-ACCEPTANCE.md)。固定父 pins 和算子不能在新版本重放。
 
 ## 固定父版本与范围
 
@@ -29,11 +29,11 @@ post 绑定 `before.json`、`after-app.json`、`preservation.json`，在实际�
 
 本地专项两轮均实际 21/21，第二轮原件在本工作树 `test-results/mapping-release-r2/`，XML SHA `f94d1fab7e78aa1087a84861f78fe7dc25851d555700e9f9ebb86b14d3bf09be`。专项运行时 API pin 尚未填写；后来只补已审精确 pin，并通过下述真实源码 CLI 校验。两轮数量不相加。
 
-真实父九工具 CLI 已在固定组合 `c958c1b2da6f4a79cbc828653d6d86afdfab76da` 上执行通过：196 个构建输入均被真实 selector 包含，38 个后端与父包一致，124 次来源漂移、27 个坏 freeze、两本地入口无效参数和五阶段未绑定均拒绝，38 唯一匿名地址仍要求 401。实际组合此时只缺尚待审查合入的本 adapter/test 两文件；没有最终 freeze、应用打包或生产操作。CLI 原件保留于 `test-results/mapping-release-cli-r1/`，最终报告命名澄清后的固定原件另存 `test-results/mapping-release-cli-r2/`。
+真实父九工具 CLI 已在固定组合 `c958c1b2da6f4a79cbc828653d6d86afdfab76da` 上执行通过：196 个构建输入均被真实 selector 包含，38 个后端与父包一致，124 次来源漂移、27 个坏 freeze、两本地入口无效参数和五阶段未绑定均拒绝，38 唯一匿名地址仍要求 401。该 CLI 执行时组合只缺随后另行审查合入的本 adapter/test 两文件；当时没有最终 freeze、应用打包或生产操作。CLI 原件保留于 `test-results/mapping-release-cli-r1/`，最终报告命名澄清后的固定原件另存 `test-results/mapping-release-cli-r2/`。
 
 最终 CLI `stdout.json` SHA `5db8d983973137772a3fad523c0b6b3d9df6f2538d6effe9953d5b3b0398dd08`，`result.json` SHA `f6fba73b7f584569fb34af43b9817510f147a36df6e105f966c027c97f47bf8c`，完整生成差异 SHA `0c404acc7f9a786b017f479b50ec8636cb46860963dae2de084bc86692cd650c`。前后 adapter/test SHA 均相等，全部本地轮次无失败；临时 freeze 中的 9991 只是校验合成输入，绝非实际测试计数。
 
-正式 Linux 验证集合为适配器列出的 15 模块，精确项目数须从最终 source 收集；本地专项数量不能替代该收集或 Linux 执行结果。
+固定组合 `c9ef18f402198a4b31a0c5d86510f4d4d06d7474` 实际收集 15 模块／497 个唯一项目；随后发布容器实际执行为 496 通过、1 项精确 Windows junction 跳过、零失败／错误／deselected。原件集中于验收页，不与本地专项相加。
 
 本地 CLI 用法（需要已审 API pin 和固定组合源码，证据目录必须新建且为空）：
 
