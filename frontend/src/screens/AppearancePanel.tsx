@@ -129,16 +129,16 @@ function Workspace(props: Props & { identityKey: string }) {
   const describe = (value: Preferences) => `${value.colorMode === 'dark' ? '深色' : '浅色'} · ${value.density === 'compact' ? '紧凑' : '标准'}密度`;
   return <View style={styles.screen} testID="appearance-panel">
     <PageHeader title="我的外观" description="为你的手机和电脑选择显示方式。伴侣和电视保留各自的设置。"
-      action={<Button accessibilityLabel="关闭外观设置" disabled={busy || !!model.unknown} onPress={close}>返回更多</Button>} />
+      action={<Button contentStyle={styles.touchTarget} accessibilityLabel="关闭外观设置" disabled={busy || !!model.unknown} onPress={close}>返回更多</Button>} />
     {!!message && <Text testID="appearance-message">{message}</Text>}
     {!!error && <Text accessibilityRole="alert">{error}</Text>}
     {busy && <ActivityIndicator accessibilityLabel="正在核对外观设置" />}
     {!visible ? <EmptyState title="正在核对本人设置" description="离线或身份未确认时隐藏草稿；返回并核对后恢复。"
-      action={<Button disabled={busy || !online()} onPress={() => { if (active.current) void job(load); else enter(); }}>重新读取外观设置</Button>} /> : <>
+      action={<Button contentStyle={styles.touchTarget} disabled={busy || !online()} onPress={() => { if (active.current) void job(load); else enter(); }}>重新读取外观设置</Button>} /> : <>
       {model.unknown && <SectionCard title="先核对保存结果"><View testID="appearance-unknown" style={styles.stack}>
         <Text>刚才的请求可能已经保存。读取只能显示当前设置，不能证明是哪一次请求完成；不会自动重复保存。</Text>
         {model.draft && <Text>这次选择：{describe(model.draft)}</Text>}
-        <Button mode="contained" disabled={busy} onPress={() => void job(load)}>核对外观保存结果</Button>
+        <Button contentStyle={styles.touchTarget} mode="contained" disabled={busy} onPress={() => void job(load)}>核对外观保存结果</Button>
       </View></SectionCard>}
       {model.draft && !model.unknown && <>
         <SectionCard title="颜色"><View accessibilityRole="radiogroup" accessibilityLabel="外观颜色" style={styles.stack}>
@@ -150,21 +150,21 @@ function Workspace(props: Props & { identityKey: string }) {
           <SelectionRow kind="radio" label="紧凑 · 更集中地查看内容" accessibilityLabel="紧凑密度" checked={model.draft.density === 'compact'} disabled={locked} onPress={() => edit(draft => ({ ...draft, density: 'compact' }))} />
         </View></SectionCard>
       </>}
-      {model.blocked && !model.review && !model.unknown && <Button mode="outlined" disabled={busy} onPress={() => void job(load)}>查看最新外观设置</Button>}
+      {model.blocked && !model.review && !model.unknown && <Button contentStyle={styles.touchTarget} mode="outlined" disabled={busy} onPress={() => void job(load)}>查看最新外观设置</Button>}
       {model.review && <SectionCard title="刚读取的当前设置"><View testID="appearance-review" style={styles.stack}>
         <Text>{describe(model.review)}</Text><Text>版本 {model.review.revision}。保留修改后仍需明确保存。</Text>
-        <View style={styles.actions}><Button mode="outlined" disabled={busy} onPress={() => decide(false)}>采用当前设置</Button>
-          <Button mode="contained" disabled={busy} onPress={() => decide(true)}>保留我的修改</Button></View>
+        <View style={styles.actions}><Button contentStyle={styles.touchTarget} mode="outlined" disabled={busy} onPress={() => decide(false)}>采用当前设置</Button>
+          <Button contentStyle={styles.touchTarget} mode="contained" disabled={busy} onPress={() => decide(true)}>保留我的修改</Button></View>
       </View></SectionCard>}
-      {!model.unknown && <View style={styles.actions}><Button mode="contained" disabled={locked || !dirty(model)} onPress={() => void save()}>保存外观设置</Button>
-        <Button mode="outlined" disabled={busy} onPress={close}>{dirty(model) ? '放弃修改并返回' : '返回更多'}</Button></View>}
+      {!model.unknown && <View style={styles.actions}><Button contentStyle={styles.touchTarget} mode="contained" disabled={locked || !dirty(model)} onPress={() => void save()}>保存外观设置</Button>
+        <Button contentStyle={styles.touchTarget} mode="outlined" disabled={busy} onPress={close}>{dirty(model) ? '放弃修改并返回' : '返回更多'}</Button></View>}
     </>}
     <Portal><Dialog visible={discard && !busy && !model.unknown} onDismiss={() => setDiscard(false)}><Dialog.Title>放弃这次外观修改？</Dialog.Title>
       <Dialog.Content><Text>已保存的显示设置保持不变。</Text></Dialog.Content><Dialog.Actions>
-        <Button onPress={() => setDiscard(false)}>继续编辑</Button><Button onPress={() => {
+        <Button contentStyle={styles.touchTarget} onPress={() => setDiscard(false)}>继续编辑</Button><Button contentStyle={styles.touchTarget} onPress={() => {
           if (working.current || live.current.unknown) return; install(empty()); setDiscard(false); latest.current.props.onClose();
         }}>确认放弃修改</Button>
       </Dialog.Actions></Dialog></Portal>
   </View>;
 }
-const styles = StyleSheet.create({ screen: { gap: 20 }, stack: { gap: 12 }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 } });
+const styles = StyleSheet.create({ touchTarget: { minHeight: 44 }, screen: { gap: 20 }, stack: { gap: 12 }, actions: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 } });
