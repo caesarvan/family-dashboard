@@ -21,7 +21,7 @@ type JsonObject = { [key: string]: Json };
 export type LinkedRecord = JsonObject & { id: string; revision: number; workflowKey: string };
 export type JourneyDetail = { id: string; tripId: string; revision: number; plan: JourneyPlan; trip: LinkedRecord | null; tasks: LinkedRecord[]; shopping: LinkedRecord[]; events: LinkedRecord[]; policyNotice: string };
 export type SegmentDraft = { journeyId: string; tripId: string; revision: number; sourceVersion: 1 | 2; plan: JourneyPlan; observed: string; expectedEntities: Record<string, number> };
-export type ConflictGroup = 'timing' | 'title' | 'location' | 'note';
+export type ConflictGroup = 'timing' | 'title' | 'location' | 'note' | 'owner';
 export type ConflictResolutions = Record<string, Partial<Record<ConflictGroup, 'current' | 'plan'>>>;
 export type Conflict = { itemKey: string; entityId: string; fieldGroup: ConflictGroup; base: JsonObject; current: JsonObject; proposed: JsonObject; choices: ['current', 'plan']; resolution?: 'current' | 'plan' };
 export type SegmentPreview = { plan: JourneyPlanV2; canApply: boolean; previewToken: string | null; expiresIn: number; summary: { create: Record<string, number>; update: Record<string, number>; detach: number; policyNotice: string; calendar: string; removedItems: string; conflicts: Conflict[]; preserved: Conflict[]; resolved: Conflict[]; cloudReviews: { itemKey: string; entityId: string; message: string }[]; warnings: (JsonObject & { code: string; itemKey: string; message: string })[] } };
@@ -111,8 +111,12 @@ export const detailFingerprint = (d: JourneyDetail) => JSON.stringify([d.id, d.t
 export function editSegmentDraft(detail: JourneyDetail): SegmentDraft {
   const d = readJourneyDetail(detail), plan = copy(d.plan), t = d.trip;
   if (!t) throw new SegmentError('关联旅行已不存在，请重新核对。');
+  for (const [rows, records, prefix, label] of [[plan.checklist, d.tasks, 'task:', '准备事项'], [plan.shopping, d.shopping, 'shopping:', '采购事项']] as const) {
+    if (rows.length !== records.length || rows.some(row => !records.some(record => record.workflowKey === prefix + row.key))) throw new SegmentError(`关联${label}已被单独删除或解除关联，请先核对旅行清单，再编辑详细行程。`);
+  }
+  if (d.tasks.some(record => !record.due)) throw new SegmentError('关联准备事项已被单独清空截止日期，请先核对旅行清单，再编辑详细行程。');
   Object.assign(plan, { title: text(t.title), start: day(t.start), end: day(t.end), budget: money(t.budget), saved: money(t.saved), paid: money(t.paid), note: text(t.note ?? '', 2000, true) });
-  plan.checklist = plan.checklist.map(row => { const live = d.tasks.find(x => x.workflowKey === 'task:' + row.key); return live ? { ...row, title: text(live.title), owner: text(live.owner, 100), due: live.due ? day(live.due) : row.due, note: text(live.note ?? '', 500, true) } : row; });
+  plan.checklist = plan.checklist.map(row => { const live = d.tasks.find(x => x.workflowKey === 'task:' + row.key); return live ? { ...row, title: text(live.title), owner: text(live.owner, 100), due: day(live.due), note: text(live.note ?? '', 500, true) } : row; });
   plan.shopping = plan.shopping.map(row => { const live = d.shopping.find(x => x.workflowKey === 'shopping:' + row.key); return live ? { ...row, title: text(live.title), owner: text(live.owner, 100), quantity: text(live.quantity ?? row.quantity, 30), budget: live.budget === null || live.budget === undefined ? null : money(live.budget), note: text(live.note ?? '', 500, true) } : row; });
   return { journeyId: d.id, tripId: d.tripId, revision: d.revision, sourceVersion: d.plan.schemaVersion === 2 ? 2 : 1, observed: detailFingerprint(d), expectedEntities: Object.fromEntries([t, ...d.tasks, ...d.shopping, ...d.events].map(x => [x.id, x.revision])), plan };
 }
@@ -122,7 +126,7 @@ export function upgradeToV2(draft: SegmentDraft, referenceTimezone: string, dest
   return { ...copy(draft), plan: { ...p, schemaVersion: 2, referenceTimezone: timezone(referenceTimezone), destinations: p.destinations.map(d => ({ ...d, timeZone: timezone(destinationTimeZones[d.key]) })), segments: p.segments.map(s => ({ ...s, kind: 'legacy_day', bookingState: 'idea', datePolicy: 'shift_with_trip' })) } };
 }
 export function rebaseSegmentDraft(draft: SegmentDraft, latest: JourneyDetail): SegmentDraft { const next = editSegmentDraft(latest); if (next.journeyId !== draft.journeyId || next.tripId !== draft.tripId || draft.plan.schemaVersion !== 2) bad(); return { ...next, plan: { ...next.plan, schemaVersion: 2, referenceTimezone: draft.plan.referenceTimezone, destinations: copy(draft.plan.destinations), segments: copy(draft.plan.segments) } }; }
-function resolutions(raw: unknown): ConflictResolutions { const out: ConflictResolutions = {}; const r = object(raw); if (Object.keys(r).length > 101) bad(); for (const [k, value] of Object.entries(r)) { eventKey(k); const groups = object(value); fields(groups, ['timing', 'title', 'location', 'note']); out[k] = Object.fromEntries(Object.entries(groups).map(([g, v]) => [g, one(v, ['current', 'plan'])])); } return out; }
+function resolutions(raw: unknown): ConflictResolutions { const out: ConflictResolutions = {}; const r = object(raw); if (Object.keys(r).length > 101) bad(); for (const [k, value] of Object.entries(r)) { eventKey(k); const groups = object(value); fields(groups, ['timing', 'title', 'location', 'note', 'owner']); out[k] = Object.fromEntries(Object.entries(groups).map(([g, v]) => [g, one(v, ['current', 'plan'])])); } return out; }
 export function previewPayload(draft: SegmentDraft, capabilities: Capabilities, memberIds: readonly string[], conflictResolutions: ConflictResolutions = {}) {
   if (!capabilities.canWriteV2 || !capabilities.editSourceSnapshot || !capabilities.schemaVersions.includes(2) || draft.plan.schemaVersion !== 2) throw new SegmentError('服务尚未声明 v2 编辑快照能力，或需要先明确升级。');
   const plan = readPlan(draft.plan); if (plan.schemaVersion !== 2 || plan.memberIds.some(x => !memberIds.includes(x)) || [...plan.checklist, ...plan.shopping].some(x => x.owner !== 'shared' && !memberIds.includes(x.owner))) bad();
@@ -130,7 +134,7 @@ export function previewPayload(draft: SegmentDraft, capabilities: Capabilities, 
   if (!Object.hasOwn(expectedEntities, draft.tripId) || Object.keys(expectedEntities).length > 302 || draft.observed !== JSON.stringify([draft.journeyId, draft.tripId, draft.revision, Object.entries(expectedEntities).sort((a, b) => a[0].localeCompare(b[0]))])) bad();
   return { journeyId: id(draft.journeyId), revision: integer(draft.revision, 1), expectedEntities, plan, conflictResolutions: resolutions(conflictResolutions) };
 }
-const groups = ['timing', 'title', 'location', 'note'] as const;
+const groups = ['timing', 'title', 'location', 'note', 'owner'] as const;
 function conflict(v: unknown): Conflict { const r = object(v); if (JSON.stringify(r.choices) !== '["current","plan"]') bad(); const c: Conflict = { itemKey: eventKey(r.itemKey), entityId: id(r.entityId), fieldGroup: one(r.fieldGroup, groups), base: jsonObject(r.base), current: jsonObject(r.current), proposed: jsonObject(r.proposed), choices: ['current', 'plan'] }; if (r.resolution !== undefined) c.resolution = one(r.resolution, ['current', 'plan'] as const); return c; }
 function counts(v: unknown): Record<string, number> { const r = object(v); fields(r, ['trips', 'events', 'tasks', 'shopping']); return Object.fromEntries(Object.entries(r).map(([k, n]) => [k, integer(n, 0, 101)])); }
 export function readSegmentPreview(raw: unknown): SegmentPreview {

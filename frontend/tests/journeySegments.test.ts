@@ -43,7 +43,7 @@ with tempfile.TemporaryDirectory(prefix='journey-segment-dto-') as directory:
     replay=apply(p2,'model-v2-update',200);operation=checked(c.get('/api/journeys/operations/model-v2-update'))
     latest=checked(c.get('/api/journeys/'+d2['id']))
     event=next(x for x in latest['events'] if x['workflowKey']=='segment:'+changed['segments'][0]['key'])
-    checked(c.patch('/api/items/events/'+event['id'],json={'revision':event['revision'],'title':'日历中独立修改'},headers=h))
+    checked(c.patch('/api/items/events/'+event['id'],json={'revision':event['revision'],'title':'日历中独立修改','owner':'member2'},headers=h))
     manual=checked(c.get('/api/journeys/'+d2['id']))
     preserved=preview(manual['plan'],journeyId=manual['id'],revision=manual['revision'])
     conflict_plan=copy.deepcopy(manual['plan']);conflict_plan['segments'][0]['title']='另一个计划标题'
@@ -52,7 +52,20 @@ with tempfile.TemporaryDirectory(prefix='journey-segment-dto-') as directory:
     resolved=preview(conflict_plan,journeyId=manual['id'],revision=manual['revision'],conflictResolutions=choices)
     dst=copy.deepcopy(manual['plan']);dst['segments'][0]['departure']={'local':'2026-11-01T01:30','timeZone':'America/New_York','airport':'JFK','city':'纽约'}
     issue=checked(c.post('/api/journeys/preview',json={'plan':dst,'journeyId':manual['id'],'revision':manual['revision']},headers=h),400)
-    print(json.dumps({'session':session,'capabilities':checked(c.get('/api/journeys/templates')),'v1':d1,'v2':d2,'initialPreview':initial,'preview':p2,'receipt':receipt,'replay':replay,'operation':operation,'latest':latest,'manual':manual,'preserved':preserved,'conflict':conflict,'resolved':resolved,'dstPlan':dst,'issue':issue},ensure_ascii=False))
+    checked(c.patch('/api/items/tasks/'+d1['tasks'][0]['id'],json={'revision':d1['tasks'][0]['revision'],'due':''},headers=h))
+    cleared=checked(c.get('/api/journeys/'+d1['id']))
+    checked(c.delete('/api/items/tasks/'+cleared['tasks'][0]['id'],json={'revision':cleared['tasks'][0]['revision']},headers=h))
+    deleted_task=checked(c.get('/api/journeys/'+d1['id']))
+    checked(c.delete('/api/items/shopping/'+d2['shopping'][0]['id'],json={'revision':manual['shopping'][0]['revision']},headers=h))
+    deleted_purchase=checked(c.get('/api/journeys/'+d2['id']))
+    # Existing full-plan editing can explicitly detach a task while preserving
+    # its standalone record. A coherent plan/link result remains editable.
+    detach_plan=copy.deepcopy(deleted_task['plan']);detach_plan['checklist']=[]
+    result=apply(preview(detach_plan,journeyId=deleted_task['id'],revision=deleted_task['revision'],expectedEntities=versions(deleted_task)),'model-detach-checklist',200)
+    detached=checked(c.get('/api/journeys/'+d1['id']))
+    state=checked(c.get('/api/state'))
+    assert any(row['id']==d1['tasks'][1]['id'] for row in state['tasks'])
+    print(json.dumps({'cleared':cleared,'deletedTask':deleted_task,'deletedPurchase':deleted_purchase,'detached':detached,'session':session,'capabilities':checked(c.get('/api/journeys/templates')),'v1':d1,'v2':d2,'initialPreview':initial,'preview':p2,'receipt':receipt,'replay':replay,'operation':operation,'latest':latest,'manual':manual,'preserved':preserved,'conflict':conflict,'resolved':resolved,'dstPlan':dst,'issue':issue},ensure_ascii=False))
 `;
 const produced = spawnSync(process.env.JOURNEY_MODEL_PYTHON || 'python', ['-B', '-X', 'utf8', '-c', python], { cwd: root, encoding: 'utf8', maxBuffer: 8_000_000 });
 assert.equal(produced.status, 0, produced.stderr + produced.stdout);
@@ -74,6 +87,29 @@ test('real normalized v2 DTO preserves every supported kind and all nonsegment p
   assert.deepEqual(body.plan.checklist, d.plan.checklist);
   assert.deepEqual(body.plan.shopping, d.plan.shopping);
   assert.deepEqual([body.plan.budget, body.plan.saved, body.plan.paid, body.plan.memberIds], [d.plan.budget, d.plan.saved, d.plan.paid, d.plan.memberIds]);
+});
+
+test('actual independently edited event owner remains a valid preserved preview field', () => {
+  const preview = m.readSegmentPreview(dto.preserved);
+  assert.ok(preview.summary.preserved.some(row => row.fieldGroup === 'owner' && row.current.owner === 'member2'));
+});
+
+test('actual task due clearing cannot silently restore the old plan deadline', () => {
+  const d = m.readJourneyDetail(dto.cleared); assert.equal(d.tasks[0].due, '');
+  assert.throws(() => m.editSegmentDraft(d), /清空截止日期/);
+});
+test('actual task deletion cannot recreate a checklist item through segment editing', () => {
+  const d = m.readJourneyDetail(dto.deletedTask); assert.equal(d.tasks.length, d.plan.checklist.length - 1);
+  assert.throws(() => m.editSegmentDraft(d), /准备事项.*删除或解除关联/);
+});
+test('actual purchase deletion cannot recreate a shopping item through segment editing', () => {
+  const d = m.readJourneyDetail(dto.deletedPurchase); assert.equal(d.shopping.length, d.plan.shopping.length - 1);
+  assert.throws(() => m.editSegmentDraft(d), /采购事项.*删除或解除关联/);
+});
+test('explicit full-plan detachment retains independent records and its coherent result remains editable', () => {
+  const d = m.readJourneyDetail(dto.detached), edit = m.editSegmentDraft(d);
+  assert.deepEqual(edit.plan.checklist, []); assert.deepEqual(d.tasks, []);
+  assert.deepEqual(edit.plan.shopping, d.plan.shopping);
 });
 
 test('explicit v1 upgrade preserves stable legacy keys, members, exact money and null versus zero', () => {
@@ -155,7 +191,7 @@ test('real preserved/conflict/resolved summaries require exact supported field g
   const p = m.readSegmentPreview(dto.conflict); assert.equal(p.canApply, false); assert.equal(p.previewToken, null); assert.equal(p.summary.conflicts[0].fieldGroup, 'title');
   assert.equal(m.readSegmentPreview(dto.resolved).summary.resolved[0].resolution, 'current');
   const d = m.editSegmentDraft(m.readJourneyDetail(dto.manual));
-  assert.throws(() => m.previewPayload(d, caps, members, { 'segment:x': { owner: 'plan' } } as any));
+  assert.throws(() => m.previewPayload(d, caps, members, { 'segment:x': { budget: 'plan' } } as any));
   const broken = clone(dto.conflict); broken.canApply = true; assert.throws(() => m.readSegmentPreview(broken));
 });
 
