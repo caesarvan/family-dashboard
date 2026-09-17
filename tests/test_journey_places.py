@@ -473,7 +473,7 @@ def test_schema_initialization_is_explicit_repeatable_and_preserves_receipts(app
 
 
 def test_module_is_registered_and_initialized_by_production_factory(tmp_path):
-    from deploy.check_inventory_migration import BASE_TABLES, NEW_TABLES
+    from deploy.check_investment_operation_migration import BASE_TABLES, NEW_TABLES
     application = app_module.create_app({'TESTING': True, 'DATA_DIR': str(tmp_path / 'unwired'),
         'SECRET_KEY': 'synthetic-unwired-place-secret', 'SESSION_COOKIE_SECURE': False,
         'MEMBER1_PASSWORD': PASSWORD, 'MEMBER2_PASSWORD': PASSWORD})

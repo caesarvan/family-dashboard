@@ -112,6 +112,10 @@
 
 ### 创建与幂等
 
+从旅行目的地整理地点时，POST／PATCH 可携带可选 `expectedJourneyRevision`（正安全整数，不能是字符串、布尔值或 null）。必须存在关联旅行；PATCH 省略 journeyId 时使用原关联。在当前成员会话校验后的同一 `BEGIN IMMEDIATE` 事务内，核对 `journey_workflows.revision`，不匹配返回 409 且不写地点或审计。PATCH 仍须同时匹配地点 revision。普通手填不携带此字段，保持原契约；此字段不新增到响应、数据表或业务地点记录。
+
+创建意图仅在明确携带时把 `expectedJourneyRevision` 加入摘要；未携带时仍使用旧 `{place,confirmVisited}` 摘要，既有回执继续可重放。同 requestId 更换或增删此条件视为不同意图，返回 409。已成功创建的原意图先重放当前地点，再考虑新建时的旅行版本检查；旅行随后改期或删除不导致重复创建，原地点已删除仍是 410。响应丢失时保留原 body、requestId 和源版本，不自动采用当前旅行版本重试。
+
 `POST /api/journey-places` 必填 `requestId`、`name`；其他字段可省略：
 
 ```json
