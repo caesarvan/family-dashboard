@@ -1,6 +1,8 @@
 # 家庭中枢 · Family Dashboard
 
-**最新上线：单趟旅行回顾（2026-09-18 01:14，北京时间）。** 已完成旅行计划的旅行，可在详情打开「旅行回顾」，切换「行程安排」「关联地点」「旅行照片」，只读取当前有权查看的内容。返回时重新读取原旅行；不会自动共享、推断路线或增加电视许可。本地十条流程／十二图及服务器 180 项通过、1 项精确 Windows 跳过分别验证，58→58 原数据保持，01:15:15 正常 TLS 读回完成。使用见 [旅行回顾](docs/EXPO-TRIP-RECAP.md)，完整身份与证据见 [发布验收](docs/EXPO-TRIP-RECAP-ACCEPTANCE.md#expo-trip-recap-release)。独立审计通过；本人真实资料、云与实体电视仍未验收。
+**最新上线：照片旅行建议（2026-09-18 02:35，北京时间）。** 入口为「相册 → 我的照片 → 照片详情 → 查看旅行建议」；核对日期并明确选择后才关联，不自动共享或授予电视许可。[使用与恢复](docs/EXPO-PHOTO-SUGGESTIONS.md) · [集中验收证据](docs/EXPO-PHOTO-SUGGESTIONS-ACCEPTANCE.md)。
+
+**此前上线：单趟旅行回顾（2026-09-18 01:14，北京时间）。** 已完成旅行计划的旅行，可在详情打开「旅行回顾」，切换「行程安排」「关联地点」「旅行照片」，只读取当前有权查看的内容。返回时重新读取原旅行；不会自动共享、推断路线或增加电视许可。本地十条流程／十二图及服务器 180 项通过、1 项精确 Windows 跳过分别验证，58→58 原数据保持，01:15:15 正常 TLS 读回完成。使用见 [旅行回顾](docs/EXPO-TRIP-RECAP.md)，完整身份与证据见 [发布验收](docs/EXPO-TRIP-RECAP-ACCEPTANCE.md#expo-trip-recap-release)。独立审计通过；本人真实资料、云与实体电视仍未验收。
 
 **此前上线：本人资产账户与历史估值（2026-09-18 00:23）。** 从「财务 → 我的资产账户」记录资产或负债，按日期查看原币估值，支持归档、恢复与个人导出。账户明细仅本人可见，金额不与持仓、来源报告或公共荷包重复相加。12 条本地浏览器流程及服务器 207 项检查通过，另 1 项为 Windows 专属跳过；58 表升级和原数据保留、HTTPS 与新备份已核验。操作见 [资产账户](docs/EXPO-FINANCE-ACCOUNTS.md)，完整身份和证据见 [发布验收](docs/EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。实体电视待设备可用后验收。
 
@@ -224,7 +226,7 @@ flowchart LR
 | 文件与时间 | icalendar / recurring-ical-events、Pillow；CSV/XLSX 有界解析，拒绝公式、外链及不支持的格式；固定 `tzdata==2026.4`，旅行存当地时间、IANA 时区与确认后的 UTC 时刻 |
 | 部署 | Docker Compose：app、sync、media、web 四服务；锁定基础镜像；Nginx TLS / ACME；持久化命名卷 |
 
-平台注册目录为 `/data/platform.sqlite3`；原家庭为 `/data/household.sqlite3`；子家庭为 `/data/spaces/<随机 id>/household.sqlite3`。当前为 **54 张户内表和 2 张平台表**，财务回执已完成 53→54 显式迁移，新增 `hub_import_receipts`；旧 `hub_imports` 七列及全部原有数据、权限保持。新交易保存首次批次来源，历史未知不回填。完整结构见 [存储索引](docs/PLATFORM-ROUTES.md)、[数据模型](docs/DATA-MODEL.md) 和 [回执迁移与恢复](docs/FINANCE-RECEIPTS-RELEASE.md)。
+平台注册目录为 `/data/platform.sqlite3`；原家庭为 `/data/household.sqlite3`；子家庭为 `/data/spaces/<随机 id>/household.sqlite3`。当前为 **58 张户内表和 2 张平台表**。`hub_import_receipts` 属于已完成的历史 53→54 财务回执迁移，旧 `hub_imports` 七列及原有数据、权限保持；后续持仓及本人账户表以现有 58 表结构和[账户发布验收](docs/EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md)为准。新交易保存首次批次来源，历史未知不回填。完整结构见 [存储索引](docs/PLATFORM-ROUTES.md)、[数据模型](docs/DATA-MODEL.md) 和 [回执迁移与恢复](docs/FINANCE-RECEIPTS-RELEASE.md)。
 
 家庭 routing cookie 只选入口，不授予登录权限；会话和令牌加密密钥按家庭派生。切换家庭会退出原会话。坏 cookie 返回带恢复入口的错误，已注册家庭缺少数据库时返回 503，不能用原家庭环境密码自动补建身份。
 
@@ -437,7 +439,7 @@ node --test tests/test_calendar_views.js
 | [平台架构与扩展](docs/PLATFORM.md) | 多家庭隔离、调度、助理、财务、旅行及运行约束 |
 | [家庭物品交付](docs/INVENTORY-DELIVERY.md) | 入口、手工下单／收货／消耗／纠正、隐私共享、导出及迁移恢复边界 |
 | [助理搜索](docs/ASSISTANT-SEARCH.md) | 本地照片说明／地点搜索与权限复核；[库存扩展](docs/ASSISTANT-INVENTORY-SEARCH.md)同样不调用模型 |
-| [路由与存储索引](docs/PLATFORM-ROUTES.md) | 当前 149 个方法/路径模板、54 张户内表及 2 张平台表，字段见各模块专文 |
+| [路由与存储索引](docs/PLATFORM-ROUTES.md) | 当前源码的方法／路径与数据表索引，字段和权限见各模块专文 |
 | [基础接口契约](docs/API.md) | 登录、CSRF、基础 CRUD、日程、采购、设备、财务基线等请求与响应；扩展字段参见对应模块文档 |
 | [平台扩展接口契约](docs/PLATFORM-API.md) | 旅行计划字段、预览确认、版本幂等、助理、家庭空间与偏好的完整请求/响应 |
 | [财务扩展接口契约](docs/FINANCE-API.md) | 账单预览与确认、账本、分类预算、投资字段及权限/错误约定 |
