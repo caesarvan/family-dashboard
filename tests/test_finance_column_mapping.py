@@ -293,3 +293,22 @@ def test_old_selected_amount_survives_unreadable_or_legacy_ambiguous_original_co
     assert result['imported'] == 0 and result['duplicates'] == result['conflicts'] == 1
     with closing(sqlite3.connect(database(app))) as con:
         assert json.loads(con.execute('SELECT data FROM hub_transactions').fetchone()[0])['amountCents'] == 550
+
+
+@pytest.mark.parametrize('format', ['csv', 'xlsx'])
+@pytest.mark.parametrize('currency_tail', [[], ['']])
+def test_explicit_currency_missing_or_empty_blocks_preview_and_all_writes(app, format, currency_tail):
+    client, headers = member(app)
+    rows = [['任意日', '任意额', '任意名', '任意币'], ['2026-09-02', '12.30', '合成', *currency_tail]]
+    if format == 'xlsx':
+        p = {'source': 'generic', 'file': file_payload(workbook(rows)), 'mapping': MAPPING}
+    else:
+        p = value('\n'.join(','.join(row) for row in rows) + '\n')
+    before = state(app)
+    result = post(client, headers, 'preview', p)
+    assert result['rows'] == [] and result['errorCount'] == 1
+    assert result['previewToken'] is None and '币种' in result['errors'][0]['message']
+    refused = client.post('/api/finance-hub/imports/confirm',
+                          json={**p, 'previewToken': result['previewToken'], 'requestId': 'a' * 32}, headers=headers)
+    assert refused.status_code == 400
+    assert state(app) == before

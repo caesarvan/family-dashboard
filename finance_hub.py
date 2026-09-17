@@ -542,7 +542,7 @@ def parse_import(payload, *, _legacy_identity=False):
                         amount = None
                 else:
                     amount = import_cents(cell('amount'))
-                currency = currency_code(cell('currency', 'CNY'))
+                currency = currency_code(cell('currency', '' if explicit_columns else 'CNY'))
                 if order_metadata:
                     items = order_metadata['orderItems']
                     suffix = f' 等 {len(items)} 项商品' if len(items) > 1 else ''
