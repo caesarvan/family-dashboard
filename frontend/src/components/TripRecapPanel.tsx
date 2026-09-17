@@ -54,7 +54,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
     if (caught instanceof RecapError && [404, 410].includes(caught.status)) selection.current = { ...selection.current, photoId: '' };
     if (caught instanceof RecapDiscarded && caught.message === 'identity' || caught instanceof RecapError && [401, 403].includes(caught.status)) {
       denied.current = true; selection.current = { tab: 'journey', places: 0, photos: 0, photoId: '' }; conceal();
-      setError('身份或权限已变化，回顾内容已清除。请重新进入。'); void latest.current.household.refresh();
+      setError('登录或查看权限已变化，请重新进入。'); void latest.current.household.refresh();
     } else if (!(caught instanceof RecapDiscarded)) setError(caught instanceof RecapError ? caught.message : '暂时无法核对回顾内容，旧内容已隐藏。请重新读取。');
   }
   async function load(next = selection.current) {
@@ -132,25 +132,25 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
     {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     {busy && <ActivityIndicator accessibilityLabel="正在核对旅行回顾" />}
     {!showData || !data ? <EmptyState title={busy ? '正在读取当前可见内容' : !connected() || !household.online ? '离线时隐藏旅行回顾' : '回顾内容已隐藏'}
-      description="返回前台或重新联网后，会重新核对身份与查看范围。"
+      description="回到此页面或恢复联网后，会自动更新。"
       action={button('重新读取旅行回顾', refresh, busy || denied.current || !connected() || !household.online)} /> : <View testID="trip-recap-content" style={{ gap: density.screenGap }}>
       <SectionCard title={data.journey.title}><View style={{ gap: density.sectionGap }}>
         <Text variant="titleMedium">{data.journey.start} 至 {data.journey.end}</Text>
         <Text>当前关联日程 {data.journey.events.length} 项 · 可见地点 {data.places.total} 处 · 可见照片 {data.photos.total} 张</Text>
         {!data.journey.tripPresent && <Text>原旅行记录已缺失，以下为仍可读取的保存计划与关联记录。</Text>}
         {!!data.journey.note && <Text>{data.journey.note}</Text>}
-        <Text style={{ color: theme.colors.onSurfaceVariant }}>这是一份当前记录回顾，不证明实际出行。地点与照片关联同一趟旅行，不代表照片拍摄于该地点。</Text>
+        <Text style={{ color: theme.colors.onSurfaceVariant }}>地点的到访状态以你的记录为准。</Text>
       </View></SectionCard>
       <View style={styles.actions}>{tabs.map(([key, label]) => <Button key={key} contentStyle={styles.touch} accessibilityLabel={label} accessibilityState={{ selected: tab === key }}
         mode={tab === key ? 'contained' : 'outlined'} disabled={blocked} onPress={() => change({ tab: key, photoId: '' })}>{label}</Button>)}{button('刷新旅行回顾', refresh)}</View>
       {tab === 'journey' && <>
         <SectionCard title="保存的城市安排"><View style={{ gap: density.sectionGap }}>
-          <Text>来自旅行计划的城市顺序；不绘制或推断实际路线。</Text>
+          <Text>按旅行计划排列。</Text>
           {data.journey.destinations.map((d, i) => <View key={d.id} style={{ gap: 4 }}><Text variant="titleMedium">{i + 1}. {d.city}{d.country ? ' · ' + d.country : ''}</Text>
             <Text>{d.arrival} 至 {d.departure}{d.timeZone ? ' · ' + d.timeZone : ''}</Text></View>)}
         </View></SectionCard>
         <SectionCard title="当前关联日程"><View testID="recap-events" style={{ gap: density.sectionGap }}>
-          <Text>按当前开始时间排列；单独修改过的日程保留当前值。日期经过不自动视为完成或到访。</Text>
+          <Text>按开始时间排列，包含最新修改。</Text>
           {!data.journey.events.length && <Text>当前没有关联日程。已移除的事项不会从旧计划重新出现。</Text>}
           {data.journey.events.slice(eventPage * 8, eventPage * 8 + 8).map(e => <View key={e.id} style={{ gap: 6 }}>
             <Divider /><Text variant="titleMedium">{e.title}</Text><Text>{e.kind} · {ownerName(e.owner)}{e.booking ? ' · ' + e.booking : ''}</Text>
@@ -161,7 +161,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
         </View></SectionCard>
       </>}
       {tab === 'places' && <View testID="recap-places" style={{ gap: density.sectionGap }}>
-        <Text>仅含你当前可查看、明确关联此旅行的地点，按最近更新排列。位置隐藏或大致位置按原共享范围显示。</Text>
+        <Text>这趟旅行的地点，按最近更新排列。</Text>
         {paging('places', data.places)}
         {!data.places.items.length && <EmptyState title="这一页没有可见地点" description="未关联、已移除或不再共享的地点不会显示。" />}
         {data.places.items.map(p => <SectionCard key={p.id} title={p.name}><View style={{ gap: 6 }}>
@@ -172,7 +172,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
         </View></SectionCard>)}
       </View>}
       {tab === 'photos' && <View testID="recap-photos" style={{ gap: density.sectionGap }}>
-        <Text>已保存且当前有权查看的旅行照片。查看不会更改家庭共享或电视许可。</Text>
+        <Text>你与家人为这趟旅行保存的可见照片。</Text>
         {paging('photos', data.photos)}
         {!!data.photo && <SectionCard title="照片详情"><View testID="recap-photo-detail" style={{ gap: density.sectionGap }}>
           {Platform.OS === 'web' && photoUrl && performance.now() < imageDeadline.current ? <Image testID="recap-photo-image" source={{ uri: photoUrl }} resizeMode="contain" accessibilityLabel={data.photo.caption || '旅行照片预览'} style={[styles.image, { backgroundColor: theme.colors.surfaceVariant }]}
@@ -185,7 +185,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
           <Text>{p.visibility === 'private' ? '仅我自己' : '家庭共享'}</Text>{button('查看照片 ' + (data.photos.offset + i + 1), () => change({ photoId: p.id }))}
         </View></SectionCard>)}
       </View>}
-      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>不同分类分别读取，非跨模块同一时刻快照。在线时约每 15 秒重新核对；后台、断网或读取失败会隐藏旧内容。</Text>
+      <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>联网时自动更新，仅显示你有权查看的内容。</Text>
     </View>}
   </View>;
 }
