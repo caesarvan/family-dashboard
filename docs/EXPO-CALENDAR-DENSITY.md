@@ -11,6 +11,8 @@
 
 保存显示范围仍调用原 `setMode`；偏好 CAS、未知结果核对与身份保护由原 provider 处理。本轮不修改 API、数据字段、日期算法、预算／实付计算、同步写入和电视布局。
 
+R1 真实浏览器发现当前 React Native Web 不把 Paper 分段按钮的 `accessibilityState.checked` 呈现在按钮 DOM 上；刷新后实际周视图和服务端偏好正确，但选中状态缺少可访问表达。兼容修订仅使用 Paper 支持的 `accessibilityLabel`：未选名称保持原值，当前项增加「，已选择」，例如「本周，已选择」。视觉、按钮角色和保存逻辑不变，不修改依赖或运行时 DOM；修订后的组合浏览器仍待执行。
+
 ## 验证与交接
 
 已有 `node tests/test_expo_calendar.mjs` 实际通过，覆盖日期边界、成员与共同安排汇总、只读来源及不修改输入；该结果不是 UI 尺寸或可访问性验收。按本工作树 `tsconfig.json` 检查 69 个入口文件，TypeScript 零诊断；编译器及依赖只读使用既有 `expo-appearance-integration/frontend/node_modules`，模块宿主映射到这些真实依赖，未建立 junction、修改依赖或声称已导出新包。未新增模拟样式实现的单元测试。
@@ -22,4 +24,4 @@
 3. 成员单选的 Space／方向键更新真实选中状态；清单 Space 和点击分别只产生一次实际 PATCH，pending／同步只读时不能写入；筛选、搜索、编辑和前后时间导航仍正常。
 4. 范围保存失败或响应未知继续进入现有核对流程，不因样式改动自动重发。完成后记录实际截图、点击框尺寸与请求计数，不能用源码中的 minHeight 代替浏览器测量。
 
-可用定位点：`calendar-range-controls`、`calendar-event-{id}`、`tasks-item-{id}`、`shopping-item-{id}`。成员控件现在为 `radio`，可访问名称仍为原成员名称；其他按钮及复选框名称保持。本轮未测试实体手机／电视、原生安装或真实云同步，不代表全界面已经完成可访问性审计。
+可用定位点：`calendar-range-controls`、`calendar-event-{id}`、`tasks-item-{id}`、`shopping-item-{id}`。成员控件现在为 `radio`，可访问名称仍为原成员名称；范围按钮的当前项带「，已选择」，其他按钮及复选框名称保持。本轮未测试实体手机／电视、原生安装或真实云同步，不代表全界面已经完成可访问性审计。
