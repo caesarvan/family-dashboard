@@ -420,7 +420,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
     {importOpen && <SectionCard title="从 Google Photos 选择" action={<Button disabled={busy} onPress={() => setImportOpen(false)}>收起</Button>}>
       <View style={styles.stack}>
         <Text variant="bodyMedium">最多 20 张，仅处理你本次选择的照片，不扫描整个图库。视频暂不支持播放。</Text>
-        <Menu visible={accountMenu} onDismiss={() => setAccountMenu(false)} anchor={<Button mode="outlined" disabled={busy || !!createReceipt} onPress={() => setAccountMenu(true)}>{account ? account.name || account.email || 'Google 账户' : '选择照片来源'}</Button>}>
+        <Menu theme={{ animation: { scale: 0 } }} visible={accountMenu} onDismiss={() => setAccountMenu(false)} anchor={<Button mode="outlined" disabled={busy || !!createReceipt} onPress={() => setAccountMenu(true)}>{account ? account.name || account.email || 'Google 账户' : '选择照片来源'}</Button>}>
           {accounts.map(value => <Menu.Item key={value.id} title={value.name || value.email || 'Google 账户'} onPress={() => { setAccountId(value.id); setAccountMenu(false); }} />)}
           {!accounts.length && <Menu.Item title="尚未连接 Google Photos" disabled />}
         </Menu>
@@ -485,7 +485,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
             <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} label="照片说明" accessibilityLabel="照片说明" multiline maxLength={500} value={editor.caption} disabled={busy || editor.suggestionReview} onChangeText={caption => update({ caption })} />
             <Text variant="titleSmall">谁能查看</Text><SegmentedButtons value={editor.visibility} onValueChange={visibility => update({ visibility: visibility as 'private' | 'shared', tvConsent: false })} buttons={[{ value: 'private', label: '仅我自己', disabled: busy || editor.suggestionReview }, { value: 'shared', label: '家庭成员', disabled: busy || editor.suggestionReview }]} />
             <Text variant="bodySmall">家庭共享包括照片和说明。改回私密会同时收回全部电视展示。</Text>
-            <Menu visible={journeyMenu} onDismiss={() => setJourneyMenu(false)} anchor={<Button mode="outlined" disabled={busy || editor.suggestionReview} onPress={() => setJourneyMenu(true)}>{editor.journeyId ? journeys.find(j => j.id === editor.journeyId)?.trip?.title || journeys.find(j => j.id === editor.journeyId)?.plan?.title || editor.item.journey?.title || '已关联旅行' : '关联旅行（可选）'}</Button>}>
+            <Menu theme={{ animation: { scale: 0 } }} visible={journeyMenu} onDismiss={() => setJourneyMenu(false)} anchor={<Button mode="outlined" disabled={busy || editor.suggestionReview} onPress={() => setJourneyMenu(true)}>{editor.journeyId ? journeys.find(j => j.id === editor.journeyId)?.trip?.title || journeys.find(j => j.id === editor.journeyId)?.plan?.title || editor.item.journey?.title || '已关联旅行' : '关联旅行（可选）'}</Button>}>
               <Menu.Item title="不关联旅行" onPress={() => { update({ journeyId: '' }); setJourneyMenu(false); }} />
               {journeys.map(journey => <Menu.Item key={journey.id} title={journey.trip?.title || journey.plan?.title || '旅行'} onPress={() => { update({ journeyId: journey.id }); setJourneyMenu(false); }} />)}
             </Menu>
