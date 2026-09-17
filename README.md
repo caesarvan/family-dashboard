@@ -1,6 +1,8 @@
 # 家庭中枢 · Family Dashboard
 
-**最新上线：旅行 JSON 导入（2026-09-18 04:42，北京时间）。** 从「旅行 → 导入旅行」选择文件或粘贴 JSON，先预览再明确创建；保存结果不明时可用原操作编号核对。R2 本地 12 组流程／12 图、Linux 287 通过及 1 项精确 Windows 跳过分别通过；58→58 原数据保持，04:43:27 HTTPS 读回完成。[使用与恢复](docs/EXPO-TRIP-IMPORT.md) · [集中验收记录](docs/EXPO-TRIP-IMPORT-ACCEPTANCE.md#expo-trip-import-release)。本人真实资料、云写入及实体电视仍未在本轮验收。
+**最新上线：家庭与成员（2026-09-18 05:49，北京时间）。** 从「更多 → 家庭与成员」调整另一成员的角色或让其当前浏览器全部退出；对方仍可重新登录，个人数据与电视许可不变。现有两位成员初始化为共同管理员。使用与实际验收见[家庭与成员](docs/EXPO-HOUSEHOLD-MEMBERS.md)及[集中验收记录](docs/EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。通用加入／退出、多家庭成员关系仍未实现；实体设备仍未验收。
+
+**此前上线：旅行 JSON 导入（2026-09-18 04:42，北京时间）。** 从「旅行 → 导入旅行」选择文件或粘贴 JSON，先预览再明确创建；保存结果不明时可用原操作编号核对。R2 本地 12 组流程／12 图、Linux 287 通过及 1 项精确 Windows 跳过分别通过；58→58 原数据保持，04:43:27 HTTPS 读回完成。[使用与恢复](docs/EXPO-TRIP-IMPORT.md) · [集中验收记录](docs/EXPO-TRIP-IMPORT-ACCEPTANCE.md#expo-trip-import-release)。本人真实资料、云写入及实体电视仍未在本轮验收。
 
 **此前上线：照片旅行建议（2026-09-18 02:35，北京时间）。** 入口为「相册 → 我的照片 → 照片详情 → 查看旅行建议」；核对日期并明确选择后才关联，不自动共享或授予电视许可。[使用与恢复](docs/EXPO-PHOTO-SUGGESTIONS.md) · [集中验收证据](docs/EXPO-PHOTO-SUGGESTIONS-ACCEPTANCE.md)。
 

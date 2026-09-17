@@ -1,6 +1,6 @@
-# 家庭与成员：真实本地浏览器验收（候选已验证）
+# 家庭与成员：真实本地浏览器验收
 
-脚本 `tests/browser_expo_household_members_check.py`，基于 `eda8632719a6f1a3202e6d5c2a9a986329c9c287` 独立分支开发。按 UI 固定 `b08ff47d523fdb86b4b06e88679f7169a91e4849` 和家庭成员三 API 合同编写；R1 已实际执行 7／7 通过，8 张截图经 Root 独立视觉审查；当前仍为候选，未部署。
+脚本 `tests/browser_expo_household_members_check.py`，基于 `eda8632719a6f1a3202e6d5c2a9a986329c9c287` 独立分支开发。按 UI 固定 `b08ff47d523fdb86b4b06e88679f7169a91e4849` 和家庭成员三 API 合同编写；R1 已实际执行 7／7 通过，8 张截图经 Root 独立视觉审查；后续运行版已发布，实际读回与独立审计见[集中验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。
 
 ## 七组场景
 
