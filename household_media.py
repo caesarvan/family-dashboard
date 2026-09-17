@@ -351,6 +351,43 @@ class MediaLibrary:
             raise MediaError('unauthorized')
         return current['owner']
 
+    @contextmanager
+    def _suggestion_transaction(self, write=False):
+        """Fence only owner suggestions/confirmation to the request's session."""
+        actor = dict(getattr(g, 'actor', None) or {})
+        original = dict(getattr(g, 'member_session', None) or {})
+        if actor.get('role') != 'member':
+            raise MediaError('forbidden')
+        identity = (original.get('id'), actor.get('id'), actor.get('auth_version'), actor.get('householdId'))
+        if (not identity[0] or original.get('owner') != identity[1]
+                or original.get('auth_version') != identity[2] or identity[3] != self.household):
+            raise MediaError('unauthorized')
+
+        def check(con):
+            current = self.sessions.current(con)
+            if (current['id'], current['owner'], current['auth_version'], self.household) != identity:
+                raise MediaError('unauthorized')
+
+        with self.sessions.db() as con:
+            try:
+                if not write:
+                    check(con)
+                    # Legacy cookie resolution may start an implicit write. Do
+                    # not keep it or its snapshot through the read-only query.
+                    con.rollback()
+                con.execute('BEGIN IMMEDIATE' if write else 'BEGIN')
+                if write:
+                    check(con)  # Includes time spent waiting for another writer.
+                yield con
+                if not write:
+                    con.rollback()
+                check(con)  # Fresh after reads; after audit and before write commit.
+                if not write:
+                    con.rollback()  # Discard a legacy resolve's implicit update.
+            except BaseException:
+                con.rollback()
+                raise
+
     def _import(self, con, uid, owner):
         row = con.execute('SELECT * FROM media_imports WHERE id=? AND owner=?', (_id(uid), owner)).fetchone()
         if not row:
@@ -766,8 +803,8 @@ class MediaLibrary:
 
     def journey_suggestions(self, uid):
         """Read a current owner-only date match, never infer a visit or grant access."""
-        with self.transaction() as con:
-            owner = self._member(con)
+        with self._suggestion_transaction() as con:
+            owner = g.actor['id']
             row = con.execute('SELECT '+ITEM_VIEW+' FROM media_items WHERE id=? AND owner=?',(_id(uid),owner)).fetchone()
             if not row:
                 raise MediaError('not_found')
@@ -905,7 +942,7 @@ class MediaLibrary:
             _id(value['journeyId'])
             for name in expected:
                 _revision(value[name])
-        with self.transaction(True) as con:
+        with (self._suggestion_transaction(True) if suggested else self.transaction(True)) as con:
             owner=self._member(con)
             row=self._item(con,uid,owner,manage=True)
             if row['state']!='ready' or row['revision']!=revision:
