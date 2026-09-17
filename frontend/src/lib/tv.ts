@@ -145,7 +145,7 @@ export async function tvRequest(path: TVPath, signal: AbortSignal, body?: Record
   const timer = setTimeout(abort, 8_000);
   const check = () => { if (signal.aborted) throw new TVDiscarded(); if (controller.signal.aborted || performance.now() >= deadline) throw new TVError('连接超时，内容已隐藏。'); };
   try {
-    const response = await fetch('/api' + path, { method: write ? 'POST' : 'GET',
+    const response = await fetch('/api' + path, { method: write ? 'POST' : 'GET', mode: 'same-origin',
       credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal: controller.signal,
       headers: { 'Content-Type': 'application/json', 'X-Display-Mode': 'tv' },
       ...(write ? { body: JSON.stringify(body ?? {}) } : {}) });

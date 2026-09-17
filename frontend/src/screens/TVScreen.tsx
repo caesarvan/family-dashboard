@@ -137,7 +137,10 @@ export default function TVScreen() {
       present.current.foreground = value === 'active'; resume();
     });
     const hide = () => { present.current.pageHidden = true; conceal('屏幕暂时离开前台，内容已隐藏。'); };
-    const show = () => { present.current.pageHidden = false; conceal('正在重新核对电视连接…'); resume(); };
+    const show = (event: PageTransitionEvent) => {
+      if (!event.persisted && !present.current.pageHidden) return;
+      present.current.pageHidden = false; conceal('正在重新核对电视连接…'); resume();
+    };
     if (typeof window !== 'undefined') {
       document.addEventListener('visibilitychange', resume);
       window.addEventListener('offline', resume); window.addEventListener('online', resume);
