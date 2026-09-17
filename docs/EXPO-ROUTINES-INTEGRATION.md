@@ -1,6 +1,6 @@
 # Expo 例行计划入口
 
-「更多 → 家庭例行计划」已与独立面板和接口组合，完整 TypeScript 检查及 R3 十组真实浏览器流程通过，Linux 与发布仍待完成。没有复制依赖或占位实现；证据见 [集中验收](EXPO-ROUTINES-ACCEPTANCE.md)。
+「更多 → 家庭例行计划」已与独立面板和接口组合，完整 TypeScript 检查及 R3 十组真实浏览器流程通过，Linux 277 项通过、1 项精确 Windows 跳过，已于 2026-09-17 19:21:11（北京时间）激活并于 19:21:45 通过正常 TLS 读回。没有复制依赖或占位实现；证据见 [集中验收](EXPO-ROUTINES-ACCEPTANCE.md)。
 
 `RoutinesPanel` 接收 `onBack` 和 `onPendingChange`；`ScreenProps.onRoutinesPending` 将未保存内容、处理中及未知确认结果交给 `HouseholdApp` 的既有导航保护。回调限定完整成员身份及当前更多页，来源为 `routines`，其他面板的迟到解锁不会清除此锁。明确结束操作后先通知解除，再返回更多列表。
 
