@@ -227,7 +227,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   if (denied) return <EmptyState title="正在核对登录身份" description="原账户的照片和编辑内容已清空。" />;
   if (!focused) return null;
   return <View style={styles.page}>
-    <PageHeader title="相册" description="自己留下，按你的选择分享。" action={<Button mode="contained" icon="plus" disabled={busy} onPress={() => setImportOpen(value => !value)}>选择照片</Button>} />
+    <PageHeader title="相册" description="自己留下，按你的选择分享。" action={<View style={styles.actions}><Button accessibilityLabel="电视与播放" mode="outlined" icon="television" disabled={busy || !!editor || importOpen || !!createReceipt || !!confirmReceipt} onPress={() => props.onNavigate('devices')}>电视与播放</Button><Button accessibilityLabel="选择照片" mode="contained" icon="plus" disabled={busy} onPress={() => setImportOpen(value => !value)}>选择照片</Button></View>} />
     {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     {!!notice && <Text accessibilityLiveRegion="polite">{notice}</Text>}
     {importOpen && <SectionCard title="从 Google Photos 选择" action={<Button disabled={busy} onPress={() => setImportOpen(false)}>收起</Button>}>
