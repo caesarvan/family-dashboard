@@ -1,5 +1,7 @@
 # 验证记录
 
+**2026-09-18 00:23:38（北京时间）手动资产账户已发布。** R2 12 条本地浏览器流程／12 图、Linux 207 passed 加 1 个精确 Windows 跳过分别通过；55→58 保全、00:24:23 TLS 和 00:27:22 独立只读复核通过。完整身份、原件及限制集中于 [账户发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。以下各历史记录保持原验收范围。
+
 <a id="expo-devices-candidate"></a>
 ## Expo 电视与播放：2026-09-17 13:00:01 发布
 

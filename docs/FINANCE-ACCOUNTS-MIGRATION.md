@@ -1,6 +1,6 @@
 # 本人手动账户：55→58 迁移检查器
 
-这是独立候选工具，尚未接入发布流程或执行生产迁移。依赖 [账户 API](FINANCE-ACCOUNTS-API.md) 的固定 schema 与 [应用接线](FINANCE-ACCOUNTS-INTEGRATION.md)。不能用既有 55→55 发布脚本部署这个增加三表的版本。
+该检查器已接入账户发布，并完成一次生产 55→58 迁移，见 [发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。依赖 [账户 API](FINANCE-ACCOUNTS-API.md) 的固定 schema 与 [应用接线](FINANCE-ACCOUNTS-INTEGRATION.md)。不能用既有 55→55 发布脚本部署这个增加三表的版本。
 
 `deploy/check_finance_accounts_migration.py` 只应用 `finance_accounts.py` 的 `FINANCE_ACCOUNTS_SCHEMA_SQL`，严格限定三条建表语句：`finance_accounts`、`finance_account_valuations`、`finance_account_operations`。绑定模块来源、源文件 SHA、SQL SHA、对象、列及外键；拒绝额外 SQL 和已有对象名碰撞。原 55 张户内表（含认证与会话表）及平台注册库保持，新增三表必须为空。
 
@@ -30,7 +30,7 @@
 
 同时运行原 `tests/test_investment_operation_migration.py`。该旧模块只增加 fixture 级禁止新账户注册，保留真实 54→55 历史工厂和原有全部表数／数据保全断言，不删除表或放宽比较。
 
-实际命令：使用主仓 `.venv/Scripts/python.exe`，在作者 worktree 执行 `-B -X utf8 -m pytest tests/test_finance_accounts_migration.py tests/test_investment_operation_migration.py -q --junitxml=test-results/finance-accounts-migration-r1/results.xml`。首轮 **42 passed（新 33、旧 9），73.22 秒，零失败／错误／跳过**；JUnit SHA-256 `ba2234d4256d83963e8e67303138f6556da6bc913025d22b33b55df37403e212`，stdout `6ff9cfeb361621c79f720a77a27dc33102f2cae9b418b9e7154b1af858f45651`，stderr 为空。原件只留作者 worktree 的 `test-results/finance-accounts-migration-r1/`，不入库；该轮执行后 checker 和两份测试文件未改。未进行服务器、Docker、真实家庭数据或生产恢复演练。
+实际命令：使用主仓 `.venv/Scripts/python.exe`，在作者 worktree 执行 `-B -X utf8 -m pytest tests/test_finance_accounts_migration.py tests/test_investment_operation_migration.py -q --junitxml=test-results/finance-accounts-migration-r1/results.xml`。首轮 **42 passed（新 33、旧 9），73.22 秒，零失败／错误／跳过**；JUnit SHA-256 `ba2234d4256d83963e8e67303138f6556da6bc913025d22b33b55df37403e212`，stdout `6ff9cfeb361621c79f720a77a27dc33102f2cae9b418b9e7154b1af858f45651`，stderr 为空。原件只留作者 worktree 的 `test-results/finance-accounts-migration-r1/`，不入库；该轮执行后 checker 和两份测试文件未改。该作者阶段测试未操作服务器、Docker、真实家庭数据或生产恢复；后续实际迁移见上方发布验收，生产恢复未执行。
 
 后续仅维护本次新增注册直接影响的历史工厂，保留原断言：`test_finance_receipt_migration.py` 的 53→54 套件增加禁用 accounts 注册，独立执行 **20 passed／33.88 秒**，JUnit `12261579da2ec345e857e26363aaadf064edd6302cc25c96663bd67442696a6d`，原件 `test-results/finance-accounts-historical-receipts-r1/`。库存 48→53 与媒体 44→47/48 的历史 fixture 也仅各禁用这次新增注册，随后仅执行 `tests/test_inventory_migration.py tests/test_media_migration.py`：**22 passed（9＋13）／15.19 秒**，JUnit `463e6094005f5445c10edd003c401304a41d752f73ee565de066e4b40251a3b2`，原件 `test-results/finance-accounts-historical-inventory-media-r1/`。这两轮均零失败／错误／跳过，测试源前后 SHA 不变；没有重跑已过的 42 项，不能将三轮记录称为一次全仓验证。
 

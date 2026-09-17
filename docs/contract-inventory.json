@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T10:09:45.785043+00:00",
+  "generatedAt": "2026-09-17T16:32:32.333193+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -193,6 +193,42 @@
       "path": "/api/finance",
       "source": "app.py",
       "endpoint": "finance_update"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-accounts",
+      "source": "finance_accounts.py",
+      "endpoint": "finance_account_list"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-accounts",
+      "source": "finance_accounts.py",
+      "endpoint": "finance_account_create"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/finance-accounts/<rid>",
+      "source": "finance_accounts.py",
+      "endpoint": "finance_account_update"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-accounts/<rid>/valuations",
+      "source": "finance_accounts.py",
+      "endpoint": "finance_account_history"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance-accounts/<rid>/valuations/<as_of>",
+      "source": "finance_accounts.py",
+      "endpoint": "finance_account_value"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-accounts/operations/<request_id>",
+      "source": "finance_accounts.py",
+      "endpoint": "finance_account_operation"
     },
     {
       "method": "POST",
@@ -1493,6 +1529,150 @@
       {
         "name": "revision",
         "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "finance_account_operations": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "payload_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "operation",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "completed_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "finance_account_valuations": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "as_of",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "amount_cents",
+        "type": "INTEGER",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "finance_accounts": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "name",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "institution",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "currency",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "note",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "archived",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
         "notNull": true,
         "primaryKey": false
       },
