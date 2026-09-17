@@ -1,0 +1,43 @@
+# 同一旅行的本地连续验收
+
+状态：本地连续子链已分轮验收，脚本基于 `df759a6ac1d9ca03448967f5b790cbe59755ce32`，独立于旅行导入发布。R1 整体 1／2（连续链通过、恢复场景失败）；修订脚本后的 R2 仅补验原失败恢复场景，1／1 通过，`fullSuite=false`。未重新运行两项完整套件，失败原件保留。
+
+## 两条有界流程
+
+1. 在同一真实临时家庭中，通过 Expo 文件选择器导入一份合成 v2 旅行，经真实预览及明确确认后读取当前详情。保持同一个服务端 `journeyId`／`tripId`，确认私人计划地点、地图返回原旅行、修改准备与采购负责人、选择本人合成日历并仅预览、明确选择目的地／活动／准备截止／地点联动改期，再完成准备与采购。重启临时应用后核对原 ID、关联、日期、负责人、整数分金额以及 null／0 和完成状态持久化。
+2. 使用另一独立家庭夹具，真实导入后勾选完成准备事项。允许一次真实 PATCH 提交成功，在明确开始「重试」前持续丢弃该旅行详情 GET 的真实 200 响应；等待旧操作区域消失，经「重试」及打开原旅行恢复已完成状态，断言没有第二次 PATCH，也未改变采购或金额。最多丢弃 32 份响应、记录 1000 条仅含路径／方法／状态与相对时间的事件；不保存令牌或请求载荷。
+
+第二条不是重复整套故障矩阵；不新增 DST、导入过期或云提供方重试测试。
+
+日历步骤只调用真实状态及预览接口，**不点击「确认加入同步」、不运行 worker、不发送提供方请求**。合成连接包含本人及伴侣两本日历，UI 只能选择本人来源。预览前后业务快照相同；改期后再次预览，检查相同日程 ID 的新日期。提供方 transport 和非本机网络均拒绝调用，日历及任务发布表始终为空。
+
+## 运行契约
+
+先经非作者审查并固定独立脚本提交，再由集成人提供被测应用 HEAD 及其对应真实 Expo 导出。脚本有自己的 HEAD／SHA，应用有独立 HEAD／tree／全 tracked 前后 SHA，二者不要求同树。本批只新增离线验收文件，可复用已经冻结且构建输入逐项一致的应用导出，无须为脚本重建同字节前端；不得声称独立脚本已在被测应用 HEAD 中。
+
+```powershell
+& '<主仓>/.venv/Scripts/python.exe' -B -X utf8 tests/browser_expo_travel_chain_check.py `
+  --expected-harness-head '<独立脚本完整40位提交>' --expected-harness-sha256 '<脚本64位SHA256>' `
+  --source-root '<冻结组合工作树>' --expected-head '<完整40位提交>' `
+  --bundle '<对应真实构建dist>' --expected-build-evidence '<64位SHA256>'
+```
+
+默认运行两组；单独恢复补验可显式加 `--scenario completed_write_lost_readback`。报告绑定实际选择、预期检查／截图数；单组通过的 `fullSuite` 仍为 false，不重跑或冒充已过连续链。
+
+复用 [导入验收](../tests/browser_expo_trip_import_check.py) 与 [finance Run](../tests/browser_expo_finance_check.py) 的真实 Flask／SQLite、HTTPS、登录和 Edge 生命周期，不复制应用源码或依赖。两个 case 各有独立临时目录、应用、数据库和 ExitStack；失败保存现场后继续另一 case，最终任何失败仍使整体失败。
+
+实际绑定七项 fixture：本脚本、导入脚本、finance 脚本、`test_financial_files.py`、`test_app.py`、两个官方 v1／v2 JSON 示例。报告逐项记录实际加载路径、SHA 与来源：本脚本绑定独立提交，另外六项须与被测应用固定文件同字节；样例读取被测应用目录，结束再核实际加载文件未变。v2 样例缩减为一目的地、一可平移活动、两准备与两采购；修改的只是合成输入，所有成功业务 DTO 来自实际 API。导入父夹具仍验证两个样例字节，故两者均计入依赖。连接配置直接写入独立临时库，没有实际 OAuth、真实个人数据或业务成功响应替身。
+
+报告记录两个 case 的真实结果、逐步相同对象 ID／版本／进度、请求计数、源码及导出前后 SHA、构建证据、fixture SHA 和清理结果。两张截图只覆盖最终完成／恢复后的实际可见视口，供另行人工查看，不重复四宽视觉矩阵，也不代表内部长滚动区域全覆盖。源码、导出、HEAD、清理、外网或页面错误任一守卫失败都会拒绝整体通过；输出采用新目录，既有失败不覆盖。
+
+## 声明边界
+
+R1 原件：`test-results/expo-travel-chain-20260917T201803937583Z/result.json`，SHA256 `d73545e1e2033bcba5b1854c34434063c813697bf2fc05cdc281d951808ac662`。被测应用 `fce37351dc18ac8b73f095682f3a42d6c1e3bad0`／build `df7ba17e84442bc5c2dafdf364ea23542631cdf588a3cff61d2c8af403e1d47a`。第一组通过并留一张图；第二组丢弃一份详情后，现场却已显示 fresh 的准备 1／2，等待错误页失败。`toggle` 会 refresh 后 load，`state.revision` 也能触发读取；单份丢失不足以保证失败中间态，不能把正常后继读取成功认定为产品缺陷。R1 没有逐请求时序，故不推断具体是哪份读回完成。两 fixture 清理、全部源码／导出／夹具前后不变、零外网／页面异常；失败原件保留，修订仅明确故障持续边界及诊断，不改产品或伪造响应。
+
+R2 原件仍在独立脚本工作树的 `test-results/expo-travel-chain-20260917T204048263740Z/result.json`，SHA256 `08a2645161deded53a2a24298958477ea15e85ed701278e16d5c0e1ff92b530f`。实际脚本 `c57c063f1169700a71678c621400f4674fd07f68`，只选择 `completed_write_lost_readback`；被测应用及 build 与 R1 完全相同，应用 tree 为 `f402fd307d392732cbc3b6d592b7d8abaf47113e`。真实完成 PATCH 仅 1 次，实际丢弃 1 份详情 200 响应，经明确只读恢复后准备进度为 1／2，原关联、采购及金额保持。源码／导出／脚本／七项夹具前后守卫通过，临时目录已清理，零外网／页面异常，提供方请求及日历确认请求均为 0。
+
+Root 独立核验记录：私有 access 下 `expo-travel-chain-verification-20260918-r2.json`，SHA256 `6997f92022ccd238200ca5c337f77954af85deafda32e8689da4e5f11221ec73`，结论为 `PASS_SEGMENTED_LOCAL_COVERAGE`。Root 实际逐张查看 R1 的 `same_trip_chain/completed-same-trip.png` 和 R2 的 `completed_write_lost_readback/readback-recovered.png`（各 390×844），可见视口未发现问题；内部滚动未完整覆盖。两图 SHA 分别为 `194df746fc871e83b9d2881fd291ca7f507cf9386bdd76465df483e2c0db703e`、`5fd95dc2af94d3db3b8191eb112adeaeb8e76a0a5c15b9d66a832fc02d010d32`。
+
+上述分轮证据只证明合成资料的**本地场景 A 连续子链**，不代表目标场景 A 全部验收完成。准备／采购的完成标记不证明旅行、预订或真实付款已完成；采购未知实付不当作零元完整实付。
+
+本人真实云日历写权限、外部创建／改期、在线 AI、真实个人旅行与实体电视均未验收。云日历预览不等于同步成功；本页不改变 [A–D 验收索引](ACCEPTANCE-SCENARIOS.md) 的整体结论。
