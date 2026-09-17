@@ -1,6 +1,8 @@
 # 联合开发接手说明
 
-**最新已发布：Expo 家庭例行计划，2026-09-17 19:21:11（北京时间）激活，19:21:45 正常 TLS 读回通过。** 安装 main `3387bc0c29f02ef89549d5ec56ce94f51cff67b0`／source `3d8e90aec1a4006d99bb26a51464d0ef0f5404f0`，同树 `f8dc8e5d33f3c5e447c1fcfe5eed2b5e2cbf989e`。更多入口、独立面板、本人操作回执与会话复核已上线；规则、worker 和 55 表结构保持。R3 本地十组真实流程通过，服务器 277 通过及唯一精确 Windows 跳过；626 包文件、114 运行文件、75 HTTPS 资源和 27 个匿名接口读回通过。完整身份、失败历史及保全证据见 [本轮发布](EXPO-ROUTINES-ACCEPTANCE.md#expo-routines-release)，接缝见 [例行计划](EXPO-ROUTINES-INTEGRATION.md)。后续文档提交不改变实际安装包；真实长期调度和实体设备另验。
+**最新已发布：Expo 旅行分段编辑，2026-09-17 21:12:18（北京时间）激活，21:12:47 正常 TLS 读回通过。** 安装 main `f97de964815fe88da016ac55bb41b4bc327d3022`／source `66df7ff0149a44686912d1ffac7da31112a1510b`，同树 `3107968b667bbce7e488fc8c90c9e51cb0312986`。15 组本地流程／19 图及 Linux 260 通过、唯一精确 Windows 跳过分别验收；646 包文件、114 运行文件、75 HTTPS 资源和 29 个匿名接口读回通过，55→55 数据保持。21:16:20 独立只读复核通过；完整身份、来源选择修正和范围见 [发布验收](EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md#expo-segments-release)。后续文档不改变安装包；个人资产报告候选尚未发布，实体电视仍未验收。
+
+**此前已发布：Expo 家庭例行计划，2026-09-17 19:21:11（北京时间）激活，19:21:45 正常 TLS 读回通过。** 安装 main `3387bc0c29f02ef89549d5ec56ce94f51cff67b0`／source `3d8e90aec1a4006d99bb26a51464d0ef0f5404f0`，同树 `f8dc8e5d33f3c5e447c1fcfe5eed2b5e2cbf989e`。更多入口、独立面板、本人操作回执与会话复核已上线；规则、worker 和 55 表结构保持。R3 本地十组真实流程通过，服务器 277 通过及唯一精确 Windows 跳过；626 包文件、114 运行文件、75 HTTPS 资源和 27 个匿名接口读回通过。完整身份、失败历史及保全证据见 [本轮发布](EXPO-ROUTINES-ACCEPTANCE.md#expo-routines-release)，接缝见 [例行计划](EXPO-ROUTINES-INTEGRATION.md)。后续文档提交不改变实际安装包；真实长期调度和实体设备另验。
 
 **此前已发布：Expo 旅行资料与日程／清单优化，2026-09-17 18:13:25（北京时间）激活，18:13:50 正常 TLS 读回通过。** 安装 main `c7bffed2aa51d55b88197d9c84ecbe1b7bc27337`／source `03c150c0026ea66b28027424cef00be648e4ffa5`，同树 `da500d99918be70249f7ccdcaeb78318d605f8d8`。资料 R4 的 9 条流程／12 图与日程 R2 的 5 条流程／18 图分别验收，最终打包逐项证明运行字节一致；服务器 235 通过及唯一精确 Windows 跳过。613 包文件、114 运行文件及 75 HTTPS 资源读回通过，55→55 原数据、环境与 web 镜像保持。详细证据见 [本轮发布](EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md#expo-documents-release)。该 18:13 包当时尚未包含周期家务／采购新版界面，随后已按文首记录发布。
 

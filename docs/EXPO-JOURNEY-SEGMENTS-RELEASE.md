@@ -1,6 +1,6 @@
 # Expo 行程分段发布：55 → 55
 
-本适配器是未发布候选，只生成本地、未绑定的九份审查文件。没有连接服务器、执行 Docker、打包应用、绑定或运行生产阶段。当前安装身份见 [README](../README.md)；父版例行计划已完成的阶段不得重放。
+适配器自身只生成本地、未绑定的九份审查文件。本次实例随后经独立审查、绑定，已实际完成 build／validate／stage／activate／post_readback 五阶段，于 2026-09-17 21:12:18（北京时间）激活，结果见 [发布验收](EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md#expo-segments-release)。本次与父版已执行实例均不可重放；新发布必须生成新的固定实例。
 
 ## 固定父版本与最小变更
 
@@ -40,6 +40,6 @@ python -B deploy/expo_segments_release/prepare.py --source-root <私有access绝
 
 另显式私有原件检查读取固定父包和 Git `7713ad1fd091d7390612c52d434b97e54e99f54b` 的 Docker blob，在临时目录生成九文件：33 项错误 freeze／漏项及七个未绑定／缺少审查材料入口均拒绝，29 个唯一匿名端点与新项严格 401、关键阶段字节、896／640 资源和递归语法全部核对通过。报告 `test-results/segments-release-pinned-r1.json` SHA-256：`051cadf870118a38d7a4342eefe1b2a409599a5e149b50850738085a8a01aef2`。
 
-三文件来源白名单修正后，实际 **26 项通过，0.46 秒**，JUnit `test-results/segments-release-r2.xml` SHA-256 `235a6ff8bab9a7caae51f41f6bc4e22d4e6c11e812a21160e92c96784beb8227`。私有检查调用固定父原件和生成包的真实 `selected_sources`，对 Git `d415e8f8e373c9f4c5ba2b0ca47ae4903d9d0e8b` 与已验构建 `c7248a60…` 核全部 180 输入可选择、差集精确三个文件、缺一拒绝及其他私密／依赖／生成路径排除。报告 `test-results/segments-release-pinned-r2.json` SHA-256 `3a791a6b8289ba1f4e2332083a57ef13558516527d7b49af55fb5acf3cdcf157`；没有传入最终新版 freeze，其接受状态仍待单独核验。最终 collection 必须随测试修订重新收集，不能沿用旧 259 项。
+三文件来源白名单修正后，实际 **26 项通过，0.46 秒**，JUnit `test-results/segments-release-r2.xml` SHA-256 `235a6ff8bab9a7caae51f41f6bc4e22d4e6c11e812a21160e92c96784beb8227`。私有检查调用固定父原件和生成包的真实 `selected_sources`，对 Git `d415e8f8e373c9f4c5ba2b0ca47ae4903d9d0e8b` 与已验构建 `c7248a60…` 核全部 180 输入可选择、差集精确三个文件、缺一拒绝及其他私密／依赖／生成路径排除。报告 `test-results/segments-release-pinned-r2.json` SHA-256 `3a791a6b8289ba1f4e2332083a57ef13558516527d7b49af55fb5acf3cdcf157`；该作者阶段尚未传入最终新版 freeze。后续 R2 实际收集 261 项并完成绑定与发布，见 [发布验收](EXPO-JOURNEY-SEGMENTS-ACCEPTANCE.md#expo-segments-release)；旧 259 项只保留为历史。
 
 生成代码运行期间阻断网络和进程调用，没有建立真实包或绑定。合成计数 9991 只验证配置透传，不是实际测试数量。上述结果不替代最终源码 collection、Linux、浏览器、实际云或本轮上线验收。
