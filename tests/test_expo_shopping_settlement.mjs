@@ -10,7 +10,7 @@ const root = resolve(process.env.SETTLEMENT_BACKEND_ROOT || fileURLToPath(new UR
 // Real installed handlers and synthetic temporary SQLite. No copied business
 // module, fake success response, personal input, provider or running server.
 const execution = spawnSync(process.env.SETTLEMENT_TEST_PYTHON || 'python', ['-B', '-X', 'utf8', '-c', String.raw`
-import sys, os, json, tempfile, socket, sqlite3
+import sys, os, json, tempfile, socket, sqlite3, subprocess
 from pathlib import Path
 from contextlib import closing
 from unittest.mock import patch
@@ -19,6 +19,20 @@ import app as server
 from test_app import member
 from test_shopping_settlement import record, shopping, context, plan, item
 from shopping_settlement import PREFIX
+def link_context(client, link):
+    # The same pure query builder used by Panel generates the URL dispatched to
+    # the real temporary Flask app, including stale original entry/draft IDs.
+    focus={'shoppingId':link['shoppingId'],'transactionId':link['paymentId']}
+    draft={'shoppingId':link['shoppingId'],'paymentId':link['paymentId'],'linkId':link['id']}
+    script="import{readFileSync}from'node:fs';const m=await import(process.argv[1]);const x=JSON.parse(readFileSync(0,'utf8'));const q=m.settlementReadQuery(x.focus,x.draft,{q:'',page:0});process.stdout.write(JSON.stringify({query:q,path:m.settlementQuery(q)}));"
+    generated=subprocess.run([sys.argv[2],'--experimental-transform-types','--input-type=module','-e',script,sys.argv[3]],input=json.dumps({'focus':focus,'draft':draft}),capture_output=True,text=True,encoding='utf-8',timeout=20)
+    assert generated.returncode==0,generated.stderr
+    selected=json.loads(generated.stdout)
+    stale=client.get(PREFIX+'/context',query_string={**focus,'linkId':link['id'],'page':0})
+    response=client.get('/api'+selected['path'])
+    assert stale.status_code==404,(stale.status_code,stale.json)
+    assert response.status_code==200,(response.status_code,response.json)
+    return {**selected,'staleStatus':stale.status_code,'status':response.status_code,'context':response.json}
 def deny(*a,**kw):raise AssertionError('No network')
 with tempfile.TemporaryDirectory(prefix='expo-settlement-model-') as folder, patch.object(socket.socket,'connect',deny), patch('socket.create_connection',deny), patch.dict(os.environ,{'MEMBER1_PASSWORD':'testing-password-one','MEMBER2_PASSWORD':'testing-password-two'}):
     app=server.create_app({'TESTING':True,'SECRET_KEY':'synthetic-settlement-model','DATA_DIR':folder,'SESSION_COOKIE_SECURE':False})
@@ -47,15 +61,23 @@ with tempfile.TemporaryDirectory(prefix='expo-settlement-model-') as folder, pat
     # record is deleted. Detach must not resurrect it or invent zero values.
     p=plan(pay,item(c,shop['id']),4000,True);preview=post('/preview',p);receipt=post('/confirm',{'previewToken':preview['previewToken']})
     assert c.delete('/api/items/shopping/'+shop['id'],headers=h,json={'revision':receipt['shopping']['revision']}).status_code==200
-    ctx=context(c,linkId=receipt['link']['id']);p={'operation':'revoke','linkId':receipt['link']['id'],'revision':receipt['link']['revision'],'shoppingRevision':None,'mode':'detach_keep_current'}
+    out['deletedShoppingRead']=link_context(c,receipt['link']);ctx=out['deletedShoppingRead']['context'];p={'operation':'revoke','linkId':receipt['link']['id'],'revision':receipt['link']['revision'],'shoppingRevision':None,'mode':'detach_keep_current'}
     preview=post('/preview',p);receipt=post('/confirm',{'previewToken':preview['previewToken']});out.update(deletedContext=ctx,deletedPlan=p,deletedPreview=preview,deletedReceipt=receipt)
     other,_=member(app,2);out['partner']=context(other);out['partnerFocus']=other.get(PREFIX+'/context?transactionId='+pay['id']).status_code
     for n in range(41):shopping(c,h,title='合成分页'+str(n))
     out['page0']=context(c);out['page1']=context(c,page=1,shoppingId=zero['id'])
+    missing_pay=record(c,h,'合成已移除付款','4.00');p=plan(missing_pay,item(c,zero['id']),100,False)
+    preview=post('/preview',p);receipt=post('/confirm',{'previewToken':preview['previewToken']})
+    assert c.delete('/api/finance-hub/transactions/'+missing_pay['id'],headers=h,json={'revision':missing_pay['revision']}).status_code==200
+    out['deletedPaymentRead']=link_context(c,receipt['link'])
+    p={'operation':'revoke','linkId':receipt['link']['id'],'revision':receipt['link']['revision'],'shoppingRevision':receipt['shopping']['revision'],'mode':'detach_keep_current'}
+    preview=post('/preview',p);receipt=post('/confirm',{'previewToken':preview['previewToken']})
+    out.update(deletedPaymentPlan=p,deletedPaymentPreview=preview,deletedPaymentReceipt=receipt)
+    assert item(c,zero['id'])['actual']==100
     out['counts']={'receipts':0}
     with closing(sqlite3.connect(Path(folder)/'household.sqlite3')) as con:out['counts']['receipts']=con.execute('SELECT count(*) FROM hub_shopping_settlement_receipts').fetchone()[0]
 print(json.dumps(out,ensure_ascii=False))
-`, root], { cwd: root, encoding: 'utf8', timeout: 120000, maxBuffer: 3000000 });
+`, root, process.execPath, new URL('../frontend/src/lib/shoppingSettlement.ts', import.meta.url).href], { cwd: root, encoding: 'utf8', timeout: 120000, maxBuffer: 3000000 });
 assert.equal(execution.status, 0, execution.stderr || execution.error?.message || 'Real temporary API fixture failed');
 const f = JSON.parse(execution.stdout), clone = v => structuredClone(v);
 const initial = () => m.readSettlementContext(f.initial, { shoppingId: f.shop.id });
@@ -101,7 +123,7 @@ test('existing active relation cannot accidentally create another; updates keep 
 test('actual preview and immediate receipt match exact target/fields; same token replay changes nothing', () => {
   const i=intent();assert.equal(i.expiresAt,601000);assert(Object.isFrozen(i.plan));
   const receipt=m.readSettlementReceipt(f.applied,i);assert.equal(receipt.shopping.actual,7000);assert.equal(receipt.shopping.done,false);
-  assert(m.readSettlementReceipt(f.replay,i).replayed);assert.equal(f.counts.receipts,5);
+  assert(m.readSettlementReceipt(f.replay,i).replayed);assert.equal(f.counts.receipts,7);
   assert.throws(()=>m.readSettlementReceipt(f.afterApply,i));
   for(const mutate of [r=>r.shopping.id='different',r=>r.shopping.actual++,r=>r.link.paymentId='other',r=>r.operation='revoke',r=>r.changedFields=[],r=>r.link.revision++]){
     const raw=clone(f.applied);mutate(raw);assert.throws(()=>m.readSettlementReceipt(raw,i));
@@ -118,6 +140,24 @@ test('real refund warnings, update, revoke and deleted-target detach are read wi
   const r=m.readSettlementPreview(f.revokePreview,f.revokePlan,c);assert.equal(m.readSettlementReceipt(f.revoked,r).link.status,'revoked');
   const deleted=m.readSettlementPreview(f.deletedPreview,f.deletedPlan,m.readSettlementContext(f.deletedContext));assert.equal(deleted.preview.before,null);assert.equal(m.readSettlementReceipt(f.deletedReceipt,deleted).shopping,null);
 });
+test('Panel query builder reads stale linked objects through real link-only context and explicit detach', () => {
+  for (const [entry, reason] of [[f.deletedShoppingRead, 'shopping_missing'], [f.deletedPaymentRead, 'source_missing']]) {
+    assert.equal(entry.staleStatus,404);assert.equal(entry.status,200);
+    assert.deepEqual(Object.keys(entry.query).sort(),['linkId','page','q']);
+    const c=m.readSettlementContext(entry.context,entry.query), link=c.links.find(v=>v.id===entry.query.linkId);
+    assert(link.reviewReasons.includes(reason));assert(!new URLSearchParams(entry.path.split('?')[1]).has('shoppingId'));
+    assert(!new URLSearchParams(entry.path.split('?')[1]).has('transactionId'));
+  }
+  const c=m.readSettlementContext(f.deletedPaymentRead.context,f.deletedPaymentRead.query);
+  const i=m.readSettlementPreview(f.deletedPaymentPreview,f.deletedPaymentPlan,c);
+  assert.equal(m.readSettlementReceipt(f.deletedPaymentReceipt,i).link.status,'revoked');
+  const focus={shoppingId:f.shop.id,transactionId:f.pay.id}, d={...draft(),linkId:f.deletedPlan.linkId}, original=clone(focus), unknown=intent();
+  m.settlementReadQuery(focus,d,{q:'字',page:2});assert.deepEqual(focus,original);assert.equal(unknown.plan.shoppingId,f.shop.id);
+  assert.deepEqual(m.settlementReadQuery(focus,d,{q:'字',page:2,unscoped:true}),{q:'',page:0});
+  assert.deepEqual(m.settlementReadQuery(focus,{...d,linkId:''},{q:'',page:0}),{...focus,q:'',page:0});
+  assert.equal(m.settlementReadQuery(focus,d,{q:'',page:0,receiptLinkId:f.applied.link.id}).linkId,f.applied.link.id);
+});
+
 test('only exact original unknown handle with current actor/lifetime can end local review', () => {
   const i=intent(),identity=m.settlementSignature(f.session),review={intent:i,identity,epoch:4};
   assert(m.canEndSettlementReview(review,i,identity,4));assert(!m.canEndSettlementReview(null,i,identity,4));

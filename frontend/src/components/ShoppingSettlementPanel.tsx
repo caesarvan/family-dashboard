@@ -5,7 +5,7 @@ import { ActivityIndicator, Button, Dialog, List, Portal, Text, TextInput, useTh
 import { useHousehold } from '../lib/household';
 import { centsToDecimal, decimalInput, formatFinanceAmount } from '../lib/finance';
 import { canEndSettlementReview, checkedSettlementWrite, readSettlementContext, readSettlementPreview, readSettlementReceipt,
-  SETTLEMENT_PATH, SettlementDiscarded, SettlementError, SettlementFence, SettlementRejected, settlementPlan, settlementQuery, settlementRequest,
+  SETTLEMENT_PATH, SettlementDiscarded, SettlementError, SettlementFence, SettlementRejected, settlementPlan, settlementQuery, settlementReadQuery, settlementRequest,
   type SettlementContext, type SettlementDraft, type SettlementIntent, type SettlementLink, type SettlementQuery, type SettlementReceipt,
   type SettlementReview, type SettlementSession } from '../lib/shoppingSettlement';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
@@ -75,10 +75,8 @@ function Workspace(props: Props & { identityKey: string }) {
   async function load(ticket: number, signal: AbortSignal, options: { review?: boolean; unscoped?: boolean; q?: string; page?: number } = {}) {
     const unknown = live.current.unknown, receipt = live.current.receipt;
     const nextPage = options.page ?? page, nextQuery = options.q ?? query;
-    const requestQuery: SettlementQuery = options.unscoped ? { q: '', page: 0 } : { ...focus.current, q: nextQuery, page: nextPage,
-      ...(live.current.draft.shoppingId ? { shoppingId: live.current.draft.shoppingId } : {}),
-      ...(!focus.current.transactionId && live.current.draft.paymentId ? { transactionId: live.current.draft.paymentId } : {}),
-      ...(receipt ? { linkId: receipt.link.id, shoppingId: undefined, transactionId: undefined } : live.current.draft.linkId ? { linkId: live.current.draft.linkId } : {}) };
+    const requestQuery = settlementReadQuery(focus.current, live.current.draft,
+      { q: nextQuery, page: nextPage, receiptLinkId: receipt?.link.id, unscoped: options.unscoped });
     install({ context: null, preview: null, acknowledged: false, review: null, completed: false });
     const context = readSettlementContext(await guard(ticket, signal, () => settlementRequest(settlementQuery(requestQuery), signal)), requestQuery);
     if (!current(ticket)) return;

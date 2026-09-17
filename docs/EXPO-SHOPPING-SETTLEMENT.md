@@ -61,3 +61,9 @@
 完整应用 92 个根文件、测试配置 1 个根文件的 strict 类型检查均为 0 diagnostics，最终原件在上述 `settlement-ui-final-r2`，同时绑定源码及输出 SHA。仅只读映射已安装的 mapping integration 物理依赖，没有安装或改配置。R1 Node 13 通过但类型检查有两个泛型推断错误；仅补泛型／字面量类型标注后类型 R2 已通过，最终金额边界修订后再次全量检查。各轮原件保留，不与最终数量相加。检查期间所列源码哈希前后相同；本段结果文字在检查后更新。
 
 未构建、运行浏览器、访问云或生产。真实个人账单、实际设备、TV 显示及完整 A/B 场景均未在本分支验收。
+
+## 审查修订：已移除对象的关联
+
+`ba46ba6` 审查发现：已有关联的采购或来源付款移除后，旧查询同时携带该对象 ID 与 linkId 会收到 404，挡住本可执行的明确解除。现在面板与测试共用 `settlementReadQuery`；已有 draft link 或保存回执仅按 linkId 定位，原入口 focus 与未知意图不变。无 link 的新操作继续按原入口定位；只有用户明确读取当前可用资料才去掉全部定位。
+
+真实临时 API 回归将该 helper 生成的 URL 实际送入 Flask，核两类删除后旧查询 404、新查询 200、needs_review 原因及明确解除，不以纯对象比较代替 HTTP。当前修订实际 14／14 Node，应用／测试 strict 均 0 diagnostics；原件 `test-results/settlement-link-focus-r1/result.json` SHA256 `6007fc3eeba0f19e8aa47a5d1d507769a0a0ff075c09848b3cc7c33f0ed6af48`，所列源码前后相同。此前 13 项与类型原件保留、不累加；本段检查后追加。后端会话修订与实际组合浏览器仍待验证。

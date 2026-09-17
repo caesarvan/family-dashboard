@@ -80,6 +80,17 @@ export function settlementQuery(query: SettlementQuery): string {
   if (query.page !== undefined) params.set('page', String(num(query.page, 0, 999999999)));
   return SETTLEMENT_PATH + '/context' + (params.size ? '?' + params.toString() : '');
 }
+// Link context can outlive either linked object. Do not add stale object focus
+// to this read; the server can return needs_review and an explicit detach plan.
+export function settlementReadQuery(focus: SettlementQuery, draft: Pick<SettlementDraft, 'shoppingId' | 'paymentId' | 'linkId'>,
+  options: { q: string; page: number; receiptLinkId?: string; unscoped?: boolean }): SettlementQuery {
+  if (options.unscoped) return { q: '', page: 0 };
+  const linkId = options.receiptLinkId || draft.linkId;
+  if (linkId) return { linkId, q: options.q, page: options.page };
+  return { ...focus, q: options.q, page: options.page,
+    ...(draft.shoppingId ? { shoppingId: draft.shoppingId } : {}),
+    ...(!focus.transactionId && draft.paymentId ? { transactionId: draft.paymentId } : {}) };
+}
 export function settlementPlan(context: SettlementContext, draft: SettlementDraft, amountCents: number): SettlementPlan {
   const shop = context.shopping.find(r => r.id === draft.shoppingId), link = context.links.find(r => r.id === draft.linkId);
   if (draft.operation !== 'apply' && (!link || link.status !== 'active' || link.shoppingId !== draft.shoppingId || link.paymentId !== draft.paymentId)) return bad();
