@@ -63,33 +63,60 @@
     return next;
   };
   const preferencesIdentity = session => JSON.stringify([session?.user?.role,session?.user?.householdId,session?.user?.id,session?.user?.auth_version,session?.csrf,false,false]);
-  async function preferencesRequest(path,options={}) {
-    const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),12000);
-    try {return await api(path,{...options,signal:controller.signal});} finally {clearTimeout(timer);}
+  // Preferences have their own lifecycle; cancelling them must not affect other workspaces.
+  let preferencesEpoch=0, preferencesEditor=null, preferencesPageHidden=false;
+  const preferencesControllers=new Set();
+  const preferencesActive=()=>!document.hidden && !preferencesPageHidden && navigator.onLine!==false;
+  const preferencesCurrent=ticket=>ticket===preferencesEpoch && preferencesActive();
+  function checkPreferencesTicket(ticket) {
+    if(!preferencesCurrent(ticket)) {const error=new Error('页面状态已变化，草稿仍保留');error.preferencesDiscarded=true;throw error;}
   }
-  async function verifyPreferencesIdentity(identity) {
+  function invalidatePreferences() {
+    preferencesEpoch++;preferencesLoadedAt=0;preferencesPromise=null;
+    for(const controller of preferencesControllers)controller.abort();
+    preferencesControllers.clear();
+  }
+  function suspendPreferences() {
+    invalidatePreferences();preferencesEditor?.suspend();
+  }
+  function resumePreferences() {
+    if(!preferencesActive())return;
+    if(preferencesEditor?.owns())void preferencesEditor.resume();
+    else void refreshPreferences(true);
+  }
+  async function preferencesRequest(path,options={},ticket=preferencesEpoch) {
+    checkPreferencesTicket(ticket);
+    const controller=new AbortController(), timer=setTimeout(()=>controller.abort(),12000);
+    preferencesControllers.add(controller);
+    try {const result=await api(path,{...options,signal:controller.signal});checkPreferencesTicket(ticket);return result;}
+    catch(error) {checkPreferencesTicket(ticket);throw error;}
+    finally {clearTimeout(timer);preferencesControllers.delete(controller);}
+  }
+  async function verifyPreferencesIdentity(identity,ticket=preferencesEpoch) {
+    checkPreferencesTicket(ticket);
     if(mapActor()!==identity || isTV || isDemo || user?.role!=='member') throw new Error('登录状态已变化，请刷新后继续');
     try {
-      const session=await preferencesRequest('/me');
+      const session=await preferencesRequest('/me',{},ticket);
       if(mapActor()!==identity || preferencesIdentity(session)!==identity) {
         const error=new Error('登录状态已变化，请刷新后继续');error.identityChanged=true;throw error;
       }
-    } catch(error) {if(error.identityChanged || [401,403].includes(error.status))losePreferencesIdentity(identity);throw error;}
+    } catch(error) {if(error.identityChanged || [401,403].includes(error.status))losePreferencesIdentity(identity,ticket);throw error;}
   }
-  function losePreferencesIdentity(identity) {
-    if(mapActor()!==identity)return;
+  function losePreferencesIdentity(identity,ticket=preferencesEpoch) {
+    if(mapActor()!==identity || !preferencesCurrent(ticket))return;
+    invalidatePreferences();preferencesEditor?.destroy();
     if(document.querySelector('#ps-preferences-form') && document.querySelector('#dialog')?.open) {
       closeModal();document.querySelector('#dialog').replaceChildren();
     }
     setTheme(DEFAULTS);prefIdentity='';preferencesLoadedAt=0;preferencesPromise=null;
     void boot();
   }
-  async function fetchPreferences(identity) {
-    await verifyPreferencesIdentity(identity);
+  async function fetchPreferences(identity,ticket=preferencesEpoch) {
+    await verifyPreferencesIdentity(identity,ticket);
     let next;
-    try {next=readPreferences(await preferencesRequest('/preferences'));}
-    catch(error) {if([401,403].includes(error.status))losePreferencesIdentity(identity);throw error;}
-    await verifyPreferencesIdentity(identity);
+    try {next=readPreferences(await preferencesRequest('/preferences',{},ticket));}
+    catch(error) {if([401,403].includes(error.status))losePreferencesIdentity(identity,ticket);throw error;}
+    await verifyPreferencesIdentity(identity,ticket);
     return next;
   }
   function acceptPreferences(next,identity) {
@@ -156,19 +183,19 @@
     } finally { applyingView = false; }
   }
   async function refreshPreferences(force=false) {
-    if (!user || isTV || isDemo) return;
+    if (!user || isTV || isDemo || !preferencesActive()) return;
     if (preferencesPromise) return preferencesPromise;
     if (!force && Date.now()-preferencesLoadedAt < 60000) return;
-    const identity = mapActor();
+    const identity = mapActor(), ticket=preferencesEpoch;
     const pendingRead = (async()=>{
       try {
-        const next = await fetchPreferences(identity);
+        const next = await fetchPreferences(identity,ticket);
         const changed = JSON.stringify(next)!==JSON.stringify(prefs);
-        if(!acceptPreferences(next,identity))return;
+        if(!preferencesCurrent(ticket) || !acceptPreferences(next,identity))return;
         if (changed) { renderBoard(); applyDefaultView(); }
       } catch (_) {
         // Retain the last known appearance. Explicit saving reports errors in its form.
-        if(identity===mapActor())preferencesLoadedAt = Date.now();
+        if(preferencesCurrent(ticket) && identity===mapActor())preferencesLoadedAt = Date.now();
       }
     })();
     preferencesPromise=pendingRead;
@@ -177,6 +204,7 @@
   function initializePreferences() {
     const identity = mapActor();
     if (identity === prefIdentity) return;
+    invalidatePreferences();preferencesEditor?.destroy();
     if(prefIdentity && document.querySelector('#ps-preferences-form') && document.querySelector('#dialog')?.open)closeModal();
     prefIdentity = identity; preferencesLoadedAt = 0; preferencesPromise=null; currentRoute=routeFromLocation(); searchText='';taskFilter='pending';shoppingFilter='pending';
     let cached = DEFAULTS;
@@ -373,6 +401,8 @@
   };
   const originalRenderLogin = renderLogin;
   renderLogin = function () {
+    invalidatePreferences();preferencesEditor?.destroy();
+    if(document.querySelector('#ps-preferences-form') && document.querySelector('#dialog')?.open){closeModal();document.querySelector('#dialog').replaceChildren();}
     clearMapPhotoContext();
     root.JourneyMap?.notifyIdentityChanged(); mapContainer = null; mapIdentity = '';
     root.HouseholdMedia?.notifyIdentityChanged(); mediaContainer = null;
@@ -407,69 +437,104 @@
   }
   function openPreferences() {
     if (isTV || (!isDemo && !canEdit())) return;
+    invalidatePreferences();preferencesEditor?.destroy();
     openModal('让这里更像你们的家',`<form id="ps-preferences-form"><p class="help">选择喜欢的氛围与信息密度。${isDemo?'演示设置仅保存在本机。':'保存后会同步到你的手机与电脑。电视使用各自的显示设置。'}</p><div class="ps-preference-label">空间主题</div><div class="ps-theme-grid">${Object.entries(THEMES).map(([value,label])=>`<label class="ps-theme-choice"><input type="radio" name="theme" value="${value}" ${prefs.theme===value?'checked':''}><span class="ps-theme-preview ${value}"><i></i><i></i><i></i></span><strong>${label}</strong><small>${{forest:'沉静、温暖，适合每个夜晚',light:'轻盈、明亮，让思绪舒展',ocean:'清透、平静，像靠近海边'}[value]}</small></label>`).join('')}</div><div class="fields"><label class="field"><span>信息密度</span><select name="density"><option value="comfortable" ${prefs.density==='comfortable'?'selected':''}>舒适 · 留一些呼吸空间</option><option value="compact" ${prefs.density==='compact'?'selected':''}>紧凑 · 一眼看到更多</option></select></label><label class="field"><span>默认日程范围</span><select name="homeView">${[['today','今日'],['week','本周'],['around','前后 3 天']].map(([value,label])=>`<option value="${value}" ${prefs.homeView===value?'selected':''}>${label}</option>`).join('')}</select></label></div><div class="error" role="alert"></div><div class="dialog-footer"><button type="button" class="ps-button subtle" data-action="close">取消</button><button type="submit" class="ps-button primary">${isDemo?'应用演示外观':'保存并同步'}</button></div></form>`,true);
     const form=document.querySelector('#ps-preferences-form'), dialog=document.querySelector('#dialog'), button=form.querySelector('[type=submit]'), error=form.querySelector('.error'), identity=mapActor();
     const recovery=document.createElement('div');recovery.className='ps-preferences-recovery';recovery.setAttribute('aria-live','polite');form.insertBefore(recovery,form.querySelector('.dialog-footer'));
-    let base=null, busy=false, unresolved=false;
-    const owns=()=>form.isConnected && dialog.open && identity===mapActor();
+    const standby=document.createElement('div');standby.setAttribute('aria-live','polite');standby.dataset.preferencesStandby='';form.before(standby);
+    let base=null, draft=null, busy=false, unresolved=false, suspended=true, disposed=false, job=0;
+    const owns=()=>!disposed && form.isConnected && dialog.open && identity===mapActor();
+    const current=(sequence,ticket)=>owns() && sequence===job && preferencesCurrent(ticket);
     const fields=()=>[...form.querySelectorAll('input,select')];
-    const enable=()=>{fields().forEach(field=>field.disabled=busy || !base || unresolved);button.disabled=busy || !base || unresolved;};
+    const enable=()=>{fields().forEach(field=>field.disabled=busy || suspended || !base || unresolved);button.disabled=busy || suspended || !base || unresolved;};
     const populate=value=>{form.querySelector(`[name=theme][value=${value.theme}]`).checked=true;form.elements.density.value=value.density;form.elements.homeView.value=value.homeView;};
-    async function load() {
-      if(busy || !owns())return;busy=true;enable();error.textContent='';recovery.replaceChildren();
+    const capture=()=>{if(base && !suspended)draft={...base,theme:form.querySelector('[name=theme]:checked').value,density:form.elements.density.value,homeView:form.elements.homeView.value};};
+    const show=()=>{suspended=false;form.hidden=false;form.style.display='';standby.hidden=true;populate(draft);enable();};
+    function suspend() {
+      if(!owns())return;
+      capture();job++;busy=false;suspended=true;form.hidden=true;form.style.display='none';standby.hidden=false;
+      standby.textContent='外观草稿已暂时隐藏。回到页面并联网后会重新核对本人设置。';enable();
+    }
+    function destroy() {
+      disposed=true;job++;base=null;draft=null;form.hidden=true;form.style.display='none';standby.replaceChildren();
+      dialog.removeEventListener('close',closed);
+      if(preferencesEditor===editor)preferencesEditor=null;
+    }
+    function closed() {if(!dialog.open){invalidatePreferences();destroy();}}
+    const editor={owns,suspend,resume:()=>load(true),destroy};preferencesEditor=editor;
+    dialog.addEventListener('close',closed);
+    form.addEventListener('change',capture);
+    function review(latest,sequence,ticket) {
+      unresolved=true;recovery.replaceChildren();
+      const summary=document.createElement('p');summary.textContent=`已保存的设置：${THEMES[latest.theme]}、${latest.density==='compact'?'紧凑':'舒适'}、${{today:'今日',week:'本周',around:'前后 3 天'}[latest.homeView]}。请选择如何继续；当前值不能证明之前那次保存的结果，不会自动重试保存。`;recovery.append(summary);
+      recoverButton('使用已保存设置',()=>{
+        if(busy || !current(sequence,ticket))return;base=latest;draft={...latest};populate(draft);unresolved=false;error.textContent='已载入已保存设置';recovery.replaceChildren();acceptPreferences(latest,identity);enable();
+      });
+      recoverButton('保留我的草稿',()=>{
+        if(busy || !current(sequence,ticket))return;
+        const edits=Object.fromEntries(['theme','density','homeView'].filter(key=>draft[key]!==base[key]).map(key=>[key,draft[key]]));
+        base=latest;draft={...latest,...edits};populate(draft);unresolved=false;error.textContent='草稿已保留，请检查后再次保存';recovery.replaceChildren();enable();
+      });
+    }
+    async function load(restoring=false) {
+      if(busy || !owns() || !preferencesActive())return;
+      const sequence=++job,ticket=preferencesEpoch;busy=true;enable();error.textContent='';recovery.replaceChildren();
+      if(suspended){standby.hidden=false;standby.textContent='正在核对本人外观';}
       try {
-        const latest=isDemo?{...prefs}:await fetchPreferences(identity);
-        if(!owns())return;
+        const latest=isDemo?{...prefs}:await fetchPreferences(identity,ticket);
+        if(!current(sequence,ticket))return;
         if(!isDemo && latest.revision<prefs.revision)throw new Error('读取到较旧的外观，请重新加载');
-        base=latest;populate(base);unresolved=false;
-      } catch(err) {if(owns()){error.textContent=err.message;recoverButton('重新加载',load);}}
-      finally {busy=false;if(owns())enable();}
+        if(!base){base=latest;draft={...latest};unresolved=false;}
+        else if(unresolved || latest.revision!==base.revision)review(latest,sequence,ticket);
+        else if(!restoring){base=latest;draft={...latest};}
+        show();
+      } catch(err) {
+        if(!current(sequence,ticket))return;
+        if(suspended){standby.textContent=err.message;const retry=document.createElement('button');retry.type='button';retry.className='ps-button subtle';retry.textContent='重新核对外观';retry.onclick=()=>load(true);standby.append(retry);}
+        else {error.textContent=err.message;recoverButton('重新加载',()=>load(true));}
+      } finally {if(current(sequence,ticket)){busy=false;enable();}}
     }
     function recoverButton(label,handler) {
       const control=document.createElement('button');control.type='button';control.className='ps-button subtle';control.textContent=label;control.onclick=handler;recovery.append(control);
     }
     async function readBack() {
-      if(busy || !owns())return;busy=true;enable();recovery.replaceChildren();
+      if(busy || !owns() || !preferencesActive())return;
+      const sequence=++job,ticket=preferencesEpoch;busy=true;enable();recovery.replaceChildren();
       try {
-        const latest=await fetchPreferences(identity);if(!owns())return;
+        const latest=await fetchPreferences(identity,ticket);if(!current(sequence,ticket))return;
         if(latest.revision<prefs.revision)throw new Error('读取到较旧的外观，请再次检查');
-        const summary=document.createElement('p');summary.textContent=`已保存的设置：${THEMES[latest.theme]}、${latest.density==='compact'?'紧凑':'舒适'}、${{today:'今日',week:'本周',around:'前后 3 天'}[latest.homeView]}。请选择如何继续，不会自动重试保存。`;recovery.append(summary);
-        recoverButton('使用已保存设置',()=>{
-          if(busy || !owns())return;base=latest;populate(base);unresolved=false;error.textContent='已载入已保存设置';recovery.replaceChildren();acceptPreferences(latest,identity);enable();
-        });
-        recoverButton('保留我的草稿',()=>{
-          if(busy || !owns())return;base=latest;unresolved=false;error.textContent='草稿已保留，请检查后再次保存';recovery.replaceChildren();enable();
-        });
-      } catch(err) {if(owns()){error.textContent=err.message;recoverButton('检查已保存设置',readBack);}}
-      finally {busy=false;if(owns())enable();}
+        review(latest,sequence,ticket);
+      } catch(err) {if(current(sequence,ticket)){error.textContent=err.message;recoverButton('检查已保存设置',readBack);}}
+      finally {if(current(sequence,ticket)){busy=false;enable();}}
     }
     form.onsubmit=async event=>{
-      event.preventDefault();if(busy || !base || unresolved || !owns())return;
-      const draft={...base,...Object.fromEntries(new FormData(form))}, changes=Object.fromEntries(['theme','density','homeView'].filter(key=>draft[key]!==base[key]).map(key=>[key,draft[key]]));
+      event.preventDefault();if(busy || suspended || !base || unresolved || !owns() || !preferencesActive())return;
+      capture();const submitted={...draft}, changes=Object.fromEntries(['theme','density','homeView'].filter(key=>submitted[key]!==base[key]).map(key=>[key,submitted[key]])), sequence=++job,ticket=preferencesEpoch;
       busy=true;enable();error.textContent='';recovery.replaceChildren();let dispatched=false;
       try {
-        let saved=draft;
+        let saved=submitted;
         if (!isDemo) {
           if(document.hidden || navigator.onLine===false)throw new Error('请回到页面并联网后保存，草稿仍保留');
-          const capturedCSRF=csrf;await verifyPreferencesIdentity(identity);
-          if(!owns() || document.hidden || navigator.onLine===false)throw new Error('页面状态已变化，草稿仍保留');
+          const capturedCSRF=csrf;await verifyPreferencesIdentity(identity,ticket);
+          if(!current(sequence,ticket))return;
           if(Object.keys(changes).length) {
-            dispatched=true;
-            saved=readPreferences(await preferencesRequest('/preferences',{method:'PUT',body:JSON.stringify({revision:base.revision,changes}),headers:{'X-CSRF-Token':capturedCSRF}}));
-            if(saved.revision!==base.revision+1 || ['theme','density','homeView','colorMode'].some(key=>saved[key]!==draft[key]))throw new Error('保存结果需要重新确认');
-            await verifyPreferencesIdentity(identity);
-          } else saved=await fetchPreferences(identity);
-          if(!owns() || document.hidden)throw new Error('页面状态已变化，请检查已保存设置');
+            dispatched=true;unresolved=true;
+            saved=readPreferences(await preferencesRequest('/preferences',{method:'PUT',body:JSON.stringify({revision:base.revision,changes}),headers:{'X-CSRF-Token':capturedCSRF}},ticket));
+            if(saved.revision!==base.revision+1 || ['theme','density','homeView','colorMode'].some(key=>saved[key]!==submitted[key]))throw new Error('保存结果需要重新确认');
+            await verifyPreferencesIdentity(identity,ticket);
+          } else saved=await fetchPreferences(identity,ticket);
+          if(!current(sequence,ticket))return;
           if(!acceptPreferences(saved,identity))throw new Error('另一个操作更新了外观，请检查已保存设置');
         } else {setTheme(saved);try {localStorage.setItem(storageKey(),JSON.stringify(saved));}catch(_){}}
-        if(!owns())return;
+        if(!current(sequence,ticket))return;
         preferencesLoadedAt=Date.now();closeModal();renderBoard();applyDefaultView();toast(isDemo?'演示外观已更新':'外观已保存，其他设备会自动读取');
       } catch(err) {
-        if([401,403].includes(err.status))losePreferencesIdentity(identity);
-        if(!owns())return;error.textContent=err.message;
+        if([401,403].includes(err.status))losePreferencesIdentity(identity,ticket);
+        if(!current(sequence,ticket))return;error.textContent=err.message;
         if(dispatched){unresolved=true;error.textContent+='。草稿仍保留，请先检查已保存设置。';recoverButton('检查已保存设置',readBack);}
-      } finally {busy=false;if(owns())enable();}
+      } finally {if(current(sequence,ticket)){busy=false;enable();}}
     };
+    suspend();
     void load();
   }
   async function openLayout() {
@@ -618,7 +683,14 @@
     if ((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'&&data&&!isTV) {event.preventDefault();openSearch();}
     if (event.key==='Escape'&&navExpanded) {navExpanded=false;renderBoard();}
   });
-  document.addEventListener('visibilitychange',()=>{if(!document.hidden&&user&&!isTV&&!isDemo){void refreshPreferences(true);void refreshLayout(true).catch(()=>{});}});
+  document.addEventListener('visibilitychange',()=>{
+    if(document.hidden)suspendPreferences();else resumePreferences();
+    if(!document.hidden&&user&&!isTV&&!isDemo)void refreshLayout(true).catch(()=>{});
+  });
+  window.addEventListener('offline',suspendPreferences);
+  window.addEventListener('online',resumePreferences);
+  window.addEventListener('pagehide',()=>{preferencesPageHidden=true;suspendPreferences();});
+  window.addEventListener('pageshow',event=>{if(event.persisted || preferencesPageHidden){preferencesPageHidden=false;suspendPreferences();resumePreferences();}});
   window.addEventListener('popstate',()=>{if(data&&!isTV)navigate(routeFromLocation(),false);});
   setInterval(()=>{if(!document.hidden&&user&&!isTV&&!isDemo){void refreshPreferences();void refreshLayout().catch(()=>{});}},60000);
   setTheme(DEFAULTS);
