@@ -217,6 +217,7 @@ class Run(BaseRun):
             page.route(self.base + path, lose)
             button(page, '确认连接电视').click()
             expect(page.get_by_test_id('device-operation-unknown')).to_be_visible()
+            expect(button(page, '核对操作结果')).to_be_enabled()
             page.unroute(self.base + path, lose)
             assert len(attempts) == 1
             assert television.request.post(self.base + '/api/pair/poll', data={'secret': pairing['secret']}).json()['approved'] is committed
@@ -335,6 +336,7 @@ class Run(BaseRun):
         page.route(self.base + path, lose)
         button(page, '保存到这台电视').click()
         expect(page.get_by_test_id('device-operation-unknown')).to_be_visible()
+        expect(button(page, '核对操作结果')).to_be_enabled()
         page.unroute(self.base + path, lose)
         assert len(attempts) == 1
         persisted = self.device(page.context, uid)
@@ -422,6 +424,7 @@ class Run(BaseRun):
         page.route(self.base + path, lose)
         button(page, '下一张照片').click()
         expect(page.get_by_test_id('device-operation-unknown')).to_be_visible()
+        expect(button(page, '核对操作结果')).to_be_enabled()
         page.unroute(self.base + path, lose)
         assert len(attempts) == 1
         actual = self.playback(page.context, uid)
