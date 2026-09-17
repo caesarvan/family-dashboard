@@ -11,6 +11,7 @@ from threading import BoundedSemaphore
 from zipfile import ZipFile, ZIP_DEFLATED
 
 from flask import g, jsonify, send_file
+from finance_accounts import export_owned_accounts
 from finance_baseline import shared_baselines
 from shopping_settlement import export_owned_settlements
 from household_routines import export_shared_routines
@@ -161,6 +162,8 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
         if 'inventory_items' in tables(con):
             counts['inventoryItems'] = con.execute('SELECT count(*) FROM inventory_items WHERE owner=? AND deleted_at IS NULL',(uid,)).fetchone()[0]
             shared['inventoryItems'] = con.execute("SELECT count(*) FROM inventory_items WHERE owner!=? AND visibility='shared' AND deleted_at IS NULL",(uid,)).fetchone()[0]
+        if 'finance_accounts' in tables(con):
+            counts['financeAccounts'] = con.execute('SELECT count(*) FROM finance_accounts WHERE owner=?', (uid,)).fetchone()[0]
         con.commit()
         return jsonify(personal=counts, shared=shared, format='zip',
                        note='导出的是当前保存的记录，并非已覆盖全部金融账户。家庭相册、采购图片和旅行资料仅含说明与元数据，不包含图片或文件；照片原图仍在来源平台，旅行文件可在资料夹逐份下载。账号连接需要重新授权。')
@@ -206,6 +209,9 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
             for transaction in personal['transactions']:
                 transaction.setdefault('provenance', {'status': 'unknown'})
             personal['transactionImportReceipts'] = export_import_receipts(con, uid)
+            if {'finance_accounts', 'finance_account_valuations', 'finance_account_operations'} <= available:
+                personal['financeAccounts'] = export_owned_accounts(con, uid)
+                snapshot['coverage']['financeAccounts'] = 'manual_accounts_and_dated_valuations'
             personal['investments'] = decoded_rows(con, 'hub_investments')
             personal['investmentOperations'] = []
             if 'hub_investment_operations' in available:
@@ -328,6 +334,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     'data.json 保留当前成员的数据、原始文字、整数分金额、日期与覆盖说明。transactions.csv 和 investments.csv 便于表格查看；其中 amount/cost/value 为原币金额，不是分。\n',
                     '交易 CSV 是原始保存记录，不是自动去重后的支出报告；关系与核对结果以 data.json 为准。不同币种和旧日期记录不能直接相加。\n',
                     '持仓导入的来源、稳定关联和业务回执保存在 data.json；已删除持仓可能仍保留防重复导入的关联。预览暂存和授权上下文不包含在导出中。\n',
+                    'personal.financeAccounts 包含本人手动账户（含归档）、所有按日估值及最小操作摘要；不含请求编号、载荷散列或历史回执原文。金额为原币整数分，未知为 null，不合并到持仓、来源报告或公共资金。\n',
                     '独立消费观察和接受回执保存在 data.json；其报告日期与覆盖范围不改变资产余额日期，不与账单、订单或基线消费重复相加。\n',
                     'CSV 的公式危险前缀加了单引号，JSON 保留原文。估值未知保持空白，不作为零。\n',
                     '勾选共同记录时含双方已共享的日程、待办、采购、旅行和资金汇总；不含伴侣私人账本。采购图片与旅行资料仅含元数据，不含文件。旅行资料夹可逐份下载文件。\n',
