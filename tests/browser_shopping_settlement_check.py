@@ -482,7 +482,8 @@ def main():
                     for width in [360,768,1440]:
                         flow=Flow(width=width)
                         try:
-                            response=flow.context.request.put(base+'/api/preferences',headers=headers(flow.context),data={'theme':theme,'density':'comfortable','homeView':'today'})
+                            current=flow.context.request.get(base+'/api/preferences').json()
+                            response=flow.context.request.put(base+'/api/preferences',headers=headers(flow.context),data={'revision':current['revision'],'changes':{'theme':theme,'density':'comfortable','homeView':'today'}})
                             assert response.status==200
                             flow.page.reload();expect(flow.page.locator('.ps-welcome')).to_be_visible();flow.page.evaluate('clearInterval(pollTimer)');flow.open()
                             flow.draft('80.00')
