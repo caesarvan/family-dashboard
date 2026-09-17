@@ -1,8 +1,9 @@
-"""Frozen Expo trip coordination: real Flask/SQLite/Edge, fake provider HTTP only.
+"""Frozen Expo trip coordination: real Flask/SQLite/Edge and fake provider HTTP.
 
 No real calendar, AI, geocoder, production data or physical TV is accessed.
 The inherited journey harness supplies the local server, auth, file bindings,
 travel UI helpers and viewport checks; existing Remote supplies provider I/O.
+Additional cases inject one post-confirm /me error with periodic polls delayed.
 """
 import argparse
 from contextlib import ExitStack, closing
@@ -179,6 +180,15 @@ class Run(JourneyRun):
         expect(page.get_by_role('heading', name='足迹地图', exact=True)).to_be_visible()
         expect(button(page, '查看旅行')).to_be_enabled()
         assert self.get(ctx, PLACE + '/' + place['id'])['place']['status'] == 'planned'
+        expect(icon_button(page, '返回旅行')).to_be_enabled()
+        map_before = self.snapshot()
+        button(page, '编辑地点').click()
+        expect(textfield(page, '地点名称')).to_be_visible()
+        expect(icon_button(page, '返回旅行')).to_be_disabled()
+        button(page, '取消编辑').click()
+        button(page, '放弃编辑').click()
+        expect(icon_button(page, '返回旅行')).to_be_enabled()
+        assert self.snapshot() == map_before
         button(page, '查看旅行').click()
         expect(page.get_by_role('heading', name='旅行详情', exact=True)).to_be_visible()
         expect(page.get_by_role('heading', name='合成东京协作旅行', exact=True)).to_be_visible()
@@ -421,6 +431,103 @@ class Run(JourneyRun):
         expect(page.locator('body')).not_to_contain_text('本人合成旅行日历')
         self.passed(self.provider + ': revoked write scope blocks worker writes; partner/foreign household cannot control private records and late old-member reads conceal sources')
 
+    def failed_post_session_check(self, browser):
+        for status in (401, 403, 429):
+            with self.flow(browser) as (ctx, page):
+                # Delay only the two 10-second periodic refresh loops in this
+                # additional fault case. Fetch, actions and identity checks are
+                # untouched. This prevents a global poll consuming the fault.
+                page.add_init_script('''{
+                  const original = window.setInterval.bind(window);
+                  window.__coordinationDelayedPolls = 0;
+                  window.setInterval = (callback, delay, ...args) => {
+                    if (Number(delay) === 10000) {
+                      window.__coordinationDelayedPolls++;
+                      return original(callback, 600000, ...args);
+                    }
+                    return original(callback, delay, ...args);
+                  };
+                }''')
+                current = self.api_apply(ctx, {'title': '合成后检失败 ' + str(status),
+                    'start': '2028-05-01', 'end': '2028-05-02', 'budget': 0,
+                    'memberIds': ['member1'], 'destinations': [], 'checklist': [], 'shopping': [], 'segments': []})
+                self.open_calendar(page, current['tripId'])
+                self.choose_source(page)
+                self.calendar_preview(page)
+                assert page.evaluate('window.__coordinationDelayedPolls') >= 2
+                fault = {'status': status, 'armed': False, 'injected': 0}
+                trace = []
+                queue_before = len(self.snapshot()['calendar_publications'])
+                posts = self.count_requests('POST', CP + '/confirm')
+
+                def commit_reply(handler):
+                    assert handler.request.method == 'POST' and 'result' not in fault
+                    response = handler.fetch(max_redirects=0)
+                    assert response.status == 200, response.text()
+                    fault['result'] = response.json()
+                    fault['armed'] = True
+                    trace.append('real-confirm-committed-200')
+                    handler.fulfill(response=response)
+
+                def fail_final_me(handler):
+                    if fault['armed']:
+                        assert fault['injected'] == 0
+                        real = handler.fetch(max_redirects=0)
+                        assert real.status == 200 and real.json()['user']['id'] == 'member1'
+                        fault['armed'] = False
+                        fault['injected'] += 1
+                        trace.append('post-response-me-' + str(status))
+                        handler.fulfill(status=status, json={'error': 'Synthetic post-response session-check failure'})
+                    else:
+                        handler.continue_()
+
+                page.route(self.base + CP + '/confirm', commit_reply)
+                page.route(self.base + '/api/me', fail_final_me)
+                button(page, '确认加入同步').click()
+                self.settle(page, lambda: fault['injected'] == 1)
+                # Either visible unknown or concealed readback is safe; neither
+                # may expose an actionable second confirmation from this intent.
+                unknown = button(page, '核对当前状态')
+                concealed = button(page, '重新读取同步状态')
+                self.settle(page, lambda: (unknown.count() and unknown.is_enabled())
+                    or (concealed.count() and concealed.is_enabled()))
+                expect(button(page, '确认加入同步')).to_have_count(0)
+                expect(page.get_by_role('heading', name='确认同步内容', exact=True)).to_have_count(0)
+                assert trace == ['real-confirm-committed-200', 'post-response-me-' + str(status)]
+                assert len(fault['result']['publicationIds']) == 1
+                rid = fault['result']['publicationIds'][0]
+                assert len(self.snapshot()['calendar_publications']) == queue_before + 1
+                assert self.publication(rid)['journey_id'] == current['id']
+                page.unroute(self.base + CP + '/confirm', commit_reply)
+                page.unroute(self.base + '/api/me', fail_final_me)
+                assert self.get(ctx, '/api/me')['user']['id'] == 'member1'
+                before = self.snapshot()
+                read_start = len(self.requests)
+                with page.expect_response(lambda r: urlsplit(r.url).path == CP + '/journeys/' + current['id']) as pending:
+                    (unknown if unknown.count() else concealed).click()
+                assert pending.value.status == 200
+                expect(button(page, '核对当前状态')).to_be_enabled()
+                expect(button(page, '预览日程')).to_be_disabled()
+                assert self.snapshot() == before
+                assert all(r['method'] == 'GET' for r in self.requests[read_start:])
+                assert self.count_requests('POST', CP + '/confirm') == posts + 1
+                assert [r['id'] for r in self.state(ctx, current['id'])['publications']] == [rid]
+                # Now change the actual parent identity, rather than faking a
+                # /me DTO. The old private source must be concealed completely.
+                self.login(ctx, 2)
+                assert self.get(ctx, '/api/me')['user']['id'] == 'member2'
+                button(page, '核对当前状态').click()
+                expect(page.locator('body')).not_to_contain_text('本人合成旅行日历')
+                expect(button(page, '确认加入同步')).to_have_count(0)
+                assert self.count_requests('POST', CP + '/confirm') == posts + 1
+                assert self.publication(rid)['owner'] == 'member1'
+                self.report.setdefault('postSessionFaults', []).append({'provider': self.provider,
+                    'status': status, 'trace': trace, 'injectedResponses': fault['injected'],
+                    'periodicPollsDelayed': True, 'businessConfirmResponsesSynthetic': False,
+                    'sameQueueRetained': True, 'actualMemberChangeConcealed': True})
+                self.passed(self.provider + ': committed confirmation followed by /me ' + str(status)
+                    + ' stays unknown/read-only, preserves one queue and conceals on a real member change')
+
     def run_scenarios(self, browser):
         with self.flow(browser) as (ctx, page):
             receipt = self.create_trip_ui(page)
@@ -431,6 +538,7 @@ class Run(JourneyRun):
             self.conflict_and_stop(page, receipt, rid)
             self.permissions_and_identity(browser, page, receipt, rid, place)
             assert self.report['modelCalls'] == []
+        self.failed_post_session_check(browser)
 
 
 def main():
@@ -461,7 +569,7 @@ def main():
         head=head, tree=evidence['sourceTree'], buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
         sourceHashesBefore=hashes(), bundleHashesBefore=bundle_hashes(), productionWrites=0,
         realCloud=False, realAI=False, physicalTelevision=False, providers=[],
-        scope='Actual local Flask/SQLite/Edge/member sessions/CSRF. Only calendar HTTP is fake. Advanced semantic edits are real API setup, not Expo editing acceptance. Screenshots cover visible inner scroll positions only.')
+        scope='Actual local Flask/SQLite/Edge/member sessions/CSRF. Calendar HTTP is fake. Six additional cases inject one post-confirm /me error with periodic polls delayed. Advanced semantic edits are real API setup, not Expo editing acceptance. Screenshots cover visible inner scroll positions only.')
     original_connect = socket.socket.connect
 
     def local_connect(sock, address):
