@@ -1,5 +1,6 @@
 export type CalendarMode = 'today' | 'week' | 'around';
 export type ThemeName = 'light' | 'forest' | 'ocean';
+export type ColorMode = 'light' | 'dark';
 export type RouteName = 'home' | 'calendar' | 'tasks' | 'shopping' | 'trips' | 'finance' | 'investments' | 'photos' | 'assistant' | 'inventory' | 'map' | 'connections' | 'devices' | 'more';
 export type ItemKind = 'events' | 'tasks' | 'shopping' | 'trips';
 export type Person = { id: string; name: string };
@@ -10,7 +11,7 @@ export type CalendarEvent = BaseItem & { start: string; end: string; location?: 
 export type ListItem = BaseItem & { done: boolean; due?: string; quantity?: string; budget?: number | null; tripId?: string; actual?: number | null; photoIds?: string[] };
 export type Trip = BaseItem & { start: string; end: string; destination?: string; budget: number; paid: number; saved: number };
 export type SharedFinance = { wallet: number; livingBudget: number; livingSpent: number; travelSaved: number; longterm: number; reserveTarget: number; confirmedAt?: string; revision: number; contributionPercent: number };
-export type Preferences = { theme: ThemeName; density: 'comfortable' | 'compact'; homeView: CalendarMode };
+export type Preferences = { theme: ThemeName; colorMode: ColorMode; density: 'comfortable' | 'compact'; homeView: CalendarMode; revision: number };
 export type HomeLayout = { revision: number; order: string[]; hidden: string[] };
 export type TaskSource = { id: string; name: string; provider: string; writable?: boolean };
 export type FamilyState = { revision: number; household?: { id: string; name: string; slug: string }; people: Person[]; events: CalendarEvent[]; tasks: ListItem[]; shopping: ListItem[]; trips: Trip[]; finance: SharedFinance; sync?: { taskSources?: TaskSource[]; primaryTaskSource?: { id: string }; health?: { state?: string } } };
@@ -19,6 +20,7 @@ export type ScreenProps = {
   onReschedulePending?: (pending: boolean) => void;
   onDevicePending?: (message: string | null) => void;
   onHomeLayoutPending?: (message: string | null) => void;
+  onAppearancePending?: (message: string | null) => void;
   state: FamilyState; user: Member; focus: string; mode: CalendarMode; layout: HomeLayout;
   setFocus: (id: string) => void; setMode: (mode: CalendarMode) => Promise<void>;
   onNavigate: (route: RouteName) => void; onEdit: (kind: ItemKind, item?: Entity) => void;
