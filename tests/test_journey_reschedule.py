@@ -314,7 +314,11 @@ def test_member_household_tv_csrf_and_receipt_boundaries(app):
     ch = {'X-CSRF-Token': child.get('/api/me').json['csrf']}
     assert child.get('/api/journeys/' + d['id'] + '/reschedule').status_code == 404
     assert child.get('/api/journeys/operations/' + key).status_code == 404
-    assert child.post(endpoint, json=body, headers=ch).status_code in (403, 404)
+    before = snapshot(app)
+    rejected = child.post(endpoint, json=body, headers=ch)
+    # Independent households have different signing keys: reject before looking up any source data.
+    assert rejected.status_code == 400 and rejected.json['code'] == 'invalid_reschedule'
+    assert snapshot(app) == before and child.get('/api/journeys').json['journeys'] == []
 
 
 @pytest.mark.parametrize('bad', [None, 'task:pack', ['trip'], ['unknown:key'], ['task:pack', 'task:pack']])
@@ -369,7 +373,11 @@ def test_earlier_reschedule_keeps_historical_dates_editable_but_rejects_new_outl
     assert apply(c, h, ordinary, uuid4().hex).status_code == 200
     edited = detail(c, d['id'])
     assert edited['trip'][field] == value
-    assert task(edited, 'done') == historical_task
+    saved_task = task(edited, 'done')
+    # The existing ordinary editor revises all linked entities, even unchanged payloads.
+    assert saved_task['revision'] == historical_task['revision'] + 1
+    assert {k: v for k, v in saved_task.items() if k != 'revision'} == {
+        k: v for k, v in historical_task.items() if k != 'revision'}
     assert edited['plan']['destinations'] == current['plan']['destinations']
     assert edited['plan']['segments'] == current['plan']['segments']
     for collection, date_field in [('destinations', 'departure'), ('segments', 'end'), ('checklist', 'due')]:
