@@ -16,11 +16,13 @@ export default function MapWorkspace(props: ScreenProps) {
   const active = useRef(false), sequence = useRef(0);
   const reschedulePending = useRef(false);
   const documentsPending = useRef(false);
+  const segmentsPending = useRef(false);
   const pendingReschedule = (pending: boolean) => { reschedulePending.current = pending; props.onReschedulePending?.(pending); };
   const pendingDocuments = useCallback((pending: boolean) => { documentsPending.current = pending; props.onDocumentsPending?.(pending); }, [props.onDocumentsPending]);
+  const pendingSegments = useCallback((pending: boolean) => { segmentsPending.current = pending; props.onSegmentsPending?.(pending); }, [props.onSegmentsPending]);
   useFocusEffect(useCallback(() => {
     active.current = true;
-    return () => { active.current = false; if (!reschedulePending.current && !documentsPending.current) setPanel({ kind: 'map' }); };
+    return () => { active.current = false; if (!reschedulePending.current && !documentsPending.current && !segmentsPending.current) setPanel({ kind: 'map' }); };
   }, []));
   const open = (kind: 'trip' | 'photos', journey: { id: string; tripId: string }, view: MapView) => {
     // MapScreen has freshly checked the place projection and its identity fence.
@@ -32,7 +34,7 @@ export default function MapWorkspace(props: ScreenProps) {
   };
   const back = () => { if (active.current) setPanel(current => ({ kind: 'map', view: current.view })); };
   if (panel.kind === 'trip') return <TripsScreen {...props} key={'trip-' + panel.key}
-    tripRequest={{ key: panel.key, id: panel.tripId }} onReschedulePending={pendingReschedule} onDocumentsPending={pendingDocuments} onReturnMap={back} />;
+    tripRequest={{ key: panel.key, id: panel.tripId }} onReschedulePending={pendingReschedule} onDocumentsPending={pendingDocuments} onSegmentsPending={pendingSegments} onReturnMap={back} />;
   if (panel.kind === 'photos') return <TripPhotosScreen {...props} key={'photos-' + panel.key}
     journeyId={panel.journeyId} onBack={back} />;
   return <MapScreen {...props} initialView={panel.view}
