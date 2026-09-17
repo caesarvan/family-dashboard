@@ -6,7 +6,7 @@ household's ``db()`` owns its own namespace, including signed preview isolation.
 from __future__ import annotations
 
 from collections import Counter
-from contextlib import ExitStack
+from contextlib import ExitStack, contextmanager
 from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
@@ -321,9 +321,6 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                 raise Problem('冲突选择已失效或包含未知字段，请重新预览', 409)
         return effective, conflicts, preserved, resolved, holds
 
-    def entity_snapshot(con, uid):
-        return {row['id']: row['revision'] for row in linked(con, uid).values()}
-
     def current_member(con, expected=None):
         require_member()
         member = app.extensions['member_sessions'].current(con)
@@ -335,6 +332,40 @@ def register_journeys(app, db, Problem, body, require_member, audit):
 
     def namespace(con):
         return json.loads(con.execute("SELECT data FROM settings WHERE id='journey_namespace'").fetchone()[0])
+
+    @contextmanager
+    def edit_read_snapshot(member=True):
+        con = ready()
+        # Legacy-cookie resolution can leave an implicit UPDATE transaction.
+        # Never carry that earlier snapshot into this request's source reads.
+        con.rollback()
+        try:
+            con.execute('BEGIN')
+            claim = None
+            if member:
+                captured = getattr(g, 'member_session', {})
+                claim = current_member(con, {'id': captured.get('id'), 'authVersion': captured.get('auth_version')})
+            yield con
+            con.rollback()
+            if member:
+                current_member(con, claim)
+        finally:
+            # The fresh check may itself open a legacy-cookie UPDATE transaction.
+            con.rollback()
+
+    def expected_entities(value, uid):
+        if 'expectedEntities' not in value:
+            return None
+        expected = value['expectedEntities']
+        if (not isinstance(uid, str) or not re.fullmatch(r'[a-f0-9]{24}', uid)
+                or not isinstance(expected, dict) or len(expected) > 3 * MAX_ITEMS + 2
+                or any(not re.fullmatch(r'[a-f0-9]{24}', key) or type(revision) is not int
+                       or not 1 <= revision <= 9_007_199_254_740_991 for key, revision in expected.items())):
+            raise Problem('expectedEntities 须随已有旅行提交完整的实体编号与正整数版本')
+        return expected
+
+    def stale_edit_source():
+        raise RescheduleError('旅行或关联事项已变化，请保留草稿并重新核对', 'stale_edit_source', 409)
 
     def reschedule_source(con, uid):
         current = find_workflow(con, uid)
@@ -466,9 +497,12 @@ def register_journeys(app, db, Problem, body, require_member, audit):
     @app.get('/api/journeys/templates')
     def journey_templates():
         require_member()
-        return jsonify(version=1, supportedSchemaVersions=[1, 2], policyNotice=POLICY_NOTICE,
-                       templates=[{'id': 'domestic', 'name': '国内旅行', 'checklist': defaults(False)},
-                                  {'id': 'international', 'name': '境外旅行', 'checklist': defaults(True)}])
+        with edit_read_snapshot():
+            result = dict(version=1, supportedSchemaVersions=[1, 2], policyNotice=POLICY_NOTICE,
+                          capabilities={'editSourceSnapshot': True},
+                          templates=[{'id': 'domestic', 'name': '国内旅行', 'checklist': defaults(False)},
+                                     {'id': 'international', 'name': '境外旅行', 'checklist': defaults(True)}])
+        return jsonify(result)
 
     @app.get('/api/journeys')
     def journey_list():
@@ -478,19 +512,43 @@ def register_journeys(app, db, Problem, body, require_member, audit):
 
     @app.get('/api/journeys/<uid>')
     def journey_detail(uid):
-        return jsonify(detail(ready(), uid))
+        # Retain the existing TV read-only contract; only members use this DTO
+        # as an editing source and require the captured member-session fence.
+        with edit_read_snapshot(member=g.actor['role'] == 'member') as con:
+            result = detail(con, uid)
+        return jsonify(result)
 
     @app.post('/api/journeys/preview')
     def journey_preview():
         require_member()
-        con = ready()
         value = body()
+        expected = expected_entities(value, value.get('journeyId'))
+        with edit_read_snapshot() as con:
+            result = preview_in_snapshot(con, value, expected)
+        return result
+
+    def preview_in_snapshot(con, value, expected):
         uid, trip_id = value.get('journeyId'), value.get('tripId')
         if uid is not None and not isinstance(uid, str) or trip_id is not None and not isinstance(trip_id, str):
             raise Problem('旅行标识格式不正确')
         preserved_dates = None
+        current, existing, revisions = None, {}, {}
         if uid:
-            prior = json.loads(find_workflow(con, uid)['plan'])
+            try:
+                current = find_workflow(con, uid)
+            except Problem as failure:
+                if expected is not None and failure.status == 404:
+                    stale_edit_source()
+                raise
+            if type(value.get('revision')) is not int or value['revision'] != current['revision']:
+                if expected is not None:
+                    stale_edit_source()
+                raise Problem('旅行计划已更新，请重新打开后预览', 409)
+            existing = linked(con, uid)
+            revisions = {row['id']: row['revision'] for row in existing.values()}
+            if expected is not None and (expected != revisions or 'trip' not in existing):
+                stale_edit_source()
+            prior = json.loads(current['plan'])
             # A confirmed reschedule may intentionally retain historical dates
             # outside the overview. Only the server's unchanged dates qualify;
             # new plans and newly edited dates keep the original validation.
@@ -502,19 +560,12 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                 'segments': {row['key']: (row['start'], row['end']) for row in prior['segments'] if 'kind' not in row and
                              not prior['start'] <= row['start'] <= row['end'] <= prior['end']}}
         plan = normalize(value.get('plan'), con, preserved_dates)
-        revisions = {}
         adoptions = {}
         expected_revision = None
-        existing = {}
         old_plan = None
         if uid:
-            current = find_workflow(con, uid)
             expected_revision = value.get('revision')
-            if type(expected_revision) is not int or expected_revision != current['revision']:
-                raise Problem('旅行计划已更新，请重新打开后预览', 409)
             trip_id = current['trip_id']
-            revisions = entity_snapshot(con, uid)
-            existing = linked(con, uid)
             old_plan = json.loads(current['plan'])
             if old_plan.get('schemaVersion', 1) == 2 and plan.get('schemaVersion', 1) != 2:
                 raise Problem('旅行已使用 v2 时间结构，不能降级丢弃航班与时区信息', 409)
