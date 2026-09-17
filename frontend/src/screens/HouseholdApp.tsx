@@ -75,7 +75,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
   if(!user)return <LoginScreen authError={authResult?.status==='error'?syncAuthMessage(authResult):''}/>;
   if(user.role==='tv')return <View><Text>正在打开电视看板…</Text><Button onPress={()=>openLocal('/tv')}>打开电视</Button></View>;
   if(!state)return <View style={{padding:32,gap:16}}><Text>{error||'正在读取家庭数据…'}</Text><Button onPress={()=>void refresh()}>重新加载</Button><Button onPress={()=>handle(household.logout)}>退出登录</Button></View>;
-  const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:mode=>household.savePreferences({homeView:mode}),onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,
+  const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:mode=>household.savePreferences({homeView:mode}),onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,
     onInventory:(id)=>{
       if(holdNavigation())return;
       if(id!==undefined&&!/^[a-f0-9]{24}$/.test(id)){setNotice('物品链接已失效，请重新搜索');return;}
