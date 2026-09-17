@@ -45,12 +45,15 @@ REQUIRED_CHANGED = {
     'frontend/src/screens/HouseholdApp.tsx', 'frontend/src/screens/TripsScreen.tsx',
     'frontend/src/screens/MapWorkspace.tsx', 'frontend/src/screens/AssistantScreen.tsx',
 }
+LOCAL_BUILD_SOURCES = (
+    'frontend/tests/journeySegments.test.ts', 'frontend/tsconfig.tests.json', 'frontend/typecheck.mjs',
+)
 REQUIRED_ADDED = {
-    'frontend/src/lib/journeySegments.ts', 'frontend/tests/journeySegments.test.ts',
+    'frontend/src/lib/journeySegments.ts',
     'frontend/src/components/JourneySegmentsPanel.tsx', 'frontend/src/components/JourneySegmentFields.tsx',
     'tests/test_journey_edit_snapshot.py', 'tests/browser_expo_segments_check.py',
     'deploy/expo_segments_release/prepare.py', 'tests/test_expo_segments_release.py',
-}
+} | set(LOCAL_BUILD_SOURCES)
 # Only the reviewed edit-source snapshot API changes a previously protected file.
 # Retain every other parent guard, including exact Docker and schema/backup bytes.
 UNCHANGED = tuple(name for name in previous.UNCHANGED if name != 'journey_workflows.py')
@@ -62,6 +65,13 @@ def add_anonymous_checks(code):
     # Exact insertion leaves every existing endpoint and the 401 assertion intact.
     return replace(code, "for path in ('/api/routines/context',",
                    "for path in ('/api/journeys/templates','/api/journeys/'+'0'*24,'/api/routines/context',")
+
+
+def add_local_build_sources(code):
+    # Archive the exact reviewed local build inputs; do not broaden directory
+    # selection or remove any input from the unchanged partition verification.
+    anchor = "    need(required <= tracked, 'Explicit allowlist source is not tracked')"
+    return replace(code, anchor, '    required.update(' + repr(LOCAL_BUILD_SOURCES) + ')\n' + anchor)
 
 
 def adapt(inputs, access, output, config=None):
@@ -95,6 +105,7 @@ def adapt(inputs, access, output, config=None):
                           'set(' + repr(sorted(new)) + ") <= set(value['" + field + "'])")
     prepare = replace(prepare, 'set(' + repr(sorted(previous.REQUIRED_CHANGED | previous.REQUIRED_ADDED)) + ') <= selected',
                       'set(' + repr(sorted(REQUIRED_CHANGED | REQUIRED_ADDED)) + ') <= selected')
+    prepare = add_local_build_sources(prepare)
     binder = inputs[BASE + 'bind-release.py'].decode('utf-8')
     for name, value in {'A': access, 'PACK': output / 'package', 'OPS': output / 'operators', 'PREPARE': output / 'prepare-package.py'}.items():
         binder = assignment(binder, name, 'Path(' + repr(str(value)) + ')')

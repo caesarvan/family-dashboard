@@ -94,6 +94,7 @@ def test_required_scope_covers_snapshot_sessions_hosting_and_preservation():
     }
     assert adapter.REQUIRED_ADDED == {
         'frontend/src/lib/journeySegments.ts', 'frontend/tests/journeySegments.test.ts',
+        'frontend/tsconfig.tests.json', 'frontend/typecheck.mjs',
         'frontend/src/components/JourneySegmentsPanel.tsx', 'frontend/src/components/JourneySegmentFields.tsx',
         'tests/test_journey_edit_snapshot.py', 'tests/browser_expo_segments_check.py',
         'deploy/expo_segments_release/prepare.py', 'tests/test_expo_segments_release.py',
@@ -181,6 +182,11 @@ def test_anonymous_insertion_refuses_missing_or_duplicate_anchor():
         with pytest.raises(RuntimeError): adapter.add_anonymous_checks(source)
 
 
+@pytest.mark.parametrize('code', ['', "    need(required <= tracked, 'Explicit allowlist source is not tracked')\n" * 2])
+def test_local_build_source_insertion_requires_unique_parent_guard(code):
+    with pytest.raises(RuntimeError): adapter.add_local_build_sources(code)
+
+
 def load_module(name, path):
     spec = importlib.util.spec_from_file_location(name, path)
     value = importlib.util.module_from_spec(spec); spec.loader.exec_module(value)
@@ -201,7 +207,7 @@ def synthetic_config(access):
         changedFiles=sorted(adapter.REQUIRED_CHANGED), addedFiles=sorted(adapter.REQUIRED_ADDED), removedFiles=[])
 
 
-def check_pinned_local_operators(source_root, git_repo, git_revision):
+def check_pinned_local_operators(source_root, git_repo, git_revision, freeze=None, build_evidence=None):
     """Inspect actual generated guards, never a replacement implementation."""
     inputs = adapter.read_sources(source_root)
     archive = adapter.safe_path(source_root / adapter.BASE / 'package/release.tar.gz')
@@ -215,6 +221,12 @@ def check_pinned_local_operators(source_root, git_repo, git_revision):
     assert re.fullmatch('[0-9a-f]{40}', git_revision)
     docker = subprocess.run(['git', '-C', str(adapter.safe_path(git_repo)), 'show', git_revision + ':Dockerfile'],
                             check=True, capture_output=True).stdout
+    tracked = set(subprocess.run(['git', '-C', str(git_repo), 'ls-tree', '-r', '--name-only', git_revision],
+                                check=True, capture_output=True, text=True).stdout.splitlines())
+    prepare_source = subprocess.run(['git', '-C', str(git_repo), 'show', git_revision + ':deploy/prepare_release.py'],
+                                    check=True, capture_output=True).stdout
+    evidence_raw = adapter.safe_path(build_evidence).read_bytes() if build_evidence else None
+    actual_freeze_raw = adapter.safe_path(freeze).read_bytes() if freeze else None
     def deny(*_args, **_kwargs): raise AssertionError('Generated operator attempted an external action')
     with tempfile.TemporaryDirectory(prefix='expo-segments-guards-') as folder, \
          patch('subprocess.run', deny), patch('subprocess.Popen', deny), patch('subprocess.check_output', deny), \
@@ -256,6 +268,34 @@ def check_pinned_local_operators(source_root, git_repo, git_revision):
         assert "TV did not redirect to Expo display" in post
         package = load_module('trip_package_test', output / 'prepare-package.py')
         config = synthetic_config(access); assert package.validate_config(config) == config
+        # Exercise the actual pinned parent selector and the generated selector,
+        # using a real Git tree and its unmodified global whitelist source.
+        parent_ns = {'__name__': 'parent_selector_review', '__file__': str(access / 'parent.py')}
+        exec(compile(inputs[adapter.PREPARE_SOURCE], parent_ns['__file__'], 'exec'), parent_ns)
+        parent_selected = parent_ns['selected_sources'](tracked, prepare_source)
+        selected = package.selected_sources(tracked, prepare_source)
+        assert selected - parent_selected == set(adapter.LOCAL_BUILD_SOURCES)
+        assert parent_selected <= selected
+        assert adapter.REQUIRED_CHANGED | adapter.REQUIRED_ADDED <= selected
+        assert not set(adapter.LOCAL_BUILD_SOURCES) & expected_paths  # Not Python runtime/Node execution.
+        for missing in adapter.LOCAL_BUILD_SOURCES:
+            with pytest.raises(RuntimeError, match='Explicit allowlist source is not tracked'):
+                package.selected_sources(tracked - {missing}, prepare_source)
+        extras = {'frontend/tests/private-finance.json', 'frontend/tests/other.test.ts',
+                  'frontend/node_modules/private.js', 'frontend/dist/index.html', 'frontend/.env.local'}
+        assert not extras & package.selected_sources(tracked | extras, prepare_source)
+        with pytest.raises(RuntimeError, match='Generated Expo output unexpectedly tracked'):
+            package.selected_sources(tracked | {'static/experience/extra.js'}, prepare_source)
+        input_count = None
+        if evidence_raw:
+            evidence = contract.validate_evidence(json.loads(evidence_raw))
+            assert evidence['sourceHead'] == git_revision
+            assert set(evidence['inputFiles']) <= selected
+            input_count = len(evidence['inputFiles'])
+        if actual_freeze_raw:
+            actual_config = json.loads(actual_freeze_raw, object_pairs_hook=adapter.unique)
+            # This pure config check never calls inspect_inputs/packaging/binding.
+            assert package.validate_config(actual_config) == actual_config
         # A real final-freeze generation must retain its explicit selection/count;
         # 9991 here is deliberately synthetic, never a collected production count.
         freeze = access / 'synthetic-freeze.json'; freeze.write_text(json.dumps(config))
@@ -326,6 +366,13 @@ def check_pinned_local_operators(source_root, git_repo, git_revision):
             actualDockerUnchanged=docker == old_docker, gitRevision=git_revision,
             preservationStageValidationUnchanged=True, recursiveGeneratedSyntaxVerified=True,
             syntheticFinalFreezeSelectionAndCountVerified=True,
+            exactLocalBuildSources=list(adapter.LOCAL_BUILD_SOURCES),
+            requiredSourcesSelected=True, missingLocalBuildSourcesRejected=3,
+            extraLocalSensitiveOrGeneratedSourcesRejected=True,
+            actualBuildInputCount=input_count,
+            actualBuildEvidenceSha256=adapter.sha(evidence_raw) if evidence_raw else None,
+            actualFreezeAccepted=actual_freeze_raw is not None,
+            actualFreezeSha256=adapter.sha(actual_freeze_raw) if actual_freeze_raw else None,
             exactAnonymousEndpointsAdded=list(new_paths[:2]), anonymous401Required=True,
             validationMemoryMiB=896, validationTmpfsMiB=640,
             productionOperations=False, unboundNetworkOrProcessActions=False)
@@ -337,6 +384,9 @@ if __name__ == '__main__':
     parser.add_argument('--source-root', type=Path, required=True)
     parser.add_argument('--git-repo', type=Path, required=True)
     parser.add_argument('--git-revision', required=True)
+    parser.add_argument('--freeze', type=Path)
+    parser.add_argument('--build-evidence', type=Path)
     args = parser.parse_args()
     assert sys.dont_write_bytecode and not sys.flags.optimize
-    print(json.dumps(check_pinned_local_operators(args.source_root, args.git_repo, args.git_revision), indent=2))
+    print(json.dumps(check_pinned_local_operators(args.source_root, args.git_repo, args.git_revision,
+                                                args.freeze, args.build_evidence), indent=2))
