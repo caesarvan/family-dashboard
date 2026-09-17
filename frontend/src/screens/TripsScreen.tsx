@@ -39,7 +39,9 @@ export default function TripsScreen(props:Props) {
   const alive=useRef(true), readVersion=useRef(0), writing=useRef(false), requestKey=useRef<number|undefined>(undefined);
   const [journeys,setJourneys]=useState<Journey[]|null>(null),[detail,setDetail]=useState<Journey|null>(null),[legacy,setLegacy]=useState<Trip|null>(null);
   const [draft,setDraft]=useState<Draft|null>(initial.current.draft),[preview,setPreview]=useState<Preview|null>(null),[pending,setPending]=useState<Pending|null>(null);
-  const [uncertain,setUncertain]=useState(false),[blocked,setBlocked]=useState(false),[busy,setBusy]=useState(''),[reading,setReading]=useState(false);
+  const [uncertain,setUncertain]=useState(false),[blocked,setBlocked]=useState(false),[busy,setBusy]=useState(''),[reading,setReadingState]=useState(false);
+  const readingNow=useRef(false);
+  const setReading=(value:boolean)=>{readingNow.current=value;setReadingState(value);};
   const [error,setError]=useState(initial.current.error),[notice,setNotice]=useState(''),[query,setQuery]=useState(''),[discard,setDiscard]=useState(false);
   const editing=useRef(false); editing.current=!!draft;
   const selected=useRef(''); selected.current=detail?.id||'';
@@ -74,7 +76,9 @@ export default function TripsScreen(props:Props) {
     if(props.user.role==='member'&&!(useSeed&&seed.present))void load();
     return()=>{alive.current=false;++readVersion.current;pendingReschedule(false);};
   },[actor]);
-  useEffect(()=>{if(props.user.role==='member'&&!initial.current?.error&&!editing.current&&!writing.current&&!panelOpen.current)void load(selected.current||undefined);},[props.state.revision]);
+  // An explicit detail read owns readVersion until it finishes. A concurrent
+  // household refresh must not supersede it with a background list-only read.
+  useEffect(()=>{if(props.user.role==='member'&&!initial.current?.error&&!readingNow.current&&!editing.current&&!writing.current&&!panelOpen.current)void load(selected.current||undefined);},[props.state.revision]);
   useEffect(()=>{
     const incoming=props.tripRequest;
     if(!incoming||incoming.key===requestKey.current)return;
