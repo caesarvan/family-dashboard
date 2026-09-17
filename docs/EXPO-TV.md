@@ -43,4 +43,8 @@
 - `frontend/src/ui/TVPhotoPlayer.web.tsx`、`TVPhotoPlayer.model.ts`：短授权 JPEG；同名 `.tsx` 原生回退不播放，不等于已支持原生 App。
 - 服务端继续复用 `app.py`、`tv_display.py`、`media_playback.py` 与 `household_media.py`；契约见[显示设置](TV-DISPLAY.md)、[照片播放](MEDIA-PLAYBACK.md)、[Expo 托管](EXPO-WEB.md)。
 
-首轮组合固定为 `51842b75719bbf8863576fdf5874b2c61ed19f79`（tree `85ca5eb773023ba2bf3ec90080ec4ce1454ad2bb`），完整 TypeScript 检查已通过。播放器模型另已实际通过 8 项 Node 测试；源码审查、模型测试、完整构建、真实临时浏览器和生产发布分别记录。组合构建／浏览器及实际设备结论尚待取得，不把存在测试文件当作通过。历史 Google Photos 本人选片 5／5 预览并保存成功仍成立，未重新进行真实账号轮播或完整场景 C 验收；精选回顾、视频、iCloud／NAS 与实体电视长期运行仍在[产品计划](PRODUCT-PLAN.md)中。
+首轮组合 `51842b75719bbf8863576fdf5874b2c61ed19f79`（tree `85ca5eb773023ba2bf3ec90080ec4ce1454ad2bb`）已通过完整 TypeScript 检查和真实构建，构建证据 `expo-tv-build-20260917-r1/build-evidence.json` SHA-256 为 `89c7cde9a1bd1c0c3a161fa83ac2c8f4714d1ccb48ee13706c631255d710cac0`。R1 浏览器完成 13 项中的第 1 项后，在卡片顺序断言中止：选择器把 Paper 的内部节点也计入，测试已修正。失败原件 `expo-tv-20260917T054020942688Z/result.json`（SHA-256 `068e7c35711453327b4933cd04c688fece749cf33abb4572035256791fc524e1`）保留，不计整套通过。
+
+R2 冻结组合为 `3adaf485ba1ce0d47c5445c0659f5df3e1c5e8d9`，tree `10760ad133c23349315a0ea33ad32e32e9e59098`。真实构建已完成，`expo-tv-build-20260917-r2/build-evidence.json` SHA-256 为 `c376d1f9094e5aa306746b88c8e47d0d5b941f5ef74f66f4e21ec8bd7ef1e240`；浏览器正在执行，尚无完整通过结论，也未部署。构建原件位于本机交付目录，浏览器原件位于独立 `expo-tv-view-tests` 工作树的 `test-results/`，不将这些运行产物提交 Git。
+
+播放器模型另已实际通过 8 项 Node 测试；源码审查、模型测试、完整构建、真实临时浏览器和生产发布分别记录。历史 Google Photos 本人选片 5／5 预览并保存成功仍成立，未重新进行真实账号轮播或完整场景 C 验收；精选回顾、视频、iCloud／NAS 与实体电视长期运行仍在[产品计划](PRODUCT-PLAN.md)中。
