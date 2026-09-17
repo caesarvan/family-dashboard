@@ -213,7 +213,7 @@ class Run(BaseRun):
             self.category(page, '旅行照片'); expect(page.get_by_text('这一页没有可见照片', exact=True)).to_be_visible()
             trip = self.get(ctx, '/api/journeys/' + journey['id'])['trip']
             self.write(ctx, 'DELETE', '/api/items/trips/' + trip['id'], {'revision': trip['revision']})
-            assert self.get(ctx, '/api/journeys/' + journey['id'])['trip'] is None
+            self.get(ctx, '/api/journeys/' + journey['id'], 404)
             self.get(ctx, self.list_path(journey, 'places'), 404)
             button(page, '刷新旅行回顾').click(); expect(page.get_by_role('alert')).to_be_visible(timeout=15000); self.assert_cleared(page)
             expect(button(page, '返回旅行详情')).to_be_enabled()
@@ -400,7 +400,7 @@ class Run(BaseRun):
             self.open_panel(page, journey); self.open_photo(page)
             page.wait_for_function("getComputedStyle(document.documentElement).colorScheme === 'dark'")
             for width in WIDTHS:
-                self.image_loaded(page); self.capture(page, 'recap-photo-dark', width, heading(page, '照片详情'))
+                self.image_loaded(page); self.capture(page, 'recap-photo-dark', width, page.get_by_test_id('recap-photo-image'))
             button(page, '关闭照片详情').focus(); expect(button(page, '关闭照片详情')).to_be_focused()
             page.keyboard.press('Enter'); self.loaded(page); expect(page.get_by_test_id('recap-photo-detail')).to_have_count(0)
             page.keyboard.press('Tab'); focused = page.evaluate("() => ({role:document.activeElement?.getAttribute('role'),label:document.activeElement?.getAttribute('aria-label')})")
