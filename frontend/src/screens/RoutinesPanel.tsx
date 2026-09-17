@@ -122,7 +122,7 @@ function Workspace(props: Props & { identityKey: string }) {
   }
   async function accepted(receipt: RoutineReceipt, ticket: number, signal: AbortSignal) {
     if (!current(ticket)) return;
-    install({ unknown: null, preview: null, draft: null, base: null, blocked: false, reviewed: false, receipt, selected: receipt.planId });
+    install({ context: null, unknown: null, preview: null, draft: null, base: null, blocked: false, reviewed: false, receipt, selected: receipt.planId });
     setMessage('操作已确认。下面的回执是历史结果，当前计划另行读取。');
     await load(ticket, signal, receipt.planId); if (current(ticket)) void latest.current.household.refresh();
   }
@@ -175,7 +175,7 @@ function Workspace(props: Props & { identityKey: string }) {
       });
       if (!current(ticket)) return;
       if (result?.ok !== true) throw new RoutineError('完成状态的返回无法核对，请读取当前计划。');
-      install({ completion: null }); setMessage('当前事项已完成。后继由后台调度生成，请按下方真实状态核对。');
+      install({ context: null, receipt: null, completion: null }); setMessage('当前事项已完成。后继由后台调度生成，请按下方真实状态核对。');
       await load(ticket, signal); if (current(ticket)) void latest.current.household.refresh();
     });
   }
@@ -224,6 +224,10 @@ function Workspace(props: Props & { identityKey: string }) {
         <Text>{labels[model.receipt.operation]} · {momentText(model.receipt.createdAt)}</Text>
         <Text>{model.receipt.generated ? `当时生成了一项${model.receipt.generated.kind === 'tasks' ? '待办' : '采购'}，期次日期 ${model.receipt.generated.scheduledOn}。` : '这次操作没有生成新事项。'}</Text>
         <Text>这是历史回执。下方重新读取的计划才表示当前状态，不会恢复后来删除或修改的内容。</Text>
+        {button('读取当前计划', () => void job(load), busy)}
+      </View></SectionCard>}
+      {!!model.selected && !model.context && !model.receipt && <SectionCard title="当前计划待核对"><View testID="routines-current-unavailable" style={small}>
+        <Text>已确认的操作不会重复执行。重新读取后，才显示当前事项和后续操作。</Text>
         {button('读取当前计划', () => void job(load), busy)}
       </View></SectionCard>}
       {model.blocked && !model.unknown && <SectionCard title="计划已变化，请重新核对"><View testID="routines-conflict" style={stack}>
