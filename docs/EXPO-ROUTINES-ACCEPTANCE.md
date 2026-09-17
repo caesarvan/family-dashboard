@@ -1,6 +1,6 @@
 # Expo 家庭例行计划验收
 
-本轮把已有周期家务／采购规则接入新版「更多 → 家庭例行计划」。规则、worker 与表结构保持；预览给出后续三期，明确确认才生成事项。计划在家庭共享，负责人是分工；操作回执只由发起成员读取。本地 R3 十组真实流程已通过，Linux 与发布仍待完成；真实家庭、云端、长期调度和实体设备未验。
+本轮把已有周期家务／采购规则接入新版「更多 → 家庭例行计划」。规则、worker 与表结构保持；预览给出后续三期，明确确认才生成事项。计划在家庭共享，负责人是分工；操作回执只由发起成员读取。本地 R3 十组真实流程及 Linux 277 项通过、1 项精确 Windows 跳过分别核验，2026-09-17 19:21:11（北京时间）已激活，19:21:45 TLS 读回通过；真实家庭、云端、长期调度和实体设备未验。
 
 ## 固定实现与审查
 
@@ -45,10 +45,41 @@ R3 真实临时 Flask／SQLite／Edge 实际 **10／10 独立流程通过**，�
 
 实际通过涵盖待办创建与重启持久化、采购未知／零预算、完成与真实 worker 逐期推进、暂停／恢复／跳过／归档、保存成功但读回失败时旧操作失效、同户共享管理及跨户／TV 隔离、409 保留草稿、已提交／未到达的未知恢复、过期原请求重放与精确 410、后台／离线及迟到账户结果丢弃。每组使用独立虚构家庭，没有成功业务响应替身。签名时钟推进 601 秒、visibility 注入和显式 worker tick 是测试条件，不代表真实经过时间或长期调度验收。
 
-Linux 和生产验收仍待完成，单独提交或合入 main 不代表已部署。
+上述为本地组合验证记录。后续 Linux 与生产结果见下方发布段落，不能用单独提交或合入 main 代替部署验收。
 
 ## 范围边界
 
 只生成本地共享待办或采购，不自动写 Microsoft／Google、不下单或计入付款。预览／回执 GET 不写业务记录，未知结果保留原凭证；GET 404 不证明未写，只有写锁内精确 410 才允许重新预览。完成 PATCH 没有操作回执，失败只读核对。历史回执与当前计划分开，不恢复删除／归档内容。实际显式 worker tick 的效果不等于长期墙钟调度验收。
 
 实体电视暂时无法验收，保持待确认。屏幕阅读器全站审计、真实云、本人新流程、原生安装与完整产品目标另行跟踪。
+
+## 最终发布准备
+
+已审候选 `654b1e90df5facaf1da1c9b774231c0ba00e1c57` 合入正式 integration `3d8e90aec1a4006d99bb26a51464d0ef0f5404f0`，再合入 main `3387bc0c29f02ef89549d5ec56ce94f51cff67b0`，同树 `f8dc8e5d33f3c5e447c1fcfe5eed2b5e2cbf989e`。相对 R3 仅四篇文档变化；174 构建输入、275 Python 源及所有执行夹具均与实际受验版本匹配。
+
+最终 `expo-routines-freeze-20260917-r1.json` SHA256 `1712c7848500b9d209df09bd6b4e1e50ab680469ac869bb5ccd77e05b18478a6`，完整差异 18 改／14 增／1 删。九个实际生成文件经非作者固定字节审查，等于已审适配器对真实父原件及最终 freeze 的输出；stage／validate／expo_contract 与父逐字节相同。55→55 无 DDL、原行／schema／序列／平台库保全、896 MiB 内存及 640 MiB tmpfs、精确 Windows 跳过和阶段不得重放等保护保持；post 另新增两个例行匿名接口严格要求 401。
+
+七算子审查绑定 `operator-review.json` SHA256 `418ea569e3b6cbfe63e4749c508211185522ac269b16e563a09d16198515f8d4`。首次 freeze 调用误用了相对路径，被绝对路径保护在创建输出前拒绝；改为绝对路径后冻结成功，未放宽校验或执行生产操作。编辑器自动生成的九份 `.VSCodeCounter` 统计报告留在原位，逐份摘要保持，仅加入本地 `.git/info/exclude`，不进入源码提交或发布包。
+
+本节记录冻结和工具审查，实际 Linux 与生产结果如下。
+
+<a id="expo-routines-release"></a>
+## 实际发布：2026-09-17 19:21
+
+已安装 main `3387bc0c29f02ef89549d5ec56ce94f51cff67b0`、source／integration `3d8e90aec1a4006d99bb26a51464d0ef0f5404f0`，同树 `f8dc8e5d33f3c5e447c1fcfe5eed2b5e2cbf989e`。五阶段 build／validate／stage／activate／post_readback 各执行一次，均退出 0；激活于北京时间 **19:21:11** 完成，正常 TLS 读回于 **19:21:45** 完成。后续文档或工具提交不改变该运行身份。
+
+- 发布目录：`/opt/family-dashboard-releases/expo-routines-55-20260917T112012308579Z`。
+- 候选及阶段报告目录：`/opt/family-dashboard-candidates/expo-routines-tools-20260917-r1`；本机同名私有目录保留原命令 stdout／stderr。原件和后续独立读回均不进入 Git。
+- archive SHA256：`41735eb43154748bc912e4216c07b7131f7fdbd91e668c8c0da8afa8e1d95e55`；manifest SHA256：`0cb3bb21365f6dc923264b1a6504396dec303a932b766e926f336937580ad8a4`；绑定 SHA256：`1468a4d0c35c27f195b04113a83893c1efd083f17537fe85ece8df8dd70ebf34`。
+- app／sync／media 镜像：`sha256:3c576cd3814f7ec8482ff190017eb3cc9a4c3b6dd2dd0aee7d9623e8d9ae7125`；web 镜像保持 `sha256:1ae82dcc4a34bcd976195b3c4c5a6b7e569505527a1e2a28c2101e032159a5c7`。
+- 实际 Linux 九模块共 **278 项：277 通过、1 精确跳过、0 失败／错误／deselected**。唯一跳过为 `tests.test_frontend_runtime::test_windows_junction_rejected`，理由 `Windows junction semantics`，无通配跳过。JUnit SHA256 `1e65ef28a6255e59a1478e69159fef6aceb80b8b83a1cfe62eb3f5eaaa3b6517`；日志 SHA256 `c55c574c9ed0dd932b20a8481ceaae78e09e2a7fffd7558db80a54d0dd013a9a`；runtime SHA256 `5a257bd53b94327ff8ffa542173e81b7f33e5f2a924c259df000a82d34f542f7`。运行来源前后核验通过，未用 collection 代替测试执行。
+- 包含 **626 文件＝603 选定源码＋23 导出**，实际读回 626 文件及 114 个运行文件；75 项 HTTPS 静态资源摘要、24 项生成内部资源拒绝和 1 项退役资源拒绝均通过。Expo 页面、`/tv` 精确跳转与 classic 回退均核对；27 个唯一匿名 API 全为 401，其中包含本次 context／本人例行操作回执。
+- 激活期间停写并完整备份 **1 个家庭、2 个数据库**；保持 **55→55**，无 DDL。原表的行、schema、序列及两张平台注册表在新 app 启动后全部保持。before／after-app JSON 同 SHA256 `3ad80ea808581efe008fa7a012063507f85fef3fe81ad81f9622e62f970e0caf`；preservation SHA256 `9b8c0b9b4a06a13554fe04eaea9580ea0fa0fec6585e922f9a4ba1e09c407bfc`。
+- 环境配置保持；四服务运行、零重启，app 为 healthy，其余三个没有健康检查字段，不能统称四项 healthy。
+- post 新一次逐库在线备份成功，timer active；manifest `manifest-20260917T112140694210Z.json`，SHA256 `24f62e39465978575e031c5eba954e526ae56c89ed29e56c98eb7fff0e9cbb27`，两库和每户 55 表快照核验通过。这是每库分别在线备份，不是全组全局原子快照，也未重新获取实时全组数据快照。
+
+独立非作者于北京时间 19:23:37 保存 13 份 JSON／XML／log 原件，远端与本地 SHA 全部一致；19:23:41 的新鲜只读摘要再次核对安装身份、四服务与配置摘要及权限 0600，并单独核对两个例行匿名端点均 401。完整绑定、构建、验证、READY、激活、post 及五份保全原件链通过；JUnit 为 278 唯一项、277 通过及唯一精确跳过（329.71 秒），集合与 R3 collection 一致，37 个实际加载模块及 114 运行文件在测试前后保持。
+
+私有证据目录 `expo-routines-published-audit-20260917T112323006803Z`：audit SHA256 `f989ba5892600b48f36e0a5e6c3ff2f34d6fe39ce73395490af08ec054895e04`，readback 索引 SHA256 `a463448b1237418d09d452c5040273334997e7577900bb21c71a98a3225c5b4e`，activation 原件 SHA256 `1388af2d574328a3cfd8c5711f48aef2e7fd93550f576e460e1604643f4b11c6`，post 原件 SHA256 `df5aed15de51d8dc4e7c71602a3908315cc7103dbdf1e26da5cf8ef92d9a2b2b`。采集未下载数据库或环境配置内容，未重放发布阶段或另启备份，也未进行云端或设备操作。
+
+本次发布证明服务、静态产物、匿名权限及启动时数据保全；没有使用真实家庭事项做写入验收，未替代本人长期例行计划体验、外部云同步或实体电视验收。

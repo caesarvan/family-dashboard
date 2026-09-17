@@ -1,6 +1,6 @@
 # Expo 例行计划客户端契约
 
-本轮独立开发候选，基线 `e4499b88b89124f19fd6eb040435d133bdfffc7d`；未部署。复用 [ROUTINES](ROUTINES.md) 的共享规则、当前事项、worker 与三张现有表，不增加 schema、云写入或新调度器。
+本接口已随 2026-09-17 19:21:11（北京时间）的例行计划版本发布，实际来源与验证见 [发布验收](EXPO-ROUTINES-ACCEPTANCE.md#expo-routines-release)。独立开发基线为 `e4499b88b89124f19fd6eb040435d133bdfffc7d`。复用 [ROUTINES](ROUTINES.md) 的共享规则、当前事项、worker 与三张现有表，不增加 schema、云写入或新调度器。
 
 ## 读取、预览与确认
 

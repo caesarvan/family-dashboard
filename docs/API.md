@@ -47,7 +47,7 @@
 
 ## 家庭例行计划接口
 
-本轮本地候选复用原三张表，补充确认回执读回及过期恢复；尚未发布。前端恢复契约见 [Expo 例行计划 API](EXPO-ROUTINES-API.md)，实际安装状态仍以 [HANDOFF](HANDOFF.md) 为准。
+新版家庭例行计划已于 2026-09-17 19:21:11（北京时间）发布，复用原三张表，补充确认回执读回及过期恢复。前端恢复契约见 [Expo 例行计划 API](EXPO-ROUTINES-API.md)，实际安装状态仍以 [HANDOFF](HANDOFF.md) 为准。
 
 - `GET /api/routines/context`：成员只读共享计划、当前项、未来日期和最近十期；可选 planId/page/includeArchived，每页 40，不在 GET 生成。
 - `POST /api/routines/preview`：create/update/pause/resume/skip/archive，返回未来三期、当前操作将生成的事项、十分钟预览签名和 `operationKey`。

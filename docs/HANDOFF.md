@@ -1,6 +1,8 @@
 # 联合开发接手说明
 
-**最新已发布：Expo 旅行资料与日程／清单优化，2026-09-17 18:13:25（北京时间）激活，18:13:50 正常 TLS 读回通过。** 安装 main `c7bffed2aa51d55b88197d9c84ecbe1b7bc27337`／source `03c150c0026ea66b28027424cef00be648e4ffa5`，同树 `da500d99918be70249f7ccdcaeb78318d605f8d8`。资料 R4 的 9 条流程／12 图与日程 R2 的 5 条流程／18 图分别验收，最终打包逐项证明运行字节一致；服务器 235 通过及唯一精确 Windows 跳过。613 包文件、114 运行文件及 75 HTTPS 资源读回通过，55→55 原数据、环境与 web 镜像保持。详细证据见 [本轮发布](EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md#expo-documents-release)。周期家务／采购的新界面正在独立功能分支开发，尚未合入本次运行包。
+**最新已发布：Expo 家庭例行计划，2026-09-17 19:21:11（北京时间）激活，19:21:45 正常 TLS 读回通过。** 安装 main `3387bc0c29f02ef89549d5ec56ce94f51cff67b0`／source `3d8e90aec1a4006d99bb26a51464d0ef0f5404f0`，同树 `f8dc8e5d33f3c5e447c1fcfe5eed2b5e2cbf989e`。更多入口、独立面板、本人操作回执与会话复核已上线；规则、worker 和 55 表结构保持。R3 本地十组真实流程通过，服务器 277 通过及唯一精确 Windows 跳过；626 包文件、114 运行文件、75 HTTPS 资源和 27 个匿名接口读回通过。完整身份、失败历史及保全证据见 [本轮发布](EXPO-ROUTINES-ACCEPTANCE.md#expo-routines-release)，接缝见 [例行计划](EXPO-ROUTINES-INTEGRATION.md)。后续文档提交不改变实际安装包；真实长期调度和实体设备另验。
+
+**此前已发布：Expo 旅行资料与日程／清单优化，2026-09-17 18:13:25（北京时间）激活，18:13:50 正常 TLS 读回通过。** 安装 main `c7bffed2aa51d55b88197d9c84ecbe1b7bc27337`／source `03c150c0026ea66b28027424cef00be648e4ffa5`，同树 `da500d99918be70249f7ccdcaeb78318d605f8d8`。资料 R4 的 9 条流程／12 图与日程 R2 的 5 条流程／18 图分别验收，最终打包逐项证明运行字节一致；服务器 235 通过及唯一精确 Windows 跳过。613 包文件、114 运行文件及 75 HTTPS 资源读回通过，55→55 原数据、环境与 web 镜像保持。详细证据见 [本轮发布](EXPO-JOURNEY-DOCUMENTS-ACCEPTANCE.md#expo-documents-release)。该 18:13 包当时尚未包含周期家务／采购新版界面，随后已按文首记录发布。
 
 **此前已发布：Expo 成员外观，2026-09-17 16:17:28（北京时间）激活，16:17:57 正常 TLS 读回通过。** 安装 main `e5b12c33b325359dc7629e19bf8a4d0b95f9b2ca`／source `c75676222406a6845e0c8527f43ef99d0143454d`，同树 `81e170870848042bee9f6a5ad7e984d7b70fbe1c`。`AppearancePanel`、provider 单调版本安装、Paper 主题／密度及 classic CAS／生命周期保护已接入「更多 → 外观设置」，电视设置独立。接口 64 项、最终 Node 40 项、完整 typecheck 与本地浏览器 11 流程／17 图分次通过；新镜像 Linux 226 通过加唯一精确 Windows 跳过，55→55 原数据及配置保持，595 包文件／114 运行文件／75 HTTPS 静态资源读回通过。完整身份与证据见 [本轮验收](EXPO-APPEARANCE-ACCEPTANCE.md#expo-appearance-release)，操作与接缝见 [成员外观](EXPO-APPEARANCE.md)。后续文档不改变运行包；真实本人公网流程和实体设备仍未验收。
 
@@ -335,7 +337,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | 本人数据副本 | `data_portability.py`、`static/data-portability.js` | [导出契约](PORTABILITY.md)；仅本人私密与显式勾选的共同记录。排除令牌、会话/设备认证表和暂存预览；不是数据库恢复包 |
 | 部署与备份 | `Dockerfile`、`compose.yaml`、`deploy/` | [部署指导](DEPLOYMENT.md)、[运维说明](OPERATIONS.md)；源码白名单、现有配置、全部家庭、停止写入、成组备份及相配恢复 |
 
-路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)：当前源码 156 个方法／路径模板，包含本轮尚未发布的例行回执 GET；[机器索引](contract-inventory.json) 由实际应用的隔离新库生成。当前 55 张户内表与 2 张平台表，新增手工持仓操作回执表；完整字段见 [持仓 API](INVESTMENTS-API.md)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
+路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)：当前源码与本次安装版本均为 156 个方法／路径模板，包含例行回执 GET；[机器索引](contract-inventory.json) 由实际应用的隔离新库生成。当前 55 张户内表与 2 张平台表，新增手工持仓操作回执表；完整字段见 [持仓 API](INVESTMENTS-API.md)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
 
 ## 例行计划公共接缝
 
@@ -343,7 +345,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 
 `data_portability.py` 只在 `includeShared=true` 时加入 `shared.routines`。`home_assistant.py` 调用只读 `brief(con)`；`static/home-assistant.js` 按存在的数据显示例行计划待处理组。`static/product-shell.js` 提供三个入口并在共享状态刷新时通知例行模块；通知不发送请求、不重置草稿。新模块在 `product-shell.js` 之前加载。公开接口为 `HouseholdRoutines.open({planId?})`、`refresh()` 和 `notifyStateChanged()`。返回桥支持原待办／采购编辑器与 TaskPublish 初始选择页；保留未保存字段、图片和写中保护，显式返回重新核对原计划，不接管助理外层的关闭返回处理。Docker COPY 和 `deploy/prepare_release.py` 白名单都包含新后端。
 
-144 路由／53 户内表／2 平台表也是此前版本；当前源码为 156 路由／55 户内表／2 平台表，其中本轮例行回执 GET 尚未发布。资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
+144 路由／53 户内表／2 平台表也是此前版本；当前源码及本次安装版本为 156 路由／55 户内表／2 平台表，例行回执 GET 已发布。资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
 
 ## 已开发与待真实验证
 
