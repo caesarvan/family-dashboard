@@ -1,7 +1,7 @@
 export type CalendarSource = {id:string;name:string;accountId:string;provider:'google'|'microsoft';accountName:string;writeAuthorized:boolean};
 export type PublishedEvent = {title:string;start:string;end:string;allDay:boolean;location:string;note:string};
 export type LocalPublishedEvent = PublishedEvent & {id:string;revision:number};
-export type Publication = {id:string;entityId:string;sourceId:string;provider:string;status:string;error:string;reviewRequired:0|1;localRevision:number|null;updatedAt:string;localChangesPending:boolean};
+export type Publication = {id:string;entityId:string;sourceId:string;provider:string;status:string;error:string;reviewRequired:0|1;localRevision:number|null;updatedAt:string;localChangesPending:boolean|null};
 export type CalendarPublicationState = {journeyId:string;events:LocalPublishedEvent[];sources:CalendarSource[];publications:Publication[];note:string};
 export type CalendarPreview = {events:LocalPublishedEvent[];source:CalendarSource;previewToken:string;note:string};
 export type CalendarComparison = {local:PublishedEvent;remote:PublishedEvent|null;previous?:PublishedEvent|null;previewToken:string;note:string};
@@ -33,7 +33,7 @@ export function readCalendarState(value:unknown,journeyId:string):CalendarPublic
   for(const row of value.publications)if(!object(row)||!calendarId(row.id)||!calendarId(row.entityId)||!calendarId(row.sourceId)
     ||!text(row.provider,30)||!text(row.status,60)||!text(row.error)||![0,1].includes(row.reviewRequired as number)
     ||row.localRevision!==null&&(!Number.isSafeInteger(row.localRevision)||Number(row.localRevision)<0)
-    ||!text(row.updatedAt,100)||typeof row.localChangesPending!=='boolean')throw valid();
+    ||!text(row.updatedAt,100)||row.localChangesPending!==null&&typeof row.localChangesPending!=='boolean')throw valid();
   if(new Set(value.publications.map(v=>v.id)).size!==value.publications.length)throw valid();
   return value as CalendarPublicationState;
 }
@@ -50,6 +50,7 @@ export function readCalendarComparison(value:unknown,review:boolean):CalendarCom
 }
 export function publicationStatus(row:Publication):string {
   if(row.reviewRequired)return '旅行时间变化，请核对';
+  if(row.status==='published'&&row.localChangesPending===null)return '当前本地内容待核对，保留原云端状态';
   if(row.status==='published'&&row.localChangesPending)return '本地有新修改，等待云端确认';
   return calendarStatuses[row.status]||'状态暂不支持，请刷新核对';
 }

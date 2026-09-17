@@ -17,8 +17,17 @@ test('state rejects malformed events, duplicate bindings and unreliable grant ty
  }
 });
 test('deleted local event can still expose its existing publication for safe stop',()=>{
- const value=snapshot();value.publications[0].entityId='deleted';value.publications[0].status='local_deleted';
+ const value=snapshot();value.publications[0].entityId='deleted';value.publications[0].status='local_deleted';value.publications[0].localChangesPending=null;
  assert.deepEqual(publicationActions(readCalendarState(value,'journey1').publications[0]),[]);
+});
+test('first pending queue has no last published hash and accepts null comparison',()=>{
+ const value=snapshot();Object.assign(value.publications[0],{status:'pending',localRevision:null,localChangesPending:null});
+ assert.equal(publicationStatus(readCalendarState(value,'journey1').publications[0]),'等待同步');
+ value.publications[0].status='needs_authorization';assert.match(publicationStatus(readCalendarState(value,'journey1').publications[0]),/等待日历写入授权/);
+});
+test('missing local event does not imply last successful remote event is still up to date',()=>{
+ const value=snapshot();Object.assign(value.publications[0],{entityId:'missing',localChangesPending:null});
+ assert.match(publicationStatus(readCalendarState(value,'journey1').publications[0]),/待核对/);
 });
 test('review flag prevents retry/resume even when paused',()=>{
  const value={...row(),status:'paused',reviewRequired:1};assert.deepEqual(publicationActions(value),['review']);
