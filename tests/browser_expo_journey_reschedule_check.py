@@ -398,6 +398,66 @@ class Run(CoordinationRun):
             assert self.get(ctx, '/api/state')['finance'] == finance and self.snapshot() == before
             self.passed('Home: one unconfirmed shared-finance message opens real finance; four widths use natural card heights; keyboard account focus remains visible within rounded bounds')
 
+    def nested_map_recovery(self, browser):
+        with self.flow(browser) as (ctx, page):
+            d = self.api_apply(ctx, {'title': '合成地图嵌套改期', 'start': '2028-05-03', 'end': '2028-05-06',
+                'budget': 0, 'memberIds': ['member1'], 'international': False,
+                'destinations': [{'key': 'map-city', 'country': '中国', 'city': '上海',
+                                  'arrival': '2028-05-03', 'departure': '2028-05-06'}],
+                'checklist': [{'key': 'pack', 'title': '合成地图准备', 'owner': 'member1', 'due': '2028-05-01'}],
+                'shopping': [], 'segments': []})
+            self.write(ctx, 'POST', PLACE, {'requestId': uuid4().hex, 'name': 'MAP-PENDING-RESCHEDULE',
+                'journeyId': d['id'], 'status': 'planned', 'startDate': '2028-05-03', 'endDate': '2028-05-06',
+                'coordinates': {'latitude': 31.23, 'longitude': 121.47}}, 201)
+            page.goto(self.base + '/app/map')
+            expect(page.get_by_role('heading', name='足迹地图', exact=True)).to_be_visible()
+            button(page, '打开地点：MAP-PENDING-RESCHEDULE').click()
+            expect(button(page, '查看旅行')).to_be_enabled()
+            button(page, '查看旅行').click()
+            expect(page.get_by_role('heading', name='旅行详情', exact=True)).to_be_visible()
+            expect(button(page, '返回足迹地图')).to_be_enabled()
+            button(page, '调整日期').click()
+            expect(textfield(page, '新的出发日期')).to_be_enabled()
+            self.dates(page, '2028-05-06', '2028-05-09')
+            self.choose(page, '合成地图准备')
+            self.preview_reschedule(page, d)
+            attempts = []
+            def lose(route):
+                attempts.append(route.request.post_data_json)
+                response = route.fetch(max_redirects=0)
+                assert response.status == 200 and response.json()['id'] == d['id']
+                route.abort('failed')
+            page.route(self.base + APPLY, lose)
+            button(page, '确认改期').click()
+            expect(page.get_by_test_id('journey-reschedule-unknown')).to_be_visible()
+            expect(button(page, '核对保存结果')).to_be_enabled()
+            page.unroute(self.base + APPLY, lose)
+            assert len(attempts) == 1
+            original_url, before, request_start = page.url, self.snapshot(), len(self.requests)
+            page.get_by_role('tab', name='首页', exact=True).click()
+            expect(page.get_by_test_id('journey-reschedule-unknown')).to_be_visible()
+            expect(textfield(page, '新的出发日期')).to_have_value('2028-05-06')
+            assert page.url == original_url and urlsplit(page.url).path == '/app/map'
+            expect(page.get_by_text('请先核对这次改期的保存结果，再离开旅行页面。', exact=True)).to_be_visible()
+            button(page, '知道了').click()
+            with page.expect_response(lambda r: urlsplit(r.url).path == OPERATIONS + attempts[0]['idempotencyKey']
+                                      and r.request.method == 'GET') as pending:
+                button(page, '核对保存结果').click()
+            assert pending.value.status == 200 and pending.value.json()['result']['id'] == d['id']
+            expect(button(page, '返回旅行详情')).to_be_enabled()
+            assert self.snapshot() == before
+            assert not [r for r in self.requests[request_start:] if r['method'] == 'POST']
+            saved = self.detail(ctx, d['id'])
+            assert saved['revision'] == d['revision'] + 1 and saved['tasks'][0]['id'] == d['tasks'][0]['id']
+            assert saved['tasks'][0]['due'] == '2028-05-04'
+            button(page, '返回旅行详情').click()
+            expect(button(page, '返回足迹地图')).to_be_enabled()
+            button(page, '返回足迹地图').click()
+            expect(page.get_by_role('heading', name='足迹地图', exact=True)).to_be_visible()
+            page.get_by_role('tab', name='首页', exact=True).click()
+            expect(page.get_by_role('heading', name=re.compile(r'，欢迎回家$'))).to_be_visible()
+            self.passed('Map nested trip: lost committed reschedule reply retains original operation across home navigation, recovers by receipt GET and returns through map without another shift; assistant nesting is not exercised')
+
     def run_scenarios(self, browser):
         with self.flow(browser) as (ctx, page):
             d, place, visited, rid = self.seed(ctx)
@@ -409,6 +469,7 @@ class Run(CoordinationRun):
         if self.provider == 'microsoft':
             self.dst_correction(browser, fold=False)
             self.dst_correction(browser, fold=True)
+            self.nested_map_recovery(browser)
             self.home_visuals(browser)
 
 
