@@ -72,6 +72,11 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
     if(activeActor.current!==actor||route!=='more'||activeRoute.current!==route||!message&&pendingNavigation.current.source!=='appearance')return;
     pendingNavigation.current={actor,locked:!!message,message:message||'',source:'appearance'};
   },[actor,route]);
+  const onDocumentsPending=useCallback((locked:boolean)=>{
+    if(activeActor.current!==actor||activeRoute.current!==route||!['trips','map','assistant','more'].includes(route)
+      ||!locked&&pendingNavigation.current.source!=='documents')return;
+    pendingNavigation.current={actor,locked,message:locked?'请先保存或放弃旅行资料的修改；结果不明时，先核对再离开。':'',source:'documents'};
+  },[actor,route]);
   const holdNavigation=()=>{
     if(pendingNavigation.current.actor!==actor||!pendingNavigation.current.locked)return false;
     setNotice(pendingNavigation.current.message);return true;
@@ -94,7 +99,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
   if(!state)return <View style={{padding:32,gap:16}}><Text>{error||'正在读取家庭数据…'}</Text><Button onPress={()=>void refresh()}>重新加载</Button><Button onPress={()=>handle(household.logout)}>退出登录</Button></View>;
   const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:async mode=>{
     try{await household.savePreferences({homeView:mode});}catch(failure){if(activeActor.current===actor)setNotice(failure instanceof Error?failure.message:'暂时无法保存显示范围');throw failure;}
-  },onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,onDevicePending,onHomeLayoutPending,onAppearancePending,
+  },onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,onDevicePending,onHomeLayoutPending,onAppearancePending,onDocumentsPending,
     onInventory:(id)=>{
       if(holdNavigation())return;
       if(id!==undefined&&!/^[a-f0-9]{24}$/.test(id)){setNotice('物品链接已失效，请重新搜索');return;}
@@ -122,5 +127,9 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
       </View>}
       {route==='home'?<HomeScreen {...props}/>:route==='calendar'?<CalendarScreen {...props}/>:route==='tasks'||route==='shopping'?<ListScreen key={route} kind={route} {...props}/>:route==='finance'?<FinanceScreen {...props}/>:route==='investments'?<InvestmentsScreen {...props}/>:route==='trips'?<TripsScreen {...props} onReschedulePending={onReschedulePending}/>:route==='photos'?<PhotosScreen {...props}/>:route==='assistant'?<AssistantScreen {...props}/>:route==='inventory'?<InventoryScreen {...props}/>:route==='map'?<MapWorkspace {...props}/>:route==='connections'?<AccountsScreen {...props} authResult={authResult}/>:route==='devices'?<DevicesScreen {...props}/>:<MoreScreen {...props}/>}
     </View>
-  </AppShell>{editor&&<ItemEditor key={actor+':'+editor.key} kind={editor.kind} item={editor.item} onDismiss={()=>setEditor(current=>current?.key===editor.key?null:current)}/>}<Snackbar visible={!!notice} onDismiss={()=>setNotice('')} duration={5000} action={{label:'知道了',onPress:()=>setNotice('')}}>{notice}</Snackbar></>;
+  </AppShell>{editor&&<ItemEditor key={actor+':'+editor.key} kind={editor.kind} item={editor.item} onDismiss={()=>setEditor(current=>current?.key===editor.key?null:current)}/>}
+    {/* Unmount dismissed notices so Paper's previous hide animation cannot hide the next one. */}
+    {!!notice&&<Snackbar key={actor+':'+notice} visible onDismiss={()=>setNotice(current=>current===notice?'':current)} duration={5000}
+      action={{label:'知道了',onPress:()=>setNotice(current=>current===notice?'':current)}}>{notice}</Snackbar>}
+  </>;
 }
