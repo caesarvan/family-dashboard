@@ -450,7 +450,9 @@ class Run(JourneyRun):
                 }''')
                 current = self.api_apply(ctx, {'title': '合成后检失败 ' + str(status),
                     'start': '2028-05-01', 'end': '2028-05-02', 'budget': 0,
-                    'memberIds': ['member1'], 'destinations': [], 'checklist': [], 'shopping': [], 'segments': []})
+                    'memberIds': ['member1'], 'destinations': [{'key': 'tokyo', 'city': '东京', 'country': '日本',
+                        'arrival': '2028-05-01', 'departure': '2028-05-02'}],
+                    'checklist': [], 'shopping': [], 'segments': []})
                 self.open_calendar(page, current['tripId'])
                 self.choose_source(page)
                 self.calendar_preview(page)
