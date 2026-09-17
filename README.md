@@ -1,6 +1,8 @@
 # 家庭中枢 · Family Dashboard
 
-**最新已发布：Expo 资产来源导入，2026-09-17 23:11:09（北京时间）激活，23:11:48 正常 TLS 读回通过。** 从「财务 → 更新资产来源」选择或粘贴来源 JSON，预览覆盖范围和记录后明确确认；未知保存结果可按原编号核对。本人数据、共同汇总范围和金额算法保持。 安装 main `e0e3beb33b1b419dd68583e89d03df8cd97ed25a`／source `3c113a9fab65910fd0a938e0105e142a058ce2e8`，同树 `4ea5a46328f16af86d814d009ac561fa2eadafed`。R2 本地 12 条流程／12 图与 Linux 183 通过、唯一精确 Windows 跳过分别验收；672 包文件、114 运行文件、75 HTTPS 资源和 34 个唯一匿名接口读回通过，55→55 原数据保持。 使用见 [来源导入](docs/EXPO-FINANCE-SOURCE-IMPORT.md)，完整证据见 [发布验收](docs/EXPO-FINANCE-SOURCE-ACCEPTANCE.md#expo-source-release)。后续纯文档不改变安装包身份。资产账户、负债与估值历史仍是独立开发候选；实体电视待设备可用后验收。
+**最新上线：本人资产账户与历史估值（2026-09-18 00:23）。** 从「财务 → 我的资产账户」记录资产或负债，按日期查看原币估值，支持归档、恢复与个人导出。账户明细仅本人可见，金额不与持仓、来源报告或公共荷包重复相加。12 条本地浏览器流程及服务器 207 项检查通过，另 1 项为 Windows 专属跳过；58 表升级和原数据保留、HTTPS 与新备份已核验。操作见 [资产账户](docs/EXPO-FINANCE-ACCOUNTS.md)，完整身份和证据见 [发布验收](docs/EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。实体电视待设备可用后验收。
+
+**此前已发布：Expo 资产来源导入，2026-09-17 23:11:09（北京时间）激活，23:11:48 正常 TLS 读回通过。** 从「财务 → 更新资产来源」选择或粘贴来源 JSON，预览覆盖范围和记录后明确确认；未知保存结果可按原编号核对。本人数据、共同汇总范围和金额算法保持。 安装 main `e0e3beb33b1b419dd68583e89d03df8cd97ed25a`／source `3c113a9fab65910fd0a938e0105e142a058ce2e8`，同树 `4ea5a46328f16af86d814d009ac561fa2eadafed`。R2 本地 12 条流程／12 图与 Linux 183 通过、唯一精确 Windows 跳过分别验收；672 包文件、114 运行文件、75 HTTPS 资源和 34 个唯一匿名接口读回通过，55→55 原数据保持。 使用见 [来源导入](docs/EXPO-FINANCE-SOURCE-IMPORT.md)，完整证据见 [发布验收](docs/EXPO-FINANCE-SOURCE-ACCEPTANCE.md#expo-source-release)。后续纯文档不改变安装包身份。该来源版本当时未包含手动资产账户；后续发布见文首，实体电视仍待验收。
 
 **此前上线：我的资产与来源报告，2026-09-17 21:58:49（北京时间）激活，21:59:22 正常 TLS 读回通过。** 从「家庭资金 → 我的资产与来源报告」查看本人资产、负债、历史收入、消费观察与资料覆盖，支持搜索和分页。共同资产／负债汇总沿用已批准的范围，个人账户和消费明细仍仅本人可见。本地九组流程／十二图、服务器 347 项通过及唯一精确 Windows 跳过分别核验，55→55 原数据保持。使用见 [资产与来源报告](docs/EXPO-BASELINE.md)，实际运行身份和证据见 [发布验收](docs/EXPO-BASELINE-ACCEPTANCE.md#expo-baseline-release)。该 21:58 版本未包含新版来源导入，后续已按文首记录发布。实体电视待验收。
 
@@ -32,7 +34,7 @@
 
 **财务使用从核对开始。** 导入账单后先看新增、重复、冲突和错误，再明确保存到本人账本；导入不会自动修改公共荷包余额。搜索或翻页打开交易详情，可查看首次来源、选择关联候选、预览金额后确认，关系可明确撤销。共同资金和个人消费分开，个人账户与消费明细仅本人可见。本人历史资产及来源覆盖从「我的资产与来源报告」查看，不与持仓或公共荷包重复相加。实际操作步骤见 [Expo 财务](docs/EXPO-FINANCE.md)、[来源报告](docs/EXPO-BASELINE.md)。
 
-**持仓与公共资金分开管理。** 本人完整持仓支持手工增改删、CSV／TXT／XLSX 整理表预览确认、稳定来源关联、版本冲突核对及保存结果读回。估值未知与零分开，历史回执不会恢复已删除记录。使用与开发入口见 [Expo 持仓](docs/EXPO-INVESTMENTS.md)、[持仓 API](docs/INVESTMENTS-API.md)；早期 753c 候选 424 项记录仍保留于 [候选验收](docs/VALIDATION.md#expo-holdings-candidate)。完整资产账户、负债管理、估值历史和汇率功能仍待实现。
+**持仓与公共资金分开管理。** 本人完整持仓支持手工增改删、CSV／TXT／XLSX 整理表预览确认、稳定来源关联、版本冲突核对及保存结果读回。估值未知与零分开，历史回执不会恢复已删除记录。使用与开发入口见 [Expo 持仓](docs/EXPO-INVESTMENTS.md)、[持仓 API](docs/INVESTMENTS-API.md)；早期 753c 候选 424 项记录仍保留于 [候选验收](docs/VALIDATION.md#expo-holdings-candidate)。手动资产／负债账户及日期估值现已上线；汇率与收益归因仍待实现。
 
 面向两位家庭成员的日程、待办、采购、旅行、财务与助理工作台。手机和电脑负责维护，50／75 英寸电视负责常亮展示；两个住处的屏幕可各自设置侧重、布局和主题。目前支持邀请建立独立家庭，每户两位成员。
 
@@ -71,7 +73,7 @@ JPEG 补丁后本人已实际选择 5 张、全部出现预览并明确保存，
 
 本次保留全部旧 43 表和账户配置，只新增地点表。Windows 和实际 Linux 各 899 项受影响测试通过（467 后端、432 工具；Windows 为已核对来源的多次执行），另有真实双户迁移、44 表恢复、浏览器和生产读回；范围与失败修订见 [验收记录](docs/VALIDATION.md)。实际 1 户的两库组备份通过，服务健康，47 项静态资源和 10 项匿名权限检查通过；随后全 295 源文件及五项正常 TLS HTTPS 读回通过。
 
-当时部署使用 [地点迁移流程](docs/JOURNEY-PLACES-RELEASE.md)，恢复演练显式选择 `journey_places44`。当前已是包含持仓操作回执的 55 表，不能重放历史迁移或本次已完成的 54→55；后续发布须绑定实际 55 表基线，完整恢复及发布边界见 [持仓发布](docs/HOLDINGS-RELEASE.md)。
+当时部署使用 [地点迁移流程](docs/JOURNEY-PLACES-RELEASE.md)，恢复演练显式选择 `journey_places44`。当前已是 58 表，后续发布须绑定实际运行身份，不能重放任何已完成迁移。完整恢复及边界见 [账户迁移](docs/FINANCE-ACCOUNTS-MIGRATION.md) 和 [部署指导](docs/DEPLOYMENT.md)。
 
 NVIDIA 已于 16:58 通过独立配置步骤启用，模型为 `us/azure/openai/gpt-4o-mini`。服务器使用真实运行配置完成一次虚构家庭的模型待办草稿请求，未执行草稿或读取真实家庭事项；本次媒体发布保留这些配置。本人相册已授权，历史十选三、后续十选五及 JPEG 补丁后五选五成功的验收边界见顶部；真实新云写入和实体设备仍单独验收。
 
@@ -358,14 +360,14 @@ node --test tests/test_calendar_views.js
 | 数据 | 命名卷 `family-dashboard_household-data` 挂载到 `/data`；平台目录与各家庭数据库位于卷内 |
 | 配置 | `/opt/family-dashboard/.env`，权限 0600；由 Compose 注入，更新保留原密钥和成员配置 |
 
-安装、DNS、HTTPS 证书与续期、OAuth 回调、备份及恢复见 [部署指导](docs/DEPLOYMENT.md)。当前为 55 表，首次安装与已有数据更新使用各自流程；本轮固定发布及数据保全见 [电视展示发布说明](docs/EXPO-TV-RELEASE.md)。[54 表回执恢复](docs/FINANCE-RECEIPTS-RELEASE.md) 和历史 43 表发布入口仅供追溯，不能用作当前发布入口：
+安装、DNS、HTTPS 证书与续期、OAuth 回调、备份及恢复见 [部署指导](docs/DEPLOYMENT.md)。当前为 58 表，首次安装与已有数据更新使用各自流程；本轮固定发布及数据保全见 [账户发布说明](docs/FINANCE-ACCOUNTS-RELEASE.md)。[54 表回执恢复](docs/FINANCE-RECEIPTS-RELEASE.md) 和历史 43 表发布入口仅供追溯，不能用作当前发布入口：
 
 - **首次安装**：配置新服务器与独立密钥，初始化新数据卷，签发证书，启动 app／sync／media／web 四个服务，再绑定第三方账户。
-- **已有环境更新**：冻结实际已安装 BASE 和审查后的候选，在独立目录构建与验证；通过部署演练和独立发布审查后，停止写者、核验全组备份、安装源码并分阶段核对全部数据，再开放服务。当前为 55 表；任何后续结构、依赖或配置变更需另行审查，不能重用历史 43→43 控制器或已完成的 53→54 迁移。
+- **已有环境更新**：冻结实际已安装 BASE 和审查后的候选，在独立目录构建与验证；通过部署演练和独立发布审查后，停止写者、核验全组备份、安装源码并分阶段核对全部数据，再开放服务。当前为 58 表；任何后续结构、依赖或配置变更需另行审查，不能重用历史 43→43 控制器或已完成的 53→54 迁移。
 
 源代码打包命令为 `python deploy/prepare_release.py`，产物为 `release.tar.gz` 与归档内的 `RELEASE-MANIFEST.json`；它不生成登录凭据。发布白名单包括源码、文档和测试，排除 `.env`、数据库、私人财务输入与运行证据。
 
-历史版本完成 37→40、40→42、[42→43](docs/JOURNEY-DOCUMENTS-RELEASE.md)、43→44、44→48、[48→53](docs/INVENTORY-MIGRATION.md)、[53→54](docs/FINANCE-RECEIPTS-RELEASE.md) 及 [54→55](docs/HOLDINGS-RELEASE.md)。[静态 43→43](docs/STATIC-RELEASE.md)、[SOURCE 43→43](docs/SOURCE-RELEASE.md) 和 DEPLOYMENT 第 5.2 节的历史算法均不可用于当前 55 表；已完成的一次性迁移不能重放。
+历史版本完成 37→40、40→42、[42→43](docs/JOURNEY-DOCUMENTS-RELEASE.md)、43→44、44→48、[48→53](docs/INVENTORY-MIGRATION.md)、[53→54](docs/FINANCE-RECEIPTS-RELEASE.md) 及 [54→55](docs/HOLDINGS-RELEASE.md)。[静态 43→43](docs/STATIC-RELEASE.md)、[SOURCE 43→43](docs/SOURCE-RELEASE.md) 和 DEPLOYMENT 第 5.2 节的历史算法均不可用于当前 58 表；已完成的一次性迁移（含本轮 55→58）不能重放。
 
 备份使用 SQLite 在线备份，包含平台注册目录及全部已注册家庭，输出散列清单并保留最近 14 组。它不是跨数据库的原子快照；恢复必须核对完整备份组、配套密钥与家庭映射，按 [会话恢复要求](docs/MEMBER-SESSIONS.md#恢复后使旧成员登录失效) 使旧成员登录失效。已完成两户虚构数据的[实际 Docker 恢复演练](docs/RECOVERY-REHEARSAL.md)，包含旧登录失效、照片和隔离核对。异地备份与真实生产恢复尚未完成。
 

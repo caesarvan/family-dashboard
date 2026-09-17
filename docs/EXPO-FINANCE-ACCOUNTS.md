@@ -1,7 +1,7 @@
-# Expo 本人手动资产账户（独立候选）
+# Expo 本人手动资产账户
 
 本模块提供本人手动资产、负债账户及按日估值的 Expo / React Native Paper 界面。
-尚未接入财务入口、组合构建、浏览器或生产验收；不能据组件和模型检查宣称上线。
+从「财务 → 我的资产账户」进入。已于 **2026-09-18 00:23:38（北京时间）上线**，00:24:23 正常 TLS 读回通过。当前为 58 张户内表；实际安装身份、组合检查及验证边界见 [发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。
 
 ## 使用步骤
 
@@ -53,7 +53,7 @@
 
 ## 客户端与接口
 
-- `FinanceAccountsPanel({ onBack, onPendingChange? })`；本候选不修改公共导航。
+- `FinanceAccountsPanel({ onBack, onPendingChange? })`；入口及草稿导航保护已组合接入。
 - GET `/api/finance-accounts?asOf=YYYY-MM-DD&status=active|archived|all`。
 - POST `/api/finance-accounts` 创建账户与首条估值，`requestId` 为 32 位小写十六进制，创建 revision 为 0。
 - PATCH `/api/finance-accounts/<id>` 修改名称 / 机构 / 备注 / 归档状态，携带当前 revision。
@@ -72,4 +72,4 @@
 已针对固定 API `e5628fb2525cc499700622567d14c6f1e731c122` 实际执行一次：15 项全部通过，无失败、跳过或取消；定向模型 / Panel 严格 TypeScript 检查 0 诊断。
 测试包含真实写入超过 JS 安全整数范围的汇总、53 条估值的两页读取及新会话精确历史重放。
 原件位于作者工作树 ignored `test-results/accounts-node-r1.tap` 与 `accounts-types-final.log`，最终交付另附 SHA；没有重跑 API 作者的 81 项专项，也不相加为一个测试集合。
-应用路由、四宽可视布局、真实浏览器生命周期、本人真实财务和实际设备仍需后续组合验收。
+应用入口、四宽可视布局及浏览器生命周期已在合成数据下完成组合验收，详见上方发布记录；本人真实财务和实际设备仍未验收。

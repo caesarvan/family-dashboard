@@ -1,8 +1,10 @@
 # 家庭看板日常运维
 
+**当前结构为 58 张户内表及 2 张平台注册表。** 2026-09-18 00:23:38（北京时间）完成手动资产账户发布，00:24:23 HTTPS 读回、00:27:22 独立只读复核通过。完整身份及证据见 [发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。后续更新须绑定新的实际基线，不可重放任何已完成迁移；完整恢复使用匹配 58 表的全组备份与 [账户迁移检查器](FINANCE-ACCOUNTS-MIGRATION.md) 的 snapshot-current／check-restored。生产覆盖恢复未执行。
+
 > “连接中心 → 查看同步与问题”继续只读日历／清单来源及本人问题，不能替代进程健康或财务覆盖验收。两张本人消费观察表于 2026-09-15 15:10 的历史版本新增；20:23 旅行资料版本另新增一张表，原例行三表与采购私有关系保持权限。来源更新和实际支付对账各有口径。
 
-完整首次部署、更新和恢复见 **[DEPLOYMENT](DEPLOYMENT.md)**。当前地点版于2026-09-16 16:33:32发布，镜像 `sha256:9cd092392b27d6e2342ab1890ff3514149416281fe130df62976b8b1488acac8`，43→44迁移通过。精确证据见 [VALIDATION](VALIDATION.md)；失败保留现场，不自动覆盖恢复。
+完整首次部署、更新和恢复见 **[DEPLOYMENT](DEPLOYMENT.md)**。历史地点版于2026-09-16 16:33:32发布，镜像 `sha256:9cd092392b27d6e2342ab1890ff3514149416281fe130df62976b8b1488acac8`，43→44迁移通过。精确证据见 [VALIDATION](VALIDATION.md)；失败保留现场，不自动覆盖恢复。
 
 <a id="投资导入候选的排障与保存范围"></a>
 
@@ -17,8 +19,8 @@
 ## 当前部署
 
 - 正式入口 https://home.caesarcharles.world/，服务器 racknerd／96.44.160.28，源码 `/opt/family-dashboard`。
-- app提供API、页面、OAuth；sync独立同步；web为Nginx。本次发布后核验三服务运行、app健康。
-- 当前44户内表及2平台表；本次新增journey_places，原43表在停写核对窗口保持。295源文件、47静态、112方法/路径模板。
+- app 提供 API、页面与 OAuth，sync 负责同步，media 处理媒体任务，web 为 Nginx。当前四服务运行、零重启；仅 app 配置健康检查且 healthy。
+- 当前 58 张户内表及 2 张平台注册表；账户发布包含 692 包文件（669 源文件与 23 Expo 导出），115 运行文件、75 HTTPS 资源。原 55 表及注册库在迁移与新 app 启动核对时保持。
 - **历史财务发布记录：2026-09-15 15:10:00（北京时间）**，镜像 `sha256:65a71881894ed85ff7d88b818372962a42eaf1ead4610338de3318f0decc6c3c`。当时为 214 文件／34 Markdown／101 路由／42+2 表／42 静态；Windows 1200 passed / 18 skipped，Linux 1217 passed / 1 skipped，各自 1218 项。财务 10 组 222 项，另 1 个导出观察限制不计通过；当时保留原 40 表，新增的消费观察两表为空。该批证据见 [VALIDATION](VALIDATION.md)，不代替当前版本验收。
 - 命名卷 `family-dashboard_household-data`。原家庭 `/data/household.sqlite3`；新版另有平台注册目录 `/data/platform.sqlite3` 与 `/data/spaces/<随机id>/household.sqlite3`。照片、账单、投资、财务基线及发布队列在各户 SQLite 内。
 - 原家庭 Microsoft / Google 的读取与清单同步已有绑定验证；新增家庭分别绑定自己的账号。新增旅行日历与本地待办发布已部署，但真实写入仍须本人授权并验收，不重新初始化原家庭。

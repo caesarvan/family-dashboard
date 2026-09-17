@@ -1,8 +1,57 @@
 # 手动资产账户与日期估值：组合验收
 
+<a id="finance-accounts-release"></a>
+## 已发布与独立复核
+
+2026-09-18 **00:23:38（北京时间）激活，00:24:23 正常 TLS 读回，00:27:22 独立只读复核通过**。
+从「财务 → 我的资产账户」进入；账户明细仅本人可见，不自动更新已批准的共同资产汇总。
+
+| 身份 | 实际值 |
+|---|---|
+| 安装 main | `40fa82ceba456e48b56ac181f51828bd7d4ff953` |
+| 安装 source / integration | `545a890c7f53fbb21e35e097fb65d0d756bcd52c` |
+| 同树 | `2b5281952b12fd533314a4826bc5ac39f394f528` |
+| 镜像 | `sha256:6974cdb6cc98869d8cdc55927c7a1be05d941aaef76382645b1fbd8dfe422ad7` |
+| 包 | `146e8e3553e8b4fcf00363a396414ee8f3da021f5fb68ecc588cbfee69dad74e` |
+| manifest | `16aa062f50fb203a5b6a1da4150824613a6989f517cccf3aac65ee81a931a763` |
+| binding | `e2bc1b643992abe96b4855b6ed0c3769b4b8679237e3540ec2ee26b5e980d04c` |
+| 发布目录 | `/opt/family-dashboard-releases/finance-accounts-58-20260917T162235589936Z` |
+
+下方 R2 实际构建／浏览器源与最终安装源的差异仅新增本验收文档；所有可执行字节相同，
+已由包检查和独立审计逐文件核对。后续发布文档不改变安装身份。
+
+Linux 在该实际镜像执行 10 个模块的 208 个唯一测试：**207 passed、1 skipped、0 failure/error**。
+唯一跳过为 `tests.test_frontend_runtime::test_windows_junction_rejected`，原因 `Windows junction semantics`。
+完整 JUnit node 集合与 R2 collection 相同，无 deselect；运行前后 115 个运行文件及 38 个模块加载路径核验一致。
+JUnit SHA `1444551290be8845943e104773a8aab1e148436571e0aebe2d8b72677c389727`；
+runtime SHA `471fc5166dc422312846dc9d9423cfeac531df80406e87709e35ba3cc02efdec`；
+日志 SHA `f02ad921cff1a75615f7dc7df0d0d621d545254f42062eda3683de4aaea3ca03`。
+
+实际 1 个家庭、2 个数据库停写全组备份后完成 55→58，仅增加三张空表。
+原 55 表的行、schema、序列及 registry 保留，迁移后快照与新 app 启动后快照逐字节相同。
+692 个包文件（669 源文件加 23 导出）、115 运行文件、75 HTTPS 资源验证通过；
+24 个私有生成资源与 1 个退役资源拒绝访问，37 个唯一匿名接口均 401。
+四服务运行、零重启，仅 app 的健康检查为 healthy；原配置摘要与 0600 权限保持。
+post 新备份验证 58 表／全组成员，但它是逐库在线快照，并非跨库原子事务或再次 live 全组快照。
+
+独立复核原件在 `A/finance-accounts-published-audit-20260917-r1`；15 份摘要／JUnit／日志经两次独立远端
+SHA 与本地原件对齐。复核没有重放发布、启动备份或下载数据库／配置明文。
+
+| 原件 | SHA-256 |
+|---|---|
+| audit.json | `a5c274d553822baf7645c036a15ae2f6f0d3d45090f8e395fcaf711c68c96d1a` |
+| readback.json | `32df3623a7964f52300c9ea768ed67a80d9b67ba1e49a513bdf671a98f435e3a` |
+| activation.json | `4168e2800a2c5b9bab70559b61f0f20d52e6dbe3526a4db5b2177ae5729a0c9a` |
+| post-readback.json | `10f1828124aad06705ae83966f3f688fb80a4f48251654390ddef204a873cd00` |
+| fresh-readback.json | `8477f1bbcd455dd4e526ae0107660d3053960db96cacea3b631ac532ce20b96f` |
+
+真实本人财务、银行连接、原生安装及实体电视未验收；生产覆盖恢复未执行。
+下文保留候选、R1 失败视觉与 R2 修正历史，各局部检查不累加成同一套件。
+
+
 ## 范围与当前阶段
 
-本批为独立账户候选，尚未部署。线上仍为 [Source R2](EXPO-FINANCE-SOURCE-ACCEPTANCE.md#expo-source-release) 的 55 张户内表版本。
+本批已完成账户发布；父版本为 [Source R2](EXPO-FINANCE-SOURCE-ACCEPTANCE.md#expo-source-release) 的 55 表，当前为 58 表。
 新增本人资产／负债账户、按日原币估值、历史、归档／恢复，以及本人数据副本。
 账户明细不共享，不自动访问银行，不将账户小计与来源基线、持仓或公共荷包相加。
 历史筛选只选择估值日期，名称和归档状态仍为当前状态。
@@ -84,7 +133,7 @@ Root 实际逐张查看并核对这 12 张原图，结论 **PASS_VISIBLE_VIEWPOR
 截图只覆盖滚动后的可见区域；手机备注标签位于截图上方，内层滚动内容并未完整覆盖，
 不能外推本人真实手机、银行平台或实体电视效果。
 
-服务器后续结果分别记录；本人真实财务、银行平台和实体电视均未验收。
+服务器结果见文首发布记录；本人真实财务、银行平台和实体电视均未验收。
 用户当前无法进行实体电视检查，不据此阻塞其它可完成工作。
 
 ## 操作与数据边界
