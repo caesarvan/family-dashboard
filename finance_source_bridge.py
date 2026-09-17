@@ -6,6 +6,7 @@ Source hashes describe supplied evidence, not proof of an institution's accuracy
 from __future__ import annotations
 
 from copy import deepcopy
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 import hashlib
 import json
@@ -13,7 +14,7 @@ import re
 import sqlite3
 
 from flask import g, jsonify, request
-from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
+from itsdangerous import BadSignature, URLSafeTimedSerializer
 
 from finance_baseline import (BaselineError, EXCLUDED_KEYS, MAX_PAYLOAD_BYTES,
                               _amount, _date, _json, _timestamp, _validate,
@@ -48,6 +49,91 @@ def fail(message='来源候选格式不正确', status=400):
 
 def digest(value):
     return hashlib.sha256(_json(value).encode('utf-8')).hexdigest()
+
+
+class ImportRecoveryError(Exception):
+    def __init__(self, message, code, status):
+        super().__init__(message)
+        self.code, self.status = code, status
+
+
+class ImportSession:
+    """One captured HTTP identity, checked in fresh SQLite snapshots."""
+    def __init__(self, app, db, Problem, require_member):
+        require_member()
+        self.app, self.con, self.Problem, self.require_member = app, db(), Problem, require_member
+        self.engine = app.extensions.get('member_sessions')
+        if self.engine is None:
+            raise Problem('会话验证暂不可用，请稍后重试', 503)
+        self.actor = dict(g.actor)
+        self.original = dict(getattr(g, 'member_session', None) or {})
+        self.owner = self.actor.get('id')
+        self.household = app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')
+
+    def check(self):
+        self.require_member()
+        current = self.engine.current(self.con)
+        if (g.actor != self.actor
+                or self.app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default') != self.household
+                or self.actor.get('householdId') != self.household
+                or current['owner'] != self.owner
+                or current['auth_version'] != self.actor.get('auth_version')
+                or any(current[key] != self.original.get(key)
+                       for key in ('id', 'owner', 'auth_version', 'credential_hash'))):
+            raise self.Problem('会话已失效，请重新登录', 401)
+        return digest({'owner': current['owner'], 'household': self.household,
+                       'session': current['id'], 'credential': current['credential_hash'],
+                       'authVersion': current['auth_version']})
+
+    @contextmanager
+    def read(self):
+        # Legacy credential resolution can open an implicit transaction.
+        self.con.rollback()
+        try:
+            self.con.execute('BEGIN')
+            self.check()
+            yield self.con
+        finally:
+            self.con.rollback()
+        self.fresh()
+
+    def fresh(self):
+        self.con.rollback()
+        try:
+            self.check()
+        finally:
+            self.con.rollback()
+
+    @contextmanager
+    def write(self):
+        self.con.rollback()
+        try:
+            self.con.execute('BEGIN IMMEDIATE')
+            self.check()
+            yield self.con
+            self.check()
+            self.con.commit()
+        except BaseException:
+            self.con.rollback()
+            raise
+
+
+def signed_preview(signer, token):
+    if not isinstance(token, str) or len(token) > 4000:
+        raise ImportRecoveryError('来源预览凭据不正确', 'preview_invalid', 400)
+    try:
+        value, issued = signer.loads(token, return_timestamp=True)
+    except BadSignature:
+        raise ImportRecoveryError('来源预览凭据不正确，请重新预览', 'preview_invalid', 409) from None
+    if not isinstance(value, dict):
+        raise ImportRecoveryError('来源预览凭据不正确', 'preview_invalid', 400)
+    return value, issued
+
+
+def require_fresh_preview(signer, issued):
+    age = signer.make_signer().get_timestamp() - int(issued.timestamp())
+    if not 0 <= age <= 1200:
+        raise ImportRecoveryError('预览已过期且尚无保存回执，请重新预览', 'preview_expired', 410)
 
 
 def now():
@@ -300,11 +386,12 @@ def register_finance_source_bridge(app, db, Problem, body, require_member, audit
     with app.app_context():
         ensure_receipts(db()); db().commit()
 
+    @app.errorhandler(ImportRecoveryError)
+    def recovery_error(exc):
+        return jsonify(error=str(exc), code=exc.code), exc.status
+
     def context():
-        require_member()
-        owner = g.actor['id']
-        household = app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')
-        return owner, household
+        return ImportSession(app, db, Problem, require_member)
 
     def translated(fn):
         try:
@@ -324,36 +411,54 @@ def register_finance_source_bridge(app, db, Problem, body, require_member, audit
 
     @app.get('/api/finance-baseline/imports/status')
     def finance_source_status():
+        if len(request.args.getlist('mode')) > 1:
+            raise Problem('来源更新模式不支持', 400)
         if request.args.get('mode') == MODE:
             return observations.status()
-        if request.args.get('mode'):
+        if request.args.get('mode') not in (None, '', 'baseline'):
             raise Problem('来源更新模式不支持', 400)
-        owner, _ = context()
-        private, revision, source = current(db(), owner)
-        row = db().execute('SELECT ' + ','.join(RECEIPT_COLUMNS) + ' FROM finance_source_receipts WHERE owner=? ORDER BY accepted_at DESC,rowid DESC LIMIT 1', (owner,)).fetchone()
-        view = ({key: private[key] for key in ('asOf', 'balanceAsOfStart', 'balanceAsOfEnd')} | {'revision': revision, 'sourceDigest': source}) if private else None
-        return jsonify(current=view, lastReceipt=receipt_view(row) if row else None,
-                       coverage='partial_dated_records', warnings=['来源观察不会写入实付账本、投资账户或公共荷包。'])
+        session = context()
+        operation = request.args.get('operationId')
+        if operation is not None and (len(request.args.getlist('operationId')) != 1
+                                      or not re.fullmatch('[a-f0-9]{64}', operation)):
+            raise Problem('操作编号格式不正确', 400)
+        with session.read() as con:
+            if operation is not None:
+                row = con.execute('SELECT ' + ','.join(RECEIPT_COLUMNS) + ' FROM finance_source_receipts WHERE id=? AND owner=?',
+                                  (operation, session.owner)).fetchone()
+                result = dict(mode='baseline', operationId=operation, found=row is not None,
+                              receipt=receipt_view(row, True) if row else None)
+            else:
+                private, revision, source = current(con, session.owner)
+                row = con.execute('SELECT ' + ','.join(RECEIPT_COLUMNS) + ' FROM finance_source_receipts WHERE owner=? ORDER BY accepted_at DESC,rowid DESC LIMIT 1', (session.owner,)).fetchone()
+                view = ({key: private[key] for key in ('asOf', 'balanceAsOfStart', 'balanceAsOfEnd')} | {'revision': revision, 'sourceDigest': source}) if private else None
+                result = dict(current=view, lastReceipt=receipt_view(row) if row else None,
+                              coverage='partial_dated_records', warnings=['来源观察不会写入实付账本、投资账户或公共荷包。'])
+        return jsonify(result)
 
     @app.post('/api/finance-baseline/imports/preview')
     def finance_source_preview():
-        owner, household = context()
+        require_member()
         payload = body()
         if isinstance(payload, dict) and payload.get('mode') == MODE:
             return observations.preview(payload)
         def run():
             payload = body()
             exact(payload, ('candidate', 'expectedRevision', 'expectedSourceDigest'))
+            session = context()
+            owner, household = session.owner, session.household
             revision, source = expected_fields(payload)
             frozen, private, shared, candidate_digest = normalize_candidate(payload['candidate'], owner)
-            previous, actual_revision, actual_source = current(db(), owner)
-            if (revision, source) != (actual_revision, actual_source):
-                fail('财务基线已变更，请保留候选并重新预览', 409)
-            shared = _validate(db(), private, shared)
-            changes = assess_update(previous, private)
-            token = signer.dumps({'owner': owner, 'household': household, 'candidateDigest': candidate_digest,
-                                  'expectedRevision': revision, 'expectedSourceDigest': source})
-            return jsonify(previewToken=token, candidateDigest=candidate_digest,
+            with session.read() as con:
+                previous, actual_revision, actual_source = current(con, owner)
+                if (revision, source) != (actual_revision, actual_source):
+                    fail('财务基线已变更，请保留候选并重新预览', 409)
+                shared = _validate(con, private, shared)
+                changes = assess_update(previous, private)
+                signed = {'owner': owner, 'household': household, 'candidateDigest': candidate_digest,
+                          'context': session.check(), 'expectedRevision': revision, 'expectedSourceDigest': source}
+                token = signer.dumps(signed)
+            return jsonify(previewToken=token, operationId=digest(signed), candidateDigest=candidate_digest,
                            expectedRevision=revision, expectedSourceDigest=source, private=private, shared=shared,
                            changes=changes, asOf=private['asOf'], balanceAsOfStart=private['balanceAsOfStart'],
                            balanceAsOfEnd=private['balanceAsOfEnd'], coverage='partial_dated_records', expiresIn=1200,
@@ -364,46 +469,52 @@ def register_finance_source_bridge(app, db, Problem, body, require_member, audit
 
     @app.post('/api/finance-baseline/imports/confirm')
     def finance_source_confirm():
-        owner, household = context()
+        require_member()
         payload = body()
         if isinstance(payload, dict) and payload.get('mode') == MODE:
             return observations.confirm(payload)
         def run():
             payload = body()
             exact(payload, ('candidate', 'previewToken'))
-            if not isinstance(payload['previewToken'], str) or len(payload['previewToken']) > 4000:
-                fail('来源预览凭据不正确')
-            try:
-                signed = signer.loads(payload['previewToken'], max_age=1200)
-            except (BadSignature, SignatureExpired):
-                fail('来源预览已失效，请重新预览', 409)
+            session = context()
+            owner, household = session.owner, session.household
+            signed, issued = signed_preview(signer, payload['previewToken'])
+            exact(signed, ('owner', 'household', 'candidateDigest', 'expectedRevision', 'expectedSourceDigest'), ('context',))
+            text_field(signed['owner']); text_field(signed['household'])
+            hash_field(signed['candidateDigest'])
+            if 'context' in signed:
+                hash_field(signed['context'])
             frozen, private, shared, candidate_digest = normalize_candidate(payload['candidate'], owner)
             if not isinstance(signed, dict) or signed.get('owner') != owner or signed.get('household') != household or signed.get('candidateDigest') != candidate_digest:
                 fail('来源预览不属于当前成员、家庭或候选', 403)
             revision, source = expected_fields(signed)
             receipt_id = digest(signed)
-            conn = db()
-            conn.execute('BEGIN IMMEDIATE')
-            try:
+            with session.write() as conn:
                 receipt = conn.execute('SELECT ' + ','.join(RECEIPT_COLUMNS) + ' FROM finance_source_receipts WHERE id=? AND owner=?', (receipt_id, owner)).fetchone()
                 if receipt:
-                    conn.rollback()
-                    return jsonify(receipt_view(receipt, True))
-                previous, actual_revision, actual_source = current(conn, owner)
-                if (revision, source) != (actual_revision, actual_source):
-                    fail('财务基线已变更，请保留候选并重新预览', 409)
-                assess_update(previous, private)
-                result = import_baseline(conn, private, shared)
-                accepted_at = now()
-                row = (receipt_id, owner, candidate_digest, private['sourceDigest'], revision, source,
-                       result['revision'], 'imported' if result['imported'] else 'unchanged', accepted_at)
-                conn.execute('INSERT INTO finance_source_receipts(' + ','.join(RECEIPT_COLUMNS) + ') VALUES(?,?,?,?,?,?,?,?,?)', row)
-                audit('finance_source_import', receipt_id)
-                conn.commit()
-                return jsonify(receipt_view(row))
-            except Exception:
-                conn.rollback()
-                raise
+                    if receipt[2] != candidate_digest or receipt[3] != private['sourceDigest']:
+                        fail('保存回执与候选不一致', 409)
+                    response = receipt_view(receipt, True)
+                else:
+                    require_fresh_preview(signer, issued)
+                    if 'context' not in signed:
+                        raise ImportRecoveryError('旧预览缺少会话绑定，请重新预览', 'preview_repreview_required', 409)
+                    if signed['context'] != session.check():
+                        fail('来源预览不属于当前会话，请重新预览', 403)
+                    previous, actual_revision, actual_source = current(conn, owner)
+                    if (revision, source) != (actual_revision, actual_source):
+                        fail('财务基线已变更，请保留候选并重新预览', 409)
+                    assess_update(previous, private)
+                    result = import_baseline(conn, private, shared)
+                    accepted_at = now()
+                    row = (receipt_id, owner, candidate_digest, private['sourceDigest'], revision, source,
+                           result['revision'], 'imported' if result['imported'] else 'unchanged', accepted_at)
+                    conn.execute('INSERT INTO finance_source_receipts(' + ','.join(RECEIPT_COLUMNS) + ') VALUES(?,?,?,?,?,?,?,?,?)', row)
+                    audit('finance_source_import', receipt_id)
+                    response = receipt_view(row)
+            if receipt:
+                session.fresh()
+            return jsonify(response)
         return translated(run)
 
     app.extensions['finance_source_bridge'] = {'receiptColumns': RECEIPT_COLUMNS,
