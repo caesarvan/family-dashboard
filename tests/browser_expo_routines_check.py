@@ -139,13 +139,30 @@ class Run(BaseRun):
         return result
 
     def confirm(self, page):
-        with page.expect_response(lambda r: urlsplit(r.url).path == BASE + '/confirm' and r.request.method == 'POST') as pending:
-            button(page, '确认例行计划操作').click()
-        response = pending.value
-        assert response.status == 200, response.text()
-        result = response.json()
-        self.confirmed(page)
-        return result
+        endpoint = self.base + BASE + '/confirm'
+        captured = []
+        before = self.count_requests('POST', BASE + '/confirm')
+        def capture(route):
+            assert route.request.method == 'POST'
+            response = route.fetch(max_redirects=0)
+            body = response.body()
+            captured.append((response.status, body))
+            # Preserve the real bytes before Edge's CDP response-body handle can
+            # disappear. Forward the same status, headers and body to the UI.
+            route.fulfill(response=response, body=body)
+        page.route(endpoint, capture, times=1)
+        try:
+            with page.expect_response(lambda r: r.url == endpoint and r.request.method == 'POST') as pending:
+                button(page, '确认例行计划操作').click()
+            assert len(captured) == 1
+            status, body = captured[0]
+            assert pending.value.status == status == 200, body.decode('utf-8', errors='replace')
+            result = json.loads(body)
+            self.confirmed(page)
+            assert self.count_requests('POST', BASE + '/confirm') == before + 1
+            return result
+        finally:
+            page.unroute(endpoint, capture)
 
     def confirmed(self, page):
         expect(page.get_by_test_id('routines-unknown')).to_have_count(0, timeout=15000)
