@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "customConditions": [],
+    "lib": ["ES2022", "DOM"],
+    "module": "ESNext",
+    "target": "ES2022"
+  },
+  "include": ["tests/**/*.ts"],
+  "exclude": ["node_modules"]
+}
