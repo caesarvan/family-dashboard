@@ -319,6 +319,8 @@ def main():
     assert re.fullmatch('[a-f0-9]{40}', build_head)
     assert evidence['sourceTree'] == git('rev-parse', build_head + '^{tree}')
     subprocess.run(['git', '--no-replace-objects', 'merge-base', '--is-ancestor', build_head, head], cwd=root, check=True)
+    changes_since_build = set(git('diff', '--name-only', build_head, head).splitlines())
+    assert changes_since_build <= {'tests/browser_finance_column_mapping_check.py', 'docs/FINANCE-COLUMN-MAPPING-BROWSER.md'}, 'Only this harness and its documentation may differ from the tested build'
     names = subprocess.check_output(['git', '--no-replace-objects', 'ls-files', '-z'], cwd=root).decode('utf-8').rstrip('\0').split('\0')
     def hashes():
         return {name: sha(root / name) for name in names}
@@ -331,7 +333,7 @@ def main():
     shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], screenshots=[], scenarioResults=[], scenarioFailures=[],
         head=head, tree=git('rev-parse', 'HEAD^{tree}'), buildSourceHead=build_head, buildSourceTree=evidence['sourceTree'],
-        buildInputsEqual=True, buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
+        buildInputsEqual=True, changedSinceBuild=sorted(changes_since_build), buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
         sourceHashesBefore=hashes(), bundleHashesBefore=exports(), productionWrites=0, realFinancialData=False, realCloud=False,
         physicalTelevision=False, scope='Six independent temporary Flask/SQLite/HTTPS/Edge scenarios with synthetic generic files; no real platform export, cloud or device acceptance.')
     original_connect = socket.socket.connect
