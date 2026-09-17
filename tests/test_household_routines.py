@@ -578,5 +578,7 @@ def test_expired_preview_rejected_without_mutation(app):
     normal = routines.URLSafeTimedSerializer(app.config["SECRET_KEY"], salt="household-routines-preview-v1")
     expired = routines.URLSafeTimedSerializer(app.config["SECRET_KEY"], salt="household-routines-preview-v1", signer=ExpiredSigner)
     token = expired.dumps(normal.loads(p.json["previewToken"]))
-    assert client.post(PREFIX + "/confirm", json={"previewToken": token}, headers=headers).status_code == 400
+    response = client.post(PREFIX + "/confirm", json={"previewToken": token}, headers=headers)
+    assert response.status_code == 410
+    assert response.json["code"] == "preview_expired_unapplied"
     assert context(client)["plans"] == []
