@@ -91,6 +91,24 @@ def put(path, value):
         os.fsync(stream.fileno())
 
 
+def runtime_environment(value):
+    """Serialize Docker Config.Env verbatim, never reinterpret Compose syntax."""
+    need(isinstance(value, list) and value, 'runtime_environment_shape')
+    keys = set()
+    for entry in value:
+        need(isinstance(entry, str) and not any(c in entry for c in '\x00\r\n')
+             and '=' in entry, 'runtime_environment_entry')
+        key = entry.split('=', 1)[0]
+        need(re.fullmatch('[A-Za-z_][A-Za-z0-9_]*', key) and key not in keys,
+             'runtime_environment_key')
+        keys.add(key)
+    need('DATA_DIR=/data' in value, 'runtime_data_directory')
+    try:
+        return ('\n'.join(value) + '\n').encode('utf-8')
+    except UnicodeError:
+        raise ReleaseError('runtime_environment_encoding') from None
+
+
 def run(argv, *, cwd=ROOT, timeout=240, input_bytes=None):
     try:
         result = subprocess.run(argv, cwd=cwd, input=input_bytes, stdout=subprocess.PIPE,
@@ -201,6 +219,8 @@ class Controller:
             if name == 'app':
                 need(value['State']['Health']['Status'] == 'healthy', 'app_unhealthy')
             result[name] = {'id': value['Id'], 'image': value['Image']}
+            if name == 'app':
+                result[name]['environmentSha256'] = sha(runtime_environment(value['Config'].get('Env')))
         return result
 
     def baseline(self):
@@ -259,11 +279,30 @@ class Controller:
         put(self.candidate / 'stage.json', value)
         return value
 
+    def bind_data_environment(self, release, service):
+        value = self.inspect(service['id'])
+        need(value['Id'] == service['id'] and value['Image'] == service['image'], 'runtime_environment_service_changed')
+        raw = runtime_environment(value['Config'].get('Env'))
+        need(sha(raw) == service.get('environmentSha256'), 'runtime_environment_changed')
+        path = regular(release, directory=True) / 'app-runtime.env'
+        put(path, raw)
+        self.data_environment = (path, sha(raw))
+
     def data_call(self, proof, program, *, write=True):
+        binding = getattr(self, 'data_environment', None)
+        need(binding is not None, 'runtime_environment_not_bound')
+        path, digest = binding
+        need(path == proof.parent / 'app-runtime.env', 'runtime_environment_location')
+        path = regular(path)
+        need(stat.S_IMODE(path.stat().st_mode) == 0o600 and sha(path.read_bytes()) == digest,
+             'runtime_environment_file_changed')
+        original = regular(self.root / '.env')
+        need(stat.S_IMODE(original.stat().st_mode) == 0o600
+             and sha(original.read_bytes()) == self.plan['envSha256'], 'environment_changed')
         mount = VOLUME + ':/data' + ('' if write else ':ro')
         args = ['docker', 'run', '--rm', '--network', 'none', '--read-only', '--user', '10001:10001', '--cap-drop', 'ALL',
                 '--security-opt', 'no-new-privileges:true', '--memory', '512m', '--tmpfs', '/tmp:rw,size=268435456,mode=1777',
-                '--env-file', str(self.root / '.env'), '-e', 'DATA_DIR=/data', '-e', 'PYTHONDONTWRITEBYTECODE=1',
+                '--env-file', str(path),
                 '-v', mount, '-v', str(self.source) + ':/release:ro', '-v', str(proof) + ':/proof',
                 '--entrypoint', 'python', self.plan['imageId'], '-B', '-c', DATA_PREFIX + program]
         return json.loads(self.call(args, timeout=360))
@@ -328,6 +367,7 @@ class Controller:
             shutil.copyfile(regular(self.root / name), target)
         source_hashes(old_dir, old, exact=True)
         put(release / 'env-before', regular(self.root / '.env').read_bytes())
+        self.bind_data_environment(release, services['app'])
         for i, image in enumerate(sorted({v['image'] for v in services.values()})):
             self.call(['docker', 'tag', image, 'family-dashboard-preserved:memberships-' + stamp.lower() + '-' + str(i)])
         record('old_source_configuration_images_preserved')
