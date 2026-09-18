@@ -1,0 +1,35 @@
+# 家庭成员关系浏览器验收
+
+本脚本为独立验收工具，R4 已在下述固定候选完成 4／4 组真实本地验收；不代表后续源码组合或生产已经验收／发布。使用真实 Expo 导出、Edge、临时 HTTPS Flask 和 SQLite；所有账号、邀请和私人财务资料均为合成。界面的注册、绑定、邀请、加入、切换、移除、退出和个人登出必须实际点击，API 仅用于建立旧身份／第二家庭／私人资料及核对持久结果。
+
+| 独立组 | 实际用户路径与关键断言 |
+|---|---|
+| 旧身份绑定 | 验证当前家庭密码→创建个人账户→明确绑定；注册不自动绑定，原 `member1` 私人 owner、用户字段与资料保持，伙伴不可读取 |
+| 第三人成员生命周期 | 管理员创建一次邀请码→第三人注册→重新核对→明确加入→切换；移除拒绝旧派生会话，重新邀请保留同一 owner 与资料且为普通成员，自助退出后仅个人回执可查 |
+| 同人双户 | 两户各自 `member1` 明确绑定同一个人账户；切换时资料不串户，旧代次派生 cookie 拒绝，个人登出撤销当前派生成员访问 |
+| 未知结果与布局 | 丢弃真实已提交邀请码回复，原 requestId 保留且无自动重发／核对；明确 GET 后读当前，历史／重放不泄漏 token；隐藏清秘密，键盘操作，320／390／1280 两主题共六张可见视口图 |
+
+每组独占临时数据库、服务和浏览器 context。组内失败停止下游阶段，保存异常堆栈及可得的失败截图；其他独立组继续，整轮失败不会计作通过。成功业务 DTO 由真实服务器返回，唯一故障注入只读取真实响应后断开传输。浏览器和 Python socket 都禁止外网。
+
+脚本自身来自单独干净提交，记录其 HEAD、实际源码 SHA；应用必须精确匹配传入的 HEAD／tree 和本轮 `membership-build-r1.json`（`head/tree/files/buildExit/bundleMarkers`）原件 SHA，导出全集相同，不允许仅祖先关系复用。执行前后核全部 tracked source、导出、三个复用 fixture 的实际模块路径与 SHA，以及应用／脚本 HEAD、干净状态和临时目录清理。源码不同的后续组合需要新的明确构建记录。
+
+```powershell
+& <root-python> -B -X utf8 tests/browser_expo_memberships_check.py `
+  --source-root <reviewed-source-root> --expected-head <40-hex-head> `
+  --bundle <actual-export> --build-evidence <membership-build-report> `
+  --expected-build-evidence <64-hex-sha256>
+```
+
+输出排他写入作者树 `test-results/expo-memberships-UTC/`，命令 stdout／stderr 由调用方另存。复用 `browser_expo_finance_check.py`、`test_financial_files.py`、`test_app.py` 的真实临时环境；不加载旧验收场景运行。入口先绑定实际端口再创建应用，使个人账户的 Origin 校验沿真实本地地址执行。
+
+六张图仅能支持实际可见区域的后续人工审查，不等同所有内滚动、实体手机／电视、真实家庭、云服务或生产迁移验收。此四组也不替代领域／个人账户／工作队列的并发专项与发布保全检查。
+
+R1 运行停在四组的静态文件复制阶段，尚未进入 UI：Windows 长路径导致 `copytree` 失败，0 检查／0 图，四个临时目录均已清理。原始记录与失败完整保留。修订仅将测试临时目录改为短前缀、源导出用 Windows 扩展路径读取，并以完整 `os.walk` 清单核原导出和每组复制品；Root 的独立完整构建记录实际列出 23 文件，原 11 项散列均保持。后续轮次不得把这次初始化失败记作业务通过。
+
+R2 已越过长路径复制，但测试作者误用 Werkzeug 不存在的 `set_app`，四组仍止于应用安装、0 UI 检查／0 图且临时目录清理。后续仅改为该服务器的实际 `app` 属性，保留 R2 原件。
+
+R3 实际 1／4 组通过：第三人完整注册／加入／切换／移除／重入／退出成功。另两组在绑定完成后的父页面重挂载处等待旧面板，第四组已完成丢响应与原回执核对，后续新建邀请码时 CDP 无法取响应 body。修订仅明确重新进入账户页，并从真实完成后界面读取一次性 token；保留 POST 200、完成回执、真实数据库数量与秘密隐藏断言。四组导出复制品均为完整 23 文件且 hash 相同，临时目录全清，源／导出／fixture 前后不变，0 页面错误／外网请求。R3 原件为 `test-results/expo-memberships-20260918T030429380071Z/result.json`，SHA `2caa14da386429edd606a3f1c94bdf5e9202c5fd860a979ec33493ebe8d63d11`。
+
+R4 实际 exit 0，4／4 组通过，51.33 秒，stderr 空。受验应用 HEAD `bdd6fc808cea47dd558149f481ebc3bbf5e8c24e`／tree `ce0d43e0dcc395a32ca58ee9ae8ad4880454efe8`；执行脚本 HEAD `025e8e775bcb739d5f18e3c3f85f956282a68057`／SHA `c675783d2caf21a0e7b6d1c4df5091cc353abef84444ce4cf545e6a2026e1357`。完整构建原件 `membership-build-r1-complete.json` SHA `533900dc79ef707db13d20fc78a95b2f980af88f83cb62d30c8ebeedc31cd743`。
+
+本轮原件 `test-results/expo-memberships-20260918T030940300616Z/result.json` SHA `6f1ba65128844eaa6aae3482d8c24c5ef2625f39dda12fed5de240096d3d41b9`；调用记录在 `test-results/membership-invocation-r4-20260918T030939482918Z/`。786 个 tracked source、23 个导出、三个复用 fixture 前后相同，四组静态复制品分别核完整 23 文件，四个临时环境全部清理，0 页面错误／外网请求。六张图记录各自 SHA、可见宽度与 44px 按钮尺寸，人工视觉结论待另行记录。后续请求作用域／测试 fixture 修改不在此受验应用身份内；R1–R3 原件保留，不与 R4 相加为新场景数。
