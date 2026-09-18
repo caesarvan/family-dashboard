@@ -16,6 +16,10 @@ Linux 验证报告含 `imageId/sourceHead/manifestSha256/exitCode/evidence/junit
 
 任何失败保留 `activation.json` 已完成步骤和数据层 attempt，不自动启动旧程序、不自动覆盖恢复、不重放激活。恢复须先保全发布后新增数据，再按经审查的完整组恢复匹配程序/数据库；仅回退旧代码可能恢复已撤销成员权限。数据模块的 `verify_restored` 只用于恢复后的只读检查，不执行恢复。
 
+候选 app 启动一旦被尝试，后续健康、运行文件、worker/web 部分启动或公开健康检查失败时，控制器会尝试停止候选服务及备份计时器，并记录是否确已停止。停止命令本身失败时明确记录 `candidateStoppedAfterFailure:false`，不能宣称已回到停写状态；不因此恢复旧数据或旧程序。SIGINT/SIGTERM 也进入同一收尾路径，强制杀进程仍需按保留步骤人工检查。
+
 调用示意（必须替换为本轮真实候选及已审核摘要）：`python -B deploy/membership_release_controller.py stage /opt/family-dashboard-candidates/<name> <plan-sha256>`；核验 stage 后，同一计划调用 `activate`。CLI 限定 Linux root、无优化/字节码、无继承 Docker/Compose 选择器；完整 `.env` 从不输出到命令结果。
 
 本地控制器专项首轮实际 22/22，通过路径/证据拒绝、原件排他保留、JUnit 失败/错误/隐藏跳过、未列运行文件、备份/迁移/首次启动复核失败时不开放 worker，以及正确开启次序。该组是隔离文件和命令替身测试，不证明 Docker、真实迁移或生产发布成功；数据层的真实 SQLite 演练与最终 Linux/浏览器组合另行记录。
+
+独立审查发现直接脚本运行缺少仓库根导入路径、候选部分启动失败未停止服务两项问题。修正后第二轮完整 28/28，通过新增五个启动/读回失败窗口与停止命令失败的准确记录；第一轮原件保留。此项仍是命令替身验证，不冒充实际容器演练。

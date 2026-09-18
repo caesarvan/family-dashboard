@@ -177,3 +177,48 @@ def test_stage_rejects_failed_validation_before_baseline(simulation):
     with pytest.raises(release.ReleaseError, match='tests_failed'):
         controller.stage()
     assert not any(isinstance(c, list) and 'stop' in c for c in calls)
+
+
+@pytest.mark.parametrize('window', ['first_app_start', 'app_health', 'runtime_readback', 'worker_start', 'public_health'])
+def test_partial_candidate_start_is_stopped_on_failure(simulation, window):
+    controller, calls, _, _ = simulation
+    original_runner, original_inspect = controller.runner, controller.inspect
+    def runner(argv, **kwargs):
+        if (window == 'first_app_start' and argv[:3] == ['docker','compose','up']
+            or window == 'runtime_readback' and argv[:2] == ['docker','exec']
+            or window == 'worker_start' and argv[:3] == ['docker','compose','up'] and 'sync' in argv
+            or window == 'public_health' and argv[0] == 'curl'):
+            calls.append(['failed', window])
+            raise release.ReleaseError('synthetic_start_failure')
+        return original_runner(argv, **kwargs)
+    controller.runner = runner
+    if window == 'app_health':
+        def inspect(reference):
+            value = original_inspect(reference)
+            if reference == 'family-dashboard-app-1':
+                value['State']['Health']['Status'] = 'unhealthy'
+            return value
+        controller.inspect = inspect
+    with pytest.raises(release.ReleaseError):
+        controller.activate()
+    proof = release.read(controller.candidate / 'activation.json')
+    assert proof['completed'] is False and proof['candidateStoppedAfterFailure'] is True
+    assert ['docker', 'compose', 'stop', '--timeout', '360', 'media', 'sync', 'app'] == calls[-2]
+    assert calls[-1][:3] == ['docker','ps','-q']
+    assert not any(isinstance(c,list) and c[:2] == ['systemctl','start'] for c in calls)
+
+
+def test_failed_cleanup_is_recorded_without_claiming_stopped(simulation):
+    controller, calls, _, _ = simulation
+    original_runner = controller.runner
+    def runner(argv, **kwargs):
+        if argv[:3] == ['docker','compose','up']:
+            raise release.ReleaseError('synthetic_start_failure')
+        if controller.candidate_started and argv[:3] == ['docker','compose','stop']:
+            raise release.ReleaseError('synthetic_cleanup_failure')
+        return original_runner(argv, **kwargs)
+    controller.runner = runner
+    with pytest.raises(release.ReleaseError, match='synthetic_start_failure'):
+        controller.activate()
+    proof = release.read(controller.candidate / 'activation.json')
+    assert proof['completed'] is False and proof['candidateStoppedAfterFailure'] is False

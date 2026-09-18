@@ -17,6 +17,9 @@ import subprocess
 import sys
 import xml.etree.ElementTree as ET
 
+if __package__ in (None, ''):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 
 ROOT = Path('/opt/family-dashboard')
 RELEASES = Path('/opt/family-dashboard-releases')
@@ -263,6 +266,37 @@ class Controller:
         return json.loads(self.call(args, timeout=360))
 
     def activate(self):
+        self.candidate_started = False
+        try:
+            return self._activate()
+        except BaseException:
+            # A failed health check or a partially successful compose up can
+            # leave new writers running. Stop those writers; never restore data
+            # or revive the old application after the schema migration.
+            if self.candidate_started:
+                stopped = True
+                for command in (
+                    ['systemctl', 'stop', 'family-dashboard-backup.timer'],
+                    ['docker', 'compose', 'stop', 'web'],
+                    ['docker', 'compose', 'stop', '--timeout', '360', 'media', 'sync', 'app'],
+                ):
+                    try:
+                        self.call(command, timeout=420)
+                    except Exception:
+                        stopped = False
+                try:
+                    stopped = stopped and not self.call(['docker', 'ps', '-q', '--filter', 'volume=' + VOLUME]).strip()
+                    value = read(self.candidate / 'activation.json')
+                    value.update(completed=False, candidateStoppedAfterFailure=bool(stopped))
+                    import uuid
+                    temporary = self.candidate / ('activation.failure-' + uuid.uuid4().hex + '.json')
+                    put(temporary, value)
+                    os.replace(temporary, self.candidate / 'activation.json')
+                except Exception:
+                    pass  # Preserve the earlier phase record if storage itself failed.
+            raise
+
+    def _activate(self):
         staged = read(self.candidate / 'stage.json')
         need(staged['planSha256'] == self.plan_sha, 'stage_plan_changed')
         self.candidate_image()
@@ -331,6 +365,7 @@ class Controller:
         need(sha((self.root / '.env').read_bytes()) == self.plan['envSha256'], 'environment_changed')
         record('new_source_installed')
         self.call(['docker', 'tag', self.plan['imageId'], 'family-dashboard-app:latest'])
+        self.candidate_started = True
         self.call(['docker', 'compose', 'up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '150', 'app'])
         app = self.inspect('family-dashboard-app-1')
         need(app['Image'] == self.plan['imageId'] and app['State']['Health']['Status'] == 'healthy', 'new_app_unhealthy')
@@ -419,6 +454,7 @@ def release_lock():
 
 def main(argv=None):
     import argparse
+    import signal
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('action', choices=['stage', 'activate'])
     parser.add_argument('candidate', type=Path)
@@ -428,6 +464,10 @@ def main(argv=None):
          and not sys.flags.optimize and sys.pycache_prefix is None, 'operator_runtime')
     need(not any(n.upper().startswith(('COMPOSE_', 'DOCKER_')) for n in os.environ), 'ambient_docker_selector')
     need(args.candidate.parent == Path('/opt/family-dashboard-candidates'), 'candidate_location')
+    def interrupted(*unused):
+        raise ReleaseError('release_interrupted')
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        signal.signal(sig, interrupted)
     with release_lock():
         controller = Controller(args.candidate, args.plan_sha256)
         value = getattr(controller, args.action)()
