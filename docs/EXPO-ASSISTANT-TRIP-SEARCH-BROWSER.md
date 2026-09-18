@@ -1,6 +1,6 @@
 # Expo 助理查找旅行：浏览器验收脚本
 
-本文件与 [验收脚本](../tests/browser_expo_assistant_trip_search_check.py) 是下一批候选，基于 `37a393f149aeefb91a92da05b1d4d213b4831af0`。准备阶段只做静态编译、来源检查与差分检查，尚未执行浏览器、构建或部署；场景与截图数量是验收计划，不是通过结果。
+本文件与 [验收脚本](../tests/browser_expo_assistant_trip_search_check.py) 是下一批候选，基于 `37a393f149aeefb91a92da05b1d4d213b4831af0`。首版准备阶段只做静态检查；下文记录随后真实 R1 的部分通过及选择器修订。修订尚未执行 R2；六组/四图仍是完整目标，不是通过结果。
 
 客户端接缝依据独立 UI 候选 `5320576d6062390b74f46d2aff7b340f96693c7f`：显式“搜索 / 查找 / 找一下”前缀保留原文字，仅在本地查询；“查看旅行 <真实标题>”使用 `kind=trips` 的实体 ID，嵌入现有详情。返回助理保留输入及查询页码，并重新读取本人身份、概览与查询结果。详见 [助理接口与界面](EXPO-ASSISTANT.md)。
 
@@ -31,3 +31,11 @@ python -B -X utf8 tests/browser_expo_assistant_trip_search_check.py --source-roo
 ```
 
 实际运行在作者树 `test-results/expo-assistant-trip-search-<UTC>/` 排他保留执行脚本、每组原件与 `result.json`。图片只覆盖滚动后的可见视口，仍需逐张视觉复核。该验收不证明真实 AI 提供方、云账号、真实家庭资料、原生手机或实体电视可用；本地查询页面复用原旅行能力，不推断真实到访或预订。
+
+## R1 实际执行及候选选择器修正
+
+2026-09-18 对冻结组合 `8c63ae1df514fceb11fbb8d874be5872a921a7e3` / build evidence `57234842f3f1329f41f86cb3c626b81aa482bc83aa91ca62f806bea1ead87c95` 单次执行六组：`prefix_routing`、`identity_late` 通过；其余四组均在 `open_match` 的“编辑旅行”精确定位失败。真实 ARIA 名称带 Paper 图标前缀，原旅行详情已经显示；失败后的下游断言未执行，不判定通过。
+
+原件 `test-results/expo-assistant-trip-search-20260918T003155164991Z/result.json` SHA `d24ef84a745be96fa1d78d776a4a1bc08eaf71edf3de86b50e21ea77a345ae4c`，完整 stdout SHA `a9c3adc99a89f8ba479dec8d779c63dea0f0578d04a58be08c1cdc13f69519ae`、stderr 空；757 tracked、23 exports、5 fixtures 前后相同，六个临时环境全部清理，页面异常/外网/模型调用均为零。仅生成浅色 320/1280 两张视口图，深色与完整布局流程未完成。
+
+修订仅统一局部 `edit_button` 为 button 角色及末尾“编辑旅行”的锚定名称，并在进入详情时要求唯一匹配；正断言、负断言与点击使用同一定位，不修改产品或业务断言。保留 R1 原件，修订候选只作静态检查，尚未执行 R2；仍要求受验源码与实际 build 同 head/tree。
