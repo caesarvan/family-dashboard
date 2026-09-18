@@ -384,7 +384,14 @@ def test_current_session_checked_after_initial_guard(app,fault):
         elif fault=='owner':
             g.actor['id']='member2'
         else:
-            app.extensions.pop('member_sessions')
+            # The global SQL guard validates the captured request before this
+            # adapter runs. Keep its indexed engine access real; simulate only
+            # the inventory adapter's optional dependency lookup being absent.
+            # This does not claim a globally missing engine returns HTTP 503.
+            class MissingInventoryEngine(dict):
+                def get(self, key, default=None):
+                    return None if key=='member_sessions' else super().get(key,default)
+            app.extensions = MissingInventoryEngine(app.extensions)
     c,h=login(app)
     response=c.post(P+'/items',headers=h|{'X-Synthetic-Fault':'1'},json={'requestId':rid(),'data':{'title':'x','unit':'u'}})
     assert response.status_code==(503 if fault=='missing_engine' else 401)
