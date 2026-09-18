@@ -197,3 +197,35 @@ def test_marker_preflight_refuses_before_service_stop(simulation, fault):
         operator.activate()
     assert not (operator.candidate / 'activation.json').exists()
     assert not any(isinstance(c, list) and c[:2] == ['systemctl', 'stop'] for c in calls)
+
+
+@pytest.mark.parametrize('changed,allowed', [('app.py', True), ('inventory_api.py', True), ('finance_hub.py', False)])
+def test_followup_baseline_only_expands_to_registered_app_adapter(tmp_path, monkeypatch, changed, allowed):
+    """Real files and admission checks; service inspection alone is recorded."""
+    root = tmp_path / 'installed'; root.mkdir()
+    names = ('app.py', 'inventory_api.py', 'finance_hub.py', 'compose.yaml',
+             'Dockerfile', 'requirements.txt', 'deploy/nginx.conf')
+    old = {}
+    for name in names:
+        path = root / name; path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(('synthetic original ' + name).encode())
+        old[name] = shared.sha(path.read_bytes())
+    manifest = root / 'RELEASE-MANIFEST.json'
+    manifest.write_text(json.dumps({'files': old}), encoding='utf-8')
+    monkeypatch.setattr(steady, 'OLD_MANIFEST', shared.sha(manifest.read_bytes()))
+    env = root / '.env'; env.write_bytes(b'SYNTHETIC_ONLY=1\n'); env.chmod(0o600)
+    if os.name == 'nt':
+        monkeypatch.setattr(steady.stat, 'S_IMODE', lambda mode: 0o600)
+    operator = object.__new__(steady.Controller)
+    operator.root = root
+    operator.files = {**old, changed: shared.sha(b'candidate adapter')}
+    operator.plan = {'envSha256': shared.sha(env.read_bytes())}
+    inspected = []
+    operator.current_services = lambda image: inspected.append(image) or {'recorded': True}
+    if allowed:
+        assert operator.baseline() == (old, {'recorded': True})
+        assert inspected == [steady.PARENT_IMAGE]
+    else:
+        with pytest.raises(shared.ReleaseError, match='unsupported_source_change'):
+            operator.baseline()
+        assert inspected == []
