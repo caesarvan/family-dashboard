@@ -22,7 +22,7 @@ export type Acquisition = {
 export type Movement = { id: string; acquisitionId: string; actor: string; kind: keyof typeof movementLabels; deltaQty: number; occurredOn: string; reason: string; reversesId: string | null; canReverse: boolean; createdAt: string };
 export type InventoryPage<T> = { items: T[]; total: number; offset: number; limit: number; nextOffset: number | null };
 export type InventoryResult = {
-  operation: { itemId: string; itemRevision: number; acquisitionId?: string; acquisitionRevision?: number; movementId?: string; deleted?: boolean; replayed: boolean };
+  operation: { itemId: string; itemRevision: number; acquisitionId?: string; acquisitionRevision?: number; movementId?: string; entityId?: string; deleted?: boolean; replayed: boolean };
   item?: InventoryItem; acquisition?: Acquisition;
 };
 export type InventorySession = { user: Member | null; csrf?: string | null };
@@ -59,10 +59,11 @@ export function validatePage<T>(value: InventoryPage<T>, limit: number, validate
     || value.limit !== limit || value.nextOffset !== null && (!natural(value.nextOffset) || value.nextOffset <= value.offset)) throw invalid();
   value.items.forEach(validate); return value;
 }
-export function validateResult(value: InventoryResult, itemId?: string, acquisitionId?: string): InventoryResult {
+export function validateResult(value: InventoryResult, itemId?: string, acquisitionId?: string, requireEntity = false): InventoryResult {
   const operation = value?.operation;
   if (!operation || !isInventoryId(operation.itemId) || !revision(operation.itemRevision) || typeof operation.replayed !== 'boolean'
     || itemId && itemId !== operation.itemId || acquisitionId && acquisitionId !== operation.acquisitionId) throw invalid();
+  if ((requireEntity || operation.entityId !== undefined) && (!isInventoryId(operation.entityId) || !isInventoryId(operation.acquisitionId) || !revision(operation.acquisitionRevision) || operation.deleted)) throw invalid();
   if (operation.deleted) { if (value.item || value.acquisition) throw invalid(); return value; }
   if (!value.item || validateItem(value.item).id !== operation.itemId) throw invalid();
   if (operation.acquisitionId && (!value.acquisition || validateAcquisition(value.acquisition).id !== operation.acquisitionId || value.acquisition.itemId !== value.item.id)) throw invalid();
@@ -135,4 +136,32 @@ export function validateShoppingInventoryPage(value: ShoppingInventoryPage, id: 
   });
   // Keep free-text quantity as display text. It is never an inventory quantity.
   return { ...value, shopping: { id, revision: shopping.revision, title: shopping.title, quantity: shopping.quantity } };
+}
+
+export type InventoryFollowupData = { title: string; owner: string; due: string; note: string };
+export type InventoryFollowup = {
+  itemId: string; acquisitionId: string; state: 'none' | 'linked' | 'deleted';
+  task: (InventoryFollowupData & { id: string; revision: number; done: boolean }) | null;
+};
+export function validateFollowup(value: InventoryFollowup, itemId: string, acquisitionId: string): InventoryFollowup {
+  if (!value || !isInventoryId(itemId) || !isInventoryId(acquisitionId) || value.itemId !== itemId || value.acquisitionId !== acquisitionId
+    || !['none', 'linked', 'deleted'].includes(value.state)) throw invalid();
+  if (value.state !== 'linked') {
+    if (value.task !== null) throw invalid();
+    return { itemId, acquisitionId, state: value.state, task: null };
+  }
+  const task = value.task;
+  if (!task || !isInventoryId(task.id) || !revision(task.revision) || typeof task.done !== 'boolean'
+    || typeof task.title !== 'string' || !task.title.trim() || [...task.title].length > 100
+    || typeof task.owner !== 'string' || !task.owner.trim() || typeof task.note !== 'string' || [...task.note].length > 500
+    || typeof task.due !== 'string' || task.due !== (inventoryDate(task.due) || '')) throw invalid();
+  // Only the explicitly shared task projection; never retain private source fields.
+  return { itemId, acquisitionId, state: 'linked', task: { id: task.id, revision: task.revision, title: task.title, owner: task.owner, due: task.due, done: task.done, note: task.note } };
+}
+export function followupInput(value: InventoryFollowupData, memberIds: string[]): InventoryFollowupData {
+  const title = value.title.trim(), note = value.note.trim();
+  if (!title || [...title].length > 100) throw new Error('请填写不超过 100 字的待办标题。');
+  if ([...note].length > 500) throw new Error('待办备注不能超过 500 字。');
+  if (value.owner !== 'shared' && !memberIds.includes(value.owner)) throw new Error('请重新选择当前家庭的负责人。');
+  return { title, owner: value.owner, due: inventoryDate(value.due) || '', note };
 }

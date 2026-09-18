@@ -49,3 +49,17 @@
 `ScreenProps.onInventoryPending(message|null)` 将物品/批次/实物草稿、提交中、未知或拒绝结果以及未结束的确认窗接到全局导航保护，适用于独立库存页和采购子页。未明确保存或放弃草稿、未核对原操作结果时，顶部导航、退出和浏览器离开均沿用现有保护。只读加载不会成为保存中的假状态。
 
 本节记录候选能力；类型检查、针对性组件检查、真实合并后浏览器、生产和本人资料分别验收，不以模拟接口组件检查代替真实后端或上线验证。
+
+
+## 从售后批次创建家庭待办（本轮候选）
+
+已保存的批次处于“售后处理中”时，先读取当前关联；没有关联才显示“创建售后待办”。标题默认“跟进售后”，负责人默认“共同”，截止日和备注可留空。不会自动复制物品名称、批次私密备注、订单或金额。表单就近说明“这条待办会在家庭清单中共享”，点击“创建家庭待办”即明确提交，不增加确认复选框。负责人表示分工，不改变家庭待办的共享范围。
+
+创建后留在原批次，读取当前待办的标题、负责人、截止日、备注和完成状态；后续编辑、完成仍在原家庭清单进行。每批次只有一条关联：已删除显示历史，不自动补建；售后关闭后仍可查看。完成待办不会关闭售后，关闭售后也不会勾选待办；不修改实物数量、采购完成、预算或财务记录，不新增云端写入。
+
+- `GET /api/inventory/acquisitions/:id/followup` 返回 `itemId`、`acquisitionId`、`state: none|linked|deleted`、`task`；`none/deleted` 的 task 必须为 null。客户端绑定物品和批次 ID，只保留任务白名单字段，拒绝混淆目标、无效版本/日期/状态。
+- `POST` 同路径携带原 `requestId`、`itemRevision`、批次 `revision` 与 `data:{title,owner,due,note}`。成功沿用库存回执，显式验证 `operation.entityId` 是有效任务 ID；不把回执当作任务仍存在的证明，随后重新 GET 当前关联。
+- 关联读取失败只显示“暂时无法核对”及重读入口，不能当作没有任务而开放创建。成功回执之后读回失败也不回退成未知写入；只重读关联。
+- 原 `InventoryFence`、完整会话代际、前后台隐藏/重新核权、草稿与全局导航保护均复用。回复丢失或回执缺少有效 entityId 时保留原请求，先查询原操作回执；查到后不重复 POST。明确冲突后重新核对，若已有或已删除关联则显示当前卡片，不另建任务。身份变化或对象权限被撤销清空关联及草稿。
+
+针对性检查执行真实 `InventoryScreen.tsx` 函数、`InventoryFence` 和输入/投影校验器；测试中的 hooks、Paper/原生控件、生命周期和 HTTP 为显式 recording doubles，不是 React reconciler、真实 DOM、浏览器或 Flask 验收。命令为 `node --experimental-transform-types --test frontend/tests/inventoryFollowup.test.mjs`；类型检查为 `node frontend/node_modules/typescript/bin/tsc --noEmit -p frontend/tsconfig.json`。首次 harness 遍历 undefined 子节点引起递归失败，修复的是测试 harness；原失败回执保留，不改写为首次全过。完整 Expo 构建、合并后真实 Flask 浏览器、本人库存/云端/实体电视和生产状态由集成人另验。
