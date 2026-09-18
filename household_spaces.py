@@ -196,6 +196,11 @@ class HouseholdPlatform:
         incoming = Request(environ)
         if incoming.path.startswith('/api/account/'):
             return self.personal_accounts.app(environ, start_response)
+        # Public application files contain no household data. Keep the account
+        # recovery screen loadable even if the selected household is missing.
+        if incoming.method in {'GET', 'HEAD'} and (incoming.path in {'/', '/demo', '/app'}
+                or incoming.path.startswith(('/app/', '/static/'))):
+            return self.main_wsgi(environ, start_response)
         def failure(message, status):
             headers = {'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer'}
             if incoming.path.startswith('/api/'):
@@ -252,6 +257,8 @@ class HouseholdPlatform:
             except BadSignature:
                 return failure('家庭入口已失效，请返回家庭入口重新选择', 400)
         if uid == 'default':
+            if not (self.root / 'household.sqlite3').is_file():
+                return failure('此家庭的数据暂不可用，请稍后再试或返回家庭入口', 503)
             return self.main_wsgi(environ, start_response)
         with self.db() as con:
             household = con.execute('SELECT * FROM households WHERE id=?', (uid,)).fetchone() if isinstance(uid, str) else None

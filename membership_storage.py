@@ -140,8 +140,10 @@ def connect_household(app, path, **kwargs):
         # Flask g belongs to the application context, which can outlive or be
         # shared by nested requests. Only enforce the proof captured for THIS
         # request; authentication itself must be able to establish a new proof.
-        actor, captured = getattr(request, '_household_member_authority', (None, None))
-        if not actor or actor.get('role') != 'member' or not captured:
+        origin_app, actor, captured = getattr(request, '_household_member_authority', (None, None, None))
+        # Creating another household pushes its app context inside the parent's
+        # request. That child must never consume the parent's credential proof.
+        if origin_app is not app or not actor or actor.get('role') != 'member' or not captured:
             return
         sessions = app.extensions['member_sessions']
         live = sessions.live(current, captured['credential_hash'], time.time())

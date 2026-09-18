@@ -199,6 +199,10 @@ def create_app(config=None):
 
     @app.before_request
     def guard():
+        # Static UI entry points are independent of member authentication. Their
+        # own file allowlist still applies; every data API takes the normal guard.
+        if request.method in {'GET', 'HEAD'} and request.endpoint in {'index', 'expo_frontend', 'asset'}:
+            return None
         if request.path == '/api/photos' and request.method == 'POST':
             request.max_content_length = 8_000_000
         if request.path == '/api/journey-documents' and request.method == 'POST':
@@ -208,7 +212,7 @@ def create_app(config=None):
         if request.path in {'/api/finance-baseline/imports/preview', '/api/finance-baseline/imports/confirm'} and request.method == 'POST':
             request.max_content_length = 3_000_000
         g.actor = actor()
-        request._household_member_authority = (g.actor, getattr(g, 'member_session', None))
+        request._household_member_authority = (app, g.actor, getattr(g, 'member_session', None))
         if request.path.startswith("/api/"):
             public = {"/api/login", "/api/me", "/api/pair/start", "/api/pair/poll", "/api/auth/providers", "/api/spaces/current", "/api/spaces/redeem"}
             if request.path not in public and not g.actor:

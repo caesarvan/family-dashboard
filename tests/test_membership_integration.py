@@ -209,6 +209,10 @@ def test_personal_switch_recovers_without_the_old_household(system, old_route):
     listed = read(client, '/api/account/households')
     assert second['id'] in {item['id'] for item in listed['memberships']}
     if old_route.startswith('missing_database'):
+        response = client.get('/api/me')
+        assert response.status_code == 503
+        assert response.get_json()['recoveryUrl'] == '/space/home'
+        assert response.headers['Cache-Control'] == 'no-store'
         assert listed['unavailable'] == [{'householdId': 'default', 'code': 'temporarily_unavailable'}]
     switch(client, second)
     assert read(client, '/api/me')['user']['householdId'] == second['householdId']
@@ -281,3 +285,26 @@ def test_authentication_proof_does_not_leak_across_requests_in_one_app_context(s
         legacy(system, 'member2', client=client)
         assert read(client, '/api/me')['user']['id'] == 'member2'
         assert first['id'] == 'member1'
+
+
+@pytest.mark.parametrize('old_route', ['invalid_cookie', 'missing_database'])
+def test_public_shell_can_load_for_personal_recovery_without_household_authority(system, old_route):
+    client = legacy(system)
+    before = client.get('/static/app.js')
+    assert before.status_code == 200
+    database = Path(system.config['DATA_DIR']) / 'household.sqlite3'
+    if old_route == 'invalid_cookie':
+        client.set_cookie('household_space', 'invalid-signed-route')
+    else:
+        database.rename(database.with_suffix('.test-unavailable'))
+    for method in ('get', 'head'):
+        response = getattr(client, method)('/static/app.js')
+        assert response.status_code == 200
+        assert not response.headers.getlist('Set-Cookie')
+        if method == 'get':
+            assert response.data == before.data
+    assert client.get('/static/experience/forbidden.js').status_code == 404
+    assert client.get('/api/state').status_code == (400 if old_route == 'invalid_cookie' else 503)
+    assert client.get('/api/account/me').status_code == 200
+    if old_route == 'missing_database':
+        assert not database.exists()
