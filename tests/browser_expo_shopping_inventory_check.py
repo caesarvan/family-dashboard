@@ -186,7 +186,9 @@ class Run(fixture.Run):
             self.screenshot(page, 'receive-return', 390)
             button(page, '返回原采购').click()
             expect(page.get_by_placeholder('搜索物品', exact=True)).to_have_value(shop['title'])
-            expect(button(page, '已买到')).to_have_attribute('aria-checked', 'true')
+            # Paper's checked prop is not exposed as aria-checked on this web
+            # button. The actual result heading distinguishes done from all.
+            expect(page.get_by_role('heading', name='已完成 · 1 项', exact=True)).to_be_visible()
             target = page.get_by_test_id('shopping-item-' + shop['id'])
             expect(target).to_be_focused()
             button(page, '登记或查看库存：' + shop['title']).click()
