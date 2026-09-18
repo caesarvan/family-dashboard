@@ -41,7 +41,9 @@ INVENTORY = ('inventory_items', 'inventory_acquisitions', 'inventory_movements',
 def button(page, name):
     # Paper's decorative icon enters the actual accessible name when no explicit
     # label is supplied. Permit one PUA icon plus space; keep the text exact.
-    icon = r'(?:[\ue000-\uf8ff\U000f0000-\U000ffffd\U00100000-\U0010fffd]\s+)?'
+    # Playwright serializes Python regexes to JavaScript without the u flag.
+    # Supplementary PUA icons must therefore match their UTF-16 surrogate pair.
+    icon = r'(?:(?:[\uE000-\uF8FF]|[\uDB80-\uDBFF][\uDC00-\uDFFF])\s+)?'
     return page.get_by_role('button', name=re.compile('^' + icon + re.escape(name) + '$'))
 
 
