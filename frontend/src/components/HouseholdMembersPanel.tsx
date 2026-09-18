@@ -8,6 +8,9 @@ import { canEndMemberReview, checkedMemberWrite, intentStillAllowed, memberInten
   type MembersSession, type MembersSnapshot } from '../lib/householdMembers';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { useDisplayDensity } from '../ui/theme';
+import PersonalAccountPanel, { MembershipButton } from './PersonalAccountPanel';
+import MembershipInvitationsPanel from './MembershipInvitationsPanel';
+import MembershipManagementPanel from './MembershipManagementPanel';
 
 type Props = { onBack: () => void; onPendingChange?: (pending: boolean) => void };
 type Model = { snapshot: MembersSnapshot | null; confirmation: MemberIntent | null; unknown: MemberIntent | null; review: MemberReview | null };
@@ -17,8 +20,25 @@ const roleName = (role: HouseholdRole) => role === 'admin' ? '管理员' : '普�
 
 export default function HouseholdMembersPanel(props: Props) {
   const household = useHousehold();
+  const [page, setPage] = useState<'members' | 'account' | 'invitations' | 'relationships'>('members');
+  const [pending, setPending] = useState(false);
+  const pendingRef = useRef(false);
+  const changed = (value: boolean) => { pendingRef.current = value; setPending(value); props.onPendingChange?.(value); };
+  const back = () => { if (!pendingRef.current) setPage('members'); };
+  // Each child owns fresh identity checks. Provider refresh only updates shared navigation.
+  const refresh = () => household.refresh();
+  if (page === 'account') return <PersonalAccountPanel onBack={back} onPendingChange={changed} onIdentityChanged={refresh} />;
+  if (page === 'invitations') return <MembershipInvitationsPanel onBack={back} onPendingChange={changed} onJoined={refresh} />;
+  if (page === 'relationships') return <MembershipManagementPanel onBack={back} onPendingChange={changed} onLeft={refresh} />;
   if (household.user?.role !== 'member') return <EmptyState title="请用成员账户查看家庭成员" />;
-  return <Workspace key={household.identityKey} {...props} identityKey={household.identityKey} />;
+  return <View style={{ gap: 16 }}>
+    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+      <MembershipButton label="我的家庭账户" disabled={pending} onPress={() => setPage('account')} />
+      <MembershipButton label="邀请与加入家庭" disabled={pending} onPress={() => setPage('invitations')} />
+      <MembershipButton label="管理成员关系" disabled={pending} onPress={() => setPage('relationships')} />
+    </View>
+    <Workspace key={household.identityKey} {...props} onPendingChange={changed} identityKey={household.identityKey} />
+  </View>;
 }
 function Workspace(props: Props & { identityKey: string }) {
   const household = useHousehold(), theme = useTheme(), density = useDisplayDensity();
