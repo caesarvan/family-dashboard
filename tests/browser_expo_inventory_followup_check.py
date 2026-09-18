@@ -32,6 +32,7 @@ file_manifest, read_git_blobs = shopping.file_manifest, shopping.read_git_blobs
 P, INVENTORY = shopping.P, shopping.INVENTORY
 CASES = ('private_task_lifecycle', 'lost_create_response',
          'partner_conflict_deleted', 'private_link_revocation')
+SCREENSHOT_COUNTS = dict(zip(CASES, (2, 2, 1, 0)))
 TITLE = '售后待办标题'
 DUE = '待办截止日（可选，YYYY-MM-DD）'
 NOTE = '待办备注（可选，共享）'
@@ -217,7 +218,10 @@ class Run(shopping.Run):
             page.get_by_role('radio', name='售后待办负责人 ' + other['name'], exact=True).click()
             fill(page, DUE, '2026-10-02')
             fill(page, NOTE, '只共享本次明确填写的联系时间')
-            self.screenshot(page, 'explicit-shared-draft', 390)
+            form = page.get_by_test_id('section-card-content').filter(
+                has=page.get_by_role('heading', name='创建售后待办', exact=True))
+            self.capture(page, 'explicit-shared-draft', 390, form,
+                         ready=('创建家庭待办', '取消编辑'), fields=(TITLE, DUE, NOTE))
             result, body = self.actual(page, 'POST', self.followup_path(acquisition_id),
                                        lambda: button(page, '创建家庭待办').click(), 201)
             task_id = result['operation']['entityId']
@@ -251,7 +255,9 @@ class Run(shopping.Run):
             assert projection['task']['id'] == task_id and projection['task']['done']
             assert self.physical(ctx, acquisition_id) == physical
             assert self.table_rows(('inventory_movements', 'inventory_source_links')) == movements
-            self.screenshot(page, 'completed-task-live-projection', 1280)
+            task_card = page.get_by_text('售后家庭待办', exact=True).locator('..')
+            self.capture(page, 'completed-task-live-projection', 1280, task_card,
+                         ready=('编辑批次', '刷新物品', '返回原采购'))
             persisted = self.no_write_snapshot()
             application, database = self.application, self.database
             self.restart()
@@ -307,10 +313,20 @@ class Run(shopping.Run):
             button(page, '日程').click()
             expect(page.get_by_text('请先核对本次库存操作的结果，再离开。', exact=True)).to_be_visible()
             expect(page).to_have_url(self.base + '/app/shopping')
+            # Dismiss only the actual navigation-lock snackbar through its UI;
+            # pending state and disabled exit/cancel controls must remain intact.
+            button(page, '知道了').click()
             task_id, request_id = dropped['result']['operation']['entityId'], dropped['body']['requestId']
             self.assert_one_task(acquisition_id, task_id, tasks_before, request_id=request_id)
             committed = self.no_write_snapshot()
-            self.screenshot(page, 'unknown-committed-result', 390)
+            recovery = page.get_by_test_id('section-card-content').filter(
+                has=page.get_by_role('heading', name='先核对本次操作', exact=True))
+            self.capture(page, 'unknown-recovery', 390, recovery, ready=('核对并重试本次操作',),
+                         disabled=('返回原采购', '取消编辑'))
+            draft = page.get_by_test_id('section-card-content').filter(
+                has=page.get_by_role('heading', name='创建售后待办', exact=True))
+            self.capture(page, 'unknown-retained-draft', 390, draft, ready=('核对并重试本次操作',),
+                         disabled=('返回原采购', '取消编辑'), fields=(TITLE, DUE, NOTE))
             receipt_path = P + '/operations/' + request_id
             receipt, _ = self.actual(page, 'GET', receipt_path,
                                      lambda: button(page, '核对并重试本次操作').click())
@@ -375,7 +391,10 @@ class Run(shopping.Run):
                 assert self.tasks() == tasks_before
                 assert self.query("SELECT count(*) FROM inventory_operations WHERE operation='create_followup' AND acquisition_id=?", (acquisition_id,)) == [(1,)]
                 assert self.count_requests('POST', path) == 1
-                self.screenshot(page, 'deleted-history-after-sales-closed', 1280)
+                batch_card = page.get_by_test_id('section-card-content').filter(
+                    has=page.get_by_role('heading', name='批次详情', exact=True))
+                self.capture(page, 'deleted-history-after-sales-closed', 1280, batch_card,
+                             ready=('编辑批次', '刷新物品', '返回原采购'))
                 self.report['partnerConflict'] = {'realStatus': 409, 'rejectedRequestId': rejected['requestId'],
                     'taskCountAddedBeforeDelete': 1, 'taskCountAddedAfterDelete': 0,
                     'followupOperationCount': 1, 'noReplacementAfterRefreshReopenClose': True}
@@ -389,6 +408,91 @@ class Run(shopping.Run):
         expect(button(page, '创建家庭待办')).to_have_count(0)
         value = self.get(ctx, self.followup_path(acquisition_id))
         assert value['state'] == 'deleted' and value['task'] is None
+
+    def capture(self, page, name, width, target, *, ready=(), disabled=(), fields=()):
+        """Capture an actual RN scroll target after business and visual settling.
+
+        Only viewport, scrolling and read-only measurements change here. Do not
+        hide labels, disable animations, inject styles or crop overlap away.
+        """
+        page.set_viewport_size({'width': width, 'height': 1000 if width >= 1040 else 844})
+        for label in ready:
+            expect(button(page, label)).to_be_enabled(timeout=20000)
+        for label in disabled:
+            expect(button(page, label)).to_be_disabled(timeout=20000)
+        expect(target).to_have_count(1)
+        expect(target).to_be_visible(timeout=20000)
+        page.evaluate('() => document.fonts.ready')
+        target.evaluate("element => element.scrollIntoView({block:'center', inline:'nearest', behavior:'instant'})")
+        # Paper uses both CSS and JS-driven transforms. Sample rendered leaf
+        # nodes AND all their ancestor boxes/styles, so a label transition is
+        # not mistaken for stability merely because the input box is stationary.
+        stability = target.evaluate('''async root => {
+          const started=performance.now(); let last=null, since=started, samples=0, changes=0;
+          const round=n=>Math.round(n*1000)/1000;
+          const measure=()=>{
+            const nodes=new Set([root,...root.querySelectorAll('*')]);
+            for(let parent=root.parentElement;parent;parent=parent.parentElement)nodes.add(parent);
+            const geometry=[...nodes].map(element=>{
+              const rect=element.getBoundingClientRect(), style=getComputedStyle(element);
+              return {tag:element.tagName,role:element.getAttribute('role'),
+                box:[rect.x,rect.y,rect.width,rect.height].map(round),
+                opacity:style.opacity,transform:style.transform,visibility:style.visibility,
+                display:style.display,font:style.font,letterSpacing:style.letterSpacing};
+            });
+            const running=[...document.getAnimations()].some(animation=>
+              ['pending','running'].includes(animation.playState));
+            return {geometry,running,fonts:document.fonts.status};
+          };
+          while(performance.now()-started<12000){
+            await new Promise(resolve=>setTimeout(resolve,100));
+            const value=measure(), signature=JSON.stringify(value), now=performance.now();
+            if(signature!==last){last=signature;since=now;samples=1;changes++;}else samples++;
+            if(now-since>=600&&samples>=7&&!value.running&&value.fonts==='loaded')
+              return {requiredStableMs:600,observedStableMs:round(now-since),samples,
+                changedSamples:changes,totalWaitMs:round(now-started),elements:value.geometry.length,
+                signature};
+          }
+          throw new Error('Paper label/opacity/transform/geometry did not stabilize for 600 ms');
+        }''')
+        signature = stability.pop('signature')
+        stability['geometrySha256'] = hashlib.sha256(signature.encode()).hexdigest()
+        def geometry():
+            return target.evaluate('''element=>{
+              const box=element.getBoundingClientRect();
+              let left=0,top=0,right=innerWidth,bottom=innerHeight;
+              for(let parent=element.parentElement;parent;parent=parent.parentElement){
+                const style=getComputedStyle(parent),rect=parent.getBoundingClientRect();
+                if(['hidden','auto','scroll','clip'].includes(style.overflowX)){
+                  left=Math.max(left,rect.left);right=Math.min(right,rect.right);}
+                if(['hidden','auto','scroll','clip'].includes(style.overflowY)){
+                  top=Math.max(top,rect.top);bottom=Math.min(bottom,rect.bottom);}
+              }
+              return {x:box.x,y:box.y,width:box.width,height:box.height,
+                clip:{left,top,right,bottom},fullyVisible:box.width>0&&box.height>0
+                  &&box.left>=left-1&&box.right<=right+1&&box.top>=top-1&&box.bottom<=bottom+1};
+            }''')
+        before = geometry()
+        assert before['fullyVisible'], ('Key screenshot target is clipped', name, before)
+        field_geometry = {}
+        for label in fields:
+            field = target.get_by_role('textbox', name=label, exact=True)
+            expect(field).to_be_visible()
+            field_geometry[label] = {'inputBox': field.bounding_box(),
+                'labels': target.get_by_text(label, exact=True).evaluate_all('''nodes=>nodes.map(element=>{
+                  const rect=element.getBoundingClientRect(),style=getComputedStyle(element);
+                  return {box:{x:rect.x,y:rect.y,width:rect.width,height:rect.height},
+                    opacity:style.opacity,transform:style.transform};
+                })''')}
+        super().screenshot(page, name, width)
+        for label in ready:
+            expect(button(page, label)).to_be_enabled()
+        for label in disabled:
+            expect(button(page, label)).to_be_disabled()
+        after = geometry()
+        assert after['fullyVisible'] and all(abs(after[key]-before[key]) <= 0.5 for key in ('x','y','width','height'))
+        self.report['screenshots'][-1].update(targetBox=after, stability=stability,
+            businessReady=list(ready), businessDisabled=list(disabled), fieldGeometry=field_geometry)
 
     def private_link_revocation(self, browser):
         with self.flow(browser) as (owner, _page):
@@ -535,8 +639,7 @@ def main():
                     run_case(name, root, bundle, report, out, browser)
                 assert not report['scenarioFailures'] and len(report['checks']) == len(selected)
                 assert not report['pageErrors'] and not report['externalRequests']
-                if args.case == 'all':
-                    assert len(report['screenshots']) == 4
+                assert len(report['screenshots']) == sum(SCREENSHOT_COUNTS[name] for name in selected)
                 report['passed'] = True
             finally:
                 browser.close()

@@ -1,6 +1,6 @@
 # 库存售后 → 家庭待办：真实浏览器验收
 
-**当前状态：验收脚本已编写并做静态检查，尚未运行真实浏览器，未部署。** 本文不把 API 单元测试、UI recording doubles、脚本编译或源码提交写成完整用户流程通过。实际执行必须等待集成人提供冻结组合源码和对应的原始 Expo 构建证据。
+**当前状态：R1 四条真实浏览器功能流程一次 4/4 通过，但截图视觉验收未通过；采集修订已编写，尚待独审和受影响流程重跑，未部署。** 不把 API 单元测试、UI recording doubles、脚本编译或源码提交写成完整用户流程通过。每次实际执行必须绑定集成人提供的冻结组合源码和原始 Expo 构建证据。
 
 作者分支 `codex/inventory-followup-browser`，开发 base `8ac89b50df03ae66da1dc3b63c116f00344d9128`；脚本与本文仅为本批新增验收材料。UI 契约按作者冻结 head `124f0a2e84acf927582a0d1c2776ece6f3529095` 核对，后续执行身份由每次报告单独绑定。
 
@@ -34,11 +34,23 @@
 
 每次执行创建独立 `test-results/expo-inventory-followup-<UTC>/`，包含 `executed-harness.py`、`result.json`、关键截图，失败时额外保留 traceback 和可取得的 DOM accessibility snapshot／截图。报告记录 `requestedScenarios`、`fullSuite`、每条结果、真实浏览器与 fixture API 的分开请求计数、SQL task／operation／movement 数量、受保护记录摘要、实际重启与完整散列守卫。故障记录不覆盖；不能把分轮通过拼成一次全通过。
 
-全量只计划四张关键截图：390 px 明确共享表单、1280 px 最新完成投影、390 px 未知结果草稿、1280 px deleted 历史及售后关闭。截图先等字体、两帧布局和相应业务状态，检查横向溢出，再保存散列。像素截图本身仍需独立视觉审查。
+采集修订计划五张关键截图：390 px 明确共享表单、1280 px 最新完成投影、390 px 未知结果恢复区、390 px 未知结果保留草稿、1280 px deleted 历史及售后关闭。每张先把实际关键卡片滚入 RN 内层 ScrollView，确认业务 idle 按钮可用或 pending 按钮仍禁用，等字体完成，再跨至少 600 ms 连续七次采样核对整个目标及祖先的几何、opacity、transform 与字体样式不变。目标须完整位于视口及滚动祖先交集内；截图前后位置不得漂移。报告额外保留 `targetBox`、稳定窗口与几何摘要、输入／浮动 label 几何、按钮状态。恢复区与草稿分图，导航锁 Snackbar 只通过真实“知道了”按钮关闭。
+
+采集不注入样式、不隐藏文字、不关闭产品动画、不剪裁掩盖重叠，继续使用原横向溢出检查。若稳定后仍有 label／值重叠或按钮叠影，应报告产品视觉问题；像素截图仍须独立审查。精确 case 按 2／2／1／0 张核验，全量应为 5 张。
+
+## R1 实际执行与未通过的视觉边界
+
+2026-09-18 07:46:56–07:47:38 UTC，harness `74d0469d72606b58150984e1ef25719410fe8fdf`／SHA256 `40d3895851c38f849aea7a0d4a7bdc0cf91bea06e7b8ece4f66dbe8cc45c4c66`，对冻结组合 source `e165b088f2e01bd029de44793cc801c51bc04712`（tree `0d7f1ae4fa877bc309caa6ec992bcec7318314f5`）实际执行 `--case all`，四条一次 4/4、退出 0；没有失败重跑。
+
+构建为 `adbb1d87c58fff11fd5b06ce3ee84b53d35251d5`，build evidence SHA256 `36a0258a72b46fb85465d24981d9442b8ad14531658435cfa3e6ca7843bc035b`。源码、bundle、构建证据和所有继承 fixture 的前后散列守卫均通过，双方工作区结束时干净、四个临时目录全部清理，pageErrors/externalRequests 均空。未知结果实测原 POST 1 次、原 requestId GET 1 次、task／operation 各新增 1；实际 Flask 重启保留同库、同 task/link。以上是功能及隔离证据，不是视觉通过结论。
+
+R1 原件保留在作者 worktree 的 `test-results/expo-inventory-followup-20260918T074708795442Z/result.json`，SHA256 `d19d9af58319d827ae5770eaf27a1d85450a945f149ea579ac92c4a269333120`；命令／stdout／stderr／exit 在 `test-results/inventory-followup-run-r1/`。stdout SHA256 `5dfdc0412ab58b0dc9eaed56056c88c5b445dd76ee5fa2cc135b85ff9324d19b`，stderr 为空，exit 原件 SHA256 `3e449253753397fd7d3db8a32ad5535753b896a66905f196f2f06aa87f2debe9`。
+
+作者、UI 作者和集成人读图一致发现：390 px 表单的截止日／备注 label 与输入值重叠、按钮文字叠影；1280 px 完成状态图没有把售后任务卡滚入镜头；未知结果图只有恢复区与草稿标题，关键字段在下方；deleted 图关键状态可读但按钮尚呈忙碌态。原截图虽无横向溢出，不能证明视觉通过。R1 原件不覆盖；下一轮只重跑有截图的前三条，已通过且无图的 `private_link_revocation` 保留 R1 证据，不写成修订版一次四条全通过。
 
 ## 冻结后执行
 
-以下参数必须替换为集成人本轮实际冻结输入；本次作者没有执行此命令。
+以下参数必须替换为集成人本轮实际冻结输入；修订脚本尚未执行。
 
 ```powershell
 & 'C:/Users/caesarf/OneDrive - NVIDIA Corporation/Documents/AI/family-dashboard/.venv/Scripts/python.exe' -B -X utf8 `
@@ -53,4 +65,4 @@
 
 失败修正后可以把 `--case all` 换成上表唯一精确 case，仅重跑受影响流程。报告必须保留首轮失败、修订后的 harness/source/build 身份和各轮覆盖；单 case 报告明确 `fullSuite: false`。
 
-当前实际静态检查：用指定 Python `-B -X utf8` 读取新脚本，执行 `ast.parse` 和 `compile(..., 'exec')`，不导入 app、不起服务、不写 pyc；语法检查通过。提交前对两份新增文件执行 `git diff --check`。目前没有真实浏览器通过计数、截图、性能、部署或真实家庭验收结论。
+脚本静态检查使用指定 Python `-B -X utf8` 读取文件，执行 `ast.parse` 和 `compile(..., 'exec')`，不导入 app、不起服务、不写 pyc；提交前执行 `git diff --check`。当前采集修订尚未有实际截图与运行结论，尚无性能、部署或真实家庭验收结论。
