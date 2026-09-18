@@ -32,6 +32,52 @@ def digest(value):
     return hashlib.sha256(pack(value).encode()).hexdigest()
 
 
+def publication_capture(con, row, kind):
+    """Capture active principals and durable binding inside one caller snapshot."""
+    if row is None or not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='household_memberships'").fetchone():
+        return None
+    row = dict(row)
+    account = con.execute('SELECT id,owner,provider,client_id,subject FROM cloud_accounts WHERE id=?', (row['account_id'],)).fetchone()
+    if not account or account['provider'] != row['provider'] or account['owner'] != row.get('account_owner', row['owner']):
+        return None
+    principals = []
+    for owner in sorted({row['owner'], account['owner']}):
+        member = con.execute("SELECT u.id,u.auth_version,m.id AS membership_id,m.revision FROM users u "
+            "JOIN household_memberships m ON m.member_id=u.id WHERE u.id=? AND m.state='active'", (owner,)).fetchone()
+        if not member:
+            return None
+        principals.append(dict(member))
+    source = con.execute('SELECT id,account_id,remote_id,kind,owner,is_primary FROM cloud_sources WHERE id=?', (row['source_id'],)).fetchone()
+    authority = digest([principals, dict(account), dict(source) if source else None])
+    return {**row, '_worker_binding': digest(row), '_worker_authority': authority}
+
+
+def publication_current(con, captured, kind):
+    if captured is None:
+        return False
+    if kind not in ('calendar', 'task'):
+        raise ValueError('Unsupported publication kind')
+    row = con.execute('SELECT * FROM ' + kind + '_publications WHERE id=?', (captured['id'],)).fetchone()
+    current = publication_capture(con, row, kind)
+    return bool(current and current['_worker_binding'] == captured['_worker_binding']
+                and current['_worker_authority'] == captured['_worker_authority'])
+
+
+@contextmanager
+def publication_requests(adapter, current):
+    """Fence each HTTP request, including provider pagination and write readback."""
+    original = adapter.request
+    def checked(*args, **kwargs):
+        if not current():
+            raise ProviderError('成员或发布绑定已变化，本次后续请求已停止', 403)
+        return original(*args, **kwargs)
+    adapter.request = checked
+    try:
+        yield adapter
+    finally:
+        adapter.request = original
+
+
 def binding_snapshot(row):
     """Bind delayed work and explicit reviews to one durable queue generation."""
     return digest({key: row[key] for key in ('owner', 'account_id', 'source_id', 'entity_id', 'journey_id',
@@ -112,6 +158,15 @@ class CalendarPublicationQueue:
             initialize_publications(con)
             self.namespace = json.loads(con.execute("SELECT data FROM settings WHERE id='calendar_publication_namespace'").fetchone()[0])
 
+    def worker_ready(self, row):
+        # Release this fresh snapshot before any provider request.
+        with self.accounts.db() as con:
+            con.execute('BEGIN')
+            return publication_current(con, row, 'calendar')
+
+    def worker_capture(self, con, rid):
+        return publication_capture(con, con.execute('SELECT * FROM calendar_publications WHERE id=?', (rid,)).fetchone(), 'calendar')
+
     def source(self, con, source_id, owner):
         row = con.execute('SELECT s.* FROM cloud_sources s JOIN cloud_accounts a ON a.id=s.account_id '
                           "WHERE s.id=? AND a.owner=? AND s.kind='calendar'", (source_id, owner)).fetchone()
@@ -160,20 +215,23 @@ class CalendarPublicationQueue:
         if isinstance(error, AccountBusy):
             return
         with self.accounts.db() as con:
-            initial = con.execute('SELECT * FROM calendar_publications WHERE id=?', (rid,)).fetchone()
+            con.execute('BEGIN')
+            initial = self.worker_capture(con, rid)
         if not initial:
             return
         try:
             with self.accounts.lock(initial['account_id']), self.accounts.db() as con:
                 con.execute('BEGIN IMMEDIATE')
                 row = con.execute('SELECT * FROM calendar_publications WHERE id=?', (rid,)).fetchone()
-                if not row or binding_snapshot(row) != binding_snapshot(initial):
+                if not row or not publication_current(con, initial, 'calendar'):
                     return
-                self._set_error_locked(con, rid, error, attempts, initial['account_id'])
+                self._set_error_locked(con, rid, error, attempts, initial['account_id'], initial)
         except AccountBusy:
             return
 
-    def _set_error_locked(self, con, rid, error, attempts, account_id):
+    def _set_error_locked(self, con, rid, error, attempts, account_id, captured):
+        if not publication_current(con, captured, 'calendar'):
+            return
         code = error.status
         status = 'needs_authorization' if error.reauth or code == 401 else 'permission_denied' if code == 403 else 'conflict' if code in {404, 409, 412} else 'retry'
         if status == 'retry' and attempts >= 12:
@@ -185,10 +243,11 @@ class CalendarPublicationQueue:
 
     def process(self, rid):
         with self.accounts.db() as con:
-            initial = con.execute('SELECT account_id,attempts FROM calendar_publications WHERE id=?', (rid,)).fetchone()
+            con.execute('BEGIN')
+            initial = self.worker_capture(con, rid)
         if not initial:
             return
-        attempts = initial['attempts']
+        attempts, captured = initial['attempts'], initial
         # Error recording belongs to the same critical section as the failed
         # request. A rebind/review must never race a late error after lock release.
         with ExitStack() as held:
@@ -197,8 +256,9 @@ class CalendarPublicationQueue:
                 held.enter_context(self.accounts.lock(initial['account_id']))
                 acquired = True
                 with self.accounts.db() as con:
+                    con.execute('BEGIN IMMEDIATE')
                     row = con.execute('SELECT * FROM calendar_publications WHERE id=?', (rid,)).fetchone()
-                    if not row or row['account_id'] != initial['account_id'] or row['review_required'] or row['status'] in {'paused', 'conflict', 'permission_denied', 'error', 'local_deleted', 'needs_review'}:
+                    if not publication_current(con, initial, 'calendar') or row['review_required'] or row['status'] not in {'pending', 'publishing', 'published', 'retry', 'needs_authorization'}:
                         return
                     row = dict(row)
                     attempts = row['attempts']
@@ -216,16 +276,22 @@ class CalendarPublicationQueue:
                         row.update(pending_data=pack(current), pending_hash=digest(current), pending_revision=linked['revision'])
                         con.execute("UPDATE calendar_publications SET pending_data=?,pending_hash=?,pending_revision=?,status='pending' WHERE id=?",
                                     (row['pending_data'], row['pending_hash'], row['pending_revision'], rid))
+                    captured = self.worker_capture(con, rid)
+                if not self.worker_ready(captured):
+                    return
                 account = self.accounts.account(source['account_id'], row['owner'])
                 if self.key(account, source, row['entity_id']) != rid:
                     raise ProviderError('日历身份与原发布不一致，请重新选择目标并预览', 409)
                 if not calendar_write_allowed(account['provider'], self.accounts.decrypt(account['tokens']).get('scope')):
                     raise ProviderError('需要本人单独授权日历写入；原有读取同步仍可继续', 401)
                 adapter = self.accounts.active_provider(account)
+                held.enter_context(publication_requests(adapter, lambda: self.worker_ready(captured)))
                 account = self.accounts.account(source['account_id'], row['owner'])
                 if not calendar_write_allowed(account['provider'], self.accounts.decrypt(account['tokens']).get('scope')):
                     raise ProviderError('刷新后的授权未包含日历写权限，请重新授权', 401)
                 src = self.accounts.adapter_source(source)
+                if not self.worker_ready(captured):
+                    return
                 if check_only:
                     # A stable local revision does not prove the remote event
                     # still exists. Verify it even if polling suppressed its
@@ -238,13 +304,22 @@ class CalendarPublicationQueue:
                     if remote['key'] != rid or remote['etag'] != row['etag'] or remote['digest'] != row['last_hash'] or event_snapshot(remote['managed']) != current:
                         raise ProviderError('云端事项已变化，持续发布已暂停，请核对两边内容', 409)
                     with self.accounts.db() as con:
+                        con.execute('BEGIN IMMEDIATE')
+                        if not publication_current(con, captured, 'calendar'):
+                            return
                         con.execute("UPDATE calendar_publications SET local_revision=?,next_attempt=?,status='published',error='' WHERE id=?", (linked['revision'], time.time() + 60, rid))
                     return
                 if not adapter.calendar_access(src):
                     raise ProviderError('该日历没有编辑权限，请选择本人可编辑的日历', 403)
                 with self.accounts.db() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    if not publication_current(con, captured, 'calendar'):
+                        return
                     con.execute("UPDATE calendar_publications SET status='publishing',next_attempt=?,updated_at=? WHERE id=?", (time.time() + 60, stamp(), rid))
+                    captured = self.worker_capture(con, rid)
                 pending = json.loads(row['pending_data'])
+                if not self.worker_ready(captured):
+                    return
                 remote = adapter.get_calendar_publication(src, row['remote_id']) if row['remote_id'] else adapter.find_calendar_publication(src, rid)
                 if remote is None and row['remote_id']:
                     raise ProviderError('云端原事项已删除，已暂停更新，不会自动重新创建', 409)
@@ -256,12 +331,19 @@ class CalendarPublicationQueue:
                     else:
                         if not row['remote_id'] or not row['etag'] or remote['etag'] != row['etag']:
                             raise ProviderError('云端事项已被修改，已暂停发布；不会覆盖云端内容', 409)
+                        if not self.worker_ready(captured):
+                            return
                         result = adapter.update_calendar_publication(src, pending, rid, row['pending_hash'], row['remote_id'], row['etag'])
                 else:
+                    if not self.worker_ready(captured):
+                        return
                     result = adapter.create_calendar_publication(src, pending, rid, row['pending_hash'])
                 if result['key'] != rid or result['digest'] != row['pending_hash'] or event_snapshot(result['managed']) != pending:
                     raise ProviderError('云端返回内容与计划不一致，已暂停，请核对日历', 409)
                 with self.accounts.db() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    if not publication_current(con, captured, 'calendar'):
+                        return
                     con.execute("UPDATE calendar_publications SET remote_id=?,etag=?,last_hash=?,local_revision=?,pending_data=NULL,pending_hash='',pending_revision=0,"
                                 "status='published',error='',attempts=0,next_attempt=?,updated_at=? WHERE id=?",
                                 (result['id'], result['etag'], row['pending_hash'], row['pending_revision'], time.time() + 30, stamp(), rid))
@@ -274,7 +356,8 @@ class CalendarPublicationQueue:
             except ProviderError as exc:
                 if acquired and not isinstance(exc, AccountBusy):
                     with self.accounts.db() as con:
-                        self._set_error_locked(con, rid, exc, attempts + 1, initial['account_id'])
+                        con.execute('BEGIN IMMEDIATE')
+                        self._set_error_locked(con, rid, exc, attempts + 1, initial['account_id'], captured)
 
     def tick(self):
         with self.accounts.db() as con:
@@ -307,8 +390,9 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
     def locked_publication(rid, transaction=False):
         """Never use a freshly rebound row under its previous account's lock."""
         with engine.accounts.db() as con:
-            initial = con.execute('SELECT * FROM calendar_publications WHERE id=? AND owner=?', (rid, g.actor['id'])).fetchone()
-        if not initial:
+            con.execute('BEGIN')
+            initial = engine.worker_capture(con, rid)
+        if not initial or initial['owner'] != g.actor['id']:
             raise Problem('发布记录不存在', 404)
         with engine.accounts.lock(initial['account_id']), engine.accounts.db() as con:
             if transaction:
@@ -317,13 +401,15 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
             else:
                 revalidate_member()
             row = con.execute('SELECT * FROM calendar_publications WHERE id=? AND owner=?', (rid, g.actor['id'])).fetchone()
-            if not row or binding_snapshot(row) != binding_snapshot(initial):
+            if not row or not publication_current(con, initial, 'calendar'):
                 raise Problem('发布绑定或状态已变化，请刷新后重试', 409)
             try:
-                yield con, row
+                yield con, initial
             finally:
                 if not transaction:
                     revalidate_member()
+                    if not engine.worker_ready(initial):
+                        raise Problem('发布绑定或成员状态已变化，请重新核对', 409)
         if transaction:
             # A concurrent revocation after commit hides the response; it does
             # not undo the already committed durable publication decision.
@@ -493,7 +579,8 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
             account = engine.accounts.account(row['account_id'], g.actor['id'])
             adapter = engine.accounts.active_provider(account)
             revalidate_member()
-            remote = adapter.get_calendar_publication(engine.accounts.adapter_source(source), row['remote_id']) if row['remote_id'] else adapter.find_calendar_publication(engine.accounts.adapter_source(source), rid)
+            with publication_requests(adapter, lambda: engine.worker_ready(row)):
+                remote = adapter.get_calendar_publication(engine.accounts.adapter_source(source), row['remote_id']) if row['remote_id'] else adapter.find_calendar_publication(engine.accounts.adapter_source(source), rid)
             if not remote or remote['key'] != rid:
                 raise Problem('无法确认这是本平台创建的原事项，请保留云端并停止发布', 409)
             value = {'owner': g.actor['id'], 'publicationId': rid, 'localRevision': local['revision'], 'localDigest': digest(snapshot),
@@ -551,7 +638,8 @@ def register_calendar_publish(app, db, Problem, body, require_member, audit):
             account = engine.accounts.account(row['account_id'], g.actor['id'])
             adapter = engine.accounts.active_provider(account)
             revalidate_member()
-            remote = adapter.get_calendar_publication(engine.accounts.adapter_source(source), row['remote_id']) if row['remote_id'] else adapter.find_calendar_publication(engine.accounts.adapter_source(source), rid)
+            with publication_requests(adapter, lambda: engine.worker_ready(row)):
+                remote = adapter.get_calendar_publication(engine.accounts.adapter_source(source), row['remote_id']) if row['remote_id'] else adapter.find_calendar_publication(engine.accounts.adapter_source(source), rid)
             if remote and remote['key'] != rid:
                 raise Problem('远端标识与原发布不一致，请保留云端并停止发布', 409)
             claims = {'owner': g.actor['id'], 'publicationId': rid, 'queueBinding': binding,
