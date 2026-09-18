@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import type { HomeLayout, Member } from './types';
 
 export const homeCards = ['calendar', 'finance', 'tasks', 'shopping', 'trips'] as const;
@@ -57,7 +58,7 @@ export function rebaseHomeDraft(draft: HomeLayout, latest: HomeLayout): HomeLayo
   return { revision: latest.revision, order: [...next.order, ...latest.order.filter(key => !isHomeCard(key))],
     hidden: [...next.hidden, ...latest.hidden.filter(key => !isHomeCard(key))] };
 }
-export const layoutSignature = (session: LayoutSession) => JSON.stringify([session.user?.role, session.user?.householdId, session.user?.id, session.user?.auth_version, session.csrf]);
+export const layoutSignature = sessionIdentity;
 export class HomeLayoutFence {
   private epoch = 0;
   constructor(private expected: string) {}

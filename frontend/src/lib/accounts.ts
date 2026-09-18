@@ -1,6 +1,7 @@
 export type ProviderId = 'microsoft' | 'google';
 export type SourceKind = 'calendar' | 'tasks';
-export type SourceOwner = 'member1' | 'member2' | 'shared';
+import { isMemberId, isOwnerId } from './memberId.ts';
+export type SourceOwner = string;
 export type SourceChoice = { remoteId: string; kind: SourceKind; owner: SourceOwner; primary: boolean };
 export type SavedSource = SourceChoice & { id: string; name: string; lastSuccess: string; error: string };
 export type CloudSource = { id: string; kind: SourceKind; name: string; writable: boolean };
@@ -19,7 +20,7 @@ export const selectionVersion = (value: unknown): value is string => typeof valu
 export const sourceKey = (value: { kind: SourceKind; id?: string; remoteId?: string }) => JSON.stringify([value.kind, value.remoteId ?? value.id]);
 export const providerName = (provider: ProviderId) => provider === 'microsoft' ? 'Microsoft' : 'Google';
 const kind = (value: unknown): SourceKind => value === 'calendar' || value === 'tasks' ? value : bad();
-const owner = (value: unknown): SourceOwner => value === 'member1' || value === 'member2' || value === 'shared' ? value : bad();
+const owner = (value: unknown): SourceOwner => isOwnerId(value) ? value : bad();
 const remote = (value: unknown) => { const id = text(value, 8192); return id ? id : bad(); };
 function chosen(value: unknown): SourceChoice {
   const row = record(value), result = { remoteId: remote(row.remoteId), kind: kind(row.kind), owner: owner(row.owner), primary: flag(row.primary) };
@@ -59,7 +60,7 @@ export function readDiscovery(value: unknown): SourceDiscovery {
   return { sources, selected: savedSources(input.selected), selectionVersion: input.selectionVersion };
 }
 export function selectionDraft(id: string, discovery: SourceDiscovery, member: string): SelectionDraft {
-  if (!accountId(id) || !['member1', 'member2'].includes(member)) return bad();
+  if (!accountId(id) || !isMemberId(member)) return bad();
   const saved = new Map(discovery.selected.map(s => [sourceKey(s), s]));
   const rows: DraftSource[] = discovery.sources.map(s => {
     const existing = saved.get(sourceKey(s)); return { ...s, selected: !!existing, available: true,

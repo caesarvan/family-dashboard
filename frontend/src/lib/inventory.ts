@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import type { Member } from './types';
 
 export type InventoryItem = {
@@ -25,7 +26,7 @@ export type InventoryResult = {
   item?: InventoryItem; acquisition?: Acquisition;
 };
 export type InventorySession = { user: Member | null; csrf?: string | null };
-export const inventorySignature = (session: InventorySession) => JSON.stringify([session.user?.role, session.user?.householdId, session.user?.id, session.user?.auth_version, session.csrf]);
+export const inventorySignature = sessionIdentity;
 export const isInventoryId = (id: unknown): id is string => typeof id === 'string' && /^[a-f0-9]{24}$/.test(id);
 const natural = (n: unknown) => Number.isSafeInteger(n) && Number(n) >= 0;
 const revision = (n: unknown) => natural(n) && Number(n) > 0;

@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import type { Member } from './types';
 
 export type HouseholdRole = 'admin' | 'member';
@@ -60,7 +61,7 @@ export function readMemberResult(raw: unknown, intent: MemberIntent): MemberResu
 export type MemberReview = Readonly<{ intent: MemberIntent; identity: string; epoch: number }>;
 export const canEndMemberReview = (review: MemberReview | null, intent: MemberIntent | null, identity: string, epoch: number): boolean =>
   !!review && !!intent && review.intent === intent && review.identity === identity && review.epoch === epoch;
-export const membersSignature = (s: MembersSession) => JSON.stringify([s.user?.role, s.user?.householdId, s.user?.id, s.user?.auth_version, s.csrf]);
+export const membersSignature = sessionIdentity;
 export class MembersFence {
   private epoch = 0;
   constructor(private expected: string) {}

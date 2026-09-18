@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import type { Member } from './types';
 
 export type Coordinates = { latitude: number; longitude: number };
@@ -96,7 +97,7 @@ export function placePayload(draft: PlaceDraft, original?: Place | null): Record
   if (draft.status === 'visited' && changedVisit && !draft.confirmed) throw new Error('请先明确确认实际到访；日期或照片不会自动证明到访。');
   return { ...value, confirmVisited: draft.status === 'visited' && draft.confirmed };
 }
-export const placeSignature = (session: PlaceSession) => JSON.stringify([session.user?.role, session.user?.householdId, session.user?.id, session.user?.auth_version, session.csrf]);
+export const placeSignature = sessionIdentity;
 export class PlaceDiscarded extends Error {}
 export class PlaceFence {
   private epoch = 0;

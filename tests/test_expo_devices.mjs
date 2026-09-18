@@ -29,11 +29,12 @@ test('device DTO projects public fields, rejects duplicate IDs and never retains
   assert.deepEqual(readDevices([{ ...raw, secret: 'synthetic', secret_hash: 'private', code: 'ABCDEFGH', approved: 1 }]), [raw]);
   assert.deepEqual(readDevices([]), []);
   for (const patch of [{ id: '../devices' }, { id: id.toUpperCase() }, { revision: 0 }, { revision: true },
-    { revision: 1.2 }, { revision: Number.MAX_SAFE_INTEGER + 1 }, { focus: 'foreign' },
+    { revision: 1.2 }, { revision: Number.MAX_SAFE_INTEGER + 1 }, { focus: 'invalid/member' },
     { calendarView: 'month' }, { name: '' }, { name: '长'.repeat(31) }, { created_at: null }]) {
     assert.throws(() => readDevices([{ ...raw, ...patch }]));
   }
   assert.throws(() => readDevices([raw, raw]));
+  assert.equal(readDevices([{ ...raw, focus: 'm_' + 'a'.repeat(24) }])[0].focus, 'm_' + 'a'.repeat(24));
   for (const value of [null, {}, '[]', [null]]) assert.throws(() => readDevices(value));
 });
 
@@ -76,7 +77,9 @@ test('settings payload whitelists current people, versions and editable fields',
   assert.deepEqual(devicePayload({ ...draft, owner: 'foreign', token: 'hidden' }, raw, people), {
     revision: 3, name: '合成电视', focus: 'member1', calendarView: 'week', layout: defaultDeviceLayout() });
   assert.throws(() => devicePayload({ ...draft, focus: 'member2' }, raw, [people[0]]));
-  assert.throws(() => devicePayload({ ...draft, focus: 'member3' }, raw, [...people, { id: 'member3' }]));
+  const third = { id: 'm_' + 'a'.repeat(24), name: '新成员' };
+  assert.throws(() => devicePayload({ ...draft, focus: third.id }, raw, people));
+  assert.equal(devicePayload({ ...draft, focus: third.id }, raw, [...people, third]).focus, third.id);
   assert.equal(devicePayload({ ...draft, focus: 'shared' }, raw, []).focus, 'shared');
   for (const revision of [0, -1, true, '3', Infinity]) assert.throws(() => devicePayload(draft, { ...raw, revision }, people));
   assert.equal(sameDeviceSettings(draft, deviceDraft(raw)), true);

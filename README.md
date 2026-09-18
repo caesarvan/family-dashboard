@@ -1,5 +1,7 @@
 # 家庭中枢 · Family Dashboard
 
+**开发候选：个人账户与多家庭成员协作。** 注册与绑定、邀请加入、移除与退出、跨家庭切换及后台撤权已进入组合验收；尚未上线。接口、开发分工、实际测试和专用迁移部署步骤见[候选交付记录](docs/MEMBERSHIPS-ACCEPTANCE.md)。下方为已上线版本历史。
+
 **最新上线：助理查找已有旅行（2026-09-18 09:30，北京时间）。** 在「家庭助理」输入「找一下冰岛旅行」「搜索 冰岛旅行」或「查找：冰岛旅行」，点「查看旅行」打开原详情，再返回原搜索页；显式搜索只在本地进行。09:31 正常 TLS 读回通过。[使用与验收](docs/EXPO-ASSISTANT-TRIP-SEARCH-ACCEPTANCE.md#expo-assistant-trip-search-release)。
 
 **此前上线：Expo 采购实付核对（2026-09-18 08:03，北京时间）。** 在采购项点「核对实付」，或在本人交易详情点「核对采购实付」，选择付款、核对整项实付和「已买到」，预览后明确保存。仅共享采购金额与状态，付款明细仍仅本人可见；经典入口继续可用。[使用与验收](docs/EXPO-SHOPPING-SETTLEMENT-ACCEPTANCE.md#expo-shopping-settlement-release)。

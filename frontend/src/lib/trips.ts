@@ -1,4 +1,5 @@
 import type { CalendarEvent, ListItem, Member, Person, Trip } from './types';
+import { memberIdentity, sessionIdentity } from './sessionIdentity.ts';
 
 export type Destination = {key:string;city:string;country:string;arrival:string;departure:string;timeZone?:string};
 export type Preparation = {key:string;title:string;owner:string;due?:string;dueOffsetDays?:number;note:string;category?:string};
@@ -18,8 +19,8 @@ export type Draft = {plan:Plan;budget:string;saved:string;paid:string;purchaseBu
 export type Session = {user:Member|null;csrf?:string|null};
 
 export const copy = <T,>(value:T):T => JSON.parse(JSON.stringify(value));
-export const memberKey = (member:Member|null) => JSON.stringify([member?.role,member?.householdId,member?.id,member?.auth_version]);
-export const sessionKey = (session:Session) => JSON.stringify([memberKey(session.user),session.csrf]);
+export const memberKey = memberIdentity;
+export const sessionKey = sessionIdentity;
 export const recordVersions = (journey:Journey) => JSON.stringify([journey.revision,[journey.trip,...journey.tasks,...journey.shopping,...journey.events].filter(item=>item!==null).map(item=>[item.id,item.revision]).sort((a,b)=>String(a[0]).localeCompare(String(b[0])))]);
 export class SessionChangedError extends Error {}
 export async function readForMember<T>(path:string,actor:string,fetcher:<V>(path:string)=>Promise<V>,current:()=>boolean):Promise<T> {

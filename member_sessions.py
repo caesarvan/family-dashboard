@@ -17,6 +17,7 @@ import time
 
 from flask import g, jsonify, request, session
 from itsdangerous import BadSignature
+from membership_storage import authority_guard, connect_household, personal_engine
 
 
 LAST_SEEN_INTERVAL = 300
@@ -62,6 +63,8 @@ class MemberSessions:
                 revoked_at REAL, legacy INTEGER NOT NULL DEFAULT 0, retain_until REAL NOT NULL)''')
             con.execute('CREATE INDEX IF NOT EXISTS member_sessions_owner ON member_sessions(owner)')
             con.execute('CREATE INDEX IF NOT EXISTS member_sessions_browser ON member_sessions(browser_hash)')
+            if 'personal_identity' not in {r[1] for r in con.execute('PRAGMA table_info(member_sessions)')}:
+                con.execute("ALTER TABLE member_sessions ADD COLUMN personal_identity TEXT")
             con.execute('INSERT OR IGNORE INTO settings(id,data) VALUES(?,?)',
                         (LEGACY_SETTING, json.dumps({'cutoff': int(time.time()), 'maxTtl': self.ttl})))
             policy = json.loads(con.execute('SELECT data FROM settings WHERE id=?', (LEGACY_SETTING,)).fetchone()[0])
@@ -76,7 +79,7 @@ class MemberSessions:
         # must never silently recreate a removed database, including after a
         # prior path existence check raced with a filesystem change.
         uri = Path(self.path).resolve().as_uri() + '?mode=rw'
-        con = sqlite3.connect(uri, timeout=15, uri=True)
+        con = connect_household(self.app, uri, timeout=15, uri=True)
         con.row_factory = sqlite3.Row
         con.execute('PRAGMA foreign_keys=ON')
         try:
@@ -126,9 +129,24 @@ class MemberSessions:
         return key
 
     def live(self, con, credential, now):
-        return con.execute('''SELECT s.*,u.username,u.name FROM member_sessions s JOIN users u ON u.id=s.owner
-            WHERE s.credential_hash=? AND s.revoked_at IS NULL AND s.expires_at>?
-              AND s.auth_version=u.auth_version''', (credential, now)).fetchone()
+        with authority_guard(self.app) as platform_con:
+            row = con.execute('''SELECT s.*,u.username,u.name,m.revision AS membership_revision,m.account_id
+                FROM member_sessions s JOIN users u ON u.id=s.owner
+                JOIN household_memberships m ON m.member_id=u.id AND m.state='active'
+                WHERE s.credential_hash=? AND s.revoked_at IS NULL AND s.expires_at>?
+                  AND s.auth_version=u.auth_version''', (credential, now)).fetchone()
+            if row and row['personal_identity']:
+                engine = personal_engine(self.app)
+                if engine is None or platform_con is None:
+                    return None
+                try:
+                    identity = json.loads(row['personal_identity'])
+                    personal = engine.current(platform_con, identity)
+                    if personal['accountId'] != row['account_id']:
+                        return None
+                except (ValueError, TypeError, KeyError, engine.Error):
+                    return None
+            return row
 
     def resolve(self, con, signed, now, ua=''):
         if not signed:
@@ -143,7 +161,7 @@ class MemberSessions:
                 return None
             old = con.execute('SELECT * FROM member_sessions WHERE credential_hash=?', (key,)).fetchone()
             if not old:
-                user = con.execute('SELECT auth_version FROM users WHERE id=?', (uid,)).fetchone()
+                user = con.execute("SELECT u.auth_version FROM users u JOIN household_memberships m ON m.member_id=u.id AND m.state='active' WHERE u.id=?", (uid,)).fetchone()
                 if not user or user['auth_version'] != av:
                     return None
                 browser = self.ensure_browser(con, self.browser_token(value), now)
@@ -177,9 +195,14 @@ class MemberSessions:
             con.execute('UPDATE member_sessions SET last_seen_at=? WHERE id=? AND last_seen_at<=?',
                         (now, row['id'], now - LAST_SEEN_INTERVAL))
             g.member_session = dict(row)
-            return {'id': row['owner'], 'username': row['username'], 'name': row['name'],
-                    'auth_version': row['auth_version'], 'role': 'member',
+            result = {'id': row['owner'], 'username': row['username'], 'name': row['name'],
+                    'auth_version': row['auth_version'], 'membershipRevision': row['membership_revision'], 'role': 'member',
                     'householdId': self.app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')}
+            if row['personal_identity']:
+                personal = json.loads(row['personal_identity'])
+                result.update(accountId=personal['accountId'], accountAuthVersion=personal['authVersion'],
+                              authenticationGeneration=personal['generation'])
+            return result
 
     def bootstrap(self):
         token = session.get('browser_id')
@@ -249,7 +272,7 @@ class MemberSessions:
 
     def complete_login(self, con, user, context, token):
         self.validate_context(con, context)
-        fresh = con.execute('SELECT auth_version FROM users WHERE id=?', (user['id'],)).fetchone()
+        fresh = con.execute("SELECT u.auth_version FROM users u JOIN household_memberships m ON m.member_id=u.id AND m.state='active' WHERE u.id=?", (user['id'],)).fetchone()
         if not fresh or fresh['auth_version'] != user['auth_version'] or digest(token) != context['browserHash']:
             raise self.Problem('账号已更新，请重新登录', 409)
         now = time.time()
@@ -267,6 +290,31 @@ class MemberSessions:
         session.clear()
         session.update(value)
         session.permanent = True
+
+    def create_derived(self, con, member_id, personal_identity):
+        """Caller holds the platform guard and this household's transaction.
+
+        Return cookie contents only: the coordinator installs both cookies
+        after its directory/operation commit succeeds.
+        """
+        engine = personal_engine(self.app)
+        if engine is None or not con.in_transaction or engine.guard_con is None:
+            raise RuntimeError('Derived sessions require platform then household coordination')
+        value = engine.identity_dict(personal_identity)
+        personal = engine.current(engine.guard_con, value)
+        user = con.execute("SELECT u.id,u.auth_version,m.account_id FROM users u JOIN household_memberships m ON m.member_id=u.id AND m.state='active' WHERE u.id=?", (member_id,)).fetchone()
+        if not user or user['account_id'] != personal['accountId']:
+            raise self.Problem('成员关系已变化，请重新读取家庭', 409)
+        now, browser, csrf = time.time(), secrets.token_urlsafe(32), secrets.token_urlsafe(32)
+        browser_hash = self.ensure_browser(con, browser, now)
+        con.execute('''INSERT INTO member_sessions
+            (id,credential_hash,owner,auth_version,browser_hash,device,created_at,last_seen_at,expires_at,retain_until,personal_identity)
+            VALUES(?,?,?,?,?,?,?,?,?,?,?)''',
+            (secrets.token_hex(16), digest(csrf), member_id, user['auth_version'], browser_hash,
+             device_label(request.headers.get('User-Agent', '')), now, now, now+self.ttl, now+self.ttl,
+             json.dumps(value, sort_keys=True, separators=(',', ':'))))
+        self.cap(con, member_id, digest(csrf), now)
+        return {'uid': member_id, 'av': user['auth_version'], 'csrf': csrf, 'session_v': 1, 'browser_id': browser, '_permanent': True}
 
     def anonymous(self, token=None):
         token = token or self.browser_token(session)

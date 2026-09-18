@@ -137,7 +137,7 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         version = raw.get('schemaVersion', 1)
         if type(version) is not int or version not in (1, 2):
             raise Problem('旅行计划版本不支持，请升级服务或保留原版本')
-        people = [row['id'] for row in con.execute('SELECT id FROM users ORDER BY id')]
+        people = [row['member_id'] for row in con.execute("SELECT member_id FROM household_memberships WHERE state='active' ORDER BY member_id")]
         members = raw.get('memberIds', people)
         if not isinstance(members, list) or not members or len(members) > len(people) or any(
                 not isinstance(uid, str) or uid not in people for uid in members) or len(set(members)) != len(members):

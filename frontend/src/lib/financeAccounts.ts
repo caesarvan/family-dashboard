@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 /** Owner-only manual accounts. Amounts are original-currency integer cents. */
 export type AccountSession = { user: { role: string; householdId?: string; id: string; auth_version?: number } | null; csrf?: string | null };
 export type AccountKind = 'asset' | 'liability';
@@ -67,7 +68,7 @@ export function updateAccountIntent(account: FinanceAccount, changes: { name?: s
 export function valuationAccountIntent(account: FinanceAccount, asOf: string, value: string, unknown: boolean, requestId = newAccountRequestId()): AccountIntent { if (account.archived) throw new AccountError('请先恢复账户，再记录估值。'); return frozenIntent('valuation', '/finance-accounts/' + id(account.id) + '/valuations/' + accountDay(asOf), 'PUT', { requestId, revision: integer(account.revision, 1, Number.MAX_SAFE_INTEGER - 1), amountCents: parseAccountAmount(value, unknown) }, account.id); }
 /** An earlier uncertain attempt remains uncertain even if a later retry is rejected. */
 export function failedAccountIntent(intent: AccountIntent, error: unknown): AccountIntent | null { return !intent.uncertain && error instanceof AccountRejected ? null : { ...intent, uncertain: true }; }
-export const accountSignature = (s: AccountSession) => JSON.stringify([s.user?.role, s.user?.householdId, s.user?.id, s.user?.auth_version, s.csrf]);
+export const accountSignature = sessionIdentity;
 export const accountActor = (s: AccountSession): string => s.user?.role === 'member' && s.user.householdId && s.user.id ? JSON.stringify([s.user.householdId, s.user.id]) : bad();
 /** Only opaque recovery IDs survive a component or identity replacement. */
 export class AccountRecoveryMemory { private values = new Map<string, string>(); get(actor: string) { return this.values.get(actor) || null; } set(actor: string, requestId: string) { this.values.set(actor, id(requestId, 32)); } clear(actor: string, requestId: string) { if (this.values.get(actor) !== requestId) return false; return this.values.delete(actor); } }

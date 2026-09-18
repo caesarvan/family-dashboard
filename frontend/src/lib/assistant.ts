@@ -1,5 +1,6 @@
 import { ApiError } from './api';
 import type { Member } from './types';
+import { memberIdentity, sessionIdentity } from './sessionIdentity.ts';
 
 export type Action = { kind: 'tasks' | 'shopping'; data: { title: string; owner: string; due?: string; quantity?: string } };
 export type Match = { id: string; kind: 'tasks' | 'shopping' | 'events' | 'trips' | 'media' | 'places' | 'inventory'; title: string; due?: string; start?: string;
@@ -21,8 +22,8 @@ type IO = {
 };
 const initial = (): AssistantState => ({ busy: false, error: '', notice: '', ready: false, expired: false,
   modelConfigured: false, plan: null, planPrompt: '', selected: [], receipt: null, pending: null, checkedAfterUnknown: false, search: null });
-export const memberKey = (user: Member | null) => JSON.stringify([user?.role, user?.householdId, user?.id, user?.auth_version]);
-const sessionKey = (session: Session) => JSON.stringify([memberKey(session.user), session.csrf]);
+export const memberKey = memberIdentity;
+const sessionKey = sessionIdentity;
 const unknown = (error: unknown) => !(error instanceof ApiError) || error.status === 0 || error.status >= 500;
 const message = (error: unknown) => error instanceof Error ? error.message : '暂时无法完成，请稍后核对';
 

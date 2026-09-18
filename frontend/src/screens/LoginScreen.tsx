@@ -5,16 +5,23 @@ import { Button, Card, Dialog, Divider, HelperText, Icon, Portal, SegmentedButto
 import { request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import WelcomeVisual from '../ui/WelcomeVisual';
+import PersonalAccountPanel from '../components/PersonalAccountPanel';
+import MembershipInvitationsPanel from '../components/MembershipInvitationsPanel';
 
-export default function LoginScreen({ authError = '' }: { authError?: string } = {}) {
-  const { login } = useHousehold(); const theme = useTheme();
+export default function LoginScreen({ authError = '', onPendingChange }: { authError?: string; onPendingChange?: (pending: boolean) => void } = {}) {
+  const { login, refresh } = useHousehold(); const theme = useTheme();
   const { width, height } = useWindowDimensions(); const wide = width >= 960;
   const [username, setUsername] = useState('member1'); const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false); const [error, setError] = useState('');
   const [spaceOpen,setSpaceOpen]=useState(false),[slug,setSlug]=useState('home');
+  const [accountPage, setAccountPage] = useState<'account' | 'invitation' | null>(null);
   const [providers, setProviders] = useState<{id: string; configured: boolean; loginUrl: string}[]>([]);
   useEffect(() => { let active = true; request<{providers: typeof providers}>('/auth/providers').then(result => { if (active) setProviders(result.providers || []); }).catch(() => {}); return () => { active = false; }; }, []);
   async function submit() { if(busy)return; setBusy(true); setError(''); try { await login(username, password); setPassword(''); } catch (e) { setError(e instanceof Error ? e.message : '暂时无法登录'); } finally { setBusy(false); } }
+  if(accountPage)return <ScrollView style={{backgroundColor:theme.colors.background}} contentContainerStyle={{padding:24,width:'100%',maxWidth:760,alignSelf:'center'}} keyboardShouldPersistTaps="handled">
+    {accountPage==='account'?<PersonalAccountPanel onBack={()=>setAccountPage(null)} onPendingChange={onPendingChange} onIdentityChanged={refresh}/>
+      :<MembershipInvitationsPanel onBack={()=>setAccountPage(null)} onPendingChange={onPendingChange} onJoined={async()=>{await refresh();setAccountPage('account');}}/>}
+  </ScrollView>;
   return <ScrollView style={{ backgroundColor: theme.colors.background }} contentContainerStyle={[styles.page, { minHeight: height }, wide && styles.pageWide]} keyboardShouldPersistTaps="handled">
     <View style={styles.brand}><Icon source="home-outline" size={26} /><Text variant="titleMedium">家庭中枢</Text></View>
     <View style={[styles.layout, wide && styles.layoutWide]}>
@@ -25,6 +32,9 @@ export default function LoginScreen({ authError = '' }: { authError?: string } =
     </View>
     <Card mode="contained" style={[styles.card, { backgroundColor: theme.colors.surfaceVariant }, wide && styles.cardWide]}><Card.Content style={[styles.content, wide && styles.contentWide]}>
       <View style={styles.formHeading}><Text variant="headlineSmall" style={styles.formTitle}>欢迎回家</Text><Text variant="bodyMedium" style={{ color: theme.colors.onSurfaceVariant }}>选择成员，继续今天的生活。</Text></View>
+      <Button mode="contained" style={styles.pill} contentStyle={styles.primaryContent} disabled={busy} onPress={()=>setAccountPage('account')}>我的家庭账户</Button>
+      <Button mode="outlined" style={styles.pill} contentStyle={styles.primaryContent} disabled={busy} onPress={()=>setAccountPage('invitation')}>使用邀请加入家庭</Button>
+      <Divider/><Text variant="bodySmall">已有家庭成员账号</Text>
       <SegmentedButtons value={username} onValueChange={value=>{if(!busy)setUsername(value);}} buttons={[{value:'member1',label:'成员一',disabled:busy},{value:'member2',label:'成员二',disabled:busy}]} />
       <TextInput outlineStyle={{borderRadius:8}} accessibilityLabel="登录密码" label="登录密码" mode="outlined" disabled={busy} value={password} onChangeText={setPassword} secureTextEntry autoComplete="current-password" onSubmitEditing={() => { if (!busy && password) void submit(); }} />
       {!!(error || authError) && <HelperText type="error" accessibilityRole="alert">{error || authError}</HelperText>}

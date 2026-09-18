@@ -39,6 +39,8 @@ from household_media import register_media_library
 from media_playback import register_media_playback
 from inventory_api import register_inventory
 from frontend_runtime import register_frontend_runtime
+from membership_storage import connect_household
+from membership_http import register_membership_routes
 
 TZ = ZoneInfo("Asia/Shanghai")
 ROOT = Path(__file__).parent
@@ -58,6 +60,61 @@ class Problem(Exception):
 
 def now():
     return datetime.now(TZ).isoformat(timespec="seconds")
+
+
+def _response_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.path.startswith(("/api/", "/auth/")):
+        response.headers["Cache-Control"] = "no-store"
+    if request.path.startswith('/api/journey-documents'):
+        response.headers['Cache-Control'] = 'private, no-store'
+        if request.path.endswith('/file'):
+            response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox; frame-ancestors 'none'"
+    if request.path.startswith('/auth/'):
+        response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
+
+
+def _register_public_frontend(app):
+    frontend_home = register_frontend_runtime(app, ROOT / 'static')
+
+    @app.get("/")
+    @app.get("/demo")
+    def index():
+        if request.path == '/':
+            return frontend_home()
+        return send_from_directory(ROOT / "static", "index.html")
+
+    @app.get("/static/<path:name>")
+    def asset(name):
+        if any(part.rstrip(' .').lower() == 'experience' for part in name.replace('\\', '/').split('/')):
+            abort(404)
+        return send_from_directory(ROOT / "static", name)
+
+
+def _recovery_app(app):
+    """Public shell and independent personal accounts, without a default DB."""
+    from household_spaces import HouseholdPlatform
+    from membership_http import install_personal_accounts
+
+    app.config['_HOUSEHOLD_RECOVERY_ONLY'] = True
+    _register_public_frontend(app)
+
+    @app.before_request
+    def unavailable():
+        if request.method in {'GET', 'HEAD'} and request.endpoint in {'index', 'expo_frontend', 'asset'}:
+            return None
+        return jsonify(error='此家庭的数据暂不可用，请恢复资料后重新启动', recoveryUrl='/app'), 503
+
+    platform = HouseholdPlatform(app, create_app)
+    app.extensions['household_platform'] = platform
+    install_personal_accounts(platform, Problem)
+    app.wsgi_app = platform
+    return app
 
 
 def create_app(config=None):
@@ -87,10 +144,17 @@ def create_app(config=None):
     data_dir = Path(app.config["DATA_DIR"])
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path = data_dir / "household.sqlite3"
+    app.after_request(_response_headers)
+    # An existing registry means this is an established installation. Missing
+    # default storage must never become a new family seeded from environment
+    # passwords. Recovery registers no household modules or DB connections.
+    if (not app.config.get('_HOUSEHOLD_CHILD') and (data_dir / 'platform.sqlite3').exists()
+            and not db_path.is_file()):
+        return _recovery_app(app)
 
     def db():
         if "db" not in g:
-            g.db = sqlite3.connect(db_path, timeout=15)
+            g.db = connect_household(app, db_path, timeout=15)
             g.db.row_factory = sqlite3.Row
             g.db.execute("PRAGMA foreign_keys=ON")
         return g.db
@@ -197,6 +261,10 @@ def create_app(config=None):
 
     @app.before_request
     def guard():
+        # Static UI entry points are independent of member authentication. Their
+        # own file allowlist still applies; every data API takes the normal guard.
+        if request.method in {'GET', 'HEAD'} and request.endpoint in {'index', 'expo_frontend', 'asset'}:
+            return None
         if request.path == '/api/photos' and request.method == 'POST':
             request.max_content_length = 8_000_000
         if request.path == '/api/journey-documents' and request.method == 'POST':
@@ -206,6 +274,7 @@ def create_app(config=None):
         if request.path in {'/api/finance-baseline/imports/preview', '/api/finance-baseline/imports/confirm'} and request.method == 'POST':
             request.max_content_length = 3_000_000
         g.actor = actor()
+        request._household_member_authority = (app, g.actor, getattr(g, 'member_session', None))
         if request.path.startswith("/api/"):
             public = {"/api/login", "/api/me", "/api/pair/start", "/api/pair/poll", "/api/auth/providers", "/api/spaces/current", "/api/spaces/redeem"}
             if request.path not in public and not g.actor:
@@ -221,23 +290,6 @@ def create_app(config=None):
                     token = request.headers.get("X-CSRF-Token", "")
                     if not token or not secrets.compare_digest(token, session.get("csrf", "")):
                         raise Problem("会话已更新，请刷新页面再试", 403)
-
-    @app.after_request
-    def headers(response):
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "same-origin"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        if request.path.startswith(("/api/", "/auth/")):
-            response.headers["Cache-Control"] = "no-store"
-        if request.path.startswith('/api/journey-documents'):
-            response.headers['Cache-Control'] = 'private, no-store'
-            if request.path.endswith('/file'):
-                response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox; frame-ancestors 'none'"
-        if request.path.startswith('/auth/'):
-            response.headers['Referrer-Policy'] = 'no-referrer'
-        return response
 
     @app.errorhandler(Problem)
     def problem(error):
@@ -256,20 +308,7 @@ def create_app(config=None):
         db().execute("SELECT 1").fetchone()
         return jsonify(status="ok")
 
-    frontend_home = register_frontend_runtime(app, ROOT / 'static')
-
-    @app.get("/")
-    @app.get("/demo")
-    def index():
-        if request.path == '/':
-            return frontend_home()
-        return send_from_directory(ROOT / "static", "index.html")
-
-    @app.get("/static/<path:name>")
-    def asset(name):
-        if any(part.rstrip(' .').lower() == 'experience' for part in name.replace('\\', '/').split('/')):
-            abort(404)
-        return send_from_directory(ROOT / "static", name)
+    _register_public_frontend(app)
 
     @app.get("/api/me")
     def me():
@@ -344,6 +383,7 @@ def create_app(config=None):
 
     register_sessions(app, sessions, Problem, body, require_member)
     register_members(app, db, Problem, body, require_member, audit)
+    register_membership_routes(app, db, Problem, require_member)
 
     @app.get("/api/state")
     def state():
@@ -363,7 +403,7 @@ def create_app(config=None):
             entities[row["kind"]].append({**json.loads(row["data"]), "id": row["id"], "revision": row["revision"]})
         row = db().execute("SELECT * FROM settings WHERE id='finance'").fetchone()
         finance = {**json.loads(row["data"]), "revision": row["revision"]}
-        people = [dict(row) for row in db().execute("SELECT id,name FROM users ORDER BY id")]
+        people = [dict(row) for row in db().execute("SELECT u.id,u.name FROM users u JOIN household_memberships m ON m.member_id=u.id WHERE m.state='active' ORDER BY u.id")]
         return jsonify(**entities, finance=finance, people=people, updatedAt=now(),
                        household=app.config.get('HOUSEHOLD_INFO') or {'id': 'default', 'slug': 'home', 'name': '我们的家'},
                        wealth=shared_baselines(db()),
@@ -736,7 +776,8 @@ def amount(value, label, maximum=100_000_000_000):
 
 
 def check_owner(owner, db):
-    if not isinstance(owner, str) or owner not in {"shared", "member1", "member2"}:
+    if not isinstance(owner, str) or (owner != 'shared' and not db().execute(
+            "SELECT 1 FROM household_memberships WHERE member_id=? AND state='active'", (owner,)).fetchone()):
         raise Problem("负责人不正确")
 
 

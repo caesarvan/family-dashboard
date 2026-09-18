@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import type { Member, Preferences } from './types';
 
 export type PreferenceChanges = Partial<Pick<Preferences, 'theme' | 'colorMode' | 'density' | 'homeView'>>;
@@ -43,7 +44,7 @@ export function acceptPreferences(current: Preferences, next: unknown, expectedI
   const candidate = readPreferences(next);
   return candidate.revision < current.revision ? current : candidate;
 }
-export const preferenceSignature = (session: PreferenceSession) => JSON.stringify([session.user?.role, session.user?.householdId, session.user?.id, session.user?.auth_version, session.csrf]);
+export const preferenceSignature = sessionIdentity;
 export class PreferenceFence {
   private epoch = 0;
   constructor(private expected: string) {}
