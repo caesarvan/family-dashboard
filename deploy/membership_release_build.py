@@ -69,8 +69,8 @@ def new_output(path, *inputs):
     return path
 
 
-def checked_package(directory, digest):
-    value = package.verify_package(directory, digest)
+def checked_package(directory, digest, *, baseline=None):
+    value = package.verify_package(directory, digest, **package.baseline_kwargs(baseline))
     need(value['blobs'].get(SELF) == package.plain(Path(__file__).absolute()), 'executed builder differs from package')
     return value
 
@@ -161,19 +161,20 @@ print(json.dumps(result,sort_keys=True))
 """
 
 
-def build(package_dir, package_sha256, output_dir, *, runner=None):
-    verified = checked_package(package_dir, package_sha256)
+def build(package_dir, package_sha256, output_dir, *, runner=None, baseline=None):
+    verified = checked_package(package_dir, package_sha256, **package.baseline_kwargs(baseline))
     meta = verified['metadata']
     output = new_output(output_dir, package_dir)
     run = runner or Executor(output)
-    parent = inspect_image(run, package.PARENT_IMAGE)
+    parent_image = package.baseline_values(baseline)[1]
+    parent = inspect_image(run, parent_image)
     context = output / 'context'
     for name in meta['runtimeFiles']:
         save(context / 'runtime' / name, verified['blobs'][name])
     cleanup = ("from pathlib import Path; import shutil; p=Path('/app/static/experience'); "
                "assert p.is_dir() and p.resolve()==Path('/app/static/experience'); "
                "assert not any(v.is_symlink() for v in [p,*p.parents,*p.rglob('*')]); shutil.rmtree(p)")
-    recipe = ('FROM ' + package.PARENT_IMAGE + '\nRUN python -B -c ' + shlex.quote(cleanup)
+    recipe = ('FROM ' + parent_image + '\nRUN python -B -c ' + shlex.quote(cleanup)
               + '\nCOPY --chown=10001:10001 runtime/ /app/\n')
     save(context / 'Dockerfile', recipe.encode('ascii'))
     need(tree_hashes(context / 'runtime') == meta['runtimeFiles'], 'context runtime differs')
@@ -190,10 +191,10 @@ def build(package_dir, package_sha256, output_dir, *, runner=None):
     actual = json.loads(must(isolated(run, child_id, PROBE), 'child runtime inspection failed'))
     need(actual == meta['runtimeFiles'], 'child runtime bytes differ')
     need(tree_hashes(context / 'runtime') == actual, 'context changed during build')
-    need(checked_package(package_dir, package_sha256) == verified, 'package changed during build')
+    need(checked_package(package_dir, package_sha256, **package.baseline_kwargs(baseline)) == verified, 'package changed during build')
     record = {'schemaVersion': 1, 'imageId': child_id, 'sourceHead': meta['sourceHead'], 'tree': meta['tree'],
               'packageSha256': package_sha256, 'manifestSha256': meta['manifestSha256'],
-              'parentImage': package.PARENT_IMAGE, 'parentConfig': config(parent), 'addedLayers': 2,
+              'parentImage': parent_image, 'parentConfig': config(parent), 'addedLayers': 2,
               'runtimeHashes': actual, 'dockerfileSha256': sha(recipe.encode('ascii')), 'exitCode': 0,
               'completedAt': datetime.now(timezone.utc).isoformat(), 'productionOperations': False}
     save(output / 'build.json', encoded(record))
@@ -331,8 +332,8 @@ def junit_result(path, selection):
 
 
 def validate(package_dir, package_sha256, image_id, selection, selection_sha256, output_dir,
-             pytest_dependencies=DEPS, *, runner=None):
-    verified = checked_package(package_dir, package_sha256)
+             pytest_dependencies=DEPS, *, runner=None, baseline=None):
+    verified = checked_package(package_dir, package_sha256, **package.baseline_kwargs(baseline))
     meta = verified['metadata']
     frozen = selection_record(package.plain(selection, 4_000_000), selection_sha256, meta)
     dependencies = package.checked(Path(pytest_dependencies).absolute(), True)
@@ -377,7 +378,7 @@ def validate(package_dir, package_sha256, image_id, selection, selection_sha256,
         current_source = tree_hashes(support)
         need(current_source.pop('RELEASE-MANIFEST.json') == meta['manifestSha256']
              and current_source == verified['manifest']['files'], 'host source bytes changed')
-        need(checked_package(package_dir, package_sha256) == verified, 'package changed during validation')
+        need(checked_package(package_dir, package_sha256, **package.baseline_kwargs(baseline)) == verified, 'package changed during validation')
         passed = True
     except Exception as failure:
         error = str(failure)

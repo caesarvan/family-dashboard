@@ -81,6 +81,8 @@ export default function HomeScreen(props: ScreenProps) {
       {tasks.length ? tasks.slice(0, 4).map(item => <View key={item.id} style={[styles.task, { paddingVertical: density.rowPadding }]}>
         <CompleteTask title={item.title} disabled={!!(busy || props.pendingId || item.sync?.readOnly)} onPress={() => void toggle(item)} />
         <View style={styles.flex}><Text variant="titleSmall">{item.title}</Text><Text variant="bodySmall" style={muted}>{item.due ? `${item.due < today ? '已逾期 · ' : ''}${shortDay(item.due)}` : '未设日期'} · {owner(item.owner)}{item.sync?.readOnly ? ' · 来源只读' : ''}</Text></View>
+        {!item.sync && <Button contentStyle={styles.primaryContent} compact accessibilityLabel={`编辑待办：${item.title}`} disabled={!!(busy || props.pendingId)}
+          onPress={() => { if (!busy && !props.pendingId) props.onEdit('tasks', item); }}>编辑</Button>}
       </View>) : <EmptyState title="到期待办已处理完" action={<Button contentStyle={styles.primaryContent} onPress={() => props.onEdit('tasks')}>添加待办</Button>} />}
       {tasks.length > 4 && <Text variant="bodySmall" style={muted}>还有 {tasks.length - 4} 项到期或未排期待办</Text>}
       {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}

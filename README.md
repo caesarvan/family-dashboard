@@ -1,6 +1,6 @@
 # 家庭中枢 · Family Dashboard
 
-**候选发布受阻：个人账户与多家庭成员协作尚未上线。** 本批隔离验证及正式包迁移演练通过，但生产 warm 因环境传递差异失败；已恢复发布前完整库组和旧版服务，独立只读恢复审计通过。失败原件、恢复边界与修复进度见[候选交付记录](docs/MEMBERSHIPS-ACCEPTANCE.md)。下方已上线历史保持。
+**最新上线：个人账户与多家庭成员协作（2026-09-18 13:51:39，北京时间）。** 注册及绑定、邀请加入、移除与退出、多家庭切换已激活，实际一户两库完成 58/2→61/9 迁移及启动保全；个人数据不自动共享。操作、固定运行身份与验证边界见[本轮发布](docs/MEMBERSHIPS-RELEASE-R3.md)。此前失败和完整库组恢复记录保留；下方为各历史版本的当时状态。
 
 **最新上线：助理查找已有旅行（2026-09-18 09:30，北京时间）。** 在「家庭助理」输入「找一下冰岛旅行」「搜索 冰岛旅行」或「查找：冰岛旅行」，点「查看旅行」打开原详情，再返回原搜索页；显式搜索只在本地进行。09:31 正常 TLS 读回通过。[使用与验收](docs/EXPO-ASSISTANT-TRIP-SEARCH-ACCEPTANCE.md#expo-assistant-trip-search-release)。
 
@@ -52,7 +52,7 @@
 
 **持仓与公共资金分开管理。** 本人完整持仓支持手工增改删、CSV／TXT／XLSX 整理表预览确认、稳定来源关联、版本冲突核对及保存结果读回。估值未知与零分开，历史回执不会恢复已删除记录。使用与开发入口见 [Expo 持仓](docs/EXPO-INVESTMENTS.md)、[持仓 API](docs/INVESTMENTS-API.md)；早期 753c 候选 424 项记录仍保留于 [候选验收](docs/VALIDATION.md#expo-holdings-candidate)。手动资产／负债账户及日期估值现已上线；汇率与收益归因仍待实现。
 
-面向两位家庭成员的日程、待办、采购、旅行、财务与助理工作台。手机和电脑负责维护，50／75 英寸电视负责常亮展示；两个住处的屏幕可各自设置侧重、布局和主题。目前支持邀请建立独立家庭，每户两位成员。
+面向家庭成员的日程、待办、采购、旅行、财务与助理工作台。手机和电脑负责维护，50／75 英寸电视负责常亮展示；两个住处的屏幕可各自设置侧重、布局和主题。支持邀请建立独立家庭、加入已有家庭及同一个人账户切换多个家庭；每户成员与对象权限独立。
 
 **旅行从一次输入开始。** 助理将本次文字带入单页简报，可选 AI 需明确勾选；未知预算不当作零，准备与采购仍由成员核对后保存。响应丢失时沿用原预览和操作标识安全重试，不直接重新创建。此前 07:38 简报发布证据保留于 [旅行协作验收](docs/EXPO-TRAVEL-ACCEPTANCE.md)；新增地图与日历本地链路见 [本轮验收](docs/EXPO-TRIP-COORDINATION-ACCEPTANCE.md)，本人真实外部流程仍单独验收。
 
@@ -62,7 +62,7 @@
 
 新版把地图、关联旅行和只读旅行相册放在 `/app/map` 内切换：查看照片后，可返回原筛选、页码和选中地点，并重新读取当前权限；整页刷新回到地图。每页 24 个地点，地图只显示当前页可见坐标，列表保留没有坐标的地点。普通 `/app/photos` 仍可选片和管理。使用见 [Expo 地图](docs/EXPO-MAP.md)，数据契约沿用 [地图相册联动](docs/MAP-TRAVEL-PHOTOS.md)。
 
-家庭与成员、照片旅行建议均已迁入 Expo，已有经典入口保留回退；资产来源更新已迁入 Expo；本人资产来源报告、旅行资料和行程分段已迁入 Expo；设备、布局管理与电视展示页均已迁入 Expo，经典电视渲染器保留为明确回退入口。财务账本、本人持仓、地图、家庭物品及旅行日历同步主流程已迁入 Expo；电视继续独立只读 `/tv`。手动单趟只读回顾已接入旅行详情；自动路线、精选回忆、视频、iCloud／NAS、通用成员关系和完整跨模块场景仍在 [产品计划](docs/PRODUCT-PLAN.md) 中逐项跟踪。
+家庭与成员、照片旅行建议均已迁入 Expo，已有经典入口保留回退；资产来源更新已迁入 Expo；本人资产来源报告、旅行资料和行程分段已迁入 Expo；设备、布局管理与电视展示页均已迁入 Expo，经典电视渲染器保留为明确回退入口。财务账本、本人持仓、地图、家庭物品及旅行日历同步主流程已迁入 Expo；电视继续独立只读 `/tv`。手动单趟只读回顾已接入旅行详情；自动路线、精选回忆、视频、iCloud／NAS和完整跨模块场景仍在 [产品计划](docs/PRODUCT-PLAN.md) 中逐项跟踪。
 
 **此前媒体功能：地图 → 旅行相册 → 返回；本人照片 → 查看推荐 → 明确关联旅行。** 先核对照片时间对应的旅行日期和时区，再确认关联；旧照片来源时间未知时手动关联。版本冲突须重新读取并再次确认，网络结果不明先读回，不自动重写。关联不会自动共享、许可电视或标记到访。该轮 20:39:27 读回和全部历史证据保留于 [验证记录](docs/VALIDATION.md)。
 
@@ -238,7 +238,7 @@ flowchart LR
 | 文件与时间 | icalendar / recurring-ical-events、Pillow；CSV/XLSX 有界解析，拒绝公式、外链及不支持的格式；固定 `tzdata==2026.4`，旅行存当地时间、IANA 时区与确认后的 UTC 时刻 |
 | 部署 | Docker Compose：app、sync、media、web 四服务；锁定基础镜像；Nginx TLS / ACME；持久化命名卷 |
 
-平台注册目录为 `/data/platform.sqlite3`；原家庭为 `/data/household.sqlite3`；子家庭为 `/data/spaces/<随机 id>/household.sqlite3`。当前为 **58 张户内表和 2 张平台表**。`hub_import_receipts` 属于已完成的历史 53→54 财务回执迁移，旧 `hub_imports` 七列及原有数据、权限保持；后续持仓及本人账户表以现有 58 表结构和[账户发布验收](docs/EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md)为准。新交易保存首次批次来源，历史未知不回填。完整结构见 [存储索引](docs/PLATFORM-ROUTES.md)、[数据模型](docs/DATA-MODEL.md) 和 [回执迁移与恢复](docs/FINANCE-RECEIPTS-RELEASE.md)。
+平台注册目录为 `/data/platform.sqlite3`；原家庭为 `/data/household.sqlite3`；子家庭为 `/data/spaces/<随机 id>/household.sqlite3`。当前为 **61 张户内表和 9 张平台表**，见[成员迁移与发布](docs/MEMBERSHIPS-RELEASE-R3.md)。`hub_import_receipts` 属于已完成的历史 53→54 财务回执迁移，旧 `hub_imports` 七列及原有数据、权限保持；此前持仓及本人账户表见历史 58 表结构和[账户发布验收](docs/EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md)为准。新交易保存首次批次来源，历史未知不回填。完整结构见 [存储索引](docs/PLATFORM-ROUTES.md)、[数据模型](docs/DATA-MODEL.md) 和 [回执迁移与恢复](docs/FINANCE-RECEIPTS-RELEASE.md)。
 
 家庭 routing cookie 只选入口，不授予登录权限；会话和令牌加密密钥按家庭派生。切换家庭会退出原会话。坏 cookie 返回带恢复入口的错误，已注册家庭缺少数据库时返回 503，不能用原家庭环境密码自动补建身份。
 
@@ -376,16 +376,16 @@ node --test tests/test_calendar_views.js
 | 数据 | 命名卷 `family-dashboard_household-data` 挂载到 `/data`；平台目录与各家庭数据库位于卷内 |
 | 配置 | `/opt/family-dashboard/.env`，权限 0600；由 Compose 注入，更新保留原密钥和成员配置 |
 
-安装、DNS、HTTPS 证书与续期、OAuth 回调、备份及恢复见 [部署指导](docs/DEPLOYMENT.md)。当前为 58 表，首次安装与已有数据更新使用各自流程；本轮固定发布及数据保全见 [账户发布说明](docs/FINANCE-ACCOUNTS-RELEASE.md)。[54 表回执恢复](docs/FINANCE-RECEIPTS-RELEASE.md) 和历史 43 表发布入口仅供追溯，不能用作当前发布入口：
+安装、DNS、HTTPS 证书与续期、OAuth 回调、备份及恢复见 [部署指导](docs/DEPLOYMENT.md)。当前为 61 张户内表及 9 张平台表，首次安装与已有数据更新使用各自流程；本轮固定发布及数据保全见[成员发布记录](docs/MEMBERSHIPS-RELEASE-R3.md)。[54 表回执恢复](docs/FINANCE-RECEIPTS-RELEASE.md) 和历史 43 表发布入口仅供追溯，不能用作当前发布入口：
 
 - **首次安装**：配置新服务器与独立密钥，初始化新数据卷，签发证书，启动 app／sync／media／web 四个服务，再绑定第三方账户。
-- **已有环境更新**：冻结实际已安装 BASE 和审查后的候选，在独立目录构建与验证；通过部署演练和独立发布审查后，停止写者、核验全组备份、安装源码并分阶段核对全部数据，再开放服务。当前为 58 表；任何后续结构、依赖或配置变更需另行审查，不能重用历史 43→43 控制器或已完成的 53→54 迁移。
+- **已有环境更新**：冻结实际已安装 BASE 和审查后的候选，在独立目录构建与验证；通过部署演练和独立发布审查后，停止写者、核验全组备份、安装源码并分阶段核对全部数据，再开放服务。当前为 61 张户内表及 9 张平台表；任何后续结构、依赖或配置变更需另行审查，不能重用历史 43→43 控制器或已完成的 53→54 迁移。
 
 源代码打包命令为 `python deploy/prepare_release.py`，产物为 `release.tar.gz` 与归档内的 `RELEASE-MANIFEST.json`；它不生成登录凭据。发布白名单包括源码、文档和测试，排除 `.env`、数据库、私人财务输入与运行证据。
 
-历史版本完成 37→40、40→42、[42→43](docs/JOURNEY-DOCUMENTS-RELEASE.md)、43→44、44→48、[48→53](docs/INVENTORY-MIGRATION.md)、[53→54](docs/FINANCE-RECEIPTS-RELEASE.md) 及 [54→55](docs/HOLDINGS-RELEASE.md)。[静态 43→43](docs/STATIC-RELEASE.md)、[SOURCE 43→43](docs/SOURCE-RELEASE.md) 和 DEPLOYMENT 第 5.2 节的历史算法均不可用于当前 58 表；已完成的一次性迁移（含本轮 55→58）不能重放。
+历史版本完成 37→40、40→42、[42→43](docs/JOURNEY-DOCUMENTS-RELEASE.md)、43→44、44→48、[48→53](docs/INVENTORY-MIGRATION.md)、[53→54](docs/FINANCE-RECEIPTS-RELEASE.md) 及 [54→55](docs/HOLDINGS-RELEASE.md)。[静态 43→43](docs/STATIC-RELEASE.md)、[SOURCE 43→43](docs/SOURCE-RELEASE.md) 和 DEPLOYMENT 第 5.2 节的历史算法均不可用于当前 61/9 表结构；已完成的一次性迁移（含 55→58 和 58/2→61/9）不能重放。
 
-备份使用 SQLite 在线备份，包含平台注册目录及全部已注册家庭，输出散列清单并保留最近 14 组。它不是跨数据库的原子快照；恢复必须核对完整备份组、配套密钥与家庭映射，按 [会话恢复要求](docs/MEMBER-SESSIONS.md#恢复后使旧成员登录失效) 使旧成员登录失效。已完成两户虚构数据的[实际 Docker 恢复演练](docs/RECOVERY-REHEARSAL.md)，包含旧登录失效、照片和隔离核对。异地备份与真实生产恢复尚未完成。
+备份使用 SQLite 在线备份，包含平台注册目录及全部已注册家庭，输出散列清单并保留最近 14 组。它不是跨数据库的原子快照；恢复必须核对完整备份组、配套密钥与家庭映射，按 [会话恢复要求](docs/MEMBER-SESSIONS.md#恢复后使旧成员登录失效) 使旧成员登录失效。已完成两户虚构数据的[实际 Docker 恢复演练](docs/RECOVERY-REHEARSAL.md)，包含旧登录失效、照片和隔离核对。异地备份仍待完成；本次失败后实际执行过发布前完整两库组恢复，经过独立审计，过程与边界见[成员发布历史](docs/MEMBERSHIPS-ACCEPTANCE.md)。
 
 现有环境不要执行 `docker compose down -v` 或覆盖密钥。发布后已有业务写入时先保全现场，再决定恢复方式；旧镜像不能直接连接未知的新结构。日常检查与排障见 [OPERATIONS](docs/OPERATIONS.md)。
 

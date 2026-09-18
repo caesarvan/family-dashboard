@@ -1,6 +1,8 @@
 # 部署、更新与恢复交接
 
-**当前激活版：家庭与成员，2026-09-18 05:49:18（北京时间）。** 58→58 但 `schemaChange=true`，仅新增 `users.household_role`；停写后实际 1 户两库完整组备份，旧 users 五列、其它 57 表及 registry 保全，app 启动快照等于迁移后快照。05:49:55 发布后读回通过，05:55:19 独立读回及随后审计通过；固定身份、实际 Linux 226 通过／1 精确 Windows 跳过及迁移证据见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。不得重放已完成算子或迁移。
+**当前结构与运行基线：61 张户内表、9 张平台表。** 2026-09-18 13:51:39（北京时间）已激活个人账户与多家庭成员协作；完整安装身份、数据保全与恢复要求见 [R3 发布](MEMBERSHIPS-RELEASE-R3.md)。不得重放成员迁移或下面的固定历史算子；后续更新必须绑定当前实际 manifest、镜像及全组数据库。下方所有旧基线叙述仅是历史。
+
+**历史激活版：家庭与成员，2026-09-18 05:49:18（北京时间）。** 58→58 但 `schemaChange=true`，仅新增 `users.household_role`；停写后实际 1 户两库完整组备份，旧 users 五列、其它 57 表及 registry 保全，app 启动快照等于迁移后快照。05:49:55 发布后读回通过，05:55:19 独立读回及随后审计通过；固定身份、实际 Linux 226 通过／1 精确 Windows 跳过及迁移证据见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。不得重放已完成算子或迁移。
 
 **此前运行版：旅行 JSON 导入，2026-09-18 04:42:28（北京时间）激活。** 58→58，无 DDL；实际 1 户两库停写备份、启动时原行／schema／序列与平台注册库保持。发布身份、镜像、静态资源、HTTPS 和后置备份见[旅行导入验收](EXPO-TRIP-IMPORT-ACCEPTANCE.md#expo-trip-import-release)。后续发布须重新固定实际父版本，不重放已完成的固定算子。
 

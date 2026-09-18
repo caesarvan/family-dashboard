@@ -7,6 +7,7 @@ import { useHousehold } from '../lib/household';
 import { request } from '../lib/api';
 import { PhotoReadFence, type PhotoSession } from '../lib/photos';
 import ShoppingSettlementPanel from '../components/ShoppingSettlementPanel';
+import InventoryScreen from './InventoryScreen';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { useDisplayDensity } from '../ui/theme';
 
@@ -36,6 +37,16 @@ function ListWorkspace(props: ScreenProps & {kind:'tasks'|'shopping';identityKey
   const latest=useRef(household);latest.current=household;
   const alive=useRef(false), focused=useRef(false), settlementRef=useRef<string|null>(null), settlementPending=useRef(false);
   const [settlement,setSettlement]=useState<string|null>(null), [savedState,setSavedState]=useState<FamilyState|null>(null);
+  const [inventoryShopping,setInventoryShopping]=useState<string|null>(null), [returnToItem,setReturnToItem]=useState<string|null>(null);
+  const [returnNotice,setReturnNotice]=useState('');
+  const inventoryPending=useRef(false), positionedReturn=useRef<string|null>(null);
+  const notifyInventoryPending=useCallback((message:string|null)=>{
+    inventoryPending.current=!!message;props.onInventoryPending?.(message);
+  },[props.onInventoryPending]);
+  function returnFromInventory(){
+    if(!alive.current||!focused.current||latest.current.identityKey!==props.identityKey||inventoryPending.current||!inventoryShopping)return;
+    setReturnToItem(inventoryShopping);setInventoryShopping(null);void latest.current.refresh();
+  }
   const state=savedState&&savedState.revision>props.state.revision?savedState:props.state;
   const settlementFence=useRef(new PhotoReadFence(()=>request<PhotoSession>('/me'),props.user,props.identityKey));
   const current=()=>alive.current&&focused.current&&latest.current.identityKey===props.identityKey&&latest.current.user?.role==='member'
@@ -68,9 +79,21 @@ function ListWorkspace(props: ScreenProps & {kind:'tasks'|'shopping';identityKey
   const all=state[kind], pending=all.filter(item=>!item.done);
   const items=all.filter(item=>(filter==='all'||item.done===(filter==='done'))&&(!query||(item.title+' '+(item.note||'')).toLocaleLowerCase().includes(query.toLocaleLowerCase()))).sort((a,b)=>Number(a.done)-Number(b.done)||(a.due||'9999').localeCompare(b.due||'9999'));
   const budget=pending.reduce((sum,item)=>sum+(item.budget||0),0), unknown=pending.filter(item=>!Number.isSafeInteger(item.budget)).length;
+  useEffect(()=>{
+    if(inventoryShopping||!returnToItem)return;
+    const original=all.find(row=>row.id===returnToItem);
+    setReturnNotice(!original?'原采购已不在当前清单中。':!items.some(row=>row.id===returnToItem)?'原采购已不符合当前筛选，可切换“全部”查看。':'已返回原采购，筛选保持不变。');
+    if(typeof document!=='undefined'&&positionedReturn.current!==returnToItem){
+      positionedReturn.current=returnToItem;
+      const row=document.querySelector<HTMLElement>(`[data-testid="shopping-item-${returnToItem}"]`);
+      row?.scrollIntoView({block:'center'});row?.focus({preventScroll:true});
+    }
+  },[inventoryShopping,returnToItem,state.revision,filter,query]);
+  if(inventoryShopping)return <InventoryScreen {...props} inventoryRequest={undefined} shoppingSourceId={inventoryShopping} onReturnToShopping={returnFromInventory} onInventoryPending={notifyInventoryPending}/>;
   if(settlement)return <ShoppingSettlementPanel key={props.identityKey+':'+settlement} shoppingId={settlement} onClose={closeSettlement} onSaved={settlementSaved} onPendingChange={notifySettlementPending} />;
   return <View style={[styles.page,{gap:density.screenGap}]}>
     <PageHeader title={shopping?'采购清单':'共同待办'} description={shopping?'需要什么，顺手记下。':'一起安排，完成后直接勾选。'} action={<Button mode="contained" icon="plus" contentStyle={styles.buttonContent} onPress={()=>onEdit(kind)}>{shopping?'添加采购':'添加待办'}</Button>} />
+    {!!returnNotice&&<Text accessibilityLiveRegion="polite">{returnNotice}</Text>}
     {shopping&&<SectionCard title="待采购预算"><Text variant="headlineMedium">{money(budget)}</Text><Text variant="bodySmall" style={{color:theme.colors.onSurfaceVariant}}>{unknown?`另有 ${unknown} 件未填写预算`:'已填写物品的预计总价'} · 采购预算不会自动计入支出</Text></SectionCard>}
     {shopping&&<Button icon="package-variant-closed" mode="outlined" contentStyle={styles.buttonContent} onPress={()=>props.onInventory()}>查看家里已有和在途物品</Button>}
     <View style={[styles.tools,{gap:density.sectionGap}]}><SegmentedButtons style={styles.filters} density="regular" value={filter} onValueChange={setFilter} buttons={[
@@ -81,7 +104,7 @@ function ListWorkspace(props: ScreenProps & {kind:'tasks'|'shopping';identityKey
     <SectionCard title={`${filter==='all'?'全部':filter==='done'?'已完成':'待处理'} · ${items.length} 项`}>
       {!items.length?<EmptyState title={query?'没有找到匹配内容':'清单很清爽'} description={query?'换一个关键词试试。':shopping?'把下次需要买的东西记下来。':'需要处理的事情，随时加进来。'} />:items.map((item,index)=><React.Fragment key={item.id}>
         {index>0&&<Divider />}
-        <View testID={`${kind}-item-${item.id}`} style={[styles.row,{paddingVertical:density.rowPadding}]}>
+        <View testID={`${kind}-item-${item.id}`} tabIndex={shopping&&returnToItem===item.id?-1:undefined} style={[styles.row,{paddingVertical:density.rowPadding}]}>
           <CompleteItem title={item.title} checked={item.done} disabled={!!pendingId||!!item.sync?.readOnly} onPress={()=>void onToggle(kind,item)} />
           <View style={styles.body}><Text variant="titleMedium" style={[styles.name,item.done&&{color:theme.colors.onSurfaceVariant,textDecorationLine:'line-through'}]}>{item.title}</Text>
             <Text variant="bodySmall" style={{color:theme.colors.onSurfaceVariant}}>{item.owner==='shared'?'一起':state.people.find(p=>p.id===item.owner)?.name||'家庭成员'}{item.due?' · '+item.due:''}{shopping?' · '+(item.quantity||'1 件'):''}{item.sync?' · 已同步':''}</Text>
@@ -89,6 +112,7 @@ function ListWorkspace(props: ScreenProps & {kind:'tasks'|'shopping';identityKey
             {!!item.note&&<Text variant="bodySmall" style={{color:theme.colors.onSurfaceVariant}}>{item.note}</Text>}
             {!!item.photoIds?.length&&<View style={styles.photos}>{item.photoIds.map(id=><Image key={id} accessibilityLabel={item.title+'参考图片'} source={{uri:'/api/photos/'+encodeURIComponent(id)}} style={styles.photo} />)}</View>}
             {item.sync?.readOnly&&<Chip compact>来源只读</Chip>}
+            {shopping&&<Button icon="package-variant-closed" accessibilityLabel={'登记或查看库存：'+item.title} contentStyle={styles.buttonContent} style={styles.settlementButton} disabled={!!pendingId||!household.online} onPress={()=>{if(current()&&!settlementRef.current){positionedReturn.current=null;setReturnNotice('');setInventoryShopping(item.id);}}}>登记或查看库存</Button>}
             {shopping&&!item.sync&&<Button icon="receipt-text-check-outline" accessibilityLabel={'核对实付：'+item.title} contentStyle={styles.buttonContent} style={styles.settlementButton} disabled={!!pendingId||!household.online} onPress={()=>openSettlement(item.id)}>核对实付</Button>}
           </View>
           {!item.sync&&<IconButton icon="pencil-outline" size={24} style={styles.iconButton} accessibilityLabel={'编辑'+item.title} onPress={()=>onEdit(kind,item)} />}
