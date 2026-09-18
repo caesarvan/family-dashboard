@@ -136,7 +136,12 @@ def test_two_admins_roster_is_minimal_and_auth_role_unchanged(app):
     assert 'householdRole' not in client.get('/api/me').json['user']
     assert roster(other)[0]['capabilities']['changeRole'] is True
     with database(app) as con:
-        assert len(con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchall()) == 58
+        from deploy.check_finance_accounts_migration import BASE_TABLES, NEW_TABLES
+        original_tables = BASE_TABLES | NEW_TABLES
+        membership_tables = {'household_memberships', 'member_invitations', 'membership_operations'}
+        assert len(original_tables) == 58 and len(original_tables | membership_tables) == 61
+        tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
+        assert tables == original_tables | membership_tables
 
 
 def test_count_excludes_expired_revoked_and_old_auth_version(app):
@@ -323,7 +328,7 @@ def test_read_snapshot_is_released_and_late_revocation_drops_result(app, monkeyp
         client, _ = member(app)
     calls = []
     def after_rows(sql):
-        if sql.startswith('SELECT id,name,household_role'):
+        if sql.lstrip().startswith('SELECT u.id,u.name,u.household_role'):
             with database(app, timeout=0.2) as writer:
                 if kind == 'session':
                     invalidate(writer)
