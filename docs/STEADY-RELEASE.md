@@ -63,6 +63,8 @@ python -B deploy/steady_release_plan.py \
 
 candidate 必须是新目录，与所有输入目录分离。装配验证完整包、工具原字节及测试原件，但不访问 Docker、不停服务。返回的 `planSha256` 交非作者审查后才作为下述输入；不能重新生成后沿用旧批准摘要。
 
+`candidate/source` 是挂载给容器 uid 10001 的只读公开源码子树，目录显式为 `0755`，普通文件（包括 `RELEASE-MANIFEST.json`）为 `0644`。候选根目录仍 `0700`，包、构建/测试回执和 reviews 文件仍 `0600`；私有 env 从不放入 source。Linux 合成演练需实际以 uid 10001 验证 `/release` 遍历和读取，Windows 的 chmod 替身断言不能代替该检查。
+
 ## 服务器切换
 
 只由集成人按已有部署授权执行。CLI 只接受 Linux、root、`python -B`、固定 `/opt` 路径及本机默认 Docker，不允许 `COMPOSE_*` / `DOCKER_*` 环境选择器。沿用原发布互斥锁，避免与历史控制器并发。

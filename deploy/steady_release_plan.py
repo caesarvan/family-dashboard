@@ -58,6 +58,12 @@ def assemble(package_dir, package_sha256, build_dir, build_sha256, validation_di
         target.parent.mkdir(parents=True, exist_ok=True)
         put(target, raw)
     copy(package_dir / 'release-manifest.json', 'source/RELEASE-MANIFEST.json', meta['manifestSha256'])
+    # This subtree is bind-mounted read-only as /release for uid 10001. It
+    # contains public source only; private package/reviews/env stay outside it.
+    source = candidate / 'source'
+    for path in (source, *source.rglob('*')):
+        regular(path, directory=path.is_dir())
+        path.chmod(0o755 if path.is_dir() else 0o644)
     copy(build_dir / 'build.json', 'build/build.json', build_sha256)
     copy(validation_dir / 'validation.json', 'validation/validation.json', validation_sha256)
     for name, digest in validation['evidence'].items():

@@ -1,6 +1,8 @@
 """Real Git/package baseline isolation and offline plan assembly."""
 import json
+import os
 from pathlib import Path
+import stat
 import subprocess
 
 import pytest
@@ -150,6 +152,29 @@ def test_offline_assembly_binds_source_operators_and_evidence(assembly):
     assert operator.validate_evidence() == {'tests': 1, 'passed': 1, 'skipped': 0}
     with pytest.raises(plan.controller.ReleaseError, match='new_and_separate'):
         plan.assemble(**assembly)
+
+
+def test_assembled_public_source_readable_by_container_uid_without_opening_private_files(assembly, monkeypatch):
+    chmods = {}
+    original = Path.chmod
+    def chmod(path, mode, *args, **kwargs):
+        chmods[path] = mode
+        return original(path, mode, *args, **kwargs)
+    monkeypatch.setattr(Path, 'chmod', chmod)
+    plan.assemble(**assembly)
+    source = assembly['candidate'] / 'source'
+    for path in (source, *source.rglob('*')):
+        expected = 0o755 if path.is_dir() else 0o644
+        # Catch the regression on Windows too; its filesystem does not model
+        # Linux owner/group bits. Actual uid-10001 access needs Linux rehearsal.
+        assert chmods[path] == expected
+        if os.name != 'nt':
+            assert stat.S_IMODE(path.stat().st_mode) == expected
+    for path in assembly['candidate'].rglob('*'):
+        if path.is_file() and not path.is_relative_to(source):
+            assert chmods.get(path) != 0o644
+            if os.name != 'nt':
+                assert stat.S_IMODE(path.stat().st_mode) == 0o600
 
 
 @pytest.mark.parametrize('changed', ['build', 'original', 'selection'])
