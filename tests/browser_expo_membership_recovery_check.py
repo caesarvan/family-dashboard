@@ -98,6 +98,8 @@ class Run(original.Run):
             self.database.rename(unavailable)
             unavailable_sha = sha(unavailable)
         self.start(port)
+        if missing:
+            assert not self.database.exists(), 'Cold startup must not recreate the missing default household'
         ctx = self.context(browser, None)
         page = ctx.new_page()
         self.page = page
@@ -198,7 +200,9 @@ def main():
     parser.add_argument('--bundle', required=True, type=Path)
     parser.add_argument('--build-evidence', required=True, type=Path)
     parser.add_argument('--expected-build-evidence', required=True)
+    parser.add_argument('--scenario', choices=('all', 'missing_default_cold_recovery'), default='all')
     args = parser.parse_args()
+    selected = CASES if args.scenario == 'all' else (args.scenario,)
     root, bundle, evidence_path = args.source_root.resolve(), args.bundle.resolve(), args.build_evidence.resolve()
     assert sys.dont_write_bytecode and not sys.flags.optimize
     assert re.fullmatch('[a-f0-9]{40}', args.expected_head) and re.fullmatch('[a-f0-9]{64}', args.expected_build_evidence)
@@ -230,7 +234,8 @@ def main():
         buildInputsEqual=True, buildEvidencePath=str(evidence_path), buildEvidenceSha256=sha(evidence_path),
         harnessHead=author_head, harnessSha256=sha(out / 'executed-harness.py'), sourceRoot=str(root), bundleRoot=str(bundle),
         sourceHashesBefore=hashes(), bundleHashesBefore=file_manifest(bundle), productionWrites=0, realFinancialData=False, realCloud=False,
-        physicalDevice=False, scope='Four existing unchanged real membership flows followed by two real cold recovery flows; all temporary synthetic Flask/SQLite/HTTPS/Edge.')
+        physicalDevice=False, requestedScenarios=list(selected), requestedChecks=len(selected), fullSuite=args.scenario == 'all',
+        scope='Four existing unchanged real membership flows followed by two real cold recovery flows, or explicitly selected failed cold-recovery case; all temporary synthetic Flask/SQLite/HTTPS/Edge.')
     original_connect = socket.socket.connect
     def local_connect(sock, address):
         if isinstance(address, tuple) and address[0] not in ('127.0.0.1', '::1', 'localhost'):
@@ -241,12 +246,13 @@ def main():
         with patch.object(socket.socket, 'connect', local_connect), sync_playwright() as pw:
             browser = pw.chromium.launch(channel='msedge', headless=True)
             try:
-                for name in original.CASES:
+                for name in original.CASES if args.scenario == 'all' else ():
                     run_case(name, root, bundle, report, out, browser)
                 assert not report['scenarioFailures'], 'Recovery cases require all four original flows to pass'
-                for name in RECOVERY:
+                for name in RECOVERY if args.scenario == 'all' else selected:
                     run_case(name, root, bundle, report, out, browser)
-                assert not report['scenarioFailures'] and len(report['checks']) == 6 and len(report['screenshots']) == 8
+                assert not report['scenarioFailures'] and len(report['checks']) == len(selected)
+                assert len(report['screenshots']) == (8 if args.scenario == 'all' else 1)
                 assert not report['pageErrors'] and not report['externalRequests']
                 report['passed'] = True
             finally:
@@ -264,7 +270,7 @@ def main():
         report['inheritedFixtureUnchanged'] = bool(inherited) and sha(Path(inherited['path'])) == inherited['sha256'] == sha(root / inherited['sourcePath'])
         report['sourceStillFrozen'] = git(root, 'rev-parse', 'HEAD') == head and not git(root, 'status', '--porcelain=v1')
         report['harnessStillFrozen'] = git(AUTHOR, 'rev-parse', 'HEAD') == author_head and not git(AUTHOR, 'status', '--porcelain=v1') and sha(Path(__file__)) == report['harnessSha256']
-        report['temporaryFixtureRemoved'] = len(report['scenarioResults']) == 6 and all(c['temporaryFixtureRemoved'] for c in report['scenarioResults'])
+        report['temporaryFixtureRemoved'] = len(report['scenarioResults']) == len(selected) and all(c['temporaryFixtureRemoved'] for c in report['scenarioResults'])
         report['passed'] = report['passed'] and report['sourceUnchanged'] and report['bundleUnchanged'] and report['fixturesUnchanged'] and report['inheritedFixtureUnchanged'] and report['sourceStillFrozen'] and report['harnessStillFrozen'] and report['temporaryFixtureRemoved']
         with (out / 'result.json').open('x', encoding='utf-8') as stream:
             json.dump(report, stream, ensure_ascii=False, indent=2)
