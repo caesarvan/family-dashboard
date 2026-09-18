@@ -1,6 +1,21 @@
 # 数据模型、同步一致性与隐私边界
 
-> 当前线上为 **58 张户内表与 2 张平台注册表**。本人手动账户已于 2026-09-18 00:23:38（北京时间）完成 55→58 发布，实际身份与保全证据见[账户发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md)。当前安装身份见 [HANDOFF](HANDOFF.md)，结构索引见 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)。下面较早版本的表数仅描述各自历史状态。
+> 当前线上为 **61 张户内表与 9 张平台表**。个人账户与多家庭成员协作已完成 58/2→61/9 迁移，见[成员体系发布](MEMBERSHIPS-RELEASE-R3.md)。此前本人手动账户的 55→58 发布见[账户发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md)。当前安装身份见 [HANDOFF](HANDOFF.md)，结构索引见 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)。下面较早版本的表数仅描述各自历史状态。
+
+<a id="inventory-followup"></a>
+
+## 库存售后待办关联（候选，未发布）
+
+复用当前家庭的 `inventory_operations` 和 `entities`，不新增表、列、索引或外键，也不使用私人金融来源表 `inventory_source_links` 存任务关系。接口见[库存 API](INVENTORY-API.md#明确创建售后待办)，验证与发布状态见[售后待办验收](INVENTORY-FOLLOWUP-ACCEPTANCE.md)。
+
+| 现有记录 | 本增量的含义 |
+|---|---|
+| `inventory_operations` 的 `operation='create_followup'` | 不可变回执通过 `item_id/acquisition_id` 绑定批次，`result.entityId` 指向任务；它是本批次售后待办的唯一关联依据，幂等编号仍按 `(actor,request_id)` 隔离 |
+| `entities` 的 `kind='tasks'` | 明确填写的标题、负责人、截止日期和备注；首次为未完成、无旅行或云来源的本地家庭任务。负责人不是隐私权限，任务可出现在家庭清单与电视展示中 |
+
+创建在同一 `BEGIN IMMEDIATE` 事务内重验当前家庭、成员、库存权限及双版本，并查询所有成员的该批次历史关联，跨成员、跨 key 的并发不会生成第二条任务。首次成功同时插入任务和回执、递增物品及批次 revision、写一条库存审计并递增 meta；任一步失败全部回滚。实物变动、采购预算／实付／完成状态、财务来源和支出保持，不调用云写入器。
+
+不自动把私人物品名称、批次备注、来源或金额复制到共享任务。普通清单编辑／完成只改变当前任务，不联动售后状态；删除任务后回执和 `entityId` 保留，GET 投影为 `deleted`，不会重建。撤共享后失去权限的成员不能再读关联，归档库存按既有规则拒绝关联读取；原来明确创建的家庭任务继续存在。完整库备份保留关联；本增量不扩展现有个人业务导出的关系字段。
 
 <a id="finance-accounts58"></a>
 ## 本人手动账户与日期估值（已发布 55→58）
