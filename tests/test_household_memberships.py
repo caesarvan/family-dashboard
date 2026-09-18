@@ -422,6 +422,24 @@ def test_failed_audit_rolls_back_membership_user_sessions_and_keeps_outer_transa
         assert con.in_transaction and fingerprint(con) == before
 
 
+def test_membership_audit_advances_state_revision_once_and_rolls_back_together(initialized, monkeypatch):
+    with connection(initialized) as con:
+        initial = con.execute("SELECT revision FROM settings WHERE id='meta'").fetchone()[0]
+        invitation = invite(con, request_id='6' * 32)
+        assert con.execute("SELECT revision FROM settings WHERE id='meta'").fetchone()[0] == initial + 1
+        invite(con, request_id='6' * 32)
+        assert con.execute("SELECT revision FROM settings WHERE id='meta'").fetchone()[0] == initial + 1
+        accept(con, invitation)
+        assert con.execute("SELECT revision FROM settings WHERE id='meta'").fetchone()[0] == initial + 2
+        before = fingerprint(con)
+        def fail(*args):
+            raise RuntimeError('Synthetic receipt failure after audit and revision update')
+        monkeypatch.setattr(domain, '_record', fail)
+        with pytest.raises(RuntimeError, match='Synthetic receipt'):
+            remove(con, 'member2')
+        assert fingerprint(con) == before
+
+
 def test_outer_rollback_removes_operation_and_retry_is_a_new_known_transaction(initialized):
     original = None
     with pytest.raises(RuntimeError):

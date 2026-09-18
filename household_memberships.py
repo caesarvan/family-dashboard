@@ -262,6 +262,7 @@ def _record(con, subject, request_id, intent_digest, kind, member_id, result, st
 def _audit(con, actor, action, target, stamp):
     con.execute('INSERT INTO audit(actor,action,target,stamp) VALUES(?,?,?,?)',
                 (actor, 'membership_' + action, target, _iso(stamp)))
+    con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
 
 
 def _match_versions(user, relation, expected_auth_version, expected_revision):
