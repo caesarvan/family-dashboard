@@ -1,6 +1,6 @@
 # 采购实付：请求内会话边界
 
-本批为独立候选，尚未合入正式分支或部署。仅修复 [shopping_settlement.py](../shopping_settlement.py) 的三个现有操作：`GET /api/finance-hub/shopping-settlements/context`、`POST .../preview`、`POST .../confirm`。金额、分配、共享字段、数据库结构及请求／响应形状保持 [原结算协议](SHOPPING-SETTLEMENT.md)；没有增加回执查询接口。
+本修订已随 Expo 采购实付于 2026-09-18 08:03（北京时间）发布，正常 TLS 读回通过；实际身份与未验范围见[集中验收记录](EXPO-SHOPPING-SETTLEMENT-ACCEPTANCE.md#expo-shopping-settlement-release)。仅修复 [shopping_settlement.py](../shopping_settlement.py) 的三个现有操作：`GET /api/finance-hub/shopping-settlements/context`、`POST .../preview`、`POST .../confirm`。金额、分配、共享字段、数据库结构及请求／响应形状保持 [原结算协议](SHOPPING-SETTLEMENT.md)；没有增加回执查询接口。
 
 ## 身份与事务
 
@@ -12,7 +12,7 @@
 
 预览令牌仍绑定具体会话，有效期仍为 600 秒，原过期检查仍先于历史回执查找；过期返回原 400，同成员新会话不能借旧 token 跨会话恢复。没有改变签名、nonce、CAS、额度或幂等规则。context 只是当前状态，不是操作回执；未知写入不能依据当前状态或没有变化就断言未提交。
 
-## 真实复现与验证
+## 真实复现与验证（以下为作者分支专项阶段记录）
 
 全部使用真实 Flask 请求、Cookie、临时 SQLite 与合成付款／采购，专项禁止网络连接。事务钩子仅控制撤销、时钟到期、实际锁竞争或审计失败的时序，不替换认证结果或业务成功响应。测试见 [会话专项](../tests/test_shopping_settlement_sessions.py)。
 
