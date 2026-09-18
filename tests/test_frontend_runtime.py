@@ -202,6 +202,28 @@ def test_real_factory_csp_legacy_routes_and_no_static_bypass(real_app):
         assert client.get('/static/' + name).status_code == 404
 
 
+@pytest.mark.parametrize('problem', ['invalid_route', 'missing_household'])
+def test_account_recovery_shell_loads_with_unavailable_household(real_app, problem):
+    client = real_app.test_client()
+    assert client.post('/api/login', json={'username': 'member1', 'password': 'testing-password-one'}).status_code == 200
+    database = Path(real_app.config['DATA_DIR']) / 'household.sqlite3'
+    if problem == 'invalid_route':
+        client.set_cookie('household_space', 'invalid-route')
+    else:
+        database.rename(database.with_suffix('.test-unavailable'))
+    assert client.get('/').location == '/app'
+    for url in ('/app', '/app/settings/account'):
+        response = client.get(url)
+        assert response.status_code == 200
+        assert response.data == b'<html>Expo real factory fixture</html>'
+        assert not response.headers.getlist('Set-Cookie')
+    assert client.get('/app/secret.json').status_code == 404
+    assert client.get('/api/me').status_code == (400 if problem == 'invalid_route' else 503)
+    assert client.get('/api/account/me').status_code == 200
+    if problem == 'missing_household':
+        assert not database.exists()
+
+
 def test_real_auth_csrf_local_crud_and_conflict_are_unchanged(real_app):
     client = real_app.test_client()
     assert client.get('/api/state').status_code == 401
