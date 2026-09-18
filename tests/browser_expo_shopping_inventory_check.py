@@ -186,7 +186,27 @@ class Run(fixture.Run):
             expect(button(page, '收货')).to_be_enabled()
             assert self.linked(ctx, shop)['total'] == 1
             assert len(self.table_rows(INVENTORY)['inventory_movements']) == 3
-            self.finish_case('existing item receives 2+4, returns 1, stock 5 / outstanding 0; filtered return and re-entry')
+            self.stage('Stop/start the actual Flask server and reopen the persisted original batch')
+            path = P + '/acquisitions/' + batch['id']
+            before_restart = self.get(ctx, path)
+            inventory_before = self.table_rows(INVENTORY)
+            self.restart()
+            reauthenticated = self.get(ctx, '/api/me')['user'] is None
+            if reauthenticated:
+                self.login(ctx)
+            self.open_source(page, shop, filtered=True)
+            button(page, '处理关联批次 ' + batch['id']).click()
+            expect(button(page, '收货')).to_be_enabled()
+            expect(page.get_by_text('剩余待收 0 节', exact=True)).to_be_visible()
+            persisted = self.get(ctx, path)
+            assert persisted == before_restart and persisted['acquisition']['id'] == batch['id']
+            assert (persisted['item']['onHandQty'], persisted['acquisition']['receivedQty'],
+                    persisted['acquisition']['returnedQty'], persisted['acquisition']['remainingExpectedQty']) == (5, 6, 1, 0)
+            assert self.table_rows(INVENTORY) == inventory_before
+            assert self.get(ctx, path + '/movements')['total'] == 3
+            self.report['inventoryRestart'] = {'actualFlaskRestart': True, 'reauthenticated': reauthenticated,
+                'sameBatchId': True, 'inventoryTablesUnchanged': True, 'movementCount': 3}
+            self.finish_case('existing item receives 2+4, returns 1, stock 5 / outstanding 0; filtered return, re-entry and real restart persistence')
 
     def new_item_cancel(self, browser):
         with self.flow(browser) as (ctx, page):
