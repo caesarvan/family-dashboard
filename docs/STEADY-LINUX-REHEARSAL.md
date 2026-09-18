@@ -1,5 +1,7 @@
 # 61/9 无结构变更发布的合成 Linux 演练
 
+**本批实际演练已通过。** 2026-09-18 14:57:57（北京时间），正式候选镜像在 UID 10001、无网络的隔离进程中完成两户三库的 begin、正常 app 初始化和只读 check；三库 schema、记录、序列及合成 marker 保持。五段步骤、17 条 Docker 命令和全部原件均保留，随后只读摘要复核通过。固定包、镜像和原件身份见[本批验收](SHOPPING-INVENTORY-ACCEPTANCE.md#shopping-inventory-release)。此演练保留 `exactProductionControllerProgram=false` / `syntheticMarkerOverride=true` 边界，本身不代替生产审计；本批随后实际激活与只读审计结果见上述验收页。
+
 `deploy/steady_linux_rehearsal.py` 只验证正式包在独立两户三库合成数据上的正常 app 初始化保全。它依赖同一已审组合内的 `steady_release_package.py`、`steady_release_data.py` 及既有隔离构建工具；单独作者分支不能用于发布。
 
 流程固定为：
