@@ -35,6 +35,8 @@ def test_real_package_cross_baseline_rejection_and_recursive_verification(packag
     assert checked['metadata']['kind'] == 'steady-release-package'
     with pytest.raises(ValueError):
         original(package_environment['output_dir'], result['packageSha256'])
+    with pytest.raises(ValueError):
+        original(package_environment['output_dir'], result['packageSha256'], baseline='memberships-r3-steady')
     with pytest.raises(ValueError, match='unsupported release baseline'):
         original(package_environment['output_dir'], result['packageSha256'], baseline='arbitrary')
 

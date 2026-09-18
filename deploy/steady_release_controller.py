@@ -1,4 +1,4 @@
-"""Reviewed fixed R3 baseline source update with full 61/9 group preservation.
+"""Reviewed fixed shopping R1 baseline source update with full 61/9 group preservation.
 
 The migration marker is immutable. Only the normal new app initializes; no warm
 or migration callback. Shared admission, environment, and failure-stop helpers
@@ -86,7 +86,7 @@ class Controller(shared.Controller):
         need(all(n.startswith('static/experience/') or not (n.endswith('.py') or n.startswith('static/'))
                  for n in set(old) - set(self.files)), 'unsupported_runtime_removal')
         changed = {n for n in set(old) | set(self.files) if old.get(n) != self.files.get(n)}
-        need(all(n in ('inventory_api.py', 'README.md') or n.startswith(
+        need(all(n in ('app.py', 'inventory_api.py', 'README.md') or n.startswith(
             ('frontend/', 'static/experience/', 'docs/', 'tests/', 'deploy/')) for n in changed), 'unsupported_source_change')
         return old, self.current_services(PARENT_IMAGE)
 
