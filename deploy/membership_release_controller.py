@@ -228,16 +228,19 @@ class Controller:
 
     def validate_evidence(self):
         proof = self.plan['validation']
-        report = read(self.candidate / relative(proof['path']), proof['sha256'])
+        report_path = self.candidate / relative(proof['path'])
+        report = read(report_path, proof['sha256'])
+        validation_root = report_path.parent
         need(report.get('imageId') == self.plan['imageId'] and report.get('sourceHead') == self.package['sourceHead']
-             and report.get('manifestSha256') == self.package['manifestSha256'] and report.get('exitCode') == 0,
+             and report.get('manifestSha256') == self.package['manifestSha256'] and report.get('exitCode') == 0
+             and report.get('allPassed') is True and report.get('packageSha256') == self.plan['packageSha256'],
              'validation_identity_changed')
         originals = report['evidence']
         for name, digest in originals.items():
-            need(sha(regular(self.candidate / relative(name)).read_bytes()) == digest, 'validation_original_changed')
-        counts = verify_junit(self.candidate / relative(report['junitPath']), self.plan['testCases'], self.plan['allowedSkips'])
+            need(sha(regular(validation_root / relative(name)).read_bytes()) == digest, 'validation_original_changed')
+        counts = verify_junit(validation_root / relative(report['junitPath']), self.plan['testCases'], self.plan['allowedSkips'])
         need(report['junitPath'] in originals, 'unbound_junit')
-        runtime = read(self.candidate / relative(report['runtimePath']))
+        runtime = read(validation_root / relative(report['runtimePath']))
         modules = {n[:-3]: '/app/' + n for n in self.runtime if '/' not in n and n.endswith('.py')}
         need(report['runtimePath'] in originals and runtime.get('before') == self.runtime
              and runtime.get('after') == self.runtime and runtime.get('loadedBefore') == modules

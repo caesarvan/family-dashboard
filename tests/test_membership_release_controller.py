@@ -222,3 +222,38 @@ def test_failed_cleanup_is_recorded_without_claiming_stopped(simulation):
         controller.activate()
     proof = release.read(controller.candidate / 'activation.json')
     assert proof['completed'] is False and proof['candidateStoppedAfterFailure'] is False
+
+
+@pytest.mark.parametrize('change', ['none', 'failed_guard', 'wrong_package', 'shadowed_module', 'changed_source'])
+def test_validation_originals_are_resolved_under_report_directory(tmp_path, change):
+    controller = release.Controller.__new__(release.Controller)
+    controller.candidate = tmp_path
+    proof = tmp_path / 'validation/proof'
+    proof.mkdir(parents=True)
+    controller.package = {'sourceHead': 'a'*40, 'manifestSha256': 'b'*64}
+    controller.runtime = {'app.py': 'c'*64}
+    controller.files = {**controller.runtime, 'tests/test_a.py': 'd'*64}
+    runtime = {'before': controller.runtime, 'after': controller.runtime,
+               'loadedBefore': {'app': '/app/app.py'}, 'loadedAfter': {'app': '/app/app.py'},
+               'sourceBefore': controller.files, 'sourceAfter': controller.files}
+    if change == 'shadowed_module':
+        runtime['loadedAfter'] = {'app': '/test-support/app.py'}
+    if change == 'changed_source':
+        runtime['sourceAfter'] = {'app.py': 'e'*64}
+    release.put(proof / 'runtime.json', runtime)
+    release.put(proof / 'results.xml', b'<testsuites><testsuite tests="1" failures="0" errors="0" skipped="0">'
+        b'<testcase classname="tests.test_a" name="test_one"/></testsuite></testsuites>')
+    report = {'imageId': 'sha256:'+'1'*64, 'sourceHead': controller.package['sourceHead'],
+              'manifestSha256': controller.package['manifestSha256'], 'exitCode': 0, 'allPassed': change != 'failed_guard',
+              'packageSha256': 'f'*64 if change == 'wrong_package' else 'e'*64,
+              'junitPath': 'proof/results.xml', 'runtimePath': 'proof/runtime.json',
+              'evidence': {'proof/'+p.name: release.sha(p.read_bytes()) for p in proof.iterdir()}}
+    release.put(proof.parent / 'validation.json', report)
+    controller.plan = {'imageId': report['imageId'], 'packageSha256': 'e'*64,
+                       'validation': {'path': 'validation/validation.json', 'sha256': release.sha((proof.parent/'validation.json').read_bytes())},
+                       'testCases': [['tests.test_a', 'test_one']], 'allowedSkips': []}
+    if change == 'none':
+        assert controller.validate_evidence() == {'tests': 1, 'passed': 1, 'skipped': 0}
+    else:
+        with pytest.raises(release.ReleaseError):
+            controller.validate_evidence()
