@@ -437,8 +437,10 @@ def test_remote_completion_transaction_serializes_concurrent_title_edit(env):
     worker = []; errors = []; fired = []; waiting = threading.Event()
     def writer():
         try:
+            # Entering db now acquires platform authority before its PRAGMA;
+            # signal readiness before that real lock can block this writer.
+            waiting.set()
             with original_db() as con:
-                waiting.set()
                 con.execute("UPDATE entities SET data=json_set(data,'$.title','CONCURRENT_LOCAL_TITLE'),revision=revision+1 WHERE id='local-1'")
         except Exception as error:
             errors.append(str(error))
