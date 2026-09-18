@@ -35,7 +35,7 @@ python -B -X utf8 tests/browser_expo_shopping_inventory_check.py
 
 参数示意不可直接运行。必须使用现有已安装依赖的 Python；禁止 `-O`。构建证据读取真实 `head/tree/inputFiles/files`、`buildExit=0` 和 `bundleMarkers=true`；完整 frontend 输入集合在构建 commit、受验 commit 和磁盘中逐一相等，所有 export 文件相等。原始证据的 `kind` 如实记录，不要求 `sourceHead` 别名，不复制改名或改写证据。作者脚本的 commit 与受验应用 commit 分别记录，允许后续纯文档或测试提交沿用字节相同的 export。
 
-每次新建 `test-results/expo-shopping-inventory-<UTC>/`，保留执行脚本副本、`result.json`、每流程失败记录和截图。报告记录真实源码 head/tree、构建与脚本身份、输入及输出哈希、原始证据路径、各流程结果和临时目录清理。失败保留原件；修复后的有限补测可用 `--scenario <流程名>`，不把不同轮次相加成一次全套通过。截图及合成运行证据不提交 Git。
+每次新建 `test-results/expo-shopping-inventory-<UTC>/`，保留执行脚本副本、`result.json`、每流程失败记录和截图。报告记录真实源码 head/tree、构建与脚本身份、输入及输出哈希、原始证据路径、各流程结果和临时目录清理。失败保留原件；修复后的有限补测可用 `--scenario <流程名>`；`--scenario shopping` 只执行前四条采购流程，报告 `fullSuite=false`，不重复首页或把不同轮次相加成一次全套通过。截图及合成运行证据不提交 Git。
 
 ## 当前边界
 

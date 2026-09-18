@@ -402,9 +402,9 @@ def main():
     parser.add_argument('--bundle', required=True, type=Path)
     parser.add_argument('--build-evidence', required=True, type=Path)
     parser.add_argument('--expected-build-evidence', required=True)
-    parser.add_argument('--scenario', choices=('all', *CASES), default='all')
+    parser.add_argument('--scenario', choices=('all', 'shopping', *CASES), default='all')
     args = parser.parse_args()
-    selected = CASES if args.scenario == 'all' else (args.scenario,)
+    selected = CASES if args.scenario == 'all' else CASES[:4] if args.scenario == 'shopping' else (args.scenario,)
     root, bundle, evidence_path = args.source_root.resolve(), args.bundle.resolve(), args.build_evidence.resolve()
     assert sys.dont_write_bytecode and not sys.flags.optimize
     assert re.fullmatch('[a-f0-9]{40}', args.expected_head) and re.fullmatch('[a-f0-9]{64}', args.expected_build_evidence)
