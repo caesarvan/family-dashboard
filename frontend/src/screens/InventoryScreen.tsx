@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { AppState, Platform, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Button, Dialog, Divider, Icon, List, Portal, Searchbar, Text, TextInput, TouchableRipple, useTheme } from 'react-native-paper';
@@ -6,10 +6,10 @@ import { ApiError, request } from '../lib/api';
 import { dayKey } from '../lib/calendar';
 import { useHousehold } from '../lib/household';
 import type { ScreenProps } from '../lib/types';
-import { Acquisition, InventoryDiscarded, InventoryFence, InventoryItem, InventoryPage, InventoryResult, InventorySession, Movement, MovementKind, afterSalesLabels, inventoryDate, inventoryRequestId, isInventoryId, movementConfirmations, movementLabels, orderLabels, quantityInput, validateAcquisition, validateItem, validateMovement, validatePage, validateResult } from '../lib/inventory';
+import { Acquisition, InventoryDiscarded, InventoryFence, InventoryItem, InventoryPage, InventoryResult, InventorySession, Movement, MovementKind, afterSalesLabels, inventoryDate, inventoryRequestId, isInventoryId, movementConfirmations, movementLabels, orderLabels, quantityInput, validateAcquisition, validateItem, validateMovement, validatePage, validateResult, InventoryShoppingMissing, ShoppingInventoryPage, shoppingInventoryPath, validateShoppingInventoryPage } from '../lib/inventory';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 
-type Props = ScreenProps & { inventoryRequest?: { key: number; id?: string } };
+type Props = ScreenProps & { inventoryRequest?: { key: number; id?: string }; shoppingSourceId?: string; onReturnToShopping?: () => void };
 type ItemDraft = { type: 'item'; id?: string; title: string; unit: string; variant: string; location: string; visibility: 'private' | 'shared'; reorderPoint: string };
 type BatchDraft = { type: 'batch'; id?: string; kind: 'purchase' | 'opening'; orderedQty: string; orderState: keyof typeof orderLabels; orderedOn: string; expectedOn: string; warrantyUntil: string; afterSalesState: keyof typeof afterSalesLabels; shoppingId: string; note: string };
 type MovementDraft = { type: 'movement'; kind: MovementKind | 'reverse'; movement?: Movement; quantity: string; occurredOn: string; reason: string; confirmed: boolean };
@@ -60,7 +60,7 @@ function SelectionRow({ kind, label, accessibilityLabel = label, checked, disabl
 export default function InventoryScreen(props: Props) {
   const household = useHousehold();
   if (props.user.role !== 'member') return <EmptyState title="请用成员账户管理家庭物品" description="电视不读取家庭物品和操作历史。" />;
-  return <InventoryWorkspace key={household.identityKey} {...props} identityKey={household.identityKey} />;
+  return <InventoryWorkspace key={household.identityKey + ':' + (props.shoppingSourceId || '')} {...props} identityKey={household.identityKey} />;
 }
 
 function InventoryWorkspace(props: Props & { identityKey: string }) {
@@ -78,14 +78,23 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
   const [history, setHistory] = useState<InventoryPage<Movement>>(emptyPage(12)), [historyOpen, setHistoryOpen] = useState(false);
   const [draft, setDraft] = useState<Draft | null>(null), [pending, setPending] = useState<Intent | null>(null);
   const [decision, setDecision] = useState<'discard' | 'archive' | null>(null);
+  const [shoppingPage, setShoppingPage] = useState<ShoppingInventoryPage | null>(null), [shoppingMissing, setShoppingMissing] = useState(false);
+  const [selectingItem, setSelectingItem] = useState(false);
+  const shoppingView = useRef({ page: shoppingPage, missing: shoppingMissing, selecting: selectingItem });
+  shoppingView.current = { page: shoppingPage, missing: shoppingMissing, selecting: selectingItem };
   const state = useRef({ item, batch, draft, pending, page, batches, history, historyOpen, scope, search });
   state.current = { item, batch, draft, pending, page, batches, history, historyOpen, scope, search };
   const current = () => alive.current && active.current && (typeof document === 'undefined' || !document.hidden);
   const locked = busy || loading || !!pending || !household.online;
   const navigationLocked = locked || !!draft;
+  useLayoutEffect(() => {
+    props.onInventoryPending?.(pending ? '请先核对本次库存操作的结果，再离开。' : busy ? '正在保存物品，请稍候。' : draft || decision ? '请先保存或放弃当前物品编辑，再离开。' : null);
+  }, [draft, pending, busy, decision, props.onInventoryPending]);
+  useEffect(() => () => props.onInventoryPending?.(null), [props.onInventoryPending]);
 
   function clearPrivate() {
     setPage(emptyPage(24)); setItem(null); setBatch(null); setBatches(emptyPage(12)); setHistory(emptyPage(12)); setHistoryOpen(false);
+    setShoppingPage(null); setShoppingMissing(false); setSelectingItem(false);
     setDraft(null); setPending(null); setDecision(null); setQuery(''); setSearch(''); setScope('all'); setError(''); setNotice('');
     state.current = { item: null, batch: null, draft: null, pending: null, page: emptyPage(24), batches: emptyPage(12), history: emptyPage(12), historyOpen: false, scope: 'all', search: '' };
   }
@@ -105,6 +114,11 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
     if (caught instanceof InventoryDiscarded || caught instanceof ApiError && [401, 403].includes(caught.status)) {
       invalidate(); setDenied(true); void latest.current.refresh(); return;
     }
+    if (caught instanceof InventoryShoppingMissing) {
+      setShoppingPage(null); setShoppingMissing(true); setSelectingItem(false);
+      if (!state.current.pending) { setDraft(null); setItem(null); setBatch(null); setBatches(emptyPage(12)); setHistory(emptyPage(12)); setHistoryOpen(false); }
+      setError('原采购已删除或暂时不可用。可以返回采购清单；已保存的库存记录仍会保留。'); return;
+    }
     if (caught instanceof ApiError && [404, 410].includes(caught.status)) {
       // A stale shared item may also remain in the list: clear every projection.
       clearPrivate(); setError('这件物品已归档或不再对你可见，旧详情和草稿已清空。'); return;
@@ -113,6 +127,12 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
   }
   async function read<T>(path: string, valid = () => true): Promise<T> {
     return fence.current.run(() => request<T>(path), () => current() && valid());
+  }
+  async function readShopping(offset = 0) {
+    const id = props.shoppingSourceId;
+    if (!id) throw new Error('请从采购清单重新打开库存。');
+    try { return validateShoppingInventoryPage(await read<ShoppingInventoryPage>(shoppingInventoryPath(id, offset)), id, offset); }
+    catch (caught) { if (caught instanceof ApiError && caught.status === 404) throw new InventoryShoppingMissing(); throw caught; }
   }
   async function readItems(nextScope = state.current.scope, nextSearch = state.current.search, offset = 0) {
     const data = await read<InventoryPage<InventoryItem>>(`/inventory/items?scope=${nextScope}&q=${encodeURIComponent(nextSearch)}&limit=24&offset=${offset}`);
@@ -144,13 +164,16 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
   }
   async function refreshView() {
     const saved = state.current;
-    const values = await readItems(saved.scope, saved.search, saved.page.offset);
+    const source = props.shoppingSourceId ? await readShopping(shoppingView.current.page?.offset || 0) : null;
+    const values = !props.shoppingSourceId || shoppingView.current.selecting || saved.item
+      ? await readItems(saved.scope, saved.search, saved.page.offset) : emptyPage<InventoryItem>(24);
     let detail = saved.item ? await readItem(saved.item.id) : null;
     const records = detail ? await readBatches(detail.id, saved.batches.offset) : emptyPage<Acquisition>(12);
     const selected = saved.batch ? await readBatch(saved.batch.id) : null;
     if (selected) detail = selected.item;
     const movements = saved.batch && saved.historyOpen ? await readHistory(saved.batch.id, saved.history.offset) : emptyPage<Movement>(12);
     if (!current()) return;
+    setShoppingPage(source); setShoppingMissing(false);
     setPage(values); setItem(detail); setBatches(records); setBatch(selected?.acquisition || null); setHistory(movements);
   }
   function enter() {
@@ -168,6 +191,10 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
           const batchId = saved.pending?.acquisitionId || saved.batch?.id;
           if (itemId) await readItem(itemId);
           if (batchId) await readBatch(batchId);
+          if (props.shoppingSourceId && !saved.pending) {
+            const source = await readShopping();
+            if (current()) { setShoppingPage(source); setShoppingMissing(false); }
+          }
           // Do not silently adopt newer revisions or change the original intent.
           if (current()) setNotice('已核对当前身份和访问权限，原输入仍保留。待确认的操作请先核对原结果。');
         } else await refreshView();
@@ -175,7 +202,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
       } catch (caught) {
         fail(caught);
         if (ticket === generation.current && current()) {
-          if (caught instanceof ApiError && [404, 410].includes(caught.status)) setVisible(true);
+          if (caught instanceof InventoryShoppingMissing || caught instanceof ApiError && [404, 410].includes(caught.status)) setVisible(true);
           else active.current = false;
         }
       } finally {
@@ -204,13 +231,42 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
   }, [visible, denied]);
   useEffect(() => {
     const incoming = props.inventoryRequest;
-    if (!visible || loading || busy || !incoming || incoming.key === requestKey.current) return;
+    if (props.shoppingSourceId || !visible || loading || busy || !incoming || incoming.key === requestKey.current) return;
     requestKey.current = incoming.key;
     if (state.current.draft || state.current.pending) { setNotice('请先完成或取消当前编辑，再打开另一件物品。'); return; }
     if (incoming.id) { if (isInventoryId(incoming.id)) void openItem(incoming.id); else setError('物品链接无效，请在列表中查找。'); }
     else { setItem(null); setBatch(null); setHistoryOpen(false); }
   }, [props.inventoryRequest?.key, visible, loading, busy]);
 
+  async function chooseExisting() {
+    if (navigationLocked) return;
+    await runRead(async () => {
+      const source = await readShopping(), values = await readItems('all', '');
+      if (!current()) return;
+      setShoppingPage(source); setShoppingMissing(false); setSelectingItem(true); setScope('all'); setSearch(''); setQuery(''); setPage(values);
+      setItem(null); setBatch(null); setNotice('选一件物品，核对单位后填写本批数量。');
+    });
+  }
+  function purchaseDraft(): BatchDraft { return { ...batchDraft('purchase'), shoppingId: props.shoppingSourceId || '', orderedQty: '' }; }
+  async function selectForPurchase(id: string) {
+    if (navigationLocked) return;
+    await runRead(async () => {
+      const source = await readShopping(), detail = await readItem(id), records = await readBatches(id);
+      if (!detail.canMutate) throw new Error('这件物品暂时不能登记批次，请选择其他物品。');
+      if (!current()) return;
+      setShoppingPage(source); setShoppingMissing(false); setItem(detail); setBatches(records); setBatch(null); setHistoryOpen(false); setHistory(emptyPage(12));
+      setDraft(purchaseDraft()); setNotice('');
+    });
+  }
+  async function newShoppingItem() {
+    if (navigationLocked) return;
+    await runRead(async () => {
+      const source = await readShopping();
+      if (!current()) return;
+      setShoppingPage(source); setShoppingMissing(false); setItem(null); setBatch(null);
+      setDraft({ ...blankItem(), title: source.shopping.title }); setNotice('先保存物品，再填写这次采购的批次数量。');
+    });
+  }
   async function openItem(id: string) {
     if (navigationLocked) return;
     await runRead(async () => {
@@ -218,9 +274,9 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
       if (!current()) return; setItem(detail); setBatches(records); setBatch(null); setHistory(emptyPage(12)); setHistoryOpen(false); setNotice('');
     });
   }
-  async function openBatch(id: string) {
+  async function openBatch(id: string, fromShopping = false) {
     if (navigationLocked) return;
-    await runRead(async () => { const data = await readBatch(id); if (!current()) return; setItem(data.item); setBatch(data.acquisition); setHistoryOpen(false); setHistory(emptyPage(12)); setNotice(''); });
+    await runRead(async () => { const data = await readBatch(id); if (fromShopping && data.acquisition.shoppingId !== props.shoppingSourceId) throw new Error('这个批次已不再关联原采购，请刷新关联批次。'); const records = fromShopping ? await readBatches(data.item.id) : null; if (!current()) return; if (records) setBatches(records); setItem(data.item); setBatch(data.acquisition); setHistoryOpen(false); setHistory(emptyPage(12)); setNotice(''); });
   }
   function begin(value: Draft) {
     if (navigationLocked || working.current) return; setDraft(value); setError(''); setNotice('');
@@ -231,6 +287,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
   }
   async function accept(result: InventoryResult) {
     if (!current()) return;
+    const createdForShopping = !!props.shoppingSourceId && state.current.draft?.type === 'item' && !state.current.draft.id;
     setDraft(null); setPending(null); setDecision(null); setError('');
     if (result.operation.deleted) {
       setItem(null); setBatch(null); setBatches(emptyPage(12)); setHistory(emptyPage(12)); setHistoryOpen(false);
@@ -244,7 +301,11 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
     try {
       const values = await readItems(state.current.scope, state.current.search, 0);
       const records = result.item ? await readBatches(result.item.id) : emptyPage<Acquisition>(12);
-      if (current()) { setPage(values); setBatches(records); }
+      const source = props.shoppingSourceId ? await readShopping() : null;
+      if (current()) {
+        setPage(values); setBatches(records); setShoppingPage(source); setShoppingMissing(false);
+        if (createdForShopping && result.item) { setDraft(purchaseDraft()); setNotice('物品已保存。请核对单位并填写本批数量，再保存采购批次。'); }
+      }
     } catch (caught) { fail(caught); }
     void latest.current.refresh();
   }
@@ -295,6 +356,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
         } else void send(makeIntent('/inventory/items', 'POST', { data }));
       } else if (draft.type === 'batch') {
         if (!item?.canMutate) throw new Error('请重新打开物品后再添加批次。');
+        if (props.shoppingSourceId && !draft.id && draft.shoppingId !== props.shoppingSourceId) throw new Error('采购来源已变化，请返回采购清单重新打开。');
         const values: Record<string, unknown> = {
           kind: draft.kind, orderedQty: quantityInput(draft.orderedQty), orderState: draft.kind === 'opening' ? 'closed' : draft.orderState,
           orderedOn: draft.kind === 'opening' ? null : inventoryDate(draft.orderedOn), expectedOn: draft.kind === 'opening' ? null : inventoryDate(draft.expectedOn),
@@ -350,16 +412,17 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
     if (navigationLocked) return;
     void runRead(async () => { const values = await readItems(nextScope, nextSearch); if (current()) { setScope(nextScope); setSearch(nextSearch); setPage(values); } });
   }
-  function pageTo(kind: 'items' | 'batches' | 'history', offset: number) {
+  function pageTo(kind: 'items' | 'batches' | 'history' | 'shopping', offset: number) {
     if (navigationLocked) return;
     void runRead(async () => {
+      if (kind === 'shopping') { const values = await readShopping(offset); if (current()) { setShoppingPage(values); setShoppingMissing(false); } }
       if (kind === 'items') { const values = await readItems(scope, search, offset); if (current()) setPage(values); }
       if (kind === 'batches' && item) { const values = await readBatches(item.id, offset); if (current()) setBatches(values); }
       if (kind === 'history' && batch) { const values = await readHistory(batch.id, offset); if (current()) setHistory(values); }
     });
   }
   const field = (label: string, value: string, name: string, limit: number, numeric = false, multiline = false) => <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} label={label} accessibilityLabel={label} value={value} onChangeText={text => change({ [name]: text })} maxLength={limit} disabled={locked} keyboardType={numeric ? 'numbers-and-punctuation' : 'default'} multiline={multiline} />;
-  const pager = <T,>(values: InventoryPage<T>, title: string, kind: 'items' | 'batches' | 'history') => values.total > values.limit || values.offset > 0 ? <View style={styles.pager}>
+  const pager = <T,>(values: InventoryPage<T>, title: string, kind: 'items' | 'batches' | 'history' | 'shopping') => values.total > values.limit || values.offset > 0 ? <View style={styles.pager}>
     <Button accessibilityLabel={title + '上一页'} disabled={navigationLocked || values.offset === 0} onPress={() => pageTo(kind, Math.max(0, values.offset - values.limit))}>上一页</Button>
     <Text variant="bodySmall">第 {Math.floor(values.offset / values.limit) + 1} 页 · {values.total} 条</Text>
     <Button accessibilityLabel={title + '下一页'} disabled={navigationLocked || values.nextOffset === null} onPress={() => pageTo(kind, values.nextOffset!)}>下一页</Button>
@@ -368,12 +431,14 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
   const stat = (label: string, quantity: number) => <View style={styles.stat}><Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{label}</Text><Text variant="headlineSmall">{quantity.toLocaleString('zh-CN')} <Text variant="bodyMedium">{item?.unit}</Text></Text></View>;
   const editable = (name: string) => draft?.type === 'batch' && (!draft.id || !!batch?.editableFields.includes(name));
 
+  const backToShopping = props.onReturnToShopping ? <Button icon="arrow-left" disabled={busy || loading || !!draft || !!pending || !!decision} onPress={props.onReturnToShopping}>返回原采购</Button> : undefined;
   if (denied) return <EmptyState title="正在核对登录身份" description="旧账户的家庭物品和草稿已清空。" />;
-  if (!visible) return routeFocused.current && (typeof document === 'undefined' || !document.hidden) ? <EmptyState title={loading ? '正在核对物品访问权限' : '暂时无法核对物品'} description={loading ? '原输入会在身份和权限核对完成后显示。' : error || '请恢复网络后重新读取，待核对的操作不会自动重发。'} action={!loading ? <Button onPress={enter}>重新读取物品</Button> : undefined} /> : null;
+  if (!visible) return routeFocused.current && (typeof document === 'undefined' || !document.hidden) ? <EmptyState title={loading ? '正在核对物品访问权限' : '暂时无法核对物品'} description={loading ? '原输入会在身份和权限核对完成后显示。' : error || '请恢复网络后重新读取，待核对的操作不会自动重发。'} action={!loading ? <View style={styles.wrap}><Button onPress={enter}>重新读取物品</Button>{backToShopping}</View> : undefined} /> : null;
   return <View style={styles.page}>
-    <PageHeader title="家庭物品" description="知道家里有什么，到货后顺手记一下。" action={<Button mode="contained" icon="plus" disabled={navigationLocked} onPress={() => begin(blankItem())}>新增物品</Button>} />
+    <PageHeader title={props.shoppingSourceId ? '这次采购的库存' : '家庭物品'} description={props.shoppingSourceId ? '接着处理已登记批次，或核对后登记一批。' : '知道家里有什么，到货后顺手记一下。'} action={props.shoppingSourceId ? backToShopping : <Button mode="contained" icon="plus" disabled={navigationLocked} onPress={() => begin(blankItem())}>新增物品</Button>} />
+    {shoppingPage && <SectionCard title={shoppingPage.shopping.title}><Text variant="bodyMedium">采购数量：{shoppingPage.shopping.quantity || '未填写'}</Text><Text variant="bodySmall">原清单数量仅供参考；登记时按物品单位核对数量。库存登记不会改变“已买到”、预算或实付。</Text></SectionCard>}
     <View style={styles.wrap}>
-      {item && <Button icon="arrow-left" disabled={navigationLocked} onPress={() => { setItem(null); setBatch(null); setBatches(emptyPage(12)); setHistory(emptyPage(12)); setHistoryOpen(false); }}>返回物品列表</Button>}
+      {item && <Button icon="arrow-left" disabled={navigationLocked} onPress={() => { setItem(null); setBatch(null); setBatches(emptyPage(12)); setHistory(emptyPage(12)); setHistoryOpen(false); setSelectingItem(false); }}>{props.shoppingSourceId ? '返回关联批次' : '返回物品列表'}</Button>}
       {batch && <Button disabled={navigationLocked} onPress={() => { setBatch(null); setHistory(emptyPage(12)); setHistoryOpen(false); }}>返回物品详情</Button>}
       <Button icon="refresh" disabled={navigationLocked} onPress={() => void runRead(refreshView)}>刷新物品</Button>
     </View>
@@ -386,7 +451,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
       <Button mode="contained" disabled={busy || loading || !household.online} onPress={() => pending.state === 'unknown' ? void send(pending, true) : void rebase()}>{pending.state === 'unknown' ? '核对并重试本次操作' : '重新核对并修改草稿'}</Button>
     </SectionCard>}
 
-    {draft ? <SectionCard title={draft.type === 'item' ? draft.id ? '编辑物品' : '新增物品' : draft.type === 'batch' ? draft.id ? '编辑批次' : draft.kind === 'opening' ? '登记家中已有' : '添加采购批次' : draft.kind === 'reverse' ? '撤销原记录' : '记录' + movementLabels[draft.kind]}>
+    {shoppingMissing && !pending && !draft ? <EmptyState title="原采购暂时不可用" description="它可能已被删除。已保存的物品仍保留，可以返回采购清单继续。" /> : draft ? <SectionCard title={draft.type === 'item' ? draft.id ? '编辑物品' : '新增物品' : draft.type === 'batch' ? draft.id ? '编辑批次' : draft.kind === 'opening' ? '登记家中已有' : '添加采购批次' : draft.kind === 'reverse' ? '撤销原记录' : '记录' + movementLabels[draft.kind]}>
       <View style={styles.fields}>
         {draft.type === 'item' && <>
           {field('物品名称', draft.title, 'title', 100)}
@@ -400,6 +465,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
           <Text>{item?.title} · {draft.kind === 'opening' ? '家中已有物品' : '采购记录'}</Text>
           <Text variant="bodySmall">保存批次不会增加库存。保存后点击“收货”，明确登记实际收到或已在家中的数量。</Text>
           {editable('orderedQty') ? field('批次数量', draft.orderedQty, 'orderedQty', 7, true) : <Text>批次数量：{batch?.orderedQty} {item?.unit}（由物品拥有者或登记人修改）</Text>}
+          {!!props.shoppingSourceId && !draft.id && <Text variant="bodySmall">计量单位：{item?.unit}。请按这个单位填写本批数量，再点击“保存批次”确认。</Text>}
           {draft.kind === 'purchase' && editable('orderState') && choices(draft.orderState, 'orderState', orderLabels)}
           {draft.kind === 'purchase' && editable('expectedOn') && field('预计到货日期（YYYY-MM-DD）', draft.expectedOn, 'expectedOn', 10)}
           {editable('note') && field('批次备注', draft.note, 'note', 500, false, true)}
@@ -407,7 +473,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
             {draft.kind === 'purchase' && editable('orderedOn') && field('下单日期（YYYY-MM-DD）', draft.orderedOn, 'orderedOn', 10)}
             {editable('warrantyUntil') && field('保修截止（YYYY-MM-DD）', draft.warrantyUntil, 'warrantyUntil', 10)}
             {editable('afterSalesState') && choices(draft.afterSalesState, 'afterSalesState', afterSalesLabels)}
-            {draft.kind === 'purchase' && editable('shoppingId') && <><Text variant="titleSmall">关联采购清单</Text><View accessibilityRole="radiogroup" accessibilityLabel="关联采购清单" style={styles.fields}>
+            {draft.kind === 'purchase' && editable('shoppingId') && !(props.shoppingSourceId && !draft.id) && <><Text variant="titleSmall">关联采购清单</Text><View accessibilityRole="radiogroup" accessibilityLabel="关联采购清单" style={styles.fields}>
               <SelectionRow kind="radio" label="不关联采购" checked={!draft.shoppingId} disabled={locked} onPress={() => change({ shoppingId: '' })} />
               {props.state.shopping.map(row => <SelectionRow key={row.id} kind="radio" label={row.title} accessibilityLabel={'关联采购 ' + row.title} checked={draft.shoppingId === row.id} disabled={locked} onPress={() => change({ shoppingId: row.id })} />)}
               {!!draft.shoppingId && !props.state.shopping.some(row => row.id === draft.shoppingId) && <SelectionRow kind="radio" label="原采购（待核对）" checked disabled onPress={() => {}} />}
@@ -436,7 +502,7 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
           <Text variant="titleLarge">{item.title}</Text><Text>{[item.variant, item.location, item.visibility === 'shared' ? '家庭共享' : '仅本人可见'].filter(Boolean).join(' · ')}</Text>
           <View style={styles.wrap}>{stat('家中现有', item.onHandQty)}{stat('已下单待到货', item.inTransitQty)}{stat('计划采购', item.plannedQty)}</View>
           {item.belowThreshold && <Text>该补货了：提醒数量 {item.reorderPoint} {item.unit}。仍需自行决定和下单。</Text>}
-          {item.canMutate && <View style={styles.wrap}><Button mode="contained" icon="plus" disabled={navigationLocked} onPress={() => begin(batchDraft('purchase'))}>添加采购批次</Button><Button mode="outlined" disabled={navigationLocked} onPress={() => begin(batchDraft('opening'))}>登记家中已有</Button></View>}
+          {item.canMutate && <View style={styles.wrap}><Button mode="contained" icon="plus" disabled={navigationLocked} onPress={() => begin(props.shoppingSourceId ? purchaseDraft() : batchDraft('purchase'))}>添加采购批次</Button>{!props.shoppingSourceId && <Button mode="outlined" disabled={navigationLocked} onPress={() => begin(batchDraft('opening'))}>登记家中已有</Button>}</View>}
           {item.canManage && <List.Accordion title="物品管理"><View style={styles.fields}><Text>库存为零，且所有批次已结束或取消时，可以归档。原操作历史会保留。</Text><Button disabled={navigationLocked} onPress={() => setDecision('archive')}>归档物品</Button></View></List.Accordion>}
         </View>
       </SectionCard>
@@ -466,12 +532,22 @@ function InventoryWorkspace(props: Props & { identityKey: string }) {
         {batches.items.map((row, index) => <View key={row.id} style={styles.listRow}><View style={styles.rowBody}><Text variant="titleMedium">第 {batches.offset + index + 1} 批 · {row.kind === 'opening' ? '家中已有' : orderLabels[row.orderState]}</Text><Text>现有 {row.onHandQty} {item.unit} · 累计已收 {row.receivedQty} / {row.orderedQty} {item.unit}</Text>{!!row.note && <Text variant="bodySmall">{row.note}</Text>}</View><Button accessibilityLabel={'打开批次 ' + row.id} disabled={navigationLocked} onPress={() => void openBatch(row.id)}>查看批次</Button></View>)}
         {pager(batches, '批次', 'batches')}
       </View></SectionCard>}
-    </> : <>
-      <SectionCard title="我的与家庭共享物品"><View style={styles.fields}>
+    </> : props.shoppingSourceId && !selectingItem ? <SectionCard title="已关联且对你可见的批次"><View style={styles.fields}>
+      {!shoppingPage?.items.length && !loading && <EmptyState title="目前没有可见的关联批次" description="先看看家里是否已有同类物品，再登记这次采购。其他人的私密物品不会显示。" />}
+      {shoppingPage?.items.map(({ item: linkedItem, acquisition }) => <View key={acquisition.id} style={styles.listRow}><View style={styles.rowBody}>
+        <Text variant="titleMedium">{linkedItem.title}</Text><Text variant="bodySmall">{linkedItem.visibility === 'private' ? '仅本人可见' : '家庭共享'} · {orderLabels[acquisition.orderState]}</Text>
+        <Text>已收 {acquisition.receivedQty} / {acquisition.orderedQty} {linkedItem.unit} · 待收 {acquisition.remainingExpectedQty} {linkedItem.unit}</Text>
+        {acquisition.afterSalesState !== 'none' && <Text variant="bodySmall">{afterSalesLabels[acquisition.afterSalesState]}</Text>}
+      </View><Button accessibilityLabel={'处理关联批次 ' + acquisition.id} disabled={navigationLocked} onPress={() => void openBatch(acquisition.id, true)}>继续处理</Button></View>)}
+      {shoppingPage && pager(shoppingPage, '关联批次', 'shopping')}
+      <View style={styles.wrap}><Button mode="contained" icon="package-variant-closed" disabled={navigationLocked || !shoppingPage} onPress={() => void chooseExisting()}>选择已有物品</Button><Button mode="outlined" icon="plus" disabled={navigationLocked || !shoppingPage} onPress={() => void newShoppingItem()}>新建物品并登记</Button></View>
+    </View></SectionCard> : <>
+      {props.shoppingSourceId && <View style={styles.wrap}><Button disabled={navigationLocked} onPress={() => setSelectingItem(false)}>返回关联批次</Button><Button icon="plus" disabled={navigationLocked} onPress={() => void newShoppingItem()}>新建物品并登记</Button></View>}
+      <SectionCard title={props.shoppingSourceId ? '选择这次采购对应的物品' : '我的与家庭共享物品'}><View style={styles.fields}>
         <Searchbar placeholder="搜索名称、规格或位置" accessibilityLabel="搜索物品" value={query} onChangeText={setQuery} onSubmitEditing={() => applyFilter(scope, query.trim())} maxLength={100} editable={!navigationLocked} />
         <View style={styles.wrap}><Button disabled={navigationLocked} onPress={() => applyFilter(scope, query.trim())}>搜索</Button>{[['all', '全部'], ['mine', '我的'], ['shared', '已共享']].map(([key, label]) => <Button key={key} mode={scope === key ? 'contained' : 'text'} disabled={navigationLocked} onPress={() => applyFilter(key, query.trim())}>{label}</Button>)}</View>
         {!page.items.length && !loading && <EmptyState title={search ? '没有找到匹配物品' : '把家里的物品记下来'} description={search ? '试试名称、规格或存放位置。' : '新物品默认仅你可见，需要时再与家庭共享。'} />}
-        {page.items.map(row => <View key={row.id} style={styles.listRow}><View style={styles.rowBody}><Text variant="titleMedium">{row.title}</Text><Text variant="bodySmall">{[row.variant, row.location, row.visibility === 'shared' ? '家庭共享' : '仅本人可见'].filter(Boolean).join(' · ')}</Text><Text>现有 {row.onHandQty} {row.unit} · 在途 {row.inTransitQty} {row.unit}</Text>{row.belowThreshold && <Text variant="bodySmall">低于补货提醒数量</Text>}</View><Button accessibilityLabel={'查看物品 ' + row.title} disabled={navigationLocked} onPress={() => void openItem(row.id)}>查看</Button></View>)}
+        {page.items.map(row => <View key={row.id} style={styles.listRow}><View style={styles.rowBody}><Text variant="titleMedium">{row.title}</Text><Text variant="bodySmall">{[row.variant, row.location, row.visibility === 'shared' ? '家庭共享' : '仅本人可见'].filter(Boolean).join(' · ')}</Text><Text>现有 {row.onHandQty} {row.unit} · 在途 {row.inTransitQty} {row.unit}</Text>{row.belowThreshold && <Text variant="bodySmall">低于补货提醒数量</Text>}</View><Button accessibilityLabel={(props.shoppingSourceId ? '选择物品 ' : '查看物品 ') + row.title} disabled={navigationLocked || !!props.shoppingSourceId && !row.canMutate} onPress={() => void (props.shoppingSourceId ? selectForPurchase(row.id) : openItem(row.id))}>{props.shoppingSourceId ? '选择并填数量' : '查看'}</Button></View>)}
         {pager(page, '物品', 'items')}
       </View></SectionCard>
     </>}

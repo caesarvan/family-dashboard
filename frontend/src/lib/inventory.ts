@@ -111,3 +111,28 @@ export class InventoryFence {
     return value;
   }
 }
+
+
+export type ShoppingInventoryPage = InventoryPage<{ item: InventoryItem; acquisition: Acquisition }> & {
+  shopping: { id: string; revision: number; title: string; quantity: string };
+};
+export class InventoryShoppingMissing extends Error {}
+export function shoppingInventoryPath(id: string, offset = 0): string {
+  if (!isInventoryId(id) || !Number.isSafeInteger(offset) || offset < 0 || offset > 100000) throw invalid();
+  return `/inventory/shopping/${id}/acquisitions?limit=12&offset=${offset}`;
+}
+export function validateShoppingInventoryPage(value: ShoppingInventoryPage, id: string, offset = 0): ShoppingInventoryPage {
+  const shopping = value?.shopping;
+  if (!shopping || shopping.id !== id || !isInventoryId(id) || !revision(shopping.revision)
+    || typeof shopping.title !== 'string' || typeof shopping.quantity !== 'string' || value.offset !== offset) throw invalid();
+  const ids = new Set<string>();
+  validatePage(value, 12, row => {
+    if (!row || !row.item || !row.acquisition) throw invalid();
+    const item = validateItem(row.item), acquisition = validateAcquisition(row.acquisition);
+    if (!item.canRead || acquisition.itemId !== item.id || acquisition.itemRevision !== item.revision
+      || acquisition.shoppingId !== id || acquisition.kind !== 'purchase' || ids.has(acquisition.id)) throw invalid();
+    ids.add(acquisition.id); return row;
+  });
+  // Keep free-text quantity as display text. It is never an inventory quantity.
+  return { ...value, shopping: { id, revision: shopping.revision, title: shopping.title, quantity: shopping.quantity } };
+}
