@@ -1,18 +1,33 @@
-// Real fixed household-domain functions + temporary app database; no HTTP/browser claim.
+// Real household-domain functions + temporary app database; no HTTP/browser claim.
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { spawnSync } from 'node:child_process';
 import { registerHooks } from 'node:module';
+import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 registerHooks({ resolve(specifier, context, next) { return next(specifier === './personalAccounts' ? './personalAccounts.ts' : specifier, context); } });
 const m = await import('../frontend/src/lib/memberships.ts');
-const source = process.env.MEMBERSHIP_DOMAIN_ROOT;
-const python = process.env.MEMBERSHIP_TEST_PYTHON;
+const repoRoot = fileURLToPath(new URL('..', import.meta.url));
+const externalSource = process.env.MEMBERSHIP_DOMAIN_ROOT;
+const source = resolve(externalSource || repoRoot);
+function pythonExecutable() {
+  if (process.env.MEMBERSHIP_TEST_PYTHON) return process.env.MEMBERSHIP_TEST_PYTHON;
+  const local = resolve(repoRoot, '.venv', process.platform === 'win32' ? 'Scripts/python.exe' : 'bin/python');
+  if (existsSync(local)) return local;
+  for (const command of ['python', 'python3', ...(process.platform === 'win32' ? ['py'] : [])]) {
+    const probe = spawnSync(command, ['-c', 'import sys; print(sys.executable)'], { encoding: 'utf8', timeout: 5000, windowsHide: true });
+    if (probe.status === 0 && probe.stdout.trim()) return probe.stdout.trim();
+  }
+  throw new Error('Python is required; install project dependencies or set MEMBERSHIP_TEST_PYTHON.');
+}
 test('actual create/list/replay/revoke/expired/invalid invitation DTOs decode without fabricated success', () => {
-  assert(source && python, 'Set MEMBERSHIP_DOMAIN_ROOT to fixed 754d2e15 tree and MEMBERSHIP_TEST_PYTHON to the project venv.');
-  const result = spawnSync(python, ['-B', '-X', 'utf8', '-c', String.raw`
+  assert(existsSync(resolve(source, 'household_memberships.py')), 'The selected repository must include household_memberships.py.');
+  const result = spawnSync(pythonExecutable(), ['-B', '-X', 'utf8', '-c', String.raw`
 import contextlib, hashlib, json, pathlib, socket, sqlite3, subprocess, sys, tempfile
 root=pathlib.Path(sys.argv[1]); sys.path.insert(0,str(root))
-assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()=='754d2e1552c8953b9d490df246d1328bdf3abf43'
+if sys.argv[2]:
+    assert subprocess.check_output(['git','rev-parse','HEAD'],cwd=root,text=True).strip()==sys.argv[2]
 before=hashlib.sha256((root/'household_memberships.py').read_bytes()).hexdigest()
 socket.socket.connect=lambda *a,**k: (_ for _ in ()).throw(AssertionError('Network forbidden'))
 from app import create_app
@@ -37,7 +52,7 @@ with tempfile.TemporaryDirectory(prefix='membership-client-dto-') as tmp:
         con.commit()
 assert hashlib.sha256((root/'household_memberships.py').read_bytes()).hexdigest()==before
 print(json.dumps({'created':created,'listed':listed,'replay':replay,'operation':operation,'revoked':revoked,'expired':expired,'invalid':invalid,'sourceSha256':before}))
-`, source], { encoding: 'utf8', timeout: 30000, windowsHide: true });
+`, source, externalSource ? '754d2e1552c8953b9d490df246d1328bdf3abf43' : ''], { encoding: 'utf8', timeout: 30000, windowsHide: true });
   assert.equal(result.status, 0, result.stderr);
   const raw = JSON.parse(result.stdout);
   const created = m.readInvitationCreated(raw.created);

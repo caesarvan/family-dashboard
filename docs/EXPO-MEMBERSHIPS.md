@@ -58,3 +58,5 @@
 邀请状态按实际领域 DTO 使用 `pending`，个人账号接受完整 `[a-z0-9._-]{3,64}`。写请求返回 `pending`／`not_committed` 操作封套时保留原编号，按状态核对，不重复提交；匿名注册仅在已确认 `not_committed` 时可结束本地核对。
 修正后实际 26/26：25 项客户端测试及 1 项固定领域真实 DTO 测试。新增 `tests/test_expo_memberships_real_dto.mjs` 使用固定领域提交 `754d2e1552c8953b9d490df246d1328bdf3abf43`、真实临时应用 SQLite，实际调用创建／列表／重放／撤销／过期／失效邀请；禁用网络，关闭连接并清理临时库。这是领域 DTO 验证，不等同 HTTP 或浏览器验收。
 两个完整 TypeScript 配置再次 0 诊断，只读依赖、无发射。原件 `test-results/membership-review-fix-r1/result.json` SHA-256 为 `60ac9965c1587bea9d80e2d6306e749e408b1663ceac8e5f61c5bf7cfd4a9c19`；Node 的实验类型转换及模块类型警告保留在输出中。上述 R3 为修正前记录，未改报为最终结果。
+
+真实 DTO 测试默认从当前仓库读取领域模块；Python 优先采用 `MEMBERSHIP_TEST_PYTHON`、仓库 `.venv`，其次探测系统 Python。只有显式指定 `MEMBERSHIP_DOMAIN_ROOT` 的独立审查运行才校验原固定外部提交。此可移植性修订后独立领域 1/1 再次通过，原件 `test-results/membership-test-portability-r1/result.json` SHA-256 `99eb396c494b78f25a32e3818925a1d4ed8338815d5f14c8e8043fdee839d218`；当前 UI 作者树尚不含领域模块，默认仓库模式待组合后执行，未重复未改的 25 项客户端测试。
