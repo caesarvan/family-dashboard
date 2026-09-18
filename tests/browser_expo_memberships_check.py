@@ -158,7 +158,9 @@ class Run(BaseRun):
         page.get_by_label('当前家庭密码', exact=True).fill('testing-password-one')
         result, _ = self.command(page, '绑定这个身份', '/api/membership-links')
         self.finish(page)
-        self.ready(page, 'account')
+        # Membership revision refresh may remount the parent More workspace.
+        # Enter the account panel explicitly after the completed operation.
+        self.open_panel(page, 'account')
         directory = self.get(ctx, '/api/account/households')['memberships']
         assert any(h['id'] == result['id'] and h['memberId'] == result['memberId'] for h in directory)
         return result
@@ -367,16 +369,25 @@ class Run(BaseRun):
             old_id = committed['invitation']['id']
             self.command(page, '撤销邀请：' + old_id[-6:], '/api/member-invitations/' + old_id + '/revoke')
             self.finish(page)
-            created, _ = self.command(page, '创建邀请码', '/api/member-invitations')
+            button(page, '创建邀请码').click()
+            with page.expect_response(lambda r: urlsplit(r.url).path == '/api/member-invitations' and r.request.method == 'POST') as pending:
+                button(page, '确认继续').click()
+            assert pending.value.status == 200
+            expect(button(page, '读取当前状态')).to_be_enabled(timeout=20000)
             self.finish(page)
-            expect(page.get_by_test_id('membership-invitation-secret')).to_contain_text(created['token'])
+            secret = page.get_by_test_id('membership-invitation-secret')
+            expect(secret).to_be_visible()
+            tokens = re.findall(r'(?<![A-Za-z0-9_-])[A-Za-z0-9_-]{43}(?![A-Za-z0-9_-])', secret.inner_text())
+            assert len(tokens) == 1
+            created_token = tokens[0]
+            assert len(self.get(ctx, '/api/member-invitations')['invitations']) == 2
             visibility(page, True)
             expect(page.get_by_test_id('membership-invitation-secret')).to_have_count(0)
             visibility(page, False)
             self.ready(page, 'invitation')
-            expect(page.locator('body')).not_to_contain_text(created['token'])
+            expect(page.locator('body')).not_to_contain_text(created_token)
             storage = page.evaluate('({local:{...localStorage},session:{...sessionStorage}})')
-            assert token not in json.dumps(storage) and created['token'] not in json.dumps(storage)
+            assert token not in json.dumps(storage) and created_token not in json.dumps(storage)
             for mode in ('light', 'dark'):
                 preferences = self.get(ctx, '/api/preferences')
                 self.write(ctx, 'PUT', '/api/preferences', {'revision': preferences['revision'], 'changes': {'colorMode': mode}})
