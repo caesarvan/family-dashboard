@@ -113,7 +113,12 @@ def test_capacity_enforced_on_child_redemption_and_missing_db_is_recoverable(app
     response=b.get('/api/state')
     assert response.status_code==503 and response.json['recoveryUrl']=='/space/home'
     assert response.headers['Cache-Control']=='no-store'
-    assert b.get('/').status_code==503
+    # Public UI stays available for personal-account recovery. Household data
+    # above still fails closed and loading the shell cannot mint a session.
+    public=b.get('/')
+    expected=app.test_client().get('/')
+    assert (public.status_code, public.data, public.location)==(expected.status_code, expected.data, expected.location)
+    assert not public.headers.getlist('Set-Cookie') and not path.exists()
     assert b.get('/space/home').status_code==303
     assert b.get('/api/spaces/current').json['slug']=='home'
 
