@@ -7,6 +7,7 @@ reviewed. A POST which might have succeeded is never blindly repeated.
 from __future__ import annotations
 
 from datetime import date
+from contextlib import ExitStack
 import json
 import secrets
 import time
@@ -14,7 +15,7 @@ import time
 from flask import g, jsonify, request
 from itsdangerous import BadSignature, URLSafeTimedSerializer
 
-from calendar_publish import digest, pack, stamp
+from calendar_publish import digest, pack, stamp, publication_capture, publication_current, publication_requests
 from cloud_accounts import AccountBusy, task_write_allowed
 from cloud_providers import ProviderError
 
@@ -92,6 +93,14 @@ class TaskPublicationQueue:
             con.execute("INSERT OR IGNORE INTO settings(id,data) VALUES('task_publication_namespace',?)", (pack(secrets.token_hex(24)),))
             self.namespace = json.loads(con.execute("SELECT data FROM settings WHERE id='task_publication_namespace'").fetchone()[0])
 
+    def worker_capture(self, con, rid):
+        return publication_capture(con, con.execute('SELECT * FROM task_publications WHERE id=?', (rid,)).fetchone(), 'task')
+
+    def worker_ready(self, row):
+        with self.accounts.db() as con:
+            con.execute('BEGIN')
+            return publication_current(con, row, 'task')
+
     def source(self, con, sid, actor):
         if not isinstance(sid, str) or len(sid) > 128:
             raise ProviderError('请选择本人清单或家庭主清单', 400)
@@ -168,6 +177,10 @@ class TaskPublicationQueue:
                           (source['id'], record['id'], record.get('publicationKey', ''))).fetchone()
         if not row:
             return None
+        if publication_capture(con, row, 'task') is None:
+            # Preserve suppression of the old mirror without accepting any
+            # publication or local-entity mutation for an inactive principal.
+            return row['entity_id'], False
         # A local deletion must not resurrect a cloud mirror on the next poll.
         old = con.execute('SELECT entity_id FROM cloud_items WHERE source_id=? AND remote_id=?', (source['id'], record['id'])).fetchone()
         if old and old['entity_id'] != row['entity_id']:
@@ -176,48 +189,59 @@ class TaskPublicationQueue:
             con.execute('UPDATE task_publications SET next_attempt=0 WHERE id=?', (row['id'],))
         return row['entity_id'], bool(old)
 
-    def set_status(self, rid, status, message='', delay=30):
+    def set_status(self, rid, status, message='', delay=30, captured=None):
         with self.accounts.db() as con:
+            con.execute('BEGIN IMMEDIATE')
+            current = self.worker_capture(con, rid)
+            if not current or current['status'] not in ACTIVE or (captured and not publication_current(con, captured, 'task')):
+                return
             con.execute('UPDATE task_publications SET status=?,error=?,next_attempt=?,updated_at=? WHERE id=?',
                         (status, message[:400], time.time() + delay, stamp(), rid))
             con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
 
-    def fail(self, rid, error):
+    def fail(self, rid, error, captured=None):
         if isinstance(error, AccountBusy):
             return
         with self.accounts.db() as con:
-            original = con.execute('SELECT account_id FROM task_publications WHERE id=?', (rid,)).fetchone()
+            con.execute('BEGIN')
+            original = captured or self.worker_capture(con, rid)
         if not original:
             return
         try:
             with self.accounts.lock(original['account_id']):
-                self._fail_locked(rid, error, original['account_id'])
+                self._fail_locked(rid, error, original['account_id'], original)
         except AccountBusy:
             return
 
-    def _fail_locked(self, rid, error, account_id):
+    def _fail_locked(self, rid, error, account_id, captured):
         with self.accounts.db() as con:
+            con.execute('BEGIN IMMEDIATE')
             row = con.execute('SELECT * FROM task_publications WHERE id=?', (rid,)).fetchone()
             # An explicit pause/disconnect that won the lock after the failed
             # request must not be resurrected by its late error handler.
-            if not row or row['status'] not in ACTIVE or row['account_id'] != account_id:
+            if not publication_current(con, captured, 'task') or row['status'] not in ACTIVE or row['account_id'] != account_id:
                 return
             attempts = row['attempts'] + 1
             con.execute('UPDATE task_publications SET attempts=? WHERE id=?', (attempts, rid))
             if getattr(error, 'create_rejected', False) and not row['remote_id']:
                 con.execute('UPDATE task_publications SET attempted=0 WHERE id=?', (rid,))
-        code = getattr(error, 'upstream_status', error.status)
-        status = ('needs_authorization' if error.reauth or code == 401 else 'permission_denied' if code == 403 else
-                  ('remote_deleted' if row['remote_id'] else 'permission_denied') if code == 404 else 'conflict' if code in {409, 412} else
-                  'uncertain' if row['attempted'] and not row['remote_id'] else 'retry')
-        if attempts >= 12 and status in {'retry', 'uncertain'}:
-            status = 'needs_review'
-        self.set_status(rid, status, error.message, min(1800, 15 * 2 ** min(attempts, 7)))
+            code = getattr(error, 'upstream_status', error.status)
+            status = ('needs_authorization' if error.reauth or code == 401 else 'permission_denied' if code == 403 else
+                      ('remote_deleted' if row['remote_id'] else 'permission_denied') if code == 404 else 'conflict' if code in {409, 412} else
+                      'uncertain' if row['attempted'] and not row['remote_id'] else 'retry')
+            if attempts >= 12 and status in {'retry', 'uncertain'}:
+                status = 'needs_review'
+            con.execute('UPDATE task_publications SET status=?,error=?,next_attempt=?,updated_at=? WHERE id=?',
+                        (status, error.message[:400], time.time() + min(1800, 15 * 2 ** min(attempts, 7)), stamp(), rid))
+            con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
 
     def accept(self, row, result, pending, revision):
         if result['key'] != row['id'] or result['managed'] != pending:
             raise ProviderError('云端回读与本次待办内容不一致，请核对两边内容', 409)
         with self.accounts.db() as con:
+            con.execute('BEGIN IMMEDIATE')
+            if not publication_current(con, row, 'task'):
+                return
             con.execute("UPDATE task_publications SET remote_id=?,etag=?,baseline_data=?,pending_data=NULL,pending_revision=0,status='published',error='',attempts=0,next_attempt=?,updated_at=? WHERE id=?",
                         (result['id'], result['etag'], pack(pending), time.time() + 30, stamp(), row['id']))
             old = con.execute('SELECT entity_id FROM cloud_items WHERE source_id=? AND remote_id=?', (row['source_id'], result['id'])).fetchone()
@@ -237,14 +261,19 @@ class TaskPublicationQueue:
 
     def process(self, rid):
         with self.accounts.db() as con:
-            initial = con.execute('SELECT * FROM task_publications WHERE id=?', (rid,)).fetchone()
+            con.execute('BEGIN')
+            initial = self.worker_capture(con, rid)
         if not initial:
             return
+        captured = initial
         try:
-            with self.accounts.lock(initial['account_id']):
+            with self.accounts.lock(initial['account_id']), ExitStack() as held:
                 with self.accounts.db() as con:
+                    con.execute('BEGIN IMMEDIATE')
+                    if not publication_current(con, initial, 'task'):
+                        return
                     row = dict(con.execute('SELECT * FROM task_publications WHERE id=?', (rid,)).fetchone())
-                    if row['status'] not in ACTIVE or row['account_id'] != initial['account_id']:
+                    if row['status'] not in ACTIVE:
                         return
                     try:
                         source = self.source(con, row['source_id'], row['owner'])
@@ -258,7 +287,12 @@ class TaskPublicationQueue:
                         con.execute("UPDATE task_publications SET status='local_deleted',error='本地任务已删除，云端原任务保留' WHERE id=?", (rid,))
                         return
                     current = task_snapshot(json.loads(local['data']))
+                if not self.worker_ready(captured):
+                    return
                 adapter, src = self.adapter(source), self.accounts.adapter_source(source)
+                held.enter_context(publication_requests(adapter, lambda: self.worker_ready(captured)))
+                if not self.worker_ready(captured):
+                    return
                 remote = adapter.get_task_publication(src, row['remote_id']) if row['remote_id'] else adapter.find_task_publication(src, rid)
                 pending = json.loads(row['pending_data']) if row['pending_data'] else None
                 if not remote:
@@ -268,20 +302,30 @@ class TaskPublicationQueue:
                         raise ProviderError('创建结果尚不确定，正在按关联标识核对；不会重复创建。请在原清单检查，稍后可再次核对。', 502)
                     pending = pending or current
                     with self.accounts.db() as con:
+                        con.execute('BEGIN IMMEDIATE')
+                        if not publication_current(con, captured, 'task'):
+                            return
                         con.execute("UPDATE task_publications SET attempted=1,pending_data=?,pending_revision=?,status='publishing' WHERE id=?", (pack(pending), local['revision'], rid))
+                        captured = self.worker_capture(con, rid)
+                    if not self.worker_ready(captured):
+                        return
                     result = adapter.create_task_publication(src, pending, rid)
-                    self.accept(row, result, pending, local['revision'])
+                    self.accept(captured, result, pending, local['revision'])
                     return
                 if remote['key'] != rid:
                     raise ProviderError('云端关联标识已更改，请核对；不会覆盖此任务', 409)
                 if pending and remote['managed'] == pending:
-                    self.accept(row, remote, pending, local['revision'])
+                    self.accept(captured, remote, pending, local['revision'])
                     return
                 if not row['baseline_data']:
                     # Found the uncertain POST, but the remote changed before
                     # acknowledgement. Record identity so conflict UI can read it.
                     with self.accounts.db() as con:
+                        con.execute('BEGIN IMMEDIATE')
+                        if not publication_current(con, captured, 'task'):
+                            return
                         con.execute('UPDATE task_publications SET remote_id=?,etag=? WHERE id=?', (remote['id'], remote['etag'], rid))
+                        captured = self.worker_capture(con, rid)
                     raise ProviderError('已找回云端任务，但内容已变化，请对比确认', 409)
                 baseline = json.loads(row['baseline_data'])
                 if pending:
@@ -295,6 +339,8 @@ class TaskPublicationQueue:
                     if only_done and current == baseline:
                         with self.accounts.db() as con:
                             con.execute('BEGIN IMMEDIATE')
+                            if not publication_current(con, captured, 'task'):
+                                return
                             fresh = con.execute('SELECT * FROM entities WHERE id=?', (row['entity_id'],)).fetchone()
                             if not fresh or fresh['revision'] != local['revision']:
                                 raise ProviderError('本地与云端同时修改，请对比后处理', 409)
@@ -308,20 +354,26 @@ class TaskPublicationQueue:
                         return
                     raise ProviderError('云端标题、日期或备注已变更，或两边同时修改，请对比后处理', 409)
                 elif current == baseline:
-                    self.accept(row, remote, baseline, local['revision'])
+                    self.accept(captured, remote, baseline, local['revision'])
                     return
                 else:
                     pending = current
                     with self.accounts.db() as con:
+                        con.execute('BEGIN IMMEDIATE')
+                        if not publication_current(con, captured, 'task'):
+                            return
                         con.execute("UPDATE task_publications SET pending_data=?,pending_revision=?,etag=?,status='publishing' WHERE id=?", (pack(pending), local['revision'], remote['etag'], rid))
+                        captured = self.worker_capture(con, rid)
                     row['etag'] = remote['etag']
+                if not self.worker_ready(captured):
+                    return
                 result = adapter.update_task_publication(src, pending, rid, remote['id'], row['etag'])
-                self.accept(row, result, pending, local['revision'])
+                self.accept(captured, result, pending, local['revision'])
         except ProviderError as error:
-            self.fail(rid, error)
+            self.fail(rid, error, captured)
         except Exception:
             self.app.logger.error('Task publication failed; provider payload omitted')
-            self.fail(rid, ProviderError('待办同步响应异常，保留原内容并等待核对', 502))
+            self.fail(rid, ProviderError('待办同步响应异常，保留原内容并等待核对', 502), captured)
 
     def tick(self):
         with self.accounts.db() as con:
@@ -404,12 +456,17 @@ def register_task_publish(app, db, Problem, body, require_member, audit):
             raise Problem('操作不存在', 404)
         value = body()
         with engine.accounts.db() as con:
+            con.execute('BEGIN')
             row = publication(con, rid)
+            captured = publication_capture(con, row, 'task')
+            if not captured:
+                raise Problem('发布成员或云账户已不可用，请重新核对', 409)
         locked_account = row['account_id']
         with engine.accounts.lock(locked_account):
             with engine.accounts.db() as con:
+                con.execute('BEGIN IMMEDIATE')
                 row = publication(con, rid)
-                if row['account_id'] != locked_account:
+                if row['account_id'] != locked_account or not publication_current(con, captured, 'task'):
                     raise Problem('原账户已重新连接，请刷新后再操作', 409)
                 if action == 'pause':
                     if row['status'] in {'disconnected', 'remote_deleted', 'local_deleted'}:
@@ -431,7 +488,10 @@ def register_task_publish(app, db, Problem, body, require_member, audit):
                     raise Problem('本地任务已删除，云端任务仍保留', 409)
                 current = task_snapshot(json.loads(local['data']))
             adapter = engine.adapter(source)
-            remote = adapter.get_task_publication(engine.accounts.adapter_source(source), row['remote_id']) if row['remote_id'] else adapter.find_task_publication(engine.accounts.adapter_source(source), rid)
+            with publication_requests(adapter, lambda: engine.worker_ready(captured)):
+                remote = adapter.get_task_publication(engine.accounts.adapter_source(source), row['remote_id']) if row['remote_id'] else adapter.find_task_publication(engine.accounts.adapter_source(source), rid)
+            if not engine.worker_ready(captured):
+                raise Problem('发布绑定或成员状态已变化，请重新核对', 409)
             if not remote or remote['key'] != rid:
                 raise Problem('无法确认云端关联任务，请停止同步并在原清单核对', 409)
             binding = {'purpose': 'conflict', 'owner': g.actor['id'], 'publicationId': rid, 'localRevision': local['revision'],
@@ -446,6 +506,8 @@ def register_task_publish(app, db, Problem, body, require_member, audit):
                 raise Problem('请选择保留本地或采用云端内容')
             with engine.accounts.db() as con:
                 con.execute('BEGIN IMMEDIATE')
+                if not publication_current(con, captured, 'task'):
+                    raise Problem('发布绑定或成员状态已变化，请重新核对', 409)
                 fresh = con.execute('SELECT * FROM entities WHERE id=?', (row['entity_id'],)).fetchone()
                 if not fresh or fresh['revision'] != local['revision']:
                     raise Problem('本地任务已改变，请重新对比', 409)
