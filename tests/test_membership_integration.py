@@ -187,7 +187,7 @@ def test_revocation_between_request_auth_and_item_write_is_denied(tmp_path):
     assert read(admin, '/api/state')['tasks'] == []
 
 
-@pytest.mark.parametrize('old_route', ['invalid_cookie', 'missing_database'])
+@pytest.mark.parametrize('old_route', ['invalid_cookie', 'missing_database', 'missing_database_with_tv_cookie'])
 def test_personal_switch_recovers_without_the_old_household(system, old_route):
     client = legacy(system)
     first = register_old(client, 'recovery.account')
@@ -204,14 +204,16 @@ def test_personal_switch_recovers_without_the_old_household(system, old_route):
         client.set_cookie('household_space', 'invalid-signed-route')
     else:
         original.rename(original.with_suffix('.test-unavailable'))
+        if old_route == 'missing_database_with_tv_cookie':
+            client.set_cookie('household_tv', 'stale-tv-token-from-unavailable-household')
     listed = read(client, '/api/account/households')
     assert second['id'] in {item['id'] for item in listed['memberships']}
-    if old_route == 'missing_database':
+    if old_route.startswith('missing_database'):
         assert listed['unavailable'] == [{'householdId': 'default', 'code': 'temporarily_unavailable'}]
     switch(client, second)
     assert read(client, '/api/me')['user']['householdId'] == second['householdId']
     assert read(client, '/api/state')['household']['id'] == second['householdId']
-    if old_route == 'missing_database':
+    if old_route.startswith('missing_database'):
         assert not original.exists()
 
 

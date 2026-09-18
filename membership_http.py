@@ -140,7 +140,7 @@ def install_personal_accounts(platform, Problem):
                         return False
                     return con.execute('SELECT 1 FROM devices WHERE secret_hash=? AND approved=1 AND expires>?',
                         (hashlib.sha256(raw.encode()).hexdigest(), time.time())).fetchone() is not None
-        except (Problem, OSError, sqlite3.DatabaseError):
+        except (Problem, PersonalAccounts.Error, OSError, sqlite3.DatabaseError):
             # Missing old household storage must not prevent independent
             # account recovery. Its TV credential grants no account authority.
             return False
