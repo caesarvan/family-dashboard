@@ -6,6 +6,7 @@ import json
 import secrets
 import sqlite3
 import time
+from pathlib import Path
 
 from flask import jsonify, request
 from itsdangerous import BadSignature
@@ -21,8 +22,16 @@ def install_personal_accounts(platform, Problem):
     def application(platform_con, household_id):
         info = platform_con.execute('SELECT * FROM households WHERE id=?', (household_id,)).fetchone()
         if not info:
-            raise Problem('家庭暂不可用，请重新读取', 404)
+            raise PersonalAccounts.Error('家庭暂不可用，请重新读取', 404)
+        # Check before child() enters a nested transaction guard. A missing
+        # household is an unavailable list entry, not a failed personal login.
+        if not household_path(household_id).is_file():
+            raise PersonalAccounts.Error('家庭资料暂不可用', 503)
         return platform.child(dict(info))
+
+    def household_path(household_id):
+        return (Path(platform.root) if household_id == 'default' else
+                Path(platform.root) / 'spaces' / household_id) / 'household.sqlite3'
 
     def routed_id():
         raw = request.cookies.get('household_space')
@@ -78,11 +87,19 @@ def install_personal_accounts(platform, Problem):
         target_sessions = target.extensions['member_sessions']
         # Revoke the original cookie before switching the routing cookie. The
         # platform guard serializes household order; reuse the target writer.
-        original_id = routed_id()
-        original = application(platform_con, original_id)
-        original_sessions = original.extensions['member_sessions']
-        raw = request.cookies.get(original.config['SESSION_COOKIE_NAME'])
-        if raw:
+        try:
+            original_id = routed_id()
+        except Problem:
+            original_id = None
+        original_info = platform_con.execute('SELECT id FROM households WHERE id=?', (original_id,)).fetchone()
+        # Rotating the personal browser already invalidates every old derived
+        # cookie. Independent account recovery also works with an invalid old
+        # route or unavailable old household; no missing DB is recreated.
+        original = (application(platform_con, original_id)
+                    if original_info and household_path(original_id).is_file() else None)
+        original_sessions = original.extensions['member_sessions'] if original else None
+        raw = request.cookies.get(original.config['SESSION_COOKIE_NAME']) if original else None
+        if raw and original_sessions:
             def revoke(con):
                 row = original_sessions.resolve(con, original_sessions.signed(raw), time.time())
                 if row:

@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { ApiError, request } from './api';
@@ -6,7 +7,7 @@ import { acceptPreferences, readPreferences, readPreferencePayload, PreferenceFe
 import { FamilyState, HomeLayout, Member, Preferences } from './types';
 
 type Session = { user: Member | null; csrf?: string | null };
-const signature = (session: Session) => JSON.stringify([session.user?.role, session.user?.householdId, session.user?.id, session.user?.auth_version, session.user?.membershipRevision, session.user?.accountId, session.user?.accountAuthVersion, session.user?.authenticationGeneration, session.csrf]);
+const signature = sessionIdentity;
 const defaults: Preferences = { theme: 'forest', colorMode: 'light', density: 'comfortable', homeView: 'today', revision: 0 };
 const defaultLayout: HomeLayout = { revision: 0, order: ['calendar', 'finance', 'tasks', 'shopping', 'trips'], hidden: [] };
 

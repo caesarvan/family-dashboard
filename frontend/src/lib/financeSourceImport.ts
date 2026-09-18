@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 /** Explicit private source import. Financial normalization belongs to the server. */
 import { formatBaselineTime } from './financeBaseline';
 export type SourceMode = 'baseline' | 'spending_observation';
@@ -32,7 +33,7 @@ const money = (v: unknown): number | null => v === null ? null : integer(v, -100
 const describe = (value: unknown): string => { const s = text(value); return ({ dated_record: '有日期的来源记录', confirmed: '已确认', unknown: '待核对', historical_income_not_asset: '历史收入，不计入资产' } as Record<string, string>)[s] || s; };
 const stamp = (v: unknown) => { const s = text(v, 100); try { formatBaselineTime(s); return s; } catch { return bad(); } };
 function expected(revision: unknown, digest: unknown) { const n = integer(revision); if (n === 0 && digest !== null) bad(); return { revision: n, digest: n === 0 ? null : hash(digest) }; }
-export const sourceSignature = (s: SourceSession) => JSON.stringify([s.user?.role, s.user?.householdId, s.user?.id, s.user?.auth_version, s.csrf]);
+export const sourceSignature = sessionIdentity;
 export const sourceActor = (s: SourceSession): string => s.user?.role === 'member' && s.user.householdId && s.user.id ? JSON.stringify([s.user.householdId, s.user.id]) : bad();
 /** Project only the opaque recovery handle, even when passed an in-memory intent. */
 export const sourceOperation = (operation: SourceOperation): SourceOperation => ({ mode: modeOf(operation.mode), operationId: hash(operation.operationId) });

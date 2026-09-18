@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import type { CalendarMode, Member, Person } from './types';
 import { isOwnerId } from './memberId';
 
@@ -88,7 +89,7 @@ export function playbackPayload(state: Playback, action: PlaybackAction, interva
   }
   return { revision: state.revision, action };
 }
-export const deviceSignature = (session: DeviceSession) => JSON.stringify([session.user?.role, session.user?.householdId, session.user?.id, session.user?.auth_version, session.csrf]);
+export const deviceSignature = sessionIdentity;
 export class DeviceDiscarded extends Error {}
 export class DeviceFence {
   private epoch = 0;

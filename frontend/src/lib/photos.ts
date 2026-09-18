@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 // Local media contracts. Provider URLs never become preview image sources.
 export type Photo = {
   id: string; revision: number; caption: string; width: number; height: number;
@@ -93,7 +94,7 @@ export async function finishPhotoCreate(id: string, readImport: (id: string) => 
   await readSources();
   releaseReceipt();
 }
-export const photoSignature = (session: PhotoSession) => JSON.stringify([session.user?.role, session.user?.householdId, session.user?.id, session.user?.auth_version, session.csrf]);
+export const photoSignature = sessionIdentity;
 export class PhotoReadDiscarded extends Error {}
 // GET permissions are checked separately from component lifetime. Injected I/O
 // keeps identity races testable without replacing the business API in browsers.

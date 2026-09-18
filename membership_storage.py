@@ -7,9 +7,36 @@ The personal-account engine owns the reentrant, process-safe platform guard.
 """
 from contextlib import contextmanager
 import sqlite3
+import threading
 import time
 
 from flask import current_app, g, has_request_context
+
+
+_leases = threading.local()
+
+
+@contextmanager
+def connection_authority(engine):
+    # Connections may commit in a different order from opening. Keep a single
+    # engine context alive until every connection using it has released its
+    # transaction, rather than nesting generator contexts in that order.
+    active = getattr(_leases, 'active', None)
+    if active is None:
+        active = _leases.active = {}
+    lease = active.get(engine)
+    if lease is None:
+        guard = engine.guard()
+        guard.__enter__()
+        lease = active[engine] = {'guard': guard, 'count': 0}
+    lease['count'] += 1
+    try:
+        yield
+    finally:
+        lease['count'] -= 1
+        if lease['count'] == 0:
+            del active[engine]
+            lease['guard'].__exit__(None, None, None)
 
 
 class HouseholdCursor(sqlite3.Cursor):
@@ -33,7 +60,7 @@ class HouseholdConnection(sqlite3.Connection):
         if self._platform_guard is None and self.authority is not None:
             engine = self.authority()
             if engine is not None:
-                guard = engine.guard()
+                guard = connection_authority(engine)
                 guard.__enter__()
                 self._platform_guard = guard
 

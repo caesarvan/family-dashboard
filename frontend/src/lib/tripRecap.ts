@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import { validatePlace, type Place } from './places';
 import { readTripPhoto, readTripPhotoPage, type TripPhotoPage } from './tripPhotos';
 import type { Photo } from './photos';
@@ -95,7 +96,7 @@ export function readRecapPhoto(raw: unknown, journey: RecapJourney, expectedId: 
   const p = readTripPhoto(obj(raw).item, journey.id, expectedId); if (p.journey?.tripId !== journey.tripId || p.visibility === 'private' && !p.canManage) bad(); return p;
 }
 export type RecapSession = { user: { role: string; householdId?: string; id: string; auth_version?: number } | null; csrf?: string | null };
-export const recapSignature = (s: RecapSession) => JSON.stringify([s.user?.role, s.user?.householdId, s.user?.id, s.user?.auth_version, s.csrf]);
+export const recapSignature = sessionIdentity;
 export class RecapFence {
   private epoch = 0;
   constructor(private expected: string) {}

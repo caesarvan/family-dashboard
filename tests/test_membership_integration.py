@@ -187,6 +187,34 @@ def test_revocation_between_request_auth_and_item_write_is_denied(tmp_path):
     assert read(admin, '/api/state')['tasks'] == []
 
 
+@pytest.mark.parametrize('old_route', ['invalid_cookie', 'missing_database'])
+def test_personal_switch_recovers_without_the_old_household(system, old_route):
+    client = legacy(system)
+    first = register_old(client, 'recovery.account')
+    invitation = post(client, '/api/spaces/invitations', {}, member=True, expected=201)
+    other = system.test_client()
+    created = post(other, '/api/spaces/redeem', {'invitation': invitation['invitation'], 'name': 'Recovery target',
+        'slug': 'recovery-target', 'MEMBER1_PASSWORD': PASSWORD, 'MEMBER2_PASSWORD': PASSWORD}, expected=201)
+    assert other.get(created['entry']).status_code == 303
+    legacy(system, client=other)
+    second = join(client, invite(other)['token'], slug='recovery-target')
+    switch(client, first)
+    original = Path(system.config['DATA_DIR']) / 'household.sqlite3'
+    if old_route == 'invalid_cookie':
+        client.set_cookie('household_space', 'invalid-signed-route')
+    else:
+        original.rename(original.with_suffix('.test-unavailable'))
+    listed = read(client, '/api/account/households')
+    assert second['id'] in {item['id'] for item in listed['memberships']}
+    if old_route == 'missing_database':
+        assert listed['unavailable'] == [{'householdId': 'default', 'code': 'temporarily_unavailable'}]
+    switch(client, second)
+    assert read(client, '/api/me')['user']['householdId'] == second['householdId']
+    assert read(client, '/api/state')['household']['id'] == second['householdId']
+    if old_route == 'missing_database':
+        assert not original.exists()
+
+
 def test_missing_migrated_tables_do_not_reactivate_old_members(system):
     with sqlite3.connect(Path(system.config['DATA_DIR']) / 'household.sqlite3') as con:
         for name in ('membership_operations', 'member_invitations', 'household_memberships'):
@@ -219,3 +247,24 @@ def test_platform_lock_precedes_household_transaction_and_releases(system, mode)
             competing.execute('BEGIN IMMEDIATE')
     finally:
         con.close()
+
+
+def test_overlapping_connections_keep_platform_guard_until_last_transaction(system, tmp_path):
+    platform = system.extensions['household_platform']
+    first = connect_household(system, tmp_path / 'first-test.sqlite3')
+    second = connect_household(system, tmp_path / 'second-test.sqlite3')
+    try:
+        first.execute('BEGIN IMMEDIATE')
+        second.execute('BEGIN IMMEDIATE')
+        first.commit()
+        assert platform.personal_accounts.guard_con is not None
+        with sqlite3.connect(platform.path, timeout=0) as competing:
+            with pytest.raises(sqlite3.OperationalError, match='locked'):
+                competing.execute('BEGIN IMMEDIATE')
+        second.commit()
+        assert platform.personal_accounts.guard_con is None
+        with sqlite3.connect(platform.path, timeout=0) as competing:
+            competing.execute('BEGIN IMMEDIATE')
+    finally:
+        first.close()
+        second.close()
