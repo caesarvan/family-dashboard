@@ -10,6 +10,7 @@ from contextlib import ExitStack, closing
 from datetime import datetime, timezone
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
 import shutil
@@ -35,6 +36,24 @@ LABELS = {'account': '我的家庭账户', 'invitation': '邀请与加入家庭'
 PASSWORD = 'synthetic-personal-password'
 
 
+def readable_path(path):
+    value = str(Path(path).resolve())
+    if os.name == 'nt' and not value.startswith('\\\\?\\'):
+        value = '\\\\?\\' + value
+    return Path(value)
+
+
+def file_manifest(root):
+    root = readable_path(root)
+    result = {}
+    for folder, directories, files in os.walk(root):
+        assert not any((Path(folder) / name).is_symlink() for name in directories + files)
+        for name in files:
+            path = Path(folder) / name
+            result[path.relative_to(root).as_posix()] = sha(path)
+    return result
+
+
 class Run(BaseRun):
     def start(self, port=0):
         # Reserve the real HTTPS port before constructing PersonalAccounts,
@@ -54,8 +73,15 @@ class Run(BaseRun):
             self.server = None
             raise
 
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, root, bundle, folder, report, out, lifecycle):
+        # The short temp prefix also keeps Flask's normal filesystem paths
+        # below MAX_PATH; source exports may still need the extended prefix.
+        expected = file_manifest(bundle)
+        if os.name == 'nt':
+            assert all(len(str(folder / 'static' / 'experience' / name)) < 260 for name in expected)
+        super().__init__(root, readable_path(bundle), folder, report, out, lifecycle)
+        assert file_manifest(folder / 'static' / 'experience') == expected
+        report.setdefault('fixtureExportCopies', []).append({'case': out.name, 'files': len(expected), 'hashesEqual': True})
         assert Path(self.source.__file__).resolve() == (self.root / 'app.py').resolve()
         paths = {'tests/browser_expo_finance_check.py': str(Path(fixture.__file__).resolve()),
                  **{'tests/' + name + '.py': str(Path(sys.modules[name].__file__).resolve())
@@ -389,7 +415,7 @@ class Run(BaseRun):
             case = dict(name=name, passed=False, temporaryFixtureRemoved=False)
             try:
                 with ExitStack() as lifecycle:
-                    folder = Path(lifecycle.enter_context(tempfile.TemporaryDirectory(prefix='expo-memberships-')))
+                    folder = Path(lifecycle.enter_context(tempfile.TemporaryDirectory(prefix='m-')))
                     run = cls(root, bundle, folder, report, case_out, lifecycle)
                     getattr(run, name)(browser)
                 assert not folder.exists()
@@ -437,7 +463,7 @@ def main():
     def hashes():
         return {name: sha(root / name) for name in names}
     def exports():
-        return {p.relative_to(bundle).as_posix(): sha(p) for p in bundle.rglob('*') if p.is_file()}
+        return file_manifest(bundle)
     assert exports() == evidence['files']
     out = author / 'test-results' / ('expo-memberships-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
     out.mkdir(parents=True)
