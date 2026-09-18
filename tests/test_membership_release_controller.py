@@ -100,6 +100,8 @@ def simulation(tmp_path, monkeypatch):
     controller.runtime = dict(controller.files)
     controller.package = {'sourceHead': 'a' * 40, 'tree': 'b' * 40}
     services = {n: {'id': 'old-' + n, 'image': release.WEB_IMAGE if n == 'web' else release.PARENT_IMAGE} for n in release.SERVICES}
+    environment = ['DATA_DIR=/data', 'PUBLIC_ORIGIN=https://example.invalid', 'SECRET_KEY=synthetic-$quote"#=value']
+    services['app']['environmentSha256'] = release.sha(release.runtime_environment(environment))
     old_files = {n: release.sha(b) for n,b in old.items()}
     release.put(candidate / 'stage.json', {'planSha256': controller.plan_sha, 'services': services, 'oldFiles': old_files})
     calls, data_calls = [], []
@@ -109,7 +111,8 @@ def simulation(tmp_path, monkeypatch):
     controller.baseline = lambda: (old_files, services)
     controller.current_services = lambda image: {n: {'id': 'new-' + n, 'image': image} for n in release.SERVICES}
     controller.inspect = lambda ref: {'State': {'Running': False, 'OOMKilled': False, 'ExitCode': 0, 'Health': {'Status': 'healthy'}},
-                                      'Image': controller.plan['imageId'], 'Id': ref}
+        'Image': services[ref[4:]]['image'] if ref.startswith('old-') else controller.plan['imageId'],
+        'Id': ref, 'Config': {'Env': environment}}
     def runner(argv, **kwargs):
         calls.append(argv)
         if argv[:2] == ['systemctl', 'is-active']:
@@ -257,3 +260,109 @@ def test_validation_originals_are_resolved_under_report_directory(tmp_path, chan
     else:
         with pytest.raises(release.ReleaseError):
             controller.validate_evidence()
+
+
+def test_config_env_serialization_preserves_resolved_and_literal_values(tmp_path):
+    # The origin was already parsed by Compose; literal quotes in other values
+    # must survive. Docker env-files do not expand $, backslashes or inline #.
+    values = ['DATA_DIR=/data', 'PUBLIC_ORIGIN=https://example.invalid',
+              'SECRET_KEY="literal quotes" $VALUE # = \\ keep ', 'EMPTY=',
+              'UNICODE=家庭', 'TRUST_PROXY=1', 'COOKIE_SECURE=1', 'PYTHONDONTWRITEBYTECODE=1']
+    raw = release.runtime_environment(values)
+    path = tmp_path / 'runtime.env'
+    release.put(path, raw)
+    assert path.read_bytes() == (
+        'DATA_DIR=/data\nPUBLIC_ORIGIN=https://example.invalid\n'
+        'SECRET_KEY="literal quotes" $VALUE # = \\ keep \nEMPTY=\nUNICODE=家庭\n'
+        'TRUST_PROXY=1\nCOOKIE_SECURE=1\nPYTHONDONTWRITEBYTECODE=1\n').encode('utf-8')
+    assert (path.stat().st_mode & 0o777) == (0o600 if release.os.name == 'posix' else 0o666)
+
+
+@pytest.mark.parametrize('value,code', [
+    (None, 'runtime_environment_shape'), ([], 'runtime_environment_shape'),
+    (['DATA_DIR=/data', 'NO_ASSIGNMENT'], 'runtime_environment_entry'),
+    (['DATA_DIR=/data', 'SECRET=a\nINJECTED=b'], 'runtime_environment_entry'),
+    (['DATA_DIR=/data', 'SECRET=a\rb'], 'runtime_environment_entry'),
+    (['DATA_DIR=/data', 'SECRET=a\x00b'], 'runtime_environment_entry'),
+    (['DATA_DIR=/data', 'SECRET=one', 'SECRET=two'], 'runtime_environment_key'),
+    (['DATA_DIR=/data', ' KEY=value'], 'runtime_environment_key'),
+    (['DATA_DIR=/elsewhere'], 'runtime_data_directory'),
+    (['DATA_DIR=/data', 'SECRET=\ud800'], 'runtime_environment_encoding'),
+])
+def test_runtime_env_rejects_unrepresentable_or_ambiguous_inputs(value, code):
+    with pytest.raises(release.ReleaseError) as caught:
+        release.runtime_environment(value)
+    assert str(caught.value) == code  # Never echo a rejected secret value.
+
+
+def test_service_snapshot_binds_full_app_environment():
+    controller = release.Controller.__new__(release.Controller)
+    environment = ['DATA_DIR=/data', 'PUBLIC_ORIGIN=https://example.invalid', 'SECRET_KEY=first']
+    def inspect(ref):
+        name = ref.removeprefix('family-dashboard-').removesuffix('-1')
+        return {'Id': 'id-' + name, 'Image': release.WEB_IMAGE if name == 'web' else release.PARENT_IMAGE,
+                'State': {'Running': True, 'OOMKilled': False, 'Health': {'Status': 'healthy'}},
+                'Config': {'Env': environment, 'Labels': {'com.docker.compose.project': 'family-dashboard',
+                           'com.docker.compose.service': name}},
+                'Mounts': [{'Destination': '/data', 'Type': 'volume', 'Name': release.VOLUME}]}
+    controller.inspect = inspect
+    first = controller.current_services(release.PARENT_IMAGE)
+    environment[-1] = 'SECRET_KEY=second'
+    second = controller.current_services(release.PARENT_IMAGE)
+    assert first['app']['environmentSha256'] != second['app']['environmentSha256']
+    assert first['app']['id'] == second['app']['id']
+    assert 'SECRET_KEY' not in json.dumps(second)
+
+
+@pytest.mark.parametrize('change', ['id', 'image', 'environment'])
+def test_environment_binding_drift_stops_before_any_service_stop(simulation, change):
+    controller, calls, _, _ = simulation
+    original = controller.inspect
+    def inspect(ref):
+        value = original(ref)
+        if ref == 'old-app':
+            if change == 'environment':
+                value['Config']['Env'] = ['DATA_DIR=/data', 'SECRET_KEY=changed']
+            else:
+                value['Id' if change == 'id' else 'Image'] = 'changed'
+        return value
+    controller.inspect = inspect
+    with pytest.raises(release.ReleaseError, match='runtime_environment_'):
+        controller.activate()
+    assert not any(isinstance(c, list) and 'stop' in c for c in calls)
+    assert 'backup' not in calls and 'warm' not in calls
+
+
+@pytest.mark.parametrize('change', ['none', 'unbound', 'file', 'original', 'permissions'])
+def test_data_call_uses_only_bound_runtime_env_and_rechecks_it(simulation, monkeypatch, change):
+    controller, calls, _, _ = simulation
+    release_dir = controller.releases / 'synthetic-release'
+    proof = release_dir / 'proof'
+    proof.mkdir(parents=True)
+    service = release.read(controller.candidate / 'stage.json')['services']['app']
+    if change != 'unbound':
+        controller.bind_data_environment(release_dir, service)
+    if change == 'file':
+        (release_dir / 'app-runtime.env').write_bytes(b'DATA_DIR=/data\nSECRET_KEY=changed\n')
+    if change == 'original':
+        (controller.root / '.env').write_bytes(b'changed')
+    # Windows has no POSIX file modes. Exercise both admission outcomes through
+    # this narrow mode seam; production always enforces the real stat mode.
+    monkeypatch.setattr(release.stat, 'S_IMODE', lambda mode: 0o644 if change == 'permissions' else 0o600)
+    def runner(argv, **kwargs):
+        calls.append(argv)
+        return b'{"verified":true}'
+    controller.runner = runner
+    if change != 'none':
+        with pytest.raises(release.ReleaseError):
+            release.Controller.data_call(controller, proof, 'pass')
+        assert calls == []
+        return
+    assert release.Controller.data_call(controller, proof, 'pass', write=False) == {'verified': True}
+    argv = calls[0]
+    assert argv[argv.index('--env-file') + 1] == str(release_dir / 'app-runtime.env')
+    assert str(controller.root / '.env') not in argv and '-e' not in argv
+    assert argv[argv.index('--network') + 1] == 'none'
+    assert argv[argv.index('--user') + 1] == '10001:10001' and '--read-only' in argv
+    assert release.VOLUME + ':/data:ro' in argv
+    assert not any('SECRET_KEY' in str(arg) or 'synthetic-$quote' in str(arg) for arg in argv)
