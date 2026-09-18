@@ -97,6 +97,10 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
       ||!locked&&pendingNavigation.current.source!=='members')return;
     pendingNavigation.current={actor,locked,message:locked?'请先确认或取消成员操作；结果不明时，先核对再离开。':'',source:'members'};
   },[actor,route]);
+  const onAccountPending=useCallback((locked:boolean)=>{
+    if(activeActor.current!==actor||activeRoute.current!==route||!locked&&pendingNavigation.current.source!=='account')return;
+    pendingNavigation.current={actor,locked,message:locked?'请先保存或放弃账户修改；结果不明时，先核对再离开。':'',source:'account'};
+  },[actor,route]);
   const onTripImportPending=useCallback((locked:boolean)=>{
     if(activeActor.current!==actor||activeRoute.current!==route||!['trips','map','assistant'].includes(route)
       ||!locked&&pendingNavigation.current.source!=='trip-import')return;
@@ -129,12 +133,12 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
   const onNavigate=(next:RouteName)=>{if(!holdNavigation())router.push((next==='home'?'/':'/'+next) as never);};
   const handle=(action:()=>Promise<unknown>)=>{void action().catch(e=>setNotice(e instanceof Error?e.message:'暂时无法完成操作'));};
   if(loading)return <View style={{flex:1,alignItems:'center',justifyContent:'center',gap:16}}><ActivityIndicator/><Text>正在打开家庭看板…</Text></View>;
-  if(!user)return <LoginScreen authError={authResult?.status==='error'?syncAuthMessage(authResult):''}/>;
+  if(!user)return <LoginScreen authError={authResult?.status==='error'?syncAuthMessage(authResult):''} onPendingChange={onAccountPending}/>;
   if(user.role==='tv')return <View><Text>正在打开电视看板…</Text><Button onPress={()=>openLocal('/tv')}>打开电视</Button></View>;
   if(!state)return <View style={{padding:32,gap:16}}><Text>{error||'正在读取家庭数据…'}</Text><Button onPress={()=>void refresh()}>重新加载</Button><Button onPress={()=>handle(household.logout)}>退出登录</Button></View>;
   const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:async mode=>{
     try{await household.savePreferences({homeView:mode});}catch(failure){if(activeActor.current===actor)setNotice(failure instanceof Error?failure.message:'暂时无法保存显示范围');throw failure;}
-  },onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,onDevicePending,onHomeLayoutPending,onAppearancePending,onDocumentsPending,onRoutinesPending,onMembersPending,onSegmentsPending,onTripImportPending,onFinanceSourcePending,onFinanceAccountsPending,onShoppingSettlementPending,
+  },onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,onDevicePending,onHomeLayoutPending,onAppearancePending,onDocumentsPending,onRoutinesPending,onMembersPending,onAccountPending,onSegmentsPending,onTripImportPending,onFinanceSourcePending,onFinanceAccountsPending,onShoppingSettlementPending,
     onInventory:(id)=>{
       if(holdNavigation())return;
       if(id!==undefined&&!/^[a-f0-9]{24}$/.test(id)){setNotice('物品链接已失效，请重新搜索');return;}
@@ -154,7 +158,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
       catch(e){setNotice(e instanceof Error?e.message:'暂时无法保存');}
       finally{setPendingId('');}
     }};
-  return <><AppShell route={route} title={titles[route]} name={user.name} householdName={state.household?.name||'我们的家'} onNavigate={onNavigate} onCreate={kind=>props.onEdit(kind)} onRefresh={()=>void refresh()} onLogout={()=>handle(household.logout)} refreshing={household.refreshing} offline={!online} onLegacy={onLegacy}>
+  return <><AppShell route={route} title={titles[route]} name={user.name} householdName={state.household?.name||'我们的家'} onNavigate={onNavigate} onCreate={kind=>props.onEdit(kind)} onRefresh={()=>void refresh()} onLogout={()=>{if(!holdNavigation())handle(household.logout);}} refreshing={household.refreshing} offline={!online} onLegacy={onLegacy}>
     <View key={actor}>
       {household.preferencesUncertain&&<View style={{gap:8,marginBottom:16}} testID="preferences-uncertain">
         <Text>显示设置的保存结果尚未核对。读取当前状态后，再决定是否修改。</Text>

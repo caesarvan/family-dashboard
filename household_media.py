@@ -316,6 +316,8 @@ class MediaLibrary:
             raise MediaError('quota')
 
     def _authority(self, con, account_id, owner, identity=None):
+        if not con.execute("SELECT 1 FROM household_memberships WHERE member_id=? AND state='active'", (owner,)).fetchone():
+            return None
         row = con.execute('SELECT * FROM cloud_accounts WHERE id=? AND owner=?', (account_id, owner)).fetchone()
         if not row or row['provider'] != 'google' or row['needs_reauth']:
             return None

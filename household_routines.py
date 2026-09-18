@@ -367,7 +367,7 @@ def register_routines(app, db, Problem, body, require_member, audit):
         keys = {"title", "owner", "note"} | ({"quantity", "budget"} if kind == "shopping" else set())
         fields(value, keys, keys)
         owner = value["owner"]
-        if not isinstance(owner, str) or (owner != "shared" and not con.execute("SELECT 1 FROM users WHERE id=?", (owner,)).fetchone()):
+        if not isinstance(owner, str) or (owner != "shared" and not con.execute("SELECT 1 FROM household_memberships WHERE member_id=? AND state='active'", (owner,)).fetchone()):
             raise Problem("请选择本家庭负责人")
         output = {"title": text(value["title"], "名称", 100), "owner": owner,
                   "note": text(value["note"], "备注", 500, empty=True)}

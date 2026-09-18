@@ -1,4 +1,5 @@
 import type { CalendarMode, Member, Person } from './types';
+import { isOwnerId } from './memberId';
 
 export const deviceCards = ['calendar', 'finance', 'tasks', 'shopping', 'trips'] as const;
 export type DeviceCard = typeof deviceCards[number];
@@ -29,7 +30,7 @@ export function readDevices(raw: unknown): Device[] {
   const result = raw.map(entry => {
     const value = object(entry);
     if (!isDeviceId(value.id) || typeof value.name !== 'string' || !value.name || Array.from(value.name).length > 30 || typeof value.focus !== 'string'
-      || !['member1', 'member2', 'shared'].includes(value.focus) || !['today', 'week', 'around'].includes(value.calendarView)
+      || !isOwnerId(value.focus) || !['today', 'week', 'around'].includes(value.calendarView)
       || !integer(value.revision, 1) || typeof value.created_at !== 'string') throw invalid();
     return { id: value.id, name: value.name, focus: value.focus, calendarView: value.calendarView, revision: value.revision, created_at: value.created_at, layout: readDeviceLayout(value.layout) } as Device;
   });
@@ -41,7 +42,7 @@ function fields(draft: Pick<DeviceDraft, 'name' | 'focus' | 'calendarView'>, peo
   const name = draft.name.trim();
   if (!name || Array.from(name).length > 30 || /[\u0000-\u001f\u007f]/.test(name)) throw new Error('电视名称请填写 1～30 个字符。');
   if (draft.focus !== 'shared' && !people.some(person => person.id === draft.focus)) throw new Error('请重新选择侧重成员。');
-  if (!['member1', 'member2', 'shared'].includes(draft.focus) || !['today', 'week', 'around'].includes(draft.calendarView)) throw new Error('请重新选择侧重成员和日程范围。');
+  if (!isOwnerId(draft.focus) || !['today', 'week', 'around'].includes(draft.calendarView)) throw new Error('请重新选择侧重成员和日程范围。');
   return { name, focus: draft.focus, calendarView: draft.calendarView };
 }
 export function pairPayload(draft: PairDraft, people: Person[]): Record<string, unknown> {
