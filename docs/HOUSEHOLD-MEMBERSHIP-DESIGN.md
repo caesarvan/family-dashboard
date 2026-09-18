@@ -1,6 +1,6 @@
 # 家庭成员关系：下一批实现契约
 
-设计基线 `bf38f81c5d81dd3e9afd34474383e0910f460434`；本文件是待独立审查的方案，尚未实现、迁移或部署。
+设计基线 `bf38f81c5d81dd3e9afd34474383e0910f460434`；本文件是待实施方案，尚未实现、迁移或部署。
 交付目标：第三位成员受邀加入既有家庭、明确退出／移除、同一人切换自己所属的两个家庭；全程可用本地凭据和合成数据验收。
 不增加外部账号授权，不做账户自动合并、私人数据跨户搬迁、未成年人权限、模块级角色或家庭删除。
 
@@ -19,12 +19,12 @@
 |---|---|---|
 | platform | `personal_accounts` | 随机 32 位小写 hex `id`，唯一规范化 `login`，密码散列、`auth_version`、时间；不复制户内密码或第三方令牌 |
 | platform | `personal_sessions`／`personal_browsers` | 独立凭据散列、CSRF、失效时间和浏览器代次；与成员、电视 Cookie 分离 |
-| household | `household_memberships` | `member_id` 主键指向原 users；`account_id` 可空且非空唯一，`state=active|left|removed`，`revision`、时间；状态是本户访问权限依据 |
-| platform | `account_memberships` | 唯一 `(account_id,household_id)` 及 `(household_id,member_id)`，仅作目录索引，不凭索引中的角色／状态授权 |
+| household | `household_memberships` | 随机 32 位小写 hex `id` 主键；`member_id` 唯一且指向原 users；`account_id` 可空且非空唯一，`state=active|left|removed`，`revision`、时间；状态是本户访问权限依据 |
+| platform | `account_memberships` | 唯一 `membership_id` 复制户内同一个 `id`，另唯一 `(account_id,household_id)` 及 `(household_id,member_id)`；仅作目录索引，不凭索引中的角色／状态授权 |
 | household | `member_invitations` | 随机 ID、令牌散列、创建人及 auth_version、到期、撤销／使用状态、revision；仅邀请为普通成员 |
 | platform／household | 各自操作记录 | requestId、主体、规范化意图摘要、步骤状态、有限结果；秘密字段仅参与服务端 keyed HMAC，不留原文；户内记录与成员变更同事务提交，平台记录协调跨库收尾 |
 
-既有 users 一次性补 `active/account_id=null/revision=1`；缺记录不能在请求鉴权时自动补齐。新增成员用 `m_` 加 24 位随机 hex，绝不重用退出成员 ID。
+既有 users 一次性补随机 membership `id` 与 `active/account_id=null/revision=1`；该 id 在迁移重跑、绑定、退出、移除、恢复中始终保留；缺记录不能在请求鉴权时自动补齐。新增成员用 `m_` 加 24 位随机 hex，绝不重用退出成员 ID。
 新增 users 的内部 username 使用该成员 ID，密码散列来自不可用的随机秘密，不设默认共享密码；通过个人账户进入，初始名“新成员”可由本人沿现有 profile 修改。
 本户同一个人只对应一个成员；已绑定身份不得换绑给另一个个人账户。再次受邀时只可由原账户恢复原成员 ID，不继承旧 admin 权限，明确按普通成员加入。
 停止成员关系保留 users 和业务历史；新负责人只能选择 active 成员或 shared，旧非活动负责人可以显示“已退出成员”并由有权者明确重新分配。
@@ -44,7 +44,7 @@
 ## 4. HTTP 合同：账户与跨户操作
 
 下列均为计划新增；`/api/account/*` 在家庭路由选择之前分发，以独立个人账户 Cookie 和 CSRF 鉴权。户内业务仍只认当前家庭会话。
-新写操作统一 `requestId` 为 32 位小写 hex；拒绝额外／重复 JSON 字段，版本为正安全整数。同原 ID 不同意图 409，相同意图只返回原结果或 pending，不重复业务写。
+新写操作统一 `requestId` 为 32 位小写 hex；拒绝额外／重复 JSON 字段，版本为正安全整数。同原 ID 不同意图 409，相同意图只返回原结果、pending 或 not_committed 终态，不重复业务写。
 表中字段均必填；`?` 表示可省略。所有敏感响应 `no-store`；匿名 401、TV／越权 403、不可见资源 404、版本／资格／状态冲突 409。
 
 | 方法与路径 | 精确请求字段 | 返回与用途 |
@@ -55,8 +55,9 @@
 | POST `/api/account/login` | `{login,password}` | `{account:{id,login}}`；旋转个人会话与 CSRF；错误不泄露是否存在账号 |
 | POST `/api/account/logout` | `{requestId}` | `{ok:true}`；撤本浏览器个人会话及由它签发的成员会话，保留其他浏览器 |
 | GET `/api/account/households` | 无 | `{memberships:[{id,householdId,name,slug,memberId,memberName,householdRole,revision}],unavailable:[{householdId,code:'temporarily_unavailable'}]}`；仅当前账户、逐户复核 active，不可用不冒充不存在 |
-| POST `/api/account/switch-household` | `{requestId,membershipId,expectedRevision}` | `{ok:true,householdId,memberId,entry:'/app/home'}`；复核目标 membership 后签发目标户成员 Cookie 与家庭路由 Cookie |
-| GET `/api/account/operations/<requestId>` | 无 | `{requestId,found,state:null|'pending'|'completed',result:null|有限结果}`；只读本人操作；`found=false` 不证明未执行 |
+| POST `/api/account/switch-household` | `{requestId,membershipId,expectedRevision}` | `{ok:true,householdId,memberId,entry:'/app/home'}`；核当前 account→目录 membershipId→户内同 id/member_id/account_id 与预期 revision 一致且 active，才签发目标 Cookie |
+| GET `/api/account/operations/<requestId>` | 无 | `{requestId,found,state:null|'pending'|'completed'|'not_committed',result:null|有限结果}`；只读本人操作；未找到为 false/null/null，已知状态 found=true，pending 与 not_committed 的 result 为 null |
+| POST `/api/account/operations/<requestId>/resume` | `{}`，当前个人账户 CSRF，原操作主体 | 返回同上状态；同顺序锁下只收尾已提交操作，或确证未提交后记 not_committed；证据不明返回 pending，不重做业务 |
 
 资格接口需要两个独立 CSRF 域：`X-CSRF-Token` 为个人／匿名账户 CSRF，`X-Member-CSRF-Token` 为当前家庭 CSRF；不可互相代用。
 注册丢回复时不把个人账户存在当回执；同浏览器资格上下文可查询该注册操作的有限状态，已失去上下文时先明确登录该账号核对，不能自动换用户名重建。
@@ -91,10 +92,11 @@
 ## 6. 多库提交、撤权和未知结果
 
 - 平台目录不是权限缓存：访问和发会话都核户内 membership；个人会话、原家庭、目标家庭的身份不可混用。库不可读返回可恢复错误，不创建空库或 fallback 到 default。
-- 跨库操作先持久化平台 pending 意图，再在目标户同一写事务提交 membership／users／邀请消费／户内回执，最后完成目录和有限回执；每步以相同 requestId 对账。
-- 不假设 WAL 下两库提交原子。目标户未提交可拒绝／结束；已提交后仅修复索引、完成回执，不再次创建成员或重新消费邀请。服务重启须能从持久步骤核对。
-- 目录未完成时不得提前签发有效目标会话；GET 核对不触发业务写。单独显式恢复接口 POST `/api/account/operations/<requestId>/resume` 只完成已证实提交的收尾，不能自动重做未提交操作。
-- 多库锁顺序固定 platform → household，禁止反向嵌套；网络／提供方调用不持锁。最终户内提交前核捕获会话、membership、管理员和版本；并发接受只允许一个结果。
+- 跨库操作先将平台 pending 意图持久提交并释放事务；随后重新取得 platform 协调写锁，再开启目标 household 写事务。持平台锁核个人 session／代次和 pending 状态，户内提交 membership／users／邀请消费／回执后，仍持平台锁完成目录及有限回执并提交。
+- 不假设 WAL 下两库提交原子。户内已提交但平台收尾中断时保留 pending；恢复以户内同 requestId 回执核实后只修索引、完成回执，不再次创建成员或消费邀请。
+- 目录未完成不得提前签发目标会话；GET 只读。显式 resume 按 platform → household 写锁排除仍在途提交，核实目标库可读、该意图无户内提交回执并确认未提交后，只记录不可逆 not_committed；不可读或证据不明仍 pending。
+- GET 与同 ID 重交都返回已记录的 not_committed，不再执行原意图；用户看到此终态后可明确发起新 requestId。found=false 始终不证明未提交。原请求迟到取得锁也必须重查终态，不得在恢复已结束后再提交。
+- 所有派生会话统一上述锁契约，包括 actor/capture/current、登录及 OAuth 收尾；改造现 MemberSessions.actor 先锁 household 的顺序，禁止持户内锁反取 platform。最终提交前核完整身份、membership、管理员与版本；网络调用不持锁。
 - 停用在同一户内事务更新 membership revision、递增 users.auth_version、撤销目标会话与认证代次、记录审计；登录、OAuth完成、媒体票据和各业务鉴权都拒绝 inactive。
 - 同户 worker 在取得令牌及最终保存前检查 owner active；待同步／待发布暂停且不转移owner。已有云数据不自动删除，已完成外部动作不声称撤回；重新加入后也不自动恢复云写队列。
 - 未知结果保留原 requestId/意图，只读查询；没有回执不能断言失败、自动新建 ID 或自动重发。已知完成后 fresh 读取当前状态，旧回执不装作当前权限。
@@ -123,5 +125,6 @@ UI 新增个人账户／家庭选择面板及模型，扩展 `HouseholdMembersPa
 6. 新邀请明确恢复原成员 ID，原私人数据只还给原绑定本人，不恢复旧 admin 或云写队列；不能把停用位置转给新账号。
 7. 各跨库提交点中断／重启、并发邀请接受、实际提交后丢响应：GET不是重放，原操作可核对，显式收尾不产生第二成员或第二次授权。
 8. 320／390／1280／1920 浅深色、44px与键盘；匿名／TV／普通成员越权、双户、CSRF、版本及身份切换；真实临时 Flask/SQLite/浏览器，无成功业务 DTO mock。
+9. pending 已持久而户内未提交时中断：显式 resume 确认 not_committed，GET／同 ID 重交不写，迟到原请求不能复活；用户明确新 ID 才能操作。户内已提交则仅完成收尾；库不可读仍 pending，found=false 不解锁。
 
 上述为待实施验收清单，不是通过记录；个人真实环境、云端新操作和实体设备不由本设计宣称完成。
