@@ -211,17 +211,23 @@ def test_account_recovery_shell_loads_with_unavailable_household(real_app, probl
         client.set_cookie('household_space', 'invalid-route')
     else:
         database.rename(database.with_suffix('.test-unavailable'))
-    assert client.get('/').location == '/app'
-    for url in ('/app', '/app/settings/account'):
-        response = client.get(url)
-        assert response.status_code == 200
-        assert response.data == b'<html>Expo real factory fixture</html>'
-        assert not response.headers.getlist('Set-Cookie')
-    assert client.get('/app/secret.json').status_code == 404
-    assert client.get('/api/me').status_code == (400 if problem == 'invalid_route' else 503)
-    assert client.get('/api/account/me').status_code == 200
-    if problem == 'missing_household':
-        assert not database.exists()
+    try:
+        assert client.get('/').location == '/app'
+        for url in ('/app', '/app/settings/account'):
+            response = client.get(url)
+            assert response.status_code == 200
+            assert response.data == b'<html>Expo real factory fixture</html>'
+            assert not response.headers.getlist('Set-Cookie')
+        assert client.get('/app/secret.json').status_code == 404
+        assert client.get('/api/me').status_code == (400 if problem == 'invalid_route' else 503)
+        assert client.get('/api/account/me').status_code == 200
+        if problem == 'missing_household':
+            assert not database.exists()
+    finally:
+        # real_app is module-scoped; restore only this synthetic fault so the
+        # later authentication/write-route tests still exercise a healthy app.
+        if problem == 'missing_household':
+            database.with_suffix('.test-unavailable').rename(database)
 
 
 def test_real_auth_csrf_local_crud_and_conflict_are_unchanged(real_app):
