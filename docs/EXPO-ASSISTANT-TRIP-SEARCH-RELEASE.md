@@ -18,4 +18,8 @@
 
 本适配器的保护专项覆盖源 pin 缺失／畸形、路径／大小、Docker 不变、排他生成、非法冻结、禁止迁移 SQL，以及已有非空账户和普通 member 角色的真实临时 SQLite 保全、备份和重启。私有 CLI 用实际父九原件与归档核完整后端字节，在临时目录检查派生差异、原函数不变、敏感路径排除、必需构建输入、非法配置及未绑定入口拒绝；派生程序的子进程与网络被禁止。
 
-实际局部检查原件与结果在完成后追加；源码固定提交与非作者审查仍是正式集成前的独立步骤。不得将本地保护检查、合成 freeze 计数或未绑定生成成功写成最终构建、Linux、浏览器或生产验收。
+作者在固定代码提交 `8a2326c183db74a5d7899fc1d861fd6d7693f215` 完成一次本地保护专项：8/8 通过、0 失败，pytest 2.29 秒；前后受验 Python 源码散列一致。私有原件位于作者工作树 `test-results/assistant-trip-search-release-r1/`：`results.xml` SHA `6e0e2ca37f61fe715d15bbc042d9ef907d3e1c784388d09637948f61035a81a1`，`record.json` SHA `0e772f83e44130e6894613253cac5754e2dd832fc5e5586187983a1c8f4a0eaf`。
+
+同一代码提交的实际父九原件 CLI 检查退出 0，拒绝 124 个来源变更、18 个非法冻结，以及 2 个非法本地入口和 5 个未绑定阶段入口；核对 55 个未变父函数、完整 39 后端及原匿名清单。自己的两份代码和父九原件共 11 个输入前后散列一致。原件位于 `test-results/assistant-trip-search-pinned-r1/`：`record.json` SHA `fc061e276d5d303d5ffed9d5ed3892af888615b86dd085c520b321b2079a5583`，`stdout` SHA `c6d2f2d888d1f0e91f77254c1a04819b96bd3c653a823eef038f6137335e66f9`，`generated/generated-delta.patch` SHA `8e5570720a6cb758f029adf8a56278fbc5b0dc0a1acc08cf3367c6566ed9938e`。
+
+该 CLI 只验证作者固定树当时的 198 项构建来源可被选择，不代表新 UI 的最终构建；浏览器文件尚待 Root 集成，已明确列入 `pendingFinalIntegrationFiles`。临时测试中的 `9991` 仅为合成 freeze 数字，最终八模块节点数仍须实际 collection。派生工具仅在临时目录用于拒绝检查，未生成最终发布目录、打包、绑定、远端或生产操作；非作者审查与最终组合验收尚待完成。
