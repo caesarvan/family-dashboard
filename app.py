@@ -741,7 +741,7 @@ def create_app(config=None):
     register_journey_places(app, db, Problem, body, require_member, audit)
     register_media_library(app, db, Problem, body, require_member, audit)
     register_media_playback(app)
-    register_inventory(app, db, Problem)
+    register_inventory(app, db, Problem, validate=validate)
     register_calendar_publish(app, db, Problem, body, require_member, audit)
     register_task_publish(app, db, Problem, body, require_member, audit)
     register_sync_health(app, db, require_member)

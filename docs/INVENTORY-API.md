@@ -1,8 +1,8 @@
 # 手动库存 HTTP 接口
 
-本候选把已审 [库存核心](INVENTORY-MODEL.md) 接成可供手机 UI 使用的 API：私密物品、明确共享、采购/期初批次、分次收货、消费/处置/退回/更正、追加式反转和本人幂等回执。只关联本家庭真实购物记录 ID，不解析金融订单、不写支出/付款/退款、不改购物完成或实际花费、不自动补货或创建任务。
+接口把已审 [库存核心](INVENTORY-MODEL.md) 接成可供手机 UI 使用的 API：私密物品、明确共享、采购/期初批次、分次收货、消费/处置/退回/更正、追加式反转和本人幂等回执。只关联本家庭真实购物记录 ID，不解析金融订单、不写支出/付款/退款、不改购物完成或实际花费、不自动补货或创建任务。售后待办必须通过下述专用 POST 明确创建，每批次至多一条本地家庭任务。
 
-当前模块需要集成人显式接线；**没有修改 app、Docker、导出、迁移或生产**。本候选不声称完整“订单→金融来源→库存”目标已完成。
+当前库存已由应用工厂显式注册；本轮新增售后待办后端是独立候选，应用注册仅增加统一任务校验器注入，不改变 Docker、导出或 DDL。前端、浏览器、Linux 与生产验收独立进行，不由本地 API 测试推断完整“订单→金融来源→库存”目标已完成。
 
 ## 注册与安全边界
 
@@ -10,10 +10,12 @@
 from inventory_api import register_inventory
 
 # users/entities/member_sessions 已注册；db() 是当前户 request-local 连接。
-inventory = register_inventory(app, db, Problem, initialize=True)
+inventory = register_inventory(app, db, Problem, initialize=True, validate=validate)
 ```
 
 返回 `InventoryAPI`，存入 `app.extensions['inventory']`。`db()` 必须始终返回当前家庭数据库的同一请求连接，开启 foreign_keys，并有正确关闭钩子；不能传默认家庭固定连接来服务子户。每个子户工厂同样调用此注册函数。默认初始化调用核心 `initialize_inventory` 并严格核验已有 DDL；单独完成审查迁移后可明确 `initialize=False`，不是请求时补 schema。
+
+`validate` 是应用已有的 `validate(kind, value, db)`，售后创建以同一事务连接调用任务校验；可选参数保留旧独立注册兼容。未注入校验器时首次创建售后待办返回 `503 storage`，既有库存读写与已存在回执的重放不受影响。
 
 每个读取开启 `BEGIN`，写入开启 `BEGIN IMMEDIATE`。模块在事务内调用真实 `member_sessions.current(con)`，对比当前 actor 的成员、auth_version 与 householdId；没有凭请求 owner 字段认证的入口。TV 与 `X-Display-Mode:tv` 全部拒绝，包括列表、回执与元数据；仅配对电视 cookie 不授予库存访问。写入再次验证 CSRF 与同源 Origin；应用原有统一认证/JSON/CSRF 门禁继续生效。
 
@@ -37,6 +39,8 @@ HTTP GET 响应依赖现有应用 `Cache-Control:no-store`，不在 `/api/state`
 | GET /shopping/:shoppingId/acquisitions | 从当前家庭采购查询本人可见的关联库存与批次 |
 | GET /acquisitions/:id | 批次与当前物品详情 |
 | PATCH /acquisitions/:id | 按能力编辑批次，双 revision |
+| POST /acquisitions/:id/followup | 明确创建一条本地家庭售后待办，双 revision 与本人回执 |
+| GET /acquisitions/:id/followup | 当前库存权限下读取待办关联与当前任务状态 |
 | GET /acquisitions/:id/movements | 安全事件历史分页 |
 | POST /acquisitions/:id/movements | 明确实物变动 |
 | POST /acquisitions/:id/movements/:movementId/reverse | 明确反转原事件 |
@@ -77,6 +81,47 @@ nextOffset 非 null 表示可继续当前查询。没有历史快照 token；并
 新增 `tests/test_inventory_shopping_query.py` 使用正式应用工厂、临时 SQLite、真实成员／电视 Cookie 和双家庭路由。27 项覆盖当前数量与安全投影、禁止金融／来源／回执读及任何库存事务写入、ACL 后计数分页、撤共享、归档与结束批次、同采购多批次、原采购删除／同名重建、重启、严格参数和会话撤销。没有外部网络、真实家庭数据、浏览器或生产操作。
 
 作者实际记录分轮保留在 `test-results/inventory-shopping-query-*`：R1 新旧 API 合计 95 项，91 通过、4 失败；其中三项为新夹具误用采购 POST 的最小回执及电视显示模式错误码，另一项为旧夹具全局移除会话引擎后提前触发 SQL 授权守卫。精确基线 API 的单次隔离复现仍失败。新专项夹具修正后 R2 为 27/27；旧故障夹具随后仅对库存适配层的可选 `.get` 模拟依赖缺失，保留全局 SQL 守卫的真实引擎及原 503／零写入断言，不声称全局引擎缺失可返回 503。R3 实际完整 95/95，75.35 秒，358 个 Python 输入前后不变，XML SHA-256 `a843cebf2dd1b23a735dfb0d88ff050b20823d4d5ee6cdebd9f356663be8620a`；业务 API 自 R1 起未改，失败原件没有覆盖。
+
+## 明确创建售后待办
+
+`POST /api/inventory/acquisitions/:id/followup` 严格接受：
+
+```json
+{
+  "requestId":"0123456789abcdef0123456789abcdef",
+  "itemRevision":3,
+  "revision":2,
+  "data":{"title":"联系售后","owner":"shared","due":"2026-10-02","note":"核对处理进度"}
+}
+```
+
+`data` 必须有 `title`，只允许 `title/owner/due/note`，提供的值必须是字符串；拒绝 `done/tripId/sourceId/sync/entityId` 等字段。统一任务校验器会去除标题和备注首尾空白：标题 1–100 字符、备注至多 500 字符；`owner` 默认 `shared`，也可指定当前户有效成员；`due` 默认空串，非空必须是有效日期。新任务固定 `done:false`、无旅行或云来源。标题与备注只来自明确输入，不自动拼入私人物品名称、批次备注、金融来源或金额。
+
+任务属于当前家庭共享待办，**负责人是分工，不是隐私权限**。即使源物品仅本人可见，明确创建的任务文字仍可能在家庭清单与电视展示；撤回库存共享或归档库存不会删除已创建的家庭任务。客户端应在确认创建前说明这个边界。
+
+同一个 `BEGIN IMMEDIATE` 事务内核验当前家庭/成员会话、CSRF、库存 ACL、物品与批次双版本，再校验首次创建时 `afterSalesState == open`、当前批次没有历史 `create_followup` 回执、任务字段和本户 tasks 数量小于 2500。owner 与可见该共享库存的其他成员均可明确创建。直接插入本户 `entities(kind='tasks')`，不调用普通任务 POST 或 `cloud_accounts.task_write`；配置了云清单也不会触发外部写入。
+
+不增加表、列、索引或来源关系。不可变 `inventory_operations` 的 `create_followup` 回执 `entityId` 是唯一关联依据，保留原 actor/requestId 幂等范围。首次成功返回 `201` 和既有 `{operation,item,acquisition}` 信封，`operation.entityId` 是任务 ID；物品和批次 revision 各加 1，新增一条 `inventory.create_followup` 审计，settings.meta 加 1。实物数量、收货/退回历史、采购预算/实付/完成状态、金融来源及支出保持。任务、双版本、回执、审计和 meta 任一步失败均整笔回滚。
+
+同一 actor、原 `requestId`、原始完整内容及原双版本重放返回 `200`、`operation.replayed:true`，不重复创建任务或审计。先查原回执，再执行可变业务校验：后来关闭售后、变更库存版本、停用原负责人、任务容量已满或任务已删除都不会阻断原意图重放；响应的库存投影仍是当前状态。仍必须具备当前会话和库存权限，撤权/撤共享或归档不能借旧回执绕过。相同 key 改内容返回 `409 request_conflict`。
+
+不同 key 或其他成员创建同一批次时，即使双版本已更新为最新，也返回 `409 conflict`，不会生成第二条任务；SQLite 写事务串行化并发检查。历史任务删除、完成或售后重新打开均不自动重建。另一批次可拥有自己的待办。首次非 open 状态或双版本过期为 `409 conflict`，达到任务上限为 `409 capacity`，字段/负责人无效为 `400 invalid`。无权查看的物品为 `404`，归档库存按既有规则 `410`。
+
+`GET /api/inventory/acquisitions/:id/followup` 不接受参数，在同一读事务先校验当前库存权限，再读取关联和当前 task。固定响应：
+
+```text
+{
+  itemId, acquisitionId,
+  state: "none" | "linked" | "deleted",
+  task: null | { id, revision, title, owner, due, done, note }
+}
+```
+
+从未创建为 `none`；任务存在为 `linked`，其内容、完成状态和 revision 随普通家庭待办编辑实时读取；曾创建但任务已删除为 `deleted`，`task:null`。GET 不要求售后仍开放，不返回另一 actor 的回执、requestId、payload digest、历史标题或云/旅行来源。历史创建结果仍只通过原 actor 的 `/operations/:requestId` 恢复；删除后的回执会保留原 `entityId`，不能把回执等同于任务当前存在。关联扫描已有有界回执表，不新增索引；完整库备份保留关系，现有个人导出未增加售后关系导出。
+
+`tests/test_inventory_followup.py` 专项采用真实 Flask 工厂、临时 SQLite、成员/电视 Cookie、两家庭路由与双连接并发；外部网络被禁止。覆盖原 key 恢复、跨成员跨 key 唯一性、当前权限/撤共享、任务编辑/删除、原负责人停用、容量/校验失败，以及任务→双版本→回执→审计→meta 六个写入边界故障的回滚。保留物理库存、采购、私人财务与 schema 哨兵；仅模拟故障触发器及禁止云入口，未使用真实家庭或云账户。
+
+作者本地原件分轮保留在 `test-results/inventory-followup-r1/r2/r3`：R1 系统 Python 无 pytest，未收集测试；R2 为 45 通过、1 失败，原因是测试误把查询回执的 `replayed:true` 与首次创建的 `false` 直接比较。仅修正断言后 R3 实际 46/46，通过且无跳过，pytest 报告 41.99 秒，368 个 Python 输入前后散列一致；业务实现自 R1 起未变。R3 JUnit SHA-256 `5e4e135ca821a3623d17de83b2bdacfedeafccfdf6cd39b560b5da4c07f6ea22`，结果记录 SHA-256 `24801de2eb0b90482310f77d8d40983ed9b935a26b00b47f84b2c0d23090ff2b`。这些是 Windows 本地专项结论，未运行前端、浏览器、Linux、生产或真实外部云；失败原件没有覆盖。
 
 ## 公开对象
 
