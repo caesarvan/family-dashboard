@@ -191,6 +191,7 @@ def selected_sources(tracked, policy):
     need(not any(n.startswith(PREFIX) for n in tracked), 'generated exports must not be tracked')
     selected = required | {n for n in tracked if n.startswith(tuple(f + '/' for f in constants['FOLDERS'])
                                                              + ('frontend/src/', 'frontend/public/'))}
+    selected |= tracked & {'frontend/tests/inventoryFollowup.test.mjs'}
     need(required_build_inputs(tracked) <= selected, 'new frontend input needs an explicit packaging policy')
     return selected
 
