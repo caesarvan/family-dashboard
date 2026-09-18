@@ -1,6 +1,6 @@
 import { sessionIdentity } from './sessionIdentity.ts';
 import type { CalendarMode, Member, Person } from './types';
-import { isOwnerId } from './memberId';
+import { isOwnerId } from './memberId.ts';
 
 export const deviceCards = ['calendar', 'finance', 'tasks', 'shopping', 'trips'] as const;
 export type DeviceCard = typeof deviceCards[number];

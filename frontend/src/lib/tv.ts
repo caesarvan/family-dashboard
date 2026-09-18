@@ -1,6 +1,6 @@
 import type { CalendarEvent, CalendarMode, FamilyState, ListItem, Person, SharedFinance, Trip } from './types';
 import { isDeviceId, readDeviceLayout, type DeviceLayout } from './devices';
-import { isOwnerId } from './memberId';
+import { isOwnerId } from './memberId.ts';
 
 export type TVIdentity = { id: string; householdId: string; name: string; role: 'tv' };
 export type TVSpace = { id: string; name: string; slug: string; entry: string };
