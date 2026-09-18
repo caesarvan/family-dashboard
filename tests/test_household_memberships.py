@@ -1,6 +1,6 @@
 """Real temporary household SQLite; no platform, production, or provider calls."""
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import contextmanager
+from contextlib import closing, contextmanager
 import hashlib
 import hmac
 import json
@@ -10,6 +10,7 @@ import secrets
 import socket
 import sqlite3
 from threading import Barrier
+from types import SimpleNamespace
 import time
 
 import pytest
@@ -59,6 +60,41 @@ def fingerprint(con, exclude=()):
     return result
 
 
+@pytest.fixture
+def legacy_app(app, tmp_path):
+    # Build an independent pre-membership schema projection. Never remove live
+    # app membership tables or its startup marker to bypass migration checks.
+    folder = tmp_path / 'legacy-domain-only'
+    folder.mkdir()
+    legacy = SimpleNamespace(config={'DATA_DIR': str(folder)})
+    with closing(sqlite3.connect(path(app).resolve().as_uri() + '?mode=ro', uri=True)) as source:
+        original = fingerprint(source)
+        tables = {name: value for name, value in original.items() if name not in domain.TABLES}
+        with closing(sqlite3.connect(path(legacy))) as target:
+            for name, value in tables.items():
+                if name != 'sqlite_sequence':
+                    target.execute(value['sql'])
+            for name, value in tables.items():
+                if name == 'sqlite_sequence':
+                    continue
+                for row in value['rows']:
+                    if name == 'settings' and row[0] == 'membership_schema_v1':
+                        continue
+                    target.execute('INSERT INTO "' + name + '" VALUES(' + ','.join('?' for _ in row) + ')', row)
+            for name, sequence in tables.get('sqlite_sequence', {}).get('rows', []):
+                if not target.execute('UPDATE sqlite_sequence SET seq=? WHERE name=?', (sequence, name)).rowcount:
+                    target.execute('INSERT INTO sqlite_sequence VALUES(?,?)', (name, sequence))
+            target.commit()
+            expected = {name: {'sql': value['sql'], 'rows': [row for row in value['rows']
+                        if not (name == 'settings' and row[0] == 'membership_schema_v1')]}
+                        for name, value in tables.items()}
+            assert fingerprint(target) == expected
+        assert fingerprint(source) == original
+    yield legacy
+    with closing(sqlite3.connect(path(app).resolve().as_uri() + '?mode=ro', uri=True)) as source:
+        assert fingerprint(source) == original
+
+
 def intent(kind, values):
     raw = json.dumps({'kind': kind, 'values': values}, ensure_ascii=False, sort_keys=True, separators=(',', ':'), allow_nan=False)
     return hmac.new(SECRET, raw.encode(), hashlib.sha256).hexdigest()
@@ -104,7 +140,8 @@ def assert_error(code, function, *args, **kwargs):
     return caught.value
 
 
-def test_one_time_initialization_preserves_all_existing_tables_passwords_and_actual_roles(app):
+def test_one_time_initialization_preserves_all_existing_tables_passwords_and_actual_roles(legacy_app):
+    app = legacy_app
     with connection(app) as con:
         con.execute("UPDATE users SET household_role='member',auth_version=9 WHERE id='member2'")
         before = fingerprint(con)
@@ -120,7 +157,8 @@ def test_one_time_initialization_preserves_all_existing_tables_passwords_and_act
         assert domain.active_member(con, 'member2')['authVersion'] == 9
 
 
-def test_schema_initialization_never_commits_and_partial_schema_is_rejected(app):
+def test_schema_initialization_never_commits_and_partial_schema_is_rejected(legacy_app):
+    app = legacy_app
     con = sqlite3.connect(path(app))
     try:
         assert_error('membership_transaction_required', domain.schema_initialize, con)

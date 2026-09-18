@@ -31,7 +31,7 @@ def domain():
 
 
 @pytest.fixture
-def env(app,domain):
+def env(app,domain,monkeypatch):
     _,_,second=create_space(app)
     platform=app.extensions['household_platform']
     @contextmanager
@@ -100,6 +100,8 @@ def env(app,domain):
     engine=PersonalAccounts(platform,{'membership':domain,'household':household,'member_proof':member_proof,
         'validate_member_proof':validate_member_proof,'install_member':install_member,
         'is_tv':lambda:request.headers.get('X-Display-Mode')=='tv'})
+    # All actual member-session connections must share this fixture's platform guard.
+    monkeypatch.setattr(platform,'personal_accounts',engine)
     engine.app.config['TESTING']=True
     engine.app.add_url_rule('/api/membership-links','test_bind',lambda:jsonify(engine.handle_bind(
         engine._body({'requestId','memberPassword','expectedAuthVersion','expectedRevision'}))),methods=['POST'])
