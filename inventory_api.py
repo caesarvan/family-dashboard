@@ -97,11 +97,11 @@ def _confirmation(value, name):
         raise InventoryAPIError('confirmation_required')
 
 
-def _query(extra=()):
+def _query(extra=(), *, default_limit=50):
     if set(request.args)-set(extra)-{'limit','offset'} or any(len(request.args.getlist(k))!=1 for k in request.args):
         raise InventoryAPIError('invalid')
     value = dict(request.args)
-    for name, default, low, high in [('limit',50,1,100),('offset',0,0,100000)]:
+    for name, default, low, high in [('limit',default_limit,1,100),('offset',0,0,100000)]:
         raw = value.get(name,str(default))
         if not re.fullmatch('[0-9]{1,6}',raw) or not low<=int(raw)<=high:
             raise InventoryAPIError('invalid')
@@ -250,6 +250,36 @@ def register_inventory(app, db, Problem, *, initialize=True):
             api.audit(con,actor,kind,operation)
             result = api.result(con,actor,operation)
         return jsonify(result),201 if created and not operation['replayed'] else 200
+
+    @app.get(PREFIX+'/shopping/<shopping_id>/acquisitions')
+    @safe_endpoint
+    def inventory_shopping_acquisitions(shopping_id):
+        _id(shopping_id)
+        query = _query(default_limit=12)
+        with api.transaction() as (con,actor):
+            shopping = con.execute("SELECT id,revision,data FROM entities WHERE id=? AND kind='shopping'",
+                                   (shopping_id,)).fetchone()
+            if shopping is None:
+                raise InventoryAPIError('not_found')
+            data = json.loads(shopping['data'])
+            title, quantity = data.get('title',''), data.get('quantity','')
+            if type(title) is not str or type(quantity) is not str:
+                raise InventoryAPIError('storage')
+            # Apply the current item's ACL before count and pagination. A shared
+            # shopping record does not disclose another member's private stock.
+            where = """a.shopping_id=? AND a.deleted_at IS NULL AND i.deleted_at IS NULL
+                       AND (i.owner=? OR i.visibility='shared')"""
+            joined = ' FROM inventory_acquisitions a JOIN inventory_items i ON i.id=a.item_id WHERE '+where
+            args = (shopping_id,actor)
+            total = con.execute('SELECT count(*)'+joined,args).fetchone()[0]
+            rows = con.execute('SELECT a.id,a.item_id'+joined+' ORDER BY a.id LIMIT ? OFFSET ?',
+                               args+(query['limit'],query['offset'])).fetchall()
+            items = [{'item':core.project_item(con,actor,row['item_id']),
+                      'acquisition':api.acquisition(con,actor,row['id'])} for row in rows]
+            result = _page(items,total,query)
+            result['shopping'] = {'id':shopping['id'],'revision':shopping['revision'],
+                                  'title':title,'quantity':quantity}
+        return jsonify(result)
 
     @app.route(PREFIX+'/items',methods=['GET','POST'])
     @safe_endpoint

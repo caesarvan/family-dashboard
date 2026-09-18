@@ -34,6 +34,7 @@ HTTP GET 响应依赖现有应用 `Cache-Control:no-store`，不在 `/api/state`
 | DELETE /items/:id | owner 明确归档，核心要求库存零且批次已关闭/取消 |
 | GET /items/:id/acquisitions | 当前可见物品的批次分页 |
 | POST /items/:id/acquisitions | 登记采购或期初批次 |
+| GET /shopping/:shoppingId/acquisitions | 从当前家庭采购查询本人可见的关联库存与批次 |
 | GET /acquisitions/:id | 批次与当前物品详情 |
 | PATCH /acquisitions/:id | 按能力编辑批次，双 revision |
 | GET /acquisitions/:id/movements | 安全事件历史分页 |
@@ -41,7 +42,7 @@ HTTP GET 响应依赖现有应用 `Cache-Control:no-store`，不在 `/api/state`
 | POST /acquisitions/:id/movements/:movementId/reverse | 明确反转原事件 |
 | GET /operations/:requestId | 本人操作回执与当前安全投影 |
 
-ID 都是 24 位小写十六进制；requestId 为 32–64 位小写十六进制。所有列表接受 `limit`（默认 50，1–100）和 `offset`（默认 0，0–100000）；只允许十进制整数字符串，无重复参数。物品列表另接受 `scope=all|mine|shared`（默认 all）和 `q`（最多 100 字符，按 title/variant/location 子串搜索；`%`、`_` 作为普通文字）。mine 仅本人，shared 包括自己与另一成员的已共享物品；all 为本人私密/共享加另一成员共享。ACL 和未删除条件先于过滤、count 和分页。
+ID 都是 24 位小写十六进制；requestId 为 32–64 位小写十六进制。所有列表接受 `limit`（默认 50，采购关联查询默认 12，1–100）和 `offset`（默认 0，0–100000）；只允许十进制整数字符串，无重复参数。物品列表另接受 `scope=all|mine|shared`（默认 all）和 `q`（最多 100 字符，按 title/variant/location 子串搜索；`%`、`_` 作为普通文字）。mine 仅本人，shared 包括自己与另一成员的已共享物品；all 为本人私密/共享加另一成员共享。ACL 和未删除条件先于过滤、count 和分页。
 
 物品/批次按 ID 升序，事件按 createdAt DESC、ID DESC。示例空列表：
 
@@ -50,6 +51,32 @@ ID 都是 24 位小写十六进制；requestId 为 32–64 位小写十六进制
 ```
 
 nextOffset 非 null 表示可继续当前查询。没有历史快照 token；并发增删可能改变后续页，用户刷新时从第一页读取。详情、回执和写请求不接受任何查询参数。批次/历史详情不嵌套无界列表。
+
+## 从采购查询已登记批次
+
+`GET /api/inventory/shopping/:shoppingId/acquisitions?limit=12&offset=0` 是新增只读候选。沿用正式库存注册、当前家庭请求连接和事务内成员核验，不增加表、不改写入协议、不读取金融来源或操作回执。
+
+返回形状为：
+
+```text
+{
+  shopping: { id, revision, title, quantity },
+  items: [{ item: InventoryItem, acquisition: Acquisition }],
+  total, limit, offset, nextOffset
+}
+```
+
+`shopping` 恰含这四个字段。`id` 为当前家庭真实采购 ID，`revision` 为当前正整数版本，`title/quantity` 为原始字符串；数量如“两盒六节”仍是文字，不推算物品单位或实收数。不会返回采购金额、负责人、备注、照片或私人账单来源。每行 `item/acquisition` 复用下文既有安全详情投影；`acquisition.shoppingId` 等于查询来源，`acquisition.itemId` 等于同行 `item.id`，能力字段依当前成员返回。
+
+只接受 `limit/offset`，按批次 ID 升序。同一读事务先确认当前户采购存在，再在 SQL 中按本人或明确共享的物品权限、物品与批次未归档条件过滤，之后计数、分页及调用领域投影。未归档的已结束／已取消批次仍返回，方便继续查看售后与历史；归档不暴露存在性或数量。没有可见关联时为 `200` 和空页，不代表其他成员未私下登记。每次读取重新核验当前权限和来源，不提供跨页快照。
+
+来源不存在、已删除或 ID 实际属于其他实体为 `404 not_found`；非法 ID、越界、重复或多余查询参数为 `400 invalid`。匿名／过期会话为 `401`，已配对电视为 `403`，跨户来源不匹配返回 `404`；`X-Display-Mode:tv` 在外层选择设备凭据，没有有效设备 Cookie 时为 `401`，有效电视仍不得读取库存。外层会话边界可先拒绝不属于本户的 Cookie。原采购删除后仍按既有外键行为清空批次 `shoppingId` 并保留实物历史，不因同名新采购自动接回。
+
+查询不创建库存、不确认收货、不改变采购完成／实付或财务。一次采购可以有多个合法批次，不增加 `shoppingId` 唯一约束；新增批次与收货仍使用原确认、双版本及本人 `requestId` 回执协议。实际前端入口、浏览器组合及部署需要独立验收，不能由查询接口通过推断整链上线。
+
+新增 `tests/test_inventory_shopping_query.py` 使用正式应用工厂、临时 SQLite、真实成员／电视 Cookie 和双家庭路由。27 项覆盖当前数量与安全投影、禁止金融／来源／回执读及任何库存事务写入、ACL 后计数分页、撤共享、归档与结束批次、同采购多批次、原采购删除／同名重建、重启、严格参数和会话撤销。没有外部网络、真实家庭数据、浏览器或生产操作。
+
+作者实际记录分轮保留在 `test-results/inventory-shopping-query-*`：R1 新旧 API 合计 95 项，91 通过、4 失败；其中三项为新夹具误用采购 POST 的最小回执及电视显示模式错误码，另一项为旧夹具全局移除会话引擎后提前触发 SQL 授权守卫。精确基线 API 的单次隔离复现仍失败。新专项夹具修正后 R2 为 27/27；旧故障夹具随后仅对库存适配层的可选 `.get` 模拟依赖缺失，保留全局 SQL 守卫的真实引擎及原 503／零写入断言，不声称全局引擎缺失可返回 503。R3 实际完整 95/95，75.35 秒，358 个 Python 输入前后不变，XML SHA-256 `a843cebf2dd1b23a735dfb0d88ff050b20823d4d5ee6cdebd9f356663be8620a`；业务 API 自 R1 起未改，失败原件没有覆盖。
 
 ## 公开对象
 
