@@ -64,3 +64,54 @@
 候选包实际封口：835 文件（812 源文件＋23 导出），package SHA256 `55fb110e4fa1918bf26baa2c010c057ed448b717991e6d2d8037960d5e6ab02a`，manifest SHA256 `dc37642e6349a6882e5954d4727894a243bed2517a241b68576e177b4c2ad564`。已在 Linux 实际构建镜像 `sha256:c8e3da47800e3d11f609677bd6aca5f69aef6e7d7a49827c04fb6bea29946771`，120 个运行文件精确核验。18 模块、570 个唯一业务测试的清单已冻结；收集和构建不代表执行通过，实际回归结果另记。
 
 [Linux 合成升级演练](MEMBERSHIP-LINUX-REHEARSAL.md) R1 实际完成旧镜像两户准备与整组三库备份，随后在迁移前检查停止：只读备份在 Linux 留下 0 字节 WAL 和 32768 字节 SHM，被严格的 `sqlite_sidecar_present` 检查拒绝；迁移 attempt 尚未创建。失败目录 `/opt/family-dashboard-candidates/memberships-rehearsal-20260918-r1` 保留。这一轮没有连接生产数据或修改生产服务，不能称为迁移已通过或已上线。部署修复需独立审查，并在新的合成副本补验。
+
+## 候选 R2 验证、生产尝试与旧版恢复（2026-09-18）
+
+本批新成员功能尚未上线。候选合入 main 不等于实际安装；本次生产尝试在 warm／迁移后核验阶段失败，新程序及新镜像尚未安装。
+线上已经恢复发布前整组数据库及旧版服务，下面区分隔离验证、失败诊断与生产恢复，保留此前所有失败记录。
+
+### 三部分实际验证
+
+| 轮次 | 实际结果与固定范围 |
+| --- | --- |
+| R1 完整 Linux 回归 | a5808b9／R1 包：18 模块 570 个唯一用例，569 通过、1 项精确 Windows junction 跳过，0 失败／错误／未选择；运行文件前后保持 |
+| R2 当前源接缝回归 | d02925e8f90eed0a17feb1827434b2b1d667f74a：2 模块 33/33 通过，0 跳过／失败／错误／未选择；120 个 runtime、43 个实际加载根模块及完整源码前后保持 |
+| R2 正式包 Linux 演练 | 固定包程序在无网络、仅合成数据的两户三库中完成完整备份、58→61 户库与 2→9 平台迁移、重启及逻辑保全；原用户、角色和私有行保持 |
+
+R1 与 R2 的 120 个运行文件、107 个前端构建输入和 23 个导出逐字节相同；已有业务测试源码也保持。R2 是补验当前接缝，不是重新运行或重新命名 R1 的 570 项。
+R1 empty-WAL／SHM 演练失败及独立修复克隆原件保留；只有随后 R2 正式包演练才证明最终包的完整备份、warm 和重启链通过。
+R2 包为 836 文件（813 源文件＋23 导出），package SHA256 fe43754751ccd347b8f51b18fee7a3a5e66e29d81484791b3c3871f354956c90，manifest SHA256 db84ae85d43fc64ae8ac26452ab26d3c08f65bec9eabc273b82ccea8535bd589。
+受验 source 为 d02925e8f90eed0a17feb1827434b2b1d667f74a，main 为 bde68b3926b67777b68ba3a06ec6fba8220750a4，同 tree d8570e34d11f641f36d618870018eb427df6e7ec；这些仍是候选身份。
+
+### 生产尝试失败与根因
+
+实际生产仅有 1 户、2 个数据库。停止全部写进程和备份定时器后，完整原组备份已验证并保留。
+本次 release 为 /opt/family-dashboard-releases/memberships-61-20260918T045507908732Z；失败阶段没有切换线上 source／image，也没有启动新应用服务。
+失败时户库已为 61 表且旧数据保全核验通过；平台仍为 2 表、user_version=0，平台后置表集合检查报 after_table_set，外层记录 warm_or_verification_failed。
+在新的私有备份副本、network=none 容器中捕获到 CloudAccounts.__init__ 的 HTTPS origin 校验异常；诊断未挂生产数据卷。
+根因是 docker run --env-file 保留了 PUBLIC_ORIGIN 的外层引号，而现有 Compose 已解析这些引号。传入 warm 的值与实际旧容器环境语义不同，**不是用户配置错误**。
+诊断仅记录异常、散列和相等性布尔，没有输出环境变量正文；原环境文件未被修改，也没有通过随意去引号绕过检查。
+合成环境未包含这项实际部署环境语义差异，因此此前演练通过不能覆盖本次失败。
+
+### 明确恢复旧版
+
+恢复由独立审查通过的单次脚本执行，先核无写进程、原配置／源码／镜像不变，以及整组备份与失败状态完全匹配。
+失败的两个数据库、失败快照与根目录 attempt 标记先另行保存并核散列。原失败记录和标记继续保留，没有删标记或盲目重放 warm。
+从发布前完整原组备份构造两个恢复文件，在全部写进程停止期间顺序替换，再执行全组恢复核验；恢复到户库 58 表、平台 2 表。
+这不是跨数据库原子事务。流程依赖全程停写和恢复前后全组核验，不能只换旧镜像运行已迁移的库。
+实际恢复命令退出 0、耗时 43.61 秒，恢复后正常 HTTPS health 通过；旧 app、worker 和 web 按原镜像启动，备份定时器恢复。
+线上 app／sync／media 仍为旧镜像 sha256:09f583b81f5782ceebc008995665fe095ac6ef0822302bc9b5d84ab3aa3f42f2，web 保持原镜像；安装 manifest SHA256 db3a984f570d38b88c62cb040181f3b4f9d812ace04193ac21c509f899c4c246。
+独立只读恢复审计通过：北京时间 13:06:21 四个旧服务均 running、重启次数为 0，仅 app 有健康检查且 healthy；正常 TLS 下 health 为 ok、/app 返回 200，备份定时器 active。
+13:07:27 补核旧 manifest 的 783 文件全部相同、原环境散列及 0600 权限不变，恢复全组逻辑散列等于发布前，两个备份文件散列和大小保持；失败库及标记仍保留，activation 仍为 failed。
+恢复报告没有 completedAt。文件 mtime 13:02:49.188812 仅为报告写入观察，不能当作服务准确恢复时刻；独立确认时间以上述两次审计为准。
+
+### 原件与继续条件
+
+私有证据根目录为 family-dashboard-access，不提交数据库、环境正文或实际账户资料。
+R1 独审：membership-linux-r1-evidence-review.json，SHA256 c10658f0841186a646960b29ca7d2bab3caf8964fd13972d925ad472ef603923。
+R2 独审：membership-linux-r2-evidence-review.json，SHA256 cb74f5a862c985b446f36fb338531bffc7e9127e24db09431c2f2810a5d8af1b。
+诊断：membership-production-warm-diagnosis-r1/diagnosis.json，SHA256 815e15fdca6034573635eb7654ec9d0996a76956a05bcf172cf9ce98b62eca81。
+恢复脚本 membership-recover-old-r1.py SHA256 c5684b9fee865ba3a16cd9fb73bb89bfb35810b20f6c1ee87bad1172b00e7ceb，静态独审见 membership-recover-old-review-r1.json；静态审查与实际执行分开。
+恢复独审：membership-recovery-audit-r1.json，SHA256 2c9ccbc8a0ca1938920c7ccb4527eab0a4d20713378319c40fea56855044368a；10 份 JSON/log 原件保存在 membership-recovery-audit-r1/originals，不含数据库或环境正文。
+环境传递修复在独立分支进行。只有修复独审、准确环境语义的隔离验证、新发布尝试及实际上线读回完成后，才可更新为已上线；不复用失败 attempt 自动重试。
+本轮没有本人新成员完整体验、真实云写入或实体电视验收，不能因本地测试和恢复健康而补写这些通过。
