@@ -9,7 +9,7 @@ const A = 'a'.repeat(32), B = 'b'.repeat(32), R = 'c'.repeat(32), I = 'd'.repeat
 const account = () => ({ account: { id: A, login: 'synthetic.user' }, csrf: 'account-csrf', authVersion: 2, authenticationGeneration: 4 });
 const identity = () => ({ account: account(), member: { user: { id: 'member1', householdId: 'default', role: 'member', auth_version: 3, membershipRevision: 1 }, csrf: 'member-csrf' } });
 const membership = () => ({ id: I, householdId: 'default', memberId: 'member1', memberName: '合成甲', householdRole: 'admin', state: 'active', revision: 1 });
-const invitation = () => ({ id: I, state: 'active', revision: 1, expiresAt: '2026-09-25T00:00:00+00:00', householdRole: 'member' });
+const invitation = () => ({ id: I, state: 'pending', revision: 1, expiresAt: '2026-09-25T00:00:00+00:00', householdRole: 'member' });
 const handle = () => ({ requestId: R, action: 'link', scope: 'account', accountId: A, login: 'synthetic.user', householdId: 'default', memberId: 'member1', operation: null });
 
 test('personal session requires precise nullable identity, CSRF and safe browser generation', () => {
@@ -66,6 +66,18 @@ test('unknown false and pending never authorize a fresh request', () => {
   assert.equal(p.canStartNewMembershipOperation(ended), true);
   assert.throws(() => p.readOperation({ ...ended, result: membership() }, R, m.readMembership));
   assert.throws(() => p.readOperation({ ...ended, requestId: B }, R, m.readMembership));
+});
+test('all valid normalized account prefixes agree with the backend grammar', () => {
+  for (const login of ['_a.b', '.abc', '-abc', 'abc']) assert.equal(p.loginName(login), login);
+  for (const login of ['AAa', 'ab', 'a/b', 'a b']) assert.throws(() => p.loginName(login));
+});
+test('write pending/not_committed envelopes preserve the original operation without decoding a final summary', () => {
+  for (const state of ['pending', 'not_committed']) {
+    const raw = { requestId: R, found: true, state, result: null };
+    assert.deepEqual(m.readMembershipWriteReply(handle(), raw), raw);
+  }
+  assert.throws(() => m.readMembershipWriteReply(handle(), { requestId: B, found: true, state: 'pending', result: null }));
+  assert.equal(m.readMembershipWriteReply(handle(), membership()).state, 'completed');
 });
 test('completed operation requires actual finite result, current list is not a receipt', () => {
   const op = p.readOperation({ requestId: R, found: true, state: 'completed', result: membership() }, R, m.readMembership);

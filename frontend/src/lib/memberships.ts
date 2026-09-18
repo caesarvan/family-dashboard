@@ -1,11 +1,11 @@
-import { accountSignature, identitySignature, memberSignature, boundedText, hexId, householdId, invalidMembership, memberId, readAccount, record, version, type Account,
+import { accountSignature, identitySignature, memberSignature, boundedText, hexId, householdId, invalidMembership, memberId, readAccount, readOperation, record, version, type Account,
   type MembershipIdentity, type Operation } from './personalAccounts';
 
 export type Membership = { id: string; householdId: string; memberId: string; memberName: string;
   householdRole: 'admin' | 'member'; state: 'active' | 'left' | 'removed'; revision: number };
 export type MyHousehold = Omit<Membership, 'state'> & { name: string; slug: string };
 export type Households = { memberships: MyHousehold[]; unavailable: { householdId: string; code: 'temporarily_unavailable' }[] };
-export type Invitation = { id: string; state: 'active' | 'used' | 'revoked' | 'expired' | 'invalid'; revision: number; expiresAt: string; householdRole: 'member' };
+export type Invitation = { id: string; state: 'pending' | 'used' | 'revoked' | 'expired' | 'invalid'; revision: number; expiresAt: string; householdRole: 'member' };
 export type InvitationCreated = { invitation: Invitation; token: string | null };
 export type JoinPreview = { household: { id: string; name: string; slug: string }; householdRole: 'member'; joinTicket: string; eligibilityToken: string; expiresAt: string };
 export type SwitchResult = { ok: true; householdId: string; memberId: string; entry: '/app/home' };
@@ -42,7 +42,7 @@ export function readHouseholds(raw: unknown): Households {
   if (ids.length > 30 || new Set(ids).size !== ids.length) return invalidMembership(); return { memberships, unavailable };
 }
 export function readInvitation(raw: unknown): Invitation {
-  const r = record(raw); if (r.householdRole !== 'member' || !['active', 'used', 'revoked', 'expired', 'invalid'].includes(String(r.state))) return invalidMembership();
+  const r = record(raw); if (r.householdRole !== 'member' || !['pending', 'used', 'revoked', 'expired', 'invalid'].includes(String(r.state))) return invalidMembership();
   return { id: hexId(r.id), state: r.state as Invitation['state'], revision: version(r.revision), expiresAt: dateTime(r.expiresAt), householdRole: 'member' };
 }
 export const readInvitations = (v: unknown): Invitation[] => unique(rows(record(v).invitations).map(readInvitation));
@@ -63,6 +63,11 @@ export function readMembershipResult(action: MembershipAction, raw: unknown, rec
   if (action === 'logout') { if (r.ok !== true) return invalidMembership(); return { ok: true }; }
   if (action === 'switch') { if (r.ok !== true || r.entry !== '/app/home') return invalidMembership(); return { ok: true, householdId: householdId(r.householdId), memberId: memberId(r.memberId), entry: '/app/home' }; }
   return readMembership(r);
+}
+export function readMembershipWriteReply(handle: MembershipHandle, raw: unknown): Operation<MembershipResult> {
+  const r = record(raw);
+  if ('requestId' in r || 'found' in r) return readOperation(r, handle.requestId, result => validateResultTarget(handle, readMembershipResult(handle.action, result, true)));
+  return { requestId: handle.requestId, found: true, state: 'completed', result: validateResultTarget(handle, readMembershipResult(handle.action, r)) };
 }
 export function operationBelongsTo(handle: MembershipHandle, identity: MembershipIdentity): boolean {
   if (handle.scope === 'account') return handle.accountId ? handle.accountId === identity.account.account?.id

@@ -8,7 +8,7 @@ export const version = (v: unknown): number => Number.isSafeInteger(v) && Number
 export const hexId = (v: unknown): string => typeof v === 'string' && /^[a-f0-9]{32}$/.test(v) ? v : invalidMembership();
 export const memberId = (v: unknown): string => typeof v === 'string' && /^[A-Za-z0-9_-]{1,100}$/.test(v) ? v : invalidMembership();
 export const householdId = (v: unknown): string => v === 'default' || typeof v === 'string' && /^[a-f0-9]{24}$/.test(v) ? v : invalidMembership();
-export const loginName = (v: unknown): string => typeof v === 'string' && /^[a-z0-9][a-z0-9._-]{2,63}$/.test(v) ? v : invalidMembership();
+export const loginName = (v: unknown): string => typeof v === 'string' && /^[a-z0-9._-]{3,64}$/.test(v) ? v : invalidMembership();
 export const passwordValue = (v: unknown): string => typeof v === 'string' && v.length >= 12 && v.length <= 128 ? v : invalidMembership();
 const legacyPassword = (v: unknown): string => typeof v === 'string' && v.length > 0 && v.length <= 512 ? v : invalidMembership();
 export type Account = { id: string; login: string };

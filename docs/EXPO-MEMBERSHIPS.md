@@ -52,3 +52,9 @@
 原件 `test-results/membership-final-r3/result.json` SHA-256 为 `b6ce805937e42392c896b7c3fcad8bdce3dac55a4ecde1a0a6b4ee04877477fe`；Node输出 `1a811b8a2fd63d39c6e642c01c8601dedaed093f15dd74924b56eb927f16e2c9`，types输出 `7ffa1e482bf96b8330bcfcdd7f172639ee6fe7c06efa3c32f7fd8de339e08659`。列入源码执行前后相同。最终 UI 两处本地返回/提示修正另复核类型，不重复未变的 Node 模型测试。
 首轮 TypeScript 应用配置发现两处模型类型错误（扩展名和联合类型收窄），测试配置通过；原失败输出保留，修复后重新执行两配置。
 真实 Flask/SQLite DTO、第三人加入与分配事项、跨户切换、撤权、故障恢复及四宽浅深色浏览器验收须待 Root 组合冻结。本文不宣称这些已通过，也不宣称真实个人账户、云端或实体电视验收。
+
+## 非作者审查后的契约修正
+
+邀请状态按实际领域 DTO 使用 `pending`，个人账号接受完整 `[a-z0-9._-]{3,64}`。写请求返回 `pending`／`not_committed` 操作封套时保留原编号，按状态核对，不重复提交；匿名注册仅在已确认 `not_committed` 时可结束本地核对。
+修正后实际 26/26：25 项客户端测试及 1 项固定领域真实 DTO 测试。新增 `tests/test_expo_memberships_real_dto.mjs` 使用固定领域提交 `754d2e1552c8953b9d490df246d1328bdf3abf43`、真实临时应用 SQLite，实际调用创建／列表／重放／撤销／过期／失效邀请；禁用网络，关闭连接并清理临时库。这是领域 DTO 验证，不等同 HTTP 或浏览器验收。
+两个完整 TypeScript 配置再次 0 诊断，只读依赖、无发射。原件 `test-results/membership-review-fix-r1/result.json` SHA-256 为 `60ac9965c1587bea9d80e2d6306e749e408b1663ceac8e5f61c5bf7cfd4a9c19`；Node 的实验类型转换及模块类型警告保留在输出中。上述 R3 为修正前记录，未改报为最终结果。

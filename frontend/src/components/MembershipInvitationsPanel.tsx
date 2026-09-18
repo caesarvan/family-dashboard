@@ -8,7 +8,7 @@ import { SectionCard } from '../ui/components';
 import { MembershipButton, MembershipFrame, membershipStyles, useMembershipPanel, type MembershipCommand, type MembershipJob, type MembershipPanelProps } from './PersonalAccountPanel';
 
 export type MembershipInvitationsPanelProps = MembershipPanelProps & { onJoined?: (membership: Membership) => void | Promise<void> };
-const invitationLabel = (state: Invitation['state']) => ({ active: '有效', used: '已使用', revoked: '已撤销', expired: '已到期', invalid: '已失效' })[state];
+const invitationLabel = (state: Invitation['state']) => ({ pending: '有效', used: '已使用', revoked: '已撤销', expired: '已到期', invalid: '已失效' })[state];
 export default function MembershipInvitationsPanel(props: MembershipInvitationsPanelProps) {
   const [invitations, setInvitations] = useState<Invitation[]>([]), [admin, setAdmin] = useState(false);
   const [householdSlug, setSlug] = useState(''), [token, setToken] = useState(''), [join, setJoin] = useState<JoinPreview | null>(null);
@@ -66,7 +66,7 @@ export default function MembershipInvitationsPanel(props: MembershipInvitationsP
       </View>}
       {invitations.map(invitation => <View key={invitation.id} testID={'member-invitation-' + invitation.id} style={membershipStyles.stack}>
         <Text>{invitationLabel(invitation.state)} · 到期 {invitation.expiresAt}</Text>
-        {invitation.state === 'active' && <MembershipButton label={'撤销邀请：' + invitation.id.slice(-6)} disabled={panel.locked || !!choice || !!token || !!createdToken}
+        {invitation.state === 'pending' && <MembershipButton label={'撤销邀请：' + invitation.id.slice(-6)} disabled={panel.locked || !!choice || !!token || !!createdToken}
           onPress={() => setChoice({ action: 'revoke', scope: 'member', path: '/member-invitations/' + invitation.id + '/revoke', targetId: invitation.id, body: { expectedRevision: invitation.revision } })} />}
       </View>)}
     </View></SectionCard>}

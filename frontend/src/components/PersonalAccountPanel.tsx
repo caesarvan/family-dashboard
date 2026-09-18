@@ -8,7 +8,7 @@ import { identitySignature, MembershipDiscarded, MembershipError, MembershipFenc
   membershipRequest, newMembershipRequestId, readAccount, readMembershipIdentity, readOperation, record, boundedText, hexId,
   type MembershipIdentity, type MembershipRequest } from '../lib/personalAccounts';
 import { canStartNewMembershipOperation } from '../lib/personalAccounts';
-import { acceptedMembershipTransition, operationBelongsTo, readCurrentHousehold, readHouseholds, readMembershipResult, validateResultTarget, roleLabel,
+import { acceptedMembershipTransition, operationBelongsTo, readCurrentHousehold, readHouseholds, readMembershipResult, readMembershipWriteReply, validateResultTarget, roleLabel,
   type Households, type MembershipAction, type MembershipHandle, type MembershipResult } from '../lib/memberships';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { useDisplayDensity } from '../ui/theme';
@@ -112,7 +112,6 @@ export function useMembershipPanel(props: MembershipPanelProps, dirty: boolean, 
         ...(['invite', 'revoke', 'remove'].includes(command.action) ? { retry: { path: command.path, body: { ...command.body, requestId } } } : {}) };
       // Store the handle before sending. Passwords and invitation tickets never enter it.
       saveHandle(h); setMessage('正在提交，请稍候。');
-      let result: MembershipResult;
       const options: MembershipRequest = { method: 'POST', payload: { ...command.body, requestId },
         csrf: command.scope === 'account' ? job.identity.account.csrf : job.identity.member.csrf!,
         ...(['link', 'leave'].includes(command.action) ? { accountCsrf: job.identity.account.csrf } : {}) };
@@ -128,11 +127,16 @@ export function useMembershipPanel(props: MembershipPanelProps, dirty: boolean, 
         }
         throw e;
       }
-      result = validateResultTarget(h, readMembershipResult(command.action, raw));
+      const operation = readMembershipWriteReply(h, raw), result = operation.result;
       const after = await readMembershipIdentity(job.signal); if (!job.current() || handleRef.current !== h) return;
+      if (operation.state !== 'completed' || !result) {
+        if (identitySignature(job.identity) !== identitySignature(after)) throw new MembershipDiscarded('identity');
+        saveHandle({ ...h, operation }); latest.current.clear(); setVisible(true);
+        setMessage(operation.state === 'not_committed' ? '已确认原操作未提交，可以结束核对后重新选择。' : '原操作仍待核对，不会重复提交。'); return;
+      }
       if (!acceptedMembershipTransition(job.identity, after, command.action, result)) throw new MembershipDiscarded('identity');
       installIdentity(after); latest.current.clear();
-      const completed = { ...h, operation: { requestId, found: true, state: 'completed' as const, result } }; saveHandle(completed);
+      const completed = { ...h, operation }; saveHandle(completed);
       setVisible(true); setMessage('操作已完成。请读取当前状态后继续。');
       if (onComplete) await onComplete(result);
     });
@@ -154,7 +158,8 @@ export function useMembershipPanel(props: MembershipPanelProps, dirty: boolean, 
   async function finish(onComplete?: (result: MembershipResult) => void | Promise<void>) {
     const h = handleRef.current; if (!h?.operation || !['completed', 'not_committed'].includes(h.operation.state || '')) return;
     await run(async job => {
-      if (!operationBelongsTo(h, job.identity) && !(h.action === 'logout' && !job.identity.account.account)) throw new MembershipDiscarded('identity');
+      if (!operationBelongsTo(h, job.identity) && !(['logout', 'register'].includes(h.action) && !job.identity.account.account
+        && (h.action === 'logout' || h.operation?.state === 'not_committed'))) throw new MembershipDiscarded('identity');
       const install = await checked(job, () => latest.current.load(job)); if (!job.current() || handleRef.current !== h) return; install();
       if (h.operation?.state === 'completed' && h.operation.result && onComplete) await onComplete(h.operation.result);
       if (!job.current() || handleRef.current !== h) return; saveHandle(null); setVisible(true);
