@@ -413,7 +413,7 @@ from deploy.backup import backup_all
 before=data.snapshot(root)
 receipt=backup_all(root)
 manifest=root/'backups'/receipt['manifest']
-data.validate_backup(root,before,manifest)
+finished=data.finish_stopped_backup(root,before,manifest)
 saved=proof/'backup-group';saved.mkdir(mode=0o700)
 value=json.loads(manifest.read_bytes())
 for item in value['snapshots']:
@@ -423,7 +423,7 @@ saved_manifest=saved/'backups'/receipt['manifest']
 saved_manifest.parent.mkdir(parents=True,exist_ok=True)
 shutil.copyfile(manifest,saved_manifest);saved_manifest.chmod(0o600)
 data.validate_backup(root,before,saved_manifest)
-for name,value in [('before.json',before),('backup.json',receipt)]:
+for name,value in [('before.json',before),('backup.json',receipt),('backup-finish.json',finished)]:
  with (proof/name).open('x') as stream:json.dump(value,stream)
  (proof/name).chmod(0o600)
 print(json.dumps({'verified':True,'manifest':receipt['manifest'],'databases':receipt['databases']}))

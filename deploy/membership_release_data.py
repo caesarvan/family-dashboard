@@ -4,12 +4,14 @@ The controller owns stop/backup/source-image verification and supplies one warm
 callback. This module never loads configuration or starts an application itself.
 """
 from datetime import datetime, timezone
+from contextlib import closing
 import hashlib
 import json
 import os
 from pathlib import Path, PurePosixPath
 import re
 import stat
+import sqlite3
 
 from deploy import membership_migration as migration
 
@@ -203,6 +205,55 @@ def _backup(data_root, before, manifest_path):
 def validate_backup(data_root, before, manifest_path):
     """Validate original deploy/backup.py manifest (also copied intact under proof/backup-group)."""
     return _backup(data_root, before, manifest_path)[0]
+
+
+def finish_stopped_backup(data_root, before, manifest_path):
+    """Close only empty WAL pairs created since the stopped, sidecar-free before.
+
+    All writers must remain stopped. Never use this for a general WAL recovery:
+    the original main-file bytes and complete backup must still equal before.
+    SQLite owns checkpoint/sidecar removal; the migration reader stays strict.
+    """
+    root = _directory(data_root)
+    backup = validate_backup(root, before, manifest_path)
+    sources, pending = {}, []
+    # Preflight the entire group before opening any source in read/write mode.
+    for relative, fingerprint in before['databases'].items():
+        path = root / relative  # The complete relative set was validated above.
+        _directory(path.parent)
+        try:
+            attrs = path.lstat()
+            need(stat.S_ISREG(attrs.st_mode) and not getattr(attrs, 'st_file_attributes', 0) & 0x400,
+                 'backup_source_not_regular')
+            need(migration.file_digest(path) == fingerprint['fileSha256'], 'backup_source_changed')
+            present = {}
+            for suffix in ('-wal', '-shm', '-journal'):
+                sidecar = Path(str(path) + suffix)
+                if sidecar.exists() or sidecar.is_symlink():
+                    info = sidecar.lstat()
+                    need(stat.S_ISREG(info.st_mode) and not getattr(info, 'st_file_attributes', 0) & 0x400,
+                         'backup_sidecar_not_regular')
+                    present[suffix] = info.st_size
+            need(not present or present == {'-wal': 0, '-shm': 32768}, 'backup_sidecar_not_empty_pair')
+        except OSError:
+            raise ReleaseDataError('backup_source_unavailable') from None
+        sources[relative] = path
+        if present:
+            pending.append(path)
+    for path in pending:
+        try:
+            with closing(sqlite3.connect(path.as_uri() + '?mode=rw', uri=True, timeout=0)) as con:
+                con.execute('PRAGMA trusted_schema=OFF')
+                need(con.execute('PRAGMA journal_mode').fetchone() == ('wal',), 'backup_source_not_wal')
+                need(con.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchall() == [(0, 0, 0)],
+                     'backup_checkpoint_not_empty')
+        except sqlite3.Error:
+            raise ReleaseDataError('backup_checkpoint_failed') from None
+        migration.no_sidecars(path)
+    need(snapshot(root) == before, 'backup_finished_snapshot_drift')
+    need(validate_backup(root, before, manifest_path) == backup, 'backup_changed_during_finish')
+    return {'verified': True, 'databases': len(sources), 'emptyWalPairsClosed': len(pending),
+            'beforeSha256': _digest(before), 'backup': backup}
 
 
 def _source_identity(value):
