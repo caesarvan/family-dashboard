@@ -191,3 +191,23 @@ def test_assembly_rejects_incomplete_or_changed_evidence(assembly, changed):
         path.write_bytes(shared.encoded(value))
     with pytest.raises((ValueError, plan.controller.ReleaseError)):
         plan.assemble(**assembly)
+
+
+def test_explicit_followup_test_input_is_packaged_without_opening_other_frontend_paths(package_environment):
+    env = package_environment
+    name = 'frontend/tests/inventoryFollowup.test.mjs'
+    write(env['repo'], name, b'// synthetic followup test input\n')
+    env['commit'] = commit(env['repo'])
+    evidence = json.loads(env['build_evidence'].read_text())
+    evidence.update(head=env['commit'], tree=subprocess.check_output(
+        ['git', 'rev-parse', 'HEAD^{tree}'], cwd=env['repo']).decode().strip())
+    evidence['inputFiles'][name] = shared.digest((env['repo'] / name).read_bytes())
+    env['build_evidence'].write_bytes(shared.encoded(evidence))
+    env['evidence_sha256'] = shared.digest(env['build_evidence'].read_bytes())
+    result = steady.prepare(**env)
+    verified = steady.verify_package(env['output_dir'], result['packageSha256'])
+    assert verified['blobs'][name] == b'// synthetic followup test input\n'
+    tracked = shared.tracked_files(env['repo'], env['commit'])
+    with pytest.raises(ValueError, match='new frontend input needs an explicit packaging policy'):
+        shared.selected_sources(tracked | {'frontend/tests/unreviewed.mjs'},
+                                (env['repo'] / 'deploy/prepare_release.py').read_bytes())
