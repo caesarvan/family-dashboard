@@ -1,6 +1,6 @@
 export type ProviderId = 'microsoft' | 'google';
 export type SourceKind = 'calendar' | 'tasks';
-import { isMemberId, isOwnerId } from './memberId';
+import { isMemberId, isOwnerId } from './memberId.ts';
 export type SourceOwner = string;
 export type SourceChoice = { remoteId: string; kind: SourceKind; owner: SourceOwner; primary: boolean };
 export type SavedSource = SourceChoice & { id: string; name: string; lastSuccess: string; error: string };

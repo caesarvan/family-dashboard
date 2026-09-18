@@ -106,11 +106,13 @@ test('full cloud title and location limits survive without truncation; invalid d
   assert.equal(readTVSnapshot(raw, actor()).state.events[0].title.length, 2048);
   assert.equal(readTVSnapshot(raw, actor()).state.events[0].location.length, 2048);
   for (const patch of [{ title: '长'.repeat(2049) }, { location: '长'.repeat(2049) }, { start: '2026-02-30T10:00:00Z' },
-    { start: day }, { end: day + 'T09:00:00+08:00' }, { owner: 'foreign' }, { revision: 0 }, { allDay: 'false' }]) {
+    { start: day }, { end: day + 'T09:00:00+08:00' }, { owner: 'invalid/member' }, { revision: 0 }, { allDay: 'false' }]) {
     const next = clone(raw); Object.assign(next.events[0], patch); assert.throws(() => readTVSnapshot(next, actor()));
   }
   raw.events.push(raw.events[0]); assert.throws(() => readTVSnapshot(raw, actor()));
   const next = snapshot(); next.tasks[0].due = '2026-02-29'; assert.throws(() => readTVSnapshot(next, actor()));
+  const historical = snapshot(); historical.events[0].owner = 'm_' + 'a'.repeat(24);
+  assert.equal(readTVSnapshot(historical, actor()).state.events[0].owner, historical.events[0].owner);
 });
 
 test('only complete valid device layouts and permitted focus/view reach the board', () => {
