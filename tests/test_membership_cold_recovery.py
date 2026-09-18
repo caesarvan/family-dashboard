@@ -170,3 +170,29 @@ def test_fresh_install_without_registry_still_initializes_default(tmp_path):
     assert (Path(config['DATA_DIR']) / 'platform.sqlite3').is_file()
     again = source.create_app(config)
     assert read(legacy(again), '/api/me')['user']['id'] == 'member1'
+
+
+@pytest.mark.parametrize('cookies', ['none', 'legacy', 'tv', 'both'])
+def test_restored_file_personal_recovery_stays_partial_until_restart(fixture, cookies):
+    original, before = remove_default(fixture)
+    cold = source.create_app(fixture['config'])
+    original.rename(fixture['database'])
+    client = cold.test_client()
+    if cookies in ('legacy', 'both'):
+        client.set_cookie('session', fixture['oldCookie'])
+    if cookies in ('tv', 'both'):
+        client.set_cookie('household_tv', 'old-unavailable-household-tv-cookie')
+    assert read(client, '/api/account/me')['account'] is None
+    assert client.get('/api/account/me', headers={'X-Display-Mode': 'tv'}).status_code == 403
+    signed = post(client, '/api/account/login', {'login': 'cold.recovery', 'password': PERSONAL_PASSWORD}, account=True)
+    homes = read(client, '/api/account/households')
+    assert homes['unavailable'] == [{'householdId': 'default', 'code': 'temporarily_unavailable'}]
+    assert [h['id'] for h in homes['memberships']] == [fixture['second']['id']]
+    post(client, '/api/account/switch-household', {'requestId': secrets.token_hex(16),
+        'membershipId': fixture['first']['id'], 'expectedRevision': fixture['first']['revision']}, account=True, expected=503)
+    assert client.get('/api/me').status_code == 503
+    assert read(client, '/api/account/me')['account']['id'] == signed['account']['id']
+    switch(client, fixture['second'])
+    me = read(client, '/api/me')['user']
+    assert me['householdId'] == fixture['second']['householdId'] and me['accountId'] == signed['account']['id']
+    assert digest(fixture['database']) == before, 'Recovery must not open or change the restored default DB'
