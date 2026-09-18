@@ -156,9 +156,10 @@ def _profile(value, phase):
             need(fingerprint['userVersion'] == (0 if phase == 'before' else 1), 'platform_version_profile')
 
 
-def _backup(data_root, before, manifest_path):
+def _backup(data_root, before, manifest_path, *, phase='before'):
+    need(phase in ('before', 'after'), 'backup_profile')
     root = _directory(data_root)
-    _profile(before, 'before')
+    _profile(before, phase)
     need(before['rootSha256'] == _digest(str(root)), 'snapshot_root_binding')
     manifest = migration.checked_path(manifest_path)
     manifest_hash = migration.file_digest(manifest)
@@ -202,12 +203,12 @@ def _backup(data_root, before, manifest_path):
     return proof, paths
 
 
-def validate_backup(data_root, before, manifest_path):
+def validate_backup(data_root, before, manifest_path, *, phase='before'):
     """Validate original deploy/backup.py manifest (also copied intact under proof/backup-group)."""
-    return _backup(data_root, before, manifest_path)[0]
+    return _backup(data_root, before, manifest_path, phase=phase)[0]
 
 
-def finish_stopped_backup(data_root, before, manifest_path):
+def finish_stopped_backup(data_root, before, manifest_path, *, phase='before'):
     """Close only empty WAL pairs created since the stopped, sidecar-free before.
 
     All writers must remain stopped. Never use this for a general WAL recovery:
@@ -215,7 +216,7 @@ def finish_stopped_backup(data_root, before, manifest_path):
     SQLite owns checkpoint/sidecar removal; the migration reader stays strict.
     """
     root = _directory(data_root)
-    backup = validate_backup(root, before, manifest_path)
+    backup = validate_backup(root, before, manifest_path, phase=phase)
     sources, pending = {}, []
     # Preflight the entire group before opening any source in read/write mode.
     for relative, fingerprint in before['databases'].items():
@@ -251,7 +252,7 @@ def finish_stopped_backup(data_root, before, manifest_path):
             raise ReleaseDataError('backup_checkpoint_failed') from None
         migration.no_sidecars(path)
     need(snapshot(root) == before, 'backup_finished_snapshot_drift')
-    need(validate_backup(root, before, manifest_path) == backup, 'backup_changed_during_finish')
+    need(validate_backup(root, before, manifest_path, phase=phase) == backup, 'backup_changed_during_finish')
     return {'verified': True, 'databases': len(sources), 'emptyWalPairsClosed': len(pending),
             'beforeSha256': _digest(before), 'backup': backup}
 

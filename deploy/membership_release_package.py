@@ -43,6 +43,21 @@ def need(ok, message):
         raise ValueError(message)
 
 
+def baseline_values(baseline=None):
+    # Explicit audited callers only; defaults keep the original migration contract.
+    if baseline is None:
+        return 'membership-release-package', PARENT_IMAGE, OLD_MANIFEST
+    need(baseline == 'memberships-r3-steady', 'unsupported release baseline')
+    return ('steady-release-package',
+            'sha256:c8e3da47800e3d11f609677bd6aca5f69aef6e7d7a49827c04fb6bea29946771',
+            'c89f045dbf6456b7dcd50c8c340dea09d60a020765735ba7f27ad6e80e383e54')
+
+
+def baseline_kwargs(baseline):
+    baseline_values(baseline)
+    return {} if baseline is None else {'baseline': baseline}
+
+
 def digest(raw):
     return hashlib.sha256(raw).hexdigest()
 
@@ -205,7 +220,8 @@ def runtime_files(files):
             or n.endswith('.py') and '/' not in n}
 
 
-def validate_maps(metadata, manifest, evidence):
+def validate_maps(metadata, manifest, evidence, *, baseline=None):
+    kind, parent, old_manifest = baseline_values(baseline)
     files = hash_map(manifest['files'], True)
     source = hash_map(metadata['sourceFiles'])
     exports = hash_map(metadata['exportFiles'], True)
@@ -214,7 +230,8 @@ def validate_maps(metadata, manifest, evidence):
     need(files == {**source, **{PREFIX + n: h for n, h in exports.items()}}, 'manifest partition differs')
     need(metadata['runtimeFiles'] == runtime_files(files), 'runtime partition differs')
     need(metadata['fixedFiles'] == FIXED and all(source.get(n) == h for n, h in FIXED.items()), 'dependency/config pin differs')
-    need(metadata['parentImage'] == PARENT_IMAGE and metadata['oldManifestSha256'] == OLD_MANIFEST, 'installed parent differs')
+    need(metadata['kind'] == kind and metadata['parentImage'] == parent
+         and metadata['oldManifestSha256'] == old_manifest, 'installed parent differs')
     need(evidence.get('schemaVersion') == 1 and evidence.get('kind') == 'membership-expo-build'
          and type(evidence.get('buildExit')) is int and evidence['buildExit'] == 0 and evidence.get('bundleMarkers') is True,
          'successful explicit build evidence required')
@@ -228,8 +245,9 @@ def validate_maps(metadata, manifest, evidence):
     checksum(metadata['sourceHead'], 40); checksum(metadata['tree'], 40)
 
 
-def inspect_inputs(repo, commit, export_dir, build_evidence, evidence_sha256):
+def inspect_inputs(repo, commit, export_dir, build_evidence, evidence_sha256, *, baseline=None):
     """Re-read live files and fixed Git blobs; return payload and provenance."""
+    kind, parent, old_manifest = baseline_values(baseline)
     repo = Path(repo).absolute()
     tree = identity(repo, commit)
     tracked = tracked_files(repo, commit)
@@ -258,14 +276,14 @@ def inspect_inputs(repo, commit, export_dir, build_evidence, evidence_sha256):
     blobs.update({PREFIX + n: v for n, v in generated.items()})
     need(len(blobs) <= MAX_FILES and sum(map(len, blobs.values())) <= MAX_TOTAL, 'package limits exceeded')
     files = {n: digest(v) for n, v in blobs.items()}
-    metadata = dict(schemaVersion=1, kind='membership-release-package', sourceHead=commit, tree=tree,
+    metadata = dict(schemaVersion=1, kind=kind, sourceHead=commit, tree=tree,
         sourceFiles=source_hashes, exportFiles=export_hashes, runtimeFiles=runtime_files(files), fixedFiles=FIXED,
         inputFiles=evidence['inputFiles'], buildSourceHead=build_head, buildSourceTree=evidence['tree'],
-        buildEvidenceSha256=evidence_sha256, packagerSha256=digest(blobs[SELF]), parentImage=PARENT_IMAGE,
-        oldManifestSha256=OLD_MANIFEST, productionOperations=False)
+        buildEvidenceSha256=evidence_sha256, packagerSha256=digest(blobs[SELF]), parentImage=parent,
+        oldManifestSha256=old_manifest, productionOperations=False)
     manifest = {'files': files, 'sourceHead': commit, 'tree': tree,
                 'excluded': ['credentials', 'runtime databases', 'private finance imports', 'test-results']}
-    validate_maps(metadata, manifest, evidence)
+    validate_maps(metadata, manifest, evidence, **baseline_kwargs(baseline))
     need(identity(repo, commit) == tree, 'source moved while inspecting')
     return blobs, manifest, metadata, raw_evidence
 
@@ -287,22 +305,23 @@ def make_archive(path, blobs, manifest_raw):
     Path(path).chmod(0o600)
 
 
-def verify_package(output_dir, package_sha256):
+def verify_package(output_dir, package_sha256, *, baseline=None):
     """Return verified {metadata, manifest, blobs}; never extract or mutate."""
+    kind, _, _ = baseline_values(baseline)
     output = checked(output_dir, True)
     need(set(os.listdir(output)) == {'release.tar.gz', 'release-manifest.json', 'build-evidence.json', 'package.json'},
          'unexpected package directory contents')
     raw = plain(output / 'package.json', 2_000_000)
     need(digest(raw) == checksum(package_sha256), 'package metadata hash differs')
     metadata = json_value(raw)
-    need(metadata.get('schemaVersion') == 1 and metadata.get('kind') == 'membership-release-package'
+    need(metadata.get('schemaVersion') == 1 and metadata.get('kind') == kind
          and metadata.get('productionOperations') is False, 'package contract differs')
     manifest_raw = plain(output / 'release-manifest.json', 2_000_000)
     need(digest(manifest_raw) == metadata['manifestSha256'], 'manifest hash differs')
     manifest = json_value(manifest_raw)
     evidence_raw = plain(output / 'build-evidence.json', 2_000_000)
     need(digest(evidence_raw) == metadata['buildEvidenceSha256'], 'packaged build evidence differs')
-    validate_maps(metadata, manifest, json_value(evidence_raw))
+    validate_maps(metadata, manifest, json_value(evidence_raw), **baseline_kwargs(baseline))
     need(manifest['sourceHead'] == metadata['sourceHead'] and manifest['tree'] == metadata['tree'], 'manifest identity differs')
     compressed = plain(output / 'release.tar.gz', MAX_TOTAL)
     need(digest(compressed) == metadata['archiveSha256'], 'archive hash differs')
@@ -331,7 +350,7 @@ def verify_package(output_dir, package_sha256):
     return {'metadata': metadata, 'manifest': manifest, 'blobs': blobs}
 
 
-def prepare(repo, commit, export_dir, build_evidence, evidence_sha256, output_dir):
+def prepare(repo, commit, export_dir, build_evidence, evidence_sha256, output_dir, *, baseline=None):
     output = Path(output_dir).absolute()
     need('..' not in output.parts, 'canonical output required')
     checked(output.parent, True)
@@ -339,19 +358,19 @@ def prepare(repo, commit, export_dir, build_evidence, evidence_sha256, output_di
     need(not output.is_relative_to(Path(repo).absolute()) and not output.is_relative_to(Path(export_dir).absolute()),
          'output must be outside source/export')
     inputs = (repo, commit, export_dir, build_evidence, evidence_sha256)
-    blobs, manifest, metadata, raw_evidence = inspect_inputs(*inputs)
+    blobs, manifest, metadata, raw_evidence = inspect_inputs(*inputs, **baseline_kwargs(baseline))
     manifest['createdAt'] = datetime.now(timezone.utc).isoformat()
     manifest_raw = encoded(manifest)
     output.mkdir(mode=0o700)
     write_new(output / 'release-manifest.json', manifest_raw)
     write_new(output / 'build-evidence.json', raw_evidence)
     make_archive(output / 'release.tar.gz', blobs, manifest_raw)
-    repeated = inspect_inputs(*inputs)
+    repeated = inspect_inputs(*inputs, **baseline_kwargs(baseline))
     need(repeated[0] == blobs and repeated[2] == metadata and repeated[3] == raw_evidence, 'inputs changed during packaging')
     metadata.update(archiveSha256=digest(plain(output / 'release.tar.gz', MAX_TOTAL)), manifestSha256=digest(manifest_raw))
     package_raw = encoded(metadata)
     write_new(output / 'package.json', package_raw)
-    verify_package(output, digest(package_raw))
+    verify_package(output, digest(package_raw), **baseline_kwargs(baseline))
     return {'outputDirectory': str(output), 'packageSha256': digest(package_raw),
             'archiveSha256': metadata['archiveSha256'], 'manifestSha256': metadata['manifestSha256'],
             'sourceHead': commit, 'tree': metadata['tree'], 'files': len(blobs), 'productionOperations': False}
