@@ -1,6 +1,6 @@
 # Expo 采购实付：发布适配器
 
-本批为未绑定候选，尚未打包、上传、执行 Linux 验证或发布。父版本为已上线的[财务列映射](FINANCE-COLUMN-MAPPING-ACCEPTANCE.md#finance-column-mapping-release)，不是待执行的旧成员迁移。
+本批已于 **2026-09-18 08:03:15（北京时间）激活，08:04:16 正常 TLS 读回通过**。Linux 实际 168 通过、1 项精确 Windows 跳过，零失败／错误；58→58 原数据与角色保全。独立只读发布审计通过；[集中验收记录](EXPO-SHOPPING-SETTLEMENT-ACCEPTANCE.md#expo-shopping-settlement-release)统一记录实际包、安装身份与阶段证据。父版本为已上线的[财务列映射](FINANCE-COLUMN-MAPPING-ACCEPTANCE.md#finance-column-mapping-release)，不是待执行的旧成员迁移。下述本地专项和 CLI 限制均保留为作者阶段历史。
 
 [prepare.py](../deploy/expo_shopping_settlement_release/prepare.py) 只从维护者私有 `finance-column-mapping-tools-20260918-r1/` 的九份固定 SHA 原件生成七算子、包准备器及绑定器。父 archive 为 `3ff158acd53ec13b411f55d7b810e386e16c41c38ea65c07ccc0470846f31631`，manifest 为 `32590f6186738d9de32064fd3e80de80de259c77f96981080c0583eb7525e0c9`，app／worker 镜像为 `sha256:039f7c7f4a601273bfbffa22ea9ca9494d8de2045240bf43244d41668469ada6`。父版本北京时间 2026-09-18 06:56:39 激活，06:57:18 post、06:59:53 fresh 读回通过。
 
