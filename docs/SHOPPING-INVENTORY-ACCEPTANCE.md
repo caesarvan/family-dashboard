@@ -1,6 +1,6 @@
 # 采购关联库存与首页编辑验收
 
-本批测试从采购项进入现有库存编辑器，检查明确登记、收货、退回与安全恢复；同时检查首页待办编辑入口。真实浏览器 R1 已完成：**首页流程通过，四条采购流程止于共同的测试按钮定位问题，整体未通过，也不代表已经发布**。修正仅允许按钮名前出现一个图标字符和空白，正文仍完整匹配；待独审后补测四条受影响的采购流程。API 的既有独立验证不在本浏览器脚本中重复。
+本批测试从采购项进入现有库存编辑器，检查明确登记、收货、退回与安全恢复；同时检查首页待办编辑入口。**五条要求已取得分轮真实浏览器通过证据：R2 首页，R3 三条采购，R4 收货／返回／真实重启；没有一次全套 5/5，也不代表已经发布。** 失败原件保留。业务与构建输入在各轮保持一致；API 的既有独立验证不在本浏览器脚本中重复。
 
 ## 用户入口与验收范围
 
@@ -37,8 +37,32 @@ python -B -X utf8 tests/browser_expo_shopping_inventory_check.py
 
 每次新建 `test-results/expo-shopping-inventory-<UTC>/`，保留执行脚本副本、`result.json`、每流程失败记录和截图。报告记录真实源码 head/tree、构建与脚本身份、输入及输出哈希、原始证据路径、各流程结果和临时目录清理。失败保留原件；修复后的有限补测可用 `--scenario <流程名>`；`--scenario shopping` 只执行前四条采购流程，报告 `fullSuite=false`，不重复首页或把不同轮次相加成一次全套通过。截图及合成运行证据不提交 Git。
 
+## 实际分轮记录
+
+各轮使用真实源码 `be4c63ee734a6fb1390a9781780122b5e6774ec1`；实际 Expo 构建来源 `d45210a499bca38b12e176259d0900bfd67457b1`，完整前端输入一致。原始证据为集成 worktree 的 `test-results/shopping-inventory-build-r1/build-evidence.json`，SHA-256 `e65a9fc55a06200a57e6342cabad7166aa281ad54795a38bdd17d43c8ae334fb`。证据如实保留 `kind=membership-expo-build`；Expo 自身 `buildExit=0`，包装程序 `wrapperExitCode=1` 是已生成 dist 目录尚未加入本地 Git 排除的收尾断言，集成人随后核对输入与产物，没有重新构建或改写旧退出码。
+
+下表目录均位于测试作者 worktree 的 `test-results/`，每个目录有独立 `result.json`：
+
+| 轮次、目录 | 作者脚本 commit | 实际结果与边界 |
+| --- | --- | --- |
+| R1 `expo-shopping-inventory-20260918T062756320278Z` | `7d5d7f69593760e49936519c2bdadf443eaf94a0` | 全五项，exit 1；首页业务检查通过，四条采购停在首个按钮名称定位。原名称带私用区图标；首页截图是保存后退出编辑器之前的过渡帧，不作为最终视觉证据。 |
+| R2 `expo-shopping-inventory-20260918T063325739393Z` | `56009ce4442a8e21b2b14e8d8fed0939f2844046` | 全五项，exit 1；首页业务及稳定截图通过。四条采购仍停在 locator：Python 的 `\U` 转义传到 JS 正则不能匹配。 |
+| R3 `expo-shopping-inventory-20260918T063715608170Z` | `0e789bda260ae6b65db65f93e39a7a819597eb90` | 仅四条采购，exit 1；新建／取消、未知回复恢复、伙伴隐私／撤权三项通过。收货退回的数量已核对，返回后错误地要求筛选按钮存在 `aria-checked`，停在测试 DOM 假设，未执行重启。 |
+| R4 `expo-shopping-inventory-20260918T063824658995Z` | `6bfc85c412114ef9bdbb6aad7f4a958d2aa61dd7` | 仅已有物品收货流程，exit 0；用真实“已完成 · 1 项”栏目严格区分 done 与 all，并核对原搜索、聚焦、再进入及真实重启。重启无需重登，原批次、5/6/1/0、三次实物记录和五张库存表保持。 |
+
+R1—R4 的源码、构建输入与产物、继承夹具、Git 冻结及临时目录清理守卫均通过，浏览器 pageErrors 与外网请求均为空。对应 `result.json` 的 SHA-256：
+
+```text
+R1 56a477310b3acdcd3a28d2f4ed65f6d5e83b97e9445a80776a34b51222319d24
+R2 93089d86b329d3d8d872df7be73e955f791ee1d48caea9a52d35e0d0e3cb63fb
+R3 0af2319612ed41ce883ee7b88d3625bace5163d50acb16fac885026c332d149b
+R4 4b574f6e4b836b0b8b49aa03aff1ece56e104e87ad312934654934a0672e4673
+```
+
+最终四张视觉证据为 R2 `home_edit_cancel_conflict/home-edited-1280.png`、R3 `new_item_cancel/new-item-batch-draft-390.png` 与 `lost_movement_response/unknown-result-1280.png`、R4 `existing_receive_return/receive-return-390.png`。均无水平溢出；手机截图记录当时滚动位置，不宣称覆盖整个长页面。R3 故障为真实成功的收货提交后丢弃响应：只有一次 POST、一次 movement、一次 operation，恢复读取同一 requestId，没有重新创建操作。
+
+R3 前另做真实页面单按钮探针 `locator-pua-js-probe-r2/result.json`，验证 Python→Playwright→浏览器的传输路径；它不计入五条业务流程。探针第一次在 app 启动前触发既有 Windows 路径长度守卫（临时前缀多两个字符），改用主脚本同样的短前缀后通过。没有安装依赖或改业务代码。
+
 ## 当前边界
 
-R1 原件为作者 worktree 的 `test-results/expo-shopping-inventory-20260918T062756320278Z/result.json`；源码 `be4c63ee734a6fb1390a9781780122b5e6774ec1`、脚本 `7d5d7f69593760e49936519c2bdadf443eaf94a0`。真实可访问名称为“图标 + 添加采购”，原 exact 名称助手未匹配；不是采购入口缺失。首页真实负责人／截止保存、取消与 409 均通过，留有 1280 宽截图。其余采购断言未抵达，不宣称验证完成。
-
-本批没有扩大售后功能；退回沿用现有实物记录，不推断退款，不创建财务结算。独立 API 验证覆盖 ACL 过滤、分页及参数错误，浏览器只验最短实际路径。通过后仍需独立视觉审查；本人真实云数据、实体电视和长期使用不在本地验收范围。不同轮次和补测范围分别记录。
+剩余观察：既有 Paper 筛选按钮在 Web DOM 中未暴露选中 `aria-checked`，实际筛选与返回保持通过；这是独立的读屏状态改进点，本批未改业务组件。本人真实云数据、实体电视和长期使用不在本地验收范围；最终代码和截图仍由集成人独立审查。本批未扩大售后功能；退回沿用实物记录，不推断退款、不创建财务结算。
