@@ -10,7 +10,7 @@ import sqlite3
 import threading
 import time
 
-from flask import current_app, g, has_request_context
+from flask import current_app, has_request_context, request
 
 
 _leases = threading.local()
@@ -137,7 +137,10 @@ def connect_household(app, path, **kwargs):
     def validate_actor(current):
         if not has_request_context() or current_app._get_current_object() is not app:
             return
-        actor, captured = getattr(g, 'actor', None), getattr(g, 'member_session', None)
+        # Flask g belongs to the application context, which can outlive or be
+        # shared by nested requests. Only enforce the proof captured for THIS
+        # request; authentication itself must be able to establish a new proof.
+        actor, captured = getattr(request, '_household_member_authority', (None, None))
         if not actor or actor.get('role') != 'member' or not captured:
             return
         sessions = app.extensions['member_sessions']
