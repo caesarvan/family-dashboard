@@ -65,7 +65,7 @@ class Run(BaseRun):
         self.cfg['PUBLIC_ORIGIN'] = self.base
         try:
             self.application = self.source.create_app(self.cfg)
-            self.server.set_app(self.application)
+            self.server.app = self.application
             self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
             self.thread.start()
         except Exception:
