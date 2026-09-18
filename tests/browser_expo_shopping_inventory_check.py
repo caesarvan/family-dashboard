@@ -349,6 +349,7 @@ class Run(fixture.Run):
             page.get_by_text('更多选项', exact=True).click()
             fill(page, '截止日期（YYYY-MM-DD，可选）', '2026-01-02')
             self.actual(page, 'PATCH', '/api/items/tasks/' + task['id'], lambda: button(page, '保存').click())
+            expect(page.get_by_role('textbox', name='名称', exact=True)).to_have_count(0)
             expect(button(page, edit)).to_be_enabled()
             fresh = next(t for t in self.get(ctx, '/api/state')['tasks'] if t['id'] == task['id'])
             assert fresh['owner'] == other['id'] and fresh['due'] == '2026-01-02' and not fresh['done']
