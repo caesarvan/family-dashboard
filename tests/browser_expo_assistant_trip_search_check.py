@@ -96,6 +96,10 @@ class Run(BaseRun):
     def input(page):
         return page.get_by_role('textbox', name=PROMPT, exact=True)
 
+    @staticmethod
+    def edit_button(page):
+        return page.get_by_role('button', name=re.compile(r'(?:^|\s)编辑旅行$'))
+
     def open_assistant(self, page):
         page.goto(self.base + '/app/assistant')
         expect(page.get_by_role('heading', name='家庭助理', exact=True)).to_be_visible(timeout=15000)
@@ -146,7 +150,8 @@ class Run(BaseRun):
             target.click()
         expect(page.get_by_role('heading', name='旅行详情', exact=True)).to_be_visible(timeout=15000)
         expect(page.get_by_role('heading', name=title, exact=True)).to_be_visible()
-        expect(button(page, '编辑旅行')).to_be_enabled()
+        expect(self.edit_button(page)).to_have_count(1)
+        expect(self.edit_button(page)).to_be_enabled()
         expect(button(page, '返回助理')).to_be_visible()
         expect(page.get_by_role('heading', name='计划旅行', exact=True)).to_have_count(0)
         if journey_id:
@@ -239,7 +244,7 @@ class Run(BaseRun):
             button(page, '查看旅行 合成查后删除旅行').click()
             expect(page.get_by_text('这趟旅行已被删除，请刷新', exact=True)).to_be_visible()
             expect(page.get_by_role('heading', name='旅行详情', exact=True)).to_have_count(0)
-            expect(button(page, '编辑旅行')).to_have_count(0)
+            expect(self.edit_button(page)).to_have_count(0)
             self.return_search(page, '搜索 合成查后删除旅行', '合成查后删除旅行', 0)
             expect(button(page, '查看旅行 合成查后删除旅行')).to_have_count(0)
             title = other['plan']['title']; prompt = '搜索 ' + title
@@ -256,7 +261,7 @@ class Run(BaseRun):
                 self.settle(page, lambda: bool(dropped))
                 expect(page.get_by_role('alert')).to_be_visible()
                 expect(page.get_by_role('heading', name='旅行详情', exact=True)).to_have_count(0)
-                expect(button(page, '编辑旅行')).to_have_count(0)
+                expect(self.edit_button(page)).to_have_count(0)
             finally:
                 page.unroute(url, lose)
             self.return_search(page, prompt, title, 0)
@@ -336,7 +341,7 @@ class Run(BaseRun):
                     # absence assertion while the original read is still held.
                     expect(self.input(page)).to_be_enabled(timeout=15000)
                     expect(page.get_by_role('heading', name='合成身份变化前旅行', exact=True)).to_have_count(0)
-                    expect(button(page, '编辑旅行')).to_have_count(0)
+                    expect(self.edit_button(page)).to_have_count(0)
                     result = self.search(page, '搜索 合成身份变化前旅行')
                     assert result['search']['total'] == 0
                     expect(button(page, '查看旅行 合成身份变化前旅行')).to_have_count(0)
@@ -349,7 +354,7 @@ class Run(BaseRun):
             detail = self.seed_trip(ctx, '合成原旅行待核对')
             self.open_assistant(page); self.search(page, '搜索 合成原旅行待核对', '合成原旅行待核对')
             self.open_match(page, '合成原旅行待核对', detail['tripId'], detail['id'])
-            button(page, '编辑旅行').click()
+            self.edit_button(page).click()
             page.get_by_role('textbox', name='旅行名称', exact=True).fill('合成已提交待核对旅行')
             self.actual_post(page, '/api/journeys/preview', lambda: button(page, '预览变更').click())
             expect(button(page, '确认保存旅行')).to_be_enabled()
