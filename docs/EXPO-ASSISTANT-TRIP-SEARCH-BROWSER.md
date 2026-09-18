@@ -1,6 +1,6 @@
 # Expo 助理查找旅行：浏览器验收脚本
 
-本文件与 [验收脚本](../tests/browser_expo_assistant_trip_search_check.py) 是下一批候选，基于 `37a393f149aeefb91a92da05b1d4d213b4831af0`。首版准备阶段只做静态检查；下文记录随后真实 R1 的部分通过及选择器修订。修订尚未执行 R2；六组/四图仍是完整目标，不是通过结果。
+[验收脚本](../tests/browser_expo_assistant_trip_search_check.py) 起点为 `37a393f149aeefb91a92da05b1d4d213b4831af0`，最终修订 `2ff717cc9da029b94bfd0839c5d3f0f1c76839c8` 已通过非作者审查。R2 六组通过；服务器验证失败后仅拆分经典浏览器测试，再对新候选执行 R3 六组与四张视口图，均通过独立复核。R1 失败原件保留。生产状态见[集中验收](EXPO-ASSISTANT-TRIP-SEARCH-ACCEPTANCE.md#expo-assistant-trip-search-release)。
 
 客户端接缝依据独立 UI 候选 `5320576d6062390b74f46d2aff7b340f96693c7f`：显式“搜索 / 查找 / 找一下”前缀保留原文字，仅在本地查询；“查看旅行 <真实标题>”使用 `kind=trips` 的实体 ID，嵌入现有详情。返回助理保留输入及查询页码，并重新读取本人身份、概览与查询结果。详见 [助理接口与界面](EXPO-ASSISTANT.md)。
 
@@ -24,13 +24,13 @@
 - 路由仅原样转发、延迟或丢弃实际响应，保存真实合成响应原字节；不修改业务成功 JSON。未知保存测试确实先提交，再丢读回，不将当前状态当作操作回执。
 - 六组逐一收集错误并继续，保存失败截图/ARIA/traceback；每组结束停止服务、关闭浏览器上下文及移除临时数据库。总结果需六组、四图、零页面异常/外网/模型调用、全部清理和来源不变同时满足。
 
-静态准备不执行下面命令；须经另一位审查者确认固定脚本，再由 Root 提供已合并冻结源码和构建证据后授权运行：
+运行入口如下；每轮须绑定已审固定脚本、组合与构建证据，不把历史命令直接用于浮动源码：
 
 ```powershell
 python -B -X utf8 tests/browser_expo_assistant_trip_search_check.py --source-root <冻结组合目录> --expected-head <40hex> --bundle <已审dist目录> --expected-build-evidence <64hex>
 ```
 
-实际运行在作者树 `test-results/expo-assistant-trip-search-<UTC>/` 排他保留执行脚本、每组原件与 `result.json`。图片只覆盖滚动后的可见视口，仍需逐张视觉复核。该验收不证明真实 AI 提供方、云账号、真实家庭资料、原生手机或实体电视可用；本地查询页面复用原旅行能力，不推断真实到访或预订。
+实际运行在作者树 `test-results/expo-assistant-trip-search-<UTC>/` 排他保留执行脚本、每组原件与 `result.json`。图片只覆盖滚动后的可见视口；R2、R3 各四图均已由 Root 实际逐张复核，未来运行仍需独立视觉复核。该验收不证明真实 AI 提供方、云账号、真实家庭资料、原生手机或实体电视可用；本地查询页面复用原旅行能力，不推断真实到访或预订。
 
 ## R1 实际执行及候选选择器修正
 
@@ -38,4 +38,18 @@ python -B -X utf8 tests/browser_expo_assistant_trip_search_check.py --source-roo
 
 原件 `test-results/expo-assistant-trip-search-20260918T003155164991Z/result.json` SHA `d24ef84a745be96fa1d78d776a4a1bc08eaf71edf3de86b50e21ea77a345ae4c`，完整 stdout SHA `a9c3adc99a89f8ba479dec8d779c63dea0f0578d04a58be08c1cdc13f69519ae`、stderr 空；757 tracked、23 exports、5 fixtures 前后相同，六个临时环境全部清理，页面异常/外网/模型调用均为零。仅生成浅色 320/1280 两张视口图，深色与完整布局流程未完成。
 
-修订仅统一局部 `edit_button` 为 button 角色及末尾“编辑旅行”的锚定名称，并在进入详情时要求唯一匹配；正断言、负断言与点击使用同一定位，不修改产品或业务断言。保留 R1 原件，修订候选只作静态检查，尚未执行 R2；仍要求受验源码与实际 build 同 head/tree。
+修订仅统一局部 `edit_button` 为 button 角色及末尾“编辑旅行”的锚定名称，并在进入详情时要求唯一匹配；正断言、负断言与点击使用同一定位，不修改产品或业务断言。保留 R1 原件；修订经 Root 增量审查后合入，仍要求受验源码与实际 build 同 head/tree。
+
+## R2 实际结果
+
+2026-09-18，受验组合 `2856f376795a8ca1519cb2c7739993caee466f5d`／tree `1c59c6268f3406c1ac2692f61e3be8275dfba283` 使用独立 R2 构建实际六组全部通过。760 tracked、23 exports、5 fixtures 前后完全相同，六个临时环境均清理，页面异常、外网和模型调用均为零；未知保存确实先由服务端提交，再丢回应，仅明确核对时沿原 payload 重放。
+
+原件 `test-results/expo-assistant-trip-search-20260918T003632986532Z/result.json` SHA `a32150582e54897097a69881aa32323d3297c5201234c354e5d2df62dec24319`；完整 stdout SHA `4f471741891b03c78d6f85cc271781e0e2a89d5e95d7900a57a520c07768e769`，stderr 空。Root 实际查看全部四图的独立记录 `expo-assistant-trip-search-visual-review-20260918-r2.json` SHA `117ed5529e2381e84f31567eefd8f58be94f6a13bec3e0a2c59f568aa5c689d3`：320×844、1280×1000 的浅／深色可见范围无阻断；长标题、旅行类型与操作区可读，按钮实测 44px 高。仅证明这些滚动视口，不扩大为整页、原生手机或实体电视验收。
+
+## R3：经典浏览器测试拆分后的候选
+
+首轮服务器验证因原 `test_assistant_source_search.py` 混入需要 Playwright 的经典浏览器测试而失败；该完整函数逐字移入独立模块，Windows／Edge 单项实际 1/1，内部八项检查全部完成。它与本页 Expo 六组是两个独立范围；失败原件、拆分与 167 collection 见[集中验收](EXPO-ASSISTANT-TRIP-SEARCH-ACCEPTANCE.md#expo-assistant-trip-search-release)。
+
+R3 受验候选 `52adae89741c239168d2bdf7bffac430952065d1`／tree `4dd0ea975510a8efcf38b42f1450cafa1ba194d8`，实际构建证据 SHA `c3120d8f407266e8120842dcd7d22f6d8e456ae1384dab0bff7cd20e6ec16730`；198 构建输入与 23 导出和 R2 相同。六组全部通过、四 PNG、761 tracked／23 exports／5 fixtures 前后不变，六个临时环境清理，页面异常／外网／模型调用均为零。
+
+原件 `test-results/expo-assistant-trip-search-20260918T010248112020Z/result.json` SHA `d44b9673f910c50baf77d3154d6319dc025ca36668ec254d307cfb2e3391d381`。Root 实际逐看四图的 `expo-assistant-trip-search-visual-review-20260918-r3.json` SHA `5457794ee1aa7a1c6b936d07f4d258466f4777180558268a96c32ae7e1972015`，仍仅覆盖 320×844／1280×1000 浅深色滚动后可见视口；这些本地报告本身不代替另行记录的生产激活与读回证据。

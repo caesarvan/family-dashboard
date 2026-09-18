@@ -1,6 +1,8 @@
 # 家庭中枢 · Family Dashboard
 
-**最新上线：Expo 采购实付核对（2026-09-18 08:03，北京时间）。** 在采购项点「核对实付」，或在本人交易详情点「核对采购实付」，选择付款、核对整项实付和「已买到」，预览后明确保存。仅共享采购金额与状态，付款明细仍仅本人可见；经典入口继续可用。[使用与验收](docs/EXPO-SHOPPING-SETTLEMENT-ACCEPTANCE.md#expo-shopping-settlement-release)。
+**最新上线：助理查找已有旅行（2026-09-18 09:30，北京时间）。** 在「家庭助理」输入「找一下冰岛旅行」「搜索 冰岛旅行」或「查找：冰岛旅行」，点「查看旅行」打开原详情，再返回原搜索页；显式搜索只在本地进行。09:31 正常 TLS 读回通过。[使用与验收](docs/EXPO-ASSISTANT-TRIP-SEARCH-ACCEPTANCE.md#expo-assistant-trip-search-release)。
+
+**此前上线：Expo 采购实付核对（2026-09-18 08:03，北京时间）。** 在采购项点「核对实付」，或在本人交易详情点「核对采购实付」，选择付款、核对整项实付和「已买到」，预览后明确保存。仅共享采购金额与状态，付款明细仍仅本人可见；经典入口继续可用。[使用与验收](docs/EXPO-SHOPPING-SETTLEMENT-ACCEPTANCE.md#expo-shopping-settlement-release)。
 
 **此前上线：通用账单四列映射（2026-09-18 06:56，北京时间）。** 在「家庭资金 → 导入账单」选择通用表格，可手动指定日期、金额、标题和币种列，预览无错误后再明确保存。仅本人可见，不换汇或修改公共荷包。[使用步骤](docs/EXPO-FINANCE-COLUMN-MAPPING.md) · [本批验收记录](docs/FINANCE-COLUMN-MAPPING-ACCEPTANCE.md)。
 
