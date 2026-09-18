@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 
 from playwright.sync_api import expect, sync_playwright
 import browser_expo_memberships_check as fixture
-from browser_expo_finance_check import button, row, sha
+from browser_expo_finance_check import row, sha
 from browser_expo_memberships_check import file_manifest
 
 AUTHOR = Path(__file__).resolve().parents[1]
@@ -36,6 +36,13 @@ CASES = ('existing_receive_return', 'new_item_cancel', 'lost_movement_response',
 P = '/api/inventory'
 INVENTORY = ('inventory_items', 'inventory_acquisitions', 'inventory_movements',
              'inventory_operations', 'inventory_source_links')
+
+
+def button(page, name):
+    # Paper's decorative icon enters the actual accessible name when no explicit
+    # label is supplied. Permit one PUA icon plus space; keep the text exact.
+    icon = r'(?:[\ue000-\uf8ff\U000f0000-\U000ffffd\U00100000-\U0010fffd]\s+)?'
+    return page.get_by_role('button', name=re.compile('^' + icon + re.escape(name) + '$'))
 
 
 def fill(page, label, value):
