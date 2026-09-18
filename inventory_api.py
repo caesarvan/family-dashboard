@@ -1,6 +1,7 @@
 """Explicit member-only HTTP adapter for the approved inventory core.
 
-No cloud calls, financial writes, task creation or application auto-registration.
+No cloud calls, financial writes or application auto-registration.
+After-sales tasks are explicitly created locally in the inventory transaction.
 The supplied db() must resolve the current household's request-local connection.
 """
 from contextlib import contextmanager
@@ -127,8 +128,8 @@ def _page(items, total, query):
 
 
 class InventoryAPI:
-    def __init__(self, app, db, Problem):
-        self.app, self.db, self.Problem = app, db, Problem
+    def __init__(self, app, db, Problem, validate=None):
+        self.app, self.db, self.Problem, self.validate = app, db, Problem, validate
 
     @contextmanager
     def transaction(self, write=False):
@@ -203,19 +204,79 @@ class InventoryAPI:
         if con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'").rowcount!=1:
             raise InventoryAPIError('storage')
 
+    def followup_id(self, con, item_id, acquisition_id):
+        # The immutable receipt is the link, including after task deletion. Do
+        # not read or expose another member's request ID, actor or payload hash.
+        rows = con.execute("""SELECT result FROM inventory_operations
+            WHERE operation='create_followup' AND item_id=? AND acquisition_id=? LIMIT 2""",
+            (item_id,acquisition_id)).fetchall()
+        if not rows:
+            return None
+        if len(rows)!=1:
+            raise core.InventoryError('storage')
+        result = json.loads(rows[0]['result'])
+        uid = result.get('entityId') if type(result) is dict else None
+        if type(uid) is not str or not re.fullmatch('[0-9a-f]{24}',uid):
+            raise core.InventoryError('storage')
+        return uid
 
-def register_inventory(app, db, Problem, *, initialize=True):
+    def create_followup(self, con, actor, uid, value):
+        # Resolve only current ACL/identity here. Mutable state, task validation
+        # and dependencies belong in action(), after the original-key replay.
+        item, lot = core._acquisition(con,actor,uid)
+        def action():
+            if self.followup_id(con,item['id'],uid) is not None or lot['after_sales_state']!='open':
+                raise core.InventoryError('conflict')
+            if not callable(self.validate):
+                raise core.InventoryError('storage')
+            data = value['data']
+            if any(type(v) is not str for v in data.values()):
+                raise core.InventoryError('invalid')
+            try:
+                task = self.validate('tasks',data,lambda:con)
+            except self.Problem:
+                raise core.InventoryError('invalid') from None
+            if con.execute("SELECT count(*) FROM entities WHERE kind='tasks'").fetchone()[0]>=2500:
+                raise core.InventoryError('capacity')
+            task_id = secrets.token_hex(12)
+            con.execute("INSERT INTO entities(id,kind,data,updated_at) VALUES(?,?,?,?)",
+                (task_id,'tasks',json.dumps(task),datetime.now(timezone.utc).isoformat(timespec='microseconds')))
+            core._bump(con,'inventory_items',item)
+            core._bump(con,'inventory_acquisitions',lot)
+            return dict(itemId=item['id'],itemRevision=item['revision']+1,
+                acquisitionId=uid,acquisitionRevision=lot['revision']+1,entityId=task_id)
+        return core.apply_with_receipt(con,actor,value['requestId'],'create_followup',value['data'],action,
+            item_id=item['id'],item_revision=value['itemRevision'],
+            acquisition_id=uid,acquisition_revision=value['revision'])
+
+    def followup(self, con, actor, uid):
+        lot = self.acquisition(con,actor,uid)
+        task_id = self.followup_id(con,lot['itemId'],uid)
+        result = dict(itemId=lot['itemId'],acquisitionId=uid,state='none',task=None)
+        if task_id is None:
+            return result
+        row = con.execute("SELECT id,revision,data FROM entities WHERE id=? AND kind='tasks'",(task_id,)).fetchone()
+        if row is None:
+            return {**result,'state':'deleted'}
+        data = json.loads(row['data'])
+        task = {key:data[key] for key in ('title','owner','due','done','note')}
+        return {**result,'state':'linked','task':dict(id=row['id'],revision=row['revision'],**task)}
+
+
+def register_inventory(app, db, Problem, *, initialize=True, validate=None):
     """Register explicitly for EACH household. db() is caller-owned/request-local.
 
     initialize=False is for a separately migrated schema, never a silent
     in-request migration. This module owns each request transaction and audit.
+    validate is the caller's canonical task validator; without it, new followup
+    writes fail closed while existing inventory routes remain available.
     """
     if type(initialize) is not bool:
         raise ValueError('Inventory initialization option must be a boolean')
     if initialize:
         with app.app_context():
             core.initialize_inventory(db())
-    api = InventoryAPI(app,db,Problem)
+    api = InventoryAPI(app,db,Problem,validate)
     app.extensions['inventory'] = api
 
     @app.errorhandler(InventoryAPIError)
@@ -352,6 +413,20 @@ def register_inventory(app, db, Problem, *, initialize=True):
         with api.transaction() as (con,actor):
             acquisition = api.acquisition(con,actor,uid)
             result = {'acquisition':acquisition,'item':core.project_item(con,actor,acquisition['itemId'])}
+        return jsonify(result)
+
+    @app.route(PREFIX+'/acquisitions/<uid>/followup',methods=['GET','POST'])
+    @safe_endpoint
+    def inventory_followup(uid):
+        _id(uid)
+        if request.method=='POST':
+            required = {'requestId','itemRevision','revision','data'}
+            value = _body(required,required)
+            _fields(value['data'],{'title','owner','due','note'},{'title'})
+            return write('create_followup',lambda c,a:api.create_followup(c,a,uid,value),True)
+        _no_query()
+        with api.transaction() as (con,actor):
+            result = api.followup(con,actor,uid)
         return jsonify(result)
 
     @app.route(PREFIX+'/acquisitions/<uid>/movements',methods=['GET','POST'])
