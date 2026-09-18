@@ -16,6 +16,9 @@ const { PhotoReadFence } = await import('../frontend/src/lib/photos.ts');
 const { MembersFence } = await import('../frontend/src/lib/householdMembers.ts');
 const { BaselineFence } = await import('../frontend/src/lib/financeBaseline.ts');
 const { DeviceFence } = await import('../frontend/src/lib/devices.ts');
+const { journeySessionKey } = await import('../frontend/src/lib/assistantJourney.ts');
+const { memberKey, readForMember } = await import('../frontend/src/lib/trips.ts');
+const { AssistantFlow } = await import('../frontend/src/lib/assistant.ts');
 const fixture = () => ({ user: { role: 'member', id: 'member1', householdId: 'default', auth_version: 1,
   membershipRevision: 2, accountId: 'a'.repeat(32), accountAuthVersion: 1, authenticationGeneration: 4 }, csrf: 'test-only-csrf' });
 
@@ -52,3 +55,22 @@ for (const [name, run] of Object.entries(runs)) {
     }
   });
 }
+
+test('assistant entry and actual trip read / assistant flow observe the new identity fields', async () => {
+  const value = fixture();
+  assert.equal(journeySessionKey(value), sessionIdentity(value));
+  for (const field of ['membershipRevision', 'accountId', 'accountAuthVersion', 'authenticationGeneration']) {
+    const altered = structuredClone(value);
+    altered.user[field] = typeof altered.user[field] === 'string' ? 'b'.repeat(32) : altered.user[field] + 1;
+    assert.notEqual(journeySessionKey(altered), sessionIdentity(value));
+    const actor = memberKey(value.user);
+    assert.equal(await readForMember('/journeys', actor, async path => path === '/me' ? value : 'real-trip-result', () => true), 'real-trip-result');
+    await assert.rejects(() => readForMember('/journeys', actor, async path => path === '/me' ? altered : 'stale-result', () => true));
+    let current = value;
+    const flow = new AssistantFlow(value.user, { read: async path => path === '/me' ? current : { modelConfigured: false },
+      mutate: async () => { throw new Error('No writes allowed'); }, refresh: async () => {}, current: () => true }, () => {});
+    await flow.load(); assert.equal(flow.state.ready, true);
+    current = altered; await flow.load(); assert.equal(flow.state.expired, true);
+    flow.close();
+  }
+});

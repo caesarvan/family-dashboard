@@ -4,6 +4,7 @@ import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Button, Card, Checkbox, Dialog, Divider, List, Menu, Portal, ProgressBar, SegmentedButtons, Text, TextInput, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
+import { memberIdentity } from '../lib/sessionIdentity.ts';
 import { openPhotosProvider } from '../lib/navigation';
 import type { ScreenProps } from '../lib/types';
 import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, finishPhotoCreate, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto } from '../lib/photos';
@@ -24,7 +25,7 @@ const toggle = (ids: string[], id: string) => ids.includes(id) ? ids.filter(valu
 export default function PhotosScreen(props: ScreenProps) {
   const household = useHousehold();
   const identityKey = (household as typeof household & { identityKey?: string }).identityKey;
-  const actor = identityKey || JSON.stringify([props.user.role, props.user.householdId, props.user.id, props.user.auth_version]);
+  const actor = identityKey || memberIdentity(props.user);
   // The key makes clearing private React state synchronous with identity changes.
   if (props.user.role !== 'member') return <EmptyState title="请用成员账户管理相册" description="电视仅能读取单独授予该设备的照片。" />;
   return <PhotoWorkspace key={actor} {...props} identityKey={identityKey} />;

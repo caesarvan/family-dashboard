@@ -14,3 +14,5 @@ export function sessionIdentity(session: IdentitySession): string {
     user?.membershipRevision, user?.accountId, user?.accountAuthVersion,
     user?.authenticationGeneration, session.csrf]);
 }
+
+export const memberIdentity = (user: IdentitySession['user']): string => sessionIdentity({ user });
