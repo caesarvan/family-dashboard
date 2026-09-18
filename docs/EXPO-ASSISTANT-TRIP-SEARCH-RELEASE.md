@@ -1,6 +1,6 @@
 # Expo 助理旅行查找：发布适配器
 
-本批是独立未绑定候选，未生成最终发布工具、打包、绑定或部署。父版本为已上线的[采购实付](EXPO-SHOPPING-SETTLEMENT-ACCEPTANCE.md#expo-shopping-settlement-release)，本批只接入显式旅行查找、打开原旅行详情与返回搜索，不增加后端路由或模型调用。
+本批于 2026-09-18 09:30:34（北京时间）激活，09:31:16 正常 TLS 读回通过；固定安装身份、首轮失败与恢复、独立审计状态见[集中验收](EXPO-ASSISTANT-TRIP-SEARCH-ACCEPTANCE.md#expo-assistant-trip-search-release)。父版本为此前上线的[采购实付](EXPO-SHOPPING-SETTLEMENT-ACCEPTANCE.md#expo-shopping-settlement-release)，本批只接入显式旅行查找、打开原旅行详情与返回搜索，不增加后端路由或模型调用。
 
 [prepare.py](../deploy/expo_assistant_trip_search_release/prepare.py) 从私有 `expo-shopping-settlement-tools-20260918-r1/` 九份实际固定 SHA 原件派生七算子、包准备器与绑定器。父 archive 为 `973c547235d6efd64369ecadb8003bb8d21e1847d8506fa3d13b2077a1921cd3`，manifest 为 `b5143c3bf4947772f0211d86c36cdb2aaed36d72f6b82e3ba8601ff2043c7efd`，实际 app／worker 镜像为 `sha256:c6246c280d19035ecc3b4ec49d8816cb019029a7a690a4285509ce73a9cf7cfd`。这些是父版本的实际安装身份，不是下一批新镜像。
 
@@ -14,7 +14,7 @@
 
 ## 有界验证与交接
 
-最终 Python 验证限定为 `test_home_assistant`、`test_assistant_source_search`、`test_assistant_journey_brief`、`test_household_spaces`、`test_household_members_migration`、`test_platform_backup`、`test_frontend_runtime` 与本适配器测试八模块。最终节点数只接受真实固定组合 collection；当前不预填。Node 旅行入口专项单独本地执行，`test_expo_assistant_flow.py` 不进入 Python 镜像验证。
+最终 Python 验证限定为 `test_home_assistant`、`test_assistant_source_search`、`test_assistant_journey_brief`、`test_household_spaces`、`test_household_members_migration`、`test_platform_backup`、`test_frontend_runtime` 与本适配器测试八模块。首轮 Linux 验证实际 168 项＝166 通过＋1 精确 Windows 跳过＋1 缺 Playwright 失败，未进入 stage／activate／post。经典浏览器完整函数在 `c83503090703bbf06053c26a5e26e6706c2471a8` 逐字移入 `tests/test_assistant_source_search_browser.py`，无 skip、delete 或 deselect；Windows／Edge 独立单项 1/1、内部八项检查通过。拆分后候选 `52adae89741c239168d2bdf7bffac430952065d1` 实际 collection 为 167 个唯一节点／原八模块；该收集原件保持独立。随后 T-r2 Linux 实际执行为 166 通过＋1 精确 Windows junction 跳过，0 failure／error／deselect，运行文件前后核验通过。Node 旅行入口专项单独本地执行，`test_expo_assistant_flow.py` 不进入 Python 镜像验证。
 
 本适配器的保护专项覆盖源 pin 缺失／畸形、路径／大小、Docker 不变、排他生成、非法冻结、禁止迁移 SQL，以及已有非空账户和普通 member 角色的真实临时 SQLite 保全、备份和重启。私有 CLI 用实际父九原件与归档核完整后端字节，在临时目录检查派生差异、原函数不变、敏感路径排除、必需构建输入、非法配置及未绑定入口拒绝；派生程序的子进程与网络被禁止。
 
@@ -22,4 +22,4 @@
 
 同一代码提交的实际父九原件 CLI 检查退出 0，拒绝 124 个来源变更、18 个非法冻结，以及 2 个非法本地入口和 5 个未绑定阶段入口；核对 55 个未变父函数、完整 39 后端及原匿名清单。自己的两份代码和父九原件共 11 个输入前后散列一致。原件位于 `test-results/assistant-trip-search-pinned-r1/`：`record.json` SHA `fc061e276d5d303d5ffed9d5ed3892af888615b86dd085c520b321b2079a5583`，`stdout` SHA `c6d2f2d888d1f0e91f77254c1a04819b96bd3c653a823eef038f6137335e66f9`，`generated/generated-delta.patch` SHA `8e5570720a6cb758f029adf8a56278fbc5b0dc0a1acc08cf3367c6566ed9938e`。
 
-该 CLI 只验证作者固定树当时的 198 项构建来源可被选择，不代表新 UI 的最终构建；浏览器文件尚待 Root 集成，已明确列入 `pendingFinalIntegrationFiles`。临时测试中的 `9991` 仅为合成 freeze 数字，最终八模块节点数仍须实际 collection。派生工具仅在临时目录用于拒绝检查，未生成最终发布目录、打包、绑定、远端或生产操作；非作者审查与最终组合验收尚待完成。
+该 CLI 当时只验证作者固定树的 198 项构建来源可被选择，浏览器文件尚未集成并列于 `pendingFinalIntegrationFiles`；临时测试中的 `9991` 仅为合成 freeze 数字，不能作最终测试计数。随后适配器固定 `0518c05885b7545a97189aed8048746ac678a580` 经非作者审查合入，真实 R2 构建核对 198 inputs／23 exports、浏览器六组／四图和当轮组合审查通过；测试拆分后 R3 同字节构建与六组／四图再次通过。上述作者 CLI 仍只代表临时拒绝演练，不冒充生产工具执行；当前实际 collection 为 167；首轮失败工具目录及原件完整保留，恢复轮使用全新 `expo-assistant-trip-search-tools-20260918-r2`，没有重放首轮阶段。T-r2 的五个发布阶段各一次成功，58→58 原数据与角色保全；实际包、绑定、镜像、激活／post 和新逐库在线备份见[集中验收](EXPO-ASSISTANT-TRIP-SEARCH-ACCEPTANCE.md#expo-assistant-trip-search-release)。独立只读审计已 PASS，47 本地＋8 远端原件链、167 唯一节点和发布保全均核对；09:33:38 的 fresh 读回与固定安装身份一致。审计未重放发布、备份或测试；在线逐库备份不作为新的全组原子快照。
