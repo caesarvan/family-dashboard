@@ -4,8 +4,8 @@ import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Button, Text, TextInput, useTheme } from 'react-native-paper';
 import { useHousehold } from '../lib/household';
 import { readMembers } from '../lib/householdMembers';
-import { identitySignature, MembershipDiscarded, MembershipError, MembershipFence,
-  membershipRequest, newMembershipRequestId, readAccount, readMembershipIdentity, readOperation, record, boundedText, hexId,
+import { accountSignature, identitySignature, MembershipDiscarded, MembershipError, MembershipFence,
+  membershipRequest, newMembershipRequestId, readAccount, readMembershipIdentity, readOperation, record, boundedText, hexId, requireMembershipMember,
   type MembershipIdentity, type MembershipRequest } from '../lib/personalAccounts';
 import { canStartNewMembershipOperation } from '../lib/personalAccounts';
 import { acceptedMembershipTransition, operationBelongsTo, readCurrentHousehold, readHouseholds, readMembershipResult, readMembershipWriteReply, validateResultTarget, roleLabel,
@@ -59,14 +59,20 @@ export function useMembershipPanel(props: MembershipPanelProps, dirty: boolean, 
     const valid = () => current(e);
     try {
       const before = await readMembershipIdentity(controller.signal); if (!valid()) return;
-      if (!bootstrap && identityRef.current && identitySignature(before) !== identitySignature(identityRef.current)) throw new MembershipDiscarded('identity');
+      if (!bootstrap && identityRef.current && identitySignature(before) !== identitySignature(identityRef.current)) {
+        if (accountSignature(before.account) === accountSignature(identityRef.current.account)
+          && (before.member.unavailable || identityRef.current.member.unavailable)) { conceal(); return; }
+        throw new MembershipDiscarded('identity');
+      }
       if (bootstrap && identityRef.current && identitySignature(before) !== identitySignature(identityRef.current)) {
-        latest.current.clear(); if (handleRef.current && !operationBelongsTo(handleRef.current, before)) saveHandle(null);
+        latest.current.clear(); if (handleRef.current && !operationBelongsTo(handleRef.current, before)
+          && !(handleRef.current.scope === 'member' && before.member.unavailable
+            && accountSignature(before.account) === accountSignature(identityRef.current.account))) saveHandle(null);
       }
       installIdentity(before); await action({ identity: before, signal: controller.signal, current: valid });
     } catch (e) {
       if (!valid()) return;
-      if (e instanceof MembershipDiscarded) { if (e.message === 'identity') { conceal(true); void latest.current.household.refresh(); } }
+      if (e instanceof MembershipDiscarded) { if (e.message === 'identity') { conceal(); void latest.current.household.refresh(); } }
       else { setError(e instanceof Error ? e.message : '暂时无法完成核对。');
         if (e instanceof MembershipError && [401, 403].includes(e.status)) { latest.current.clear(); setVisible(false); } }
     } finally { if (flight.current === controller) flight.current = null; if (valid()) { working.current = false; setBusy(false); notify(); } }
@@ -77,7 +83,8 @@ export function useMembershipPanel(props: MembershipPanelProps, dirty: boolean, 
   async function refreshJob(job: Job) {
     if (handleRef.current && !operationBelongsTo(handleRef.current, job.identity)) {
       // Anonymous registration keeps the original handle in this mounted browser until explicit login.
-      if (!(handleRef.current.action === 'register' && !job.identity.account.account)) saveHandle(null);
+      if (!(handleRef.current.action === 'register' && !job.identity.account.account)
+        && !(handleRef.current.scope === 'member' && job.identity.member.unavailable)) saveHandle(null);
     }
     const install = await checked(job, async () => !handleRef.current ? latest.current.load(job) : () => {});
     if (job.current()) { install(); setVisible(true); }
@@ -105,7 +112,7 @@ export function useMembershipPanel(props: MembershipPanelProps, dirty: boolean, 
     if (handleRef.current || !visible) return;
     await run(async job => {
       const user = job.identity.member.user;
-      if (command.scope === 'member' && (user?.role !== 'member' || !job.identity.member.csrf)) throw new MembershipError('请先登录这个家庭。');
+      if (command.scope === 'member') requireMembershipMember(job.identity);
       const requestId = newMembershipRequestId(), h: MembershipHandle = { requestId, action: command.action, scope: ['link', 'leave'].includes(command.action) ? 'account' : command.scope,
         accountId: job.identity.account.account?.id || null, login: command.login || job.identity.account.account?.login || null,
         householdId: user?.householdId || null, memberId: user?.id || null, targetId: command.targetId, operation: null,
@@ -145,6 +152,7 @@ export function useMembershipPanel(props: MembershipPanelProps, dirty: boolean, 
     const h = handleRef.current; if (!h) return;
     await run(async job => {
       if (!operationBelongsTo(h, job.identity) && !(h.action === 'register' && !job.identity.account.account)) throw new MembershipDiscarded('identity');
+      if (h.scope === 'member') requireMembershipMember(job.identity);
       if (resume && (!job.identity.account.account || h.scope !== 'account')) return;
       const base = h.scope === 'account' ? '/account/operations/' : '/membership-operations/';
       const op = await checked(job, async () => readOperation(await membershipRequest(base + h.requestId + (resume ? '/resume' : ''), job.signal,
@@ -170,6 +178,7 @@ export function useMembershipPanel(props: MembershipPanelProps, dirty: boolean, 
   async function retryOriginal() {
     const h = handleRef.current; if (!h?.retry || h.operation?.state === 'completed') return;
     await run(async job => {
+      requireMembershipMember(job.identity);
       if (!operationBelongsTo(h, job.identity)) throw new MembershipDiscarded('identity');
       const result = await checked(job, async () => validateResultTarget(h, readMembershipResult(h.action,
         await membershipRequest(h.retry!.path, job.signal, { method: 'POST', csrf: job.identity.member.csrf!, payload: h.retry!.body }))));
@@ -196,6 +205,7 @@ export function useMembershipPanel(props: MembershipPanelProps, dirty: boolean, 
     if (handleRef.current) return;
     await run(async job => {
       hexId(requestId);
+      if (scope === 'member') requireMembershipMember(job.identity);
       const op = await checked(job, async () => readOperation(await membershipRequest((scope === 'account' ? '/account/operations/' : '/membership-operations/') + requestId, job.signal), requestId,
         result => readMembershipResult(action, result, true)));
       if (!job.current()) return;
@@ -226,13 +236,14 @@ export function MembershipFrame({ title, testID, panel, children, onCompleted, r
       action={<MembershipButton label="重新读取" onPress={panel.refresh} disabled={panel.busy || !online()} />} />
       {panel.handle && <MembershipButton label="稍后核对" onPress={panel.later} disabled={panel.busy} />}</> : <>
       {!!panel.message && <Text>{panel.message}</Text>}
+      {panel.identity?.member.unavailable && <Text accessibilityRole="alert" testID="membership-household-unavailable">当前家庭暂不可用。仍可登录个人账户，查看并进入其他家庭；成员管理需先重新进入原家庭。</Text>}
       {panel.handle && <SectionCard title="核对原操作"><View testID="membership-operation" style={membershipStyles.stack}>
         <Text>原操作编号</Text><Text selectable style={membershipStyles.wrap}>{panel.handle.requestId}</Text>
         <Text>请求不会自动重复发送。回执只说明原操作结果，当前家庭状态需要重新读取。</Text>
-        <MembershipButton label="查询原操作" onPress={() => void panel.review()} disabled={panel.busy} />
-        {panel.handle.retry && op?.state !== 'completed' && <MembershipButton label="用原操作重试" onPress={() => void panel.retryOriginal()} disabled={panel.busy} />}
+        <MembershipButton label="查询原操作" onPress={() => void panel.review()} disabled={panel.busy || panel.handle.scope === 'member' && !!panel.identity?.member.unavailable} />
+        {panel.handle.retry && op?.state !== 'completed' && <MembershipButton label="用原操作重试" onPress={() => void panel.retryOriginal()} disabled={panel.busy || !!panel.identity?.member.unavailable} />}
         {panel.handle.scope === 'account' && op?.state === 'pending' && <MembershipButton label="继续核对原操作" onPress={() => void panel.review(true)} disabled={panel.busy} />}
-        {(op?.state === 'completed' || canStartNewMembershipOperation(op || null)) && <MembershipButton label={op?.state === 'completed' ? '读取当前状态' : '结束核对，重新选择'} onPress={() => void panel.finish(onCompleted)} disabled={panel.busy} />}
+        {(op?.state === 'completed' || canStartNewMembershipOperation(op || null)) && <MembershipButton label={op?.state === 'completed' ? '读取当前状态' : '结束核对，重新选择'} onPress={() => void panel.finish(onCompleted)} disabled={panel.busy || panel.handle.scope === 'member' && !!panel.identity?.member.unavailable} />}
         {recovery}
         <Text>请先保存上方编号。稍后核对只离开本页，不表示操作被取消；之后可按原编号查询。</Text>
         <MembershipButton label="稍后核对" disabled={panel.busy} onPress={panel.later} />
@@ -265,8 +276,9 @@ export default function PersonalAccountPanel(props: PersonalAccountPanelProps) {
     return () => { setHouseholds(data); setBindingLabel(label); };
   };
   const panel = useMembershipPanel(props, !!(login || password || memberPassword || eligibility || choice), clear, load), identity = panel.identity;
-  async function prove() { await panel.run(async job => { const r = record(await panel.checked(job, () => membershipRequest('/account/eligibility', job.signal,
-    { method: 'POST', csrf: job.identity.account.csrf, memberCsrf: job.identity.member.csrf || '', payload: { memberPassword } })));
+  async function prove() { await panel.run(async job => { const member = requireMembershipMember(job.identity);
+    const r = record(await panel.checked(job, () => membershipRequest('/account/eligibility', job.signal,
+    { method: 'POST', csrf: job.identity.account.csrf, memberCsrf: member.csrf, payload: { memberPassword } })));
     if (job.current()) { setEligibility(boundedText(r.eligibilityToken, 2048)); setMemberPassword(''); panel.setMessage('身份已核对，可创建个人账户。'); } }); }
   const signIn = () => panel.authenticate(login, password, props.onIdentityChanged);
   const confirmed = () => { if (!choice || panel.locked) return; const command = choice; setChoice(null); void panel.write(command); };

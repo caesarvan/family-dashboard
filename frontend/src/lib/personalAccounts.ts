@@ -1,5 +1,5 @@
 /** Planned membership API contracts. This module never persists credentials. */
-export class MembershipError extends Error { constructor(message: string, public status = 0, public code = '') { super(message); } }
+export class MembershipError extends Error { constructor(message: string, public status = 0, public code = '', public recoveryUrl = '') { super(message); } }
 export class MembershipDiscarded extends Error {}
 export const invalidMembership = (): never => { throw new MembershipError('暂时无法核对返回的信息，请重新读取。'); };
 export const record = (v: unknown): Record<string, unknown> => !v || typeof v !== 'object' || Array.isArray(v) ? invalidMembership() : v as Record<string, unknown>;
@@ -14,8 +14,14 @@ const legacyPassword = (v: unknown): string => typeof v === 'string' && v.length
 export type Account = { id: string; login: string };
 export type AccountSession = { account: Account | null; csrf: string; authVersion: number | null; authenticationGeneration: number };
 export type MemberSession = { user: null | { id: string; householdId: string; role: 'member' | 'tv'; auth_version: number; membershipRevision: number;
-  accountId?: string; accountAuthVersion?: number; authenticationGeneration?: number }; csrf: string | null };
+  accountId?: string; accountAuthVersion?: number; authenticationGeneration?: number }; csrf: string | null; unavailable?: never }
+  | { user: null; csrf: null; unavailable: { status: 400 | 404 | 503; reason: 'route_invalid' | 'household_unavailable' } };
 export type MembershipIdentity = { account: AccountSession; member: MemberSession };
+export function requireMembershipMember(identity: MembershipIdentity) {
+  if (identity.member.unavailable || identity.member.user?.role !== 'member' || !identity.member.csrf)
+    throw new MembershipError('请先重新进入原家庭，再核对这项操作。');
+  return { user: identity.member.user, csrf: identity.member.csrf };
+}
 export function readAccount(v: unknown): Account { const r = record(v); return { id: hexId(r.id), login: loginName(r.login) }; }
 export function readAccountSession(v: unknown): AccountSession {
   const r = record(v), account = r.account === null ? null : readAccount(r.account);
@@ -32,7 +38,7 @@ export function readMemberSession(v: unknown): MemberSession {
 }
 export const accountSignature = (s: AccountSession) => JSON.stringify([s.account?.id, s.account?.login, s.authVersion, s.authenticationGeneration, s.csrf]);
 export const memberSignature = (s: MemberSession) => JSON.stringify([s.user?.role, s.user?.householdId, s.user?.id, s.user?.auth_version, s.user?.membershipRevision,
-  s.user?.accountId, s.user?.accountAuthVersion, s.user?.authenticationGeneration, s.csrf]);
+  s.user?.accountId, s.user?.accountAuthVersion, s.user?.authenticationGeneration, s.csrf, s.unavailable?.status, s.unavailable?.reason]);
 export const identitySignature = (s: MembershipIdentity) => accountSignature(s.account) + memberSignature(s.member);
 export function newMembershipRequestId(): string {
   if (!globalThis.crypto?.getRandomValues) throw new MembershipError('当前环境无法安全生成操作编号。');
@@ -111,13 +117,25 @@ export async function membershipRequest(path: string, signal: AbortSignal, optio
     const bytes = new Uint8Array(size); let offset = 0; for (const part of chunks) { bytes.set(part, offset); offset += part.length; }
     const raw: unknown = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); check();
     if (!response.ok) { const error = record(raw); throw new MembershipError(typeof error.error === 'string' && error.error.length <= 300 ? error.error : '暂时无法完成，请重新核对。', response.status,
-      typeof error.code === 'string' ? error.code.slice(0, 80) : ''); } return raw;
+      typeof error.code === 'string' ? error.code.slice(0, 80) : '', error.recoveryUrl === '/space/home' ? error.recoveryUrl : ''); } return raw;
   } catch (e) { check(); if (e instanceof MembershipError || e instanceof MembershipDiscarded) throw e; throw new MembershipError('暂时无法确认结果，请核对原操作。'); }
   finally { clearTimeout(timer); signal.removeEventListener('abort', abort); }
 }
 export async function readMembershipIdentity(signal: AbortSignal): Promise<MembershipIdentity> {
   const account = readAccountSession(await membershipRequest('/account/me', signal));
-  const member = readMemberSession(await membershipRequest('/me', signal));
+  let member: MemberSession;
+  try { member = readMemberSession(await membershipRequest('/me', signal)); }
+  catch (error) {
+    // Only the household router's explicit recovery responses identify an unavailable
+    // household. Network failures, generic 401/403/5xx and malformed DTOs remain errors.
+    if (!(error instanceof MembershipError) || error.recoveryUrl !== '/space/home') throw error;
+    if (error.status === 400 && error.message === '家庭入口已失效，请返回家庭入口重新选择')
+      member = { user: null, csrf: null, unavailable: { status: 400, reason: 'route_invalid' } };
+    else if (error.status === 404 && error.message === '家庭空间不可用，请核对家庭地址'
+      || error.status === 503 && error.message === '此家庭的数据暂不可用，请稍后再试或返回家庭入口')
+      member = { user: null, csrf: null, unavailable: { status: error.status, reason: 'household_unavailable' } };
+    else throw error;
+  }
   const after = readAccountSession(await membershipRequest('/account/me', signal));
   if (accountSignature(account) !== accountSignature(after)) throw new MembershipDiscarded('identity');
   const user = member.user;

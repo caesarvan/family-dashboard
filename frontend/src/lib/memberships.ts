@@ -89,16 +89,18 @@ export function validateResultTarget(handle: MembershipHandle, result: Membershi
 }
 export function acceptedMembershipTransition(before: MembershipIdentity, after: MembershipIdentity, action: MembershipAction | 'login', result: MembershipResult): boolean {
   const rotated = after.account.authenticationGeneration === before.account.authenticationGeneration + 1 && before.account.csrf !== after.account.csrf;
+  const sameMember = memberSignature(before.member) === memberSignature(after.member);
+  const anonymousMember = !after.member.unavailable && !after.member.user;
   if (action === 'register' || action === 'login') return rotated && 'account' in result && after.account.account?.id === result.account.id && after.account.account.login === result.account.login
-    && (!after.member.user || memberSignature(before.member) === memberSignature(after.member));
-  if (action === 'logout') return rotated && !after.account.account && (!after.member.user || !before.member.user?.accountId && memberSignature(before.member) === memberSignature(after.member));
+    && (anonymousMember || sameMember);
+  if (action === 'logout') return rotated && !after.account.account && (anonymousMember || !before.member.user?.accountId && sameMember);
   if (action === 'switch') return rotated && 'entry' in result && before.account.account?.id === after.account.account?.id
     && before.account.authVersion === after.account.authVersion && after.member.user?.role === 'member'
     && after.member.user.householdId === result.householdId && after.member.user.id === result.memberId
     && after.member.user.accountId === after.account.account?.id
     && after.member.user.accountAuthVersion === after.account.authVersion
     && after.member.user.authenticationGeneration === after.account.authenticationGeneration;
-  if (action === 'leave') return accountSignature(before.account) === accountSignature(after.account) && !after.member.user;
+  if (action === 'leave') return accountSignature(before.account) === accountSignature(after.account) && anonymousMember;
   if (action === 'link') return accountSignature(before.account) === accountSignature(after.account) && !!before.member.user && !!after.member.user
     && before.member.user.id === after.member.user.id && before.member.user.householdId === after.member.user.householdId
     && before.member.user.auth_version === after.member.user.auth_version && before.member.csrf === after.member.csrf
