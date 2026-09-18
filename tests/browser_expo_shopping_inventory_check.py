@@ -24,7 +24,7 @@ from urllib.parse import urlsplit
 
 from playwright.sync_api import expect, sync_playwright
 import browser_expo_memberships_check as fixture
-from browser_expo_finance_check import button, row, sha
+from browser_expo_finance_check import row, sha
 from browser_expo_memberships_check import file_manifest
 
 AUTHOR = Path(__file__).resolve().parents[1]
@@ -36,6 +36,15 @@ CASES = ('existing_receive_return', 'new_item_cancel', 'lost_movement_response',
 P = '/api/inventory'
 INVENTORY = ('inventory_items', 'inventory_acquisitions', 'inventory_movements',
              'inventory_operations', 'inventory_source_links')
+
+
+def button(page, name):
+    # Paper's decorative icon enters the actual accessible name when no explicit
+    # label is supplied. Permit one PUA icon plus space; keep the text exact.
+    # Playwright serializes Python regexes to JavaScript without the u flag.
+    # Supplementary PUA icons must therefore match their UTF-16 surrogate pair.
+    icon = r'(?:(?:[\uE000-\uF8FF]|[\uDB80-\uDBFF][\uDC00-\uDFFF])\s+)?'
+    return page.get_by_role('button', name=re.compile('^' + icon + re.escape(name) + '$'))
 
 
 def fill(page, label, value):
@@ -177,7 +186,9 @@ class Run(fixture.Run):
             self.screenshot(page, 'receive-return', 390)
             button(page, '返回原采购').click()
             expect(page.get_by_placeholder('搜索物品', exact=True)).to_have_value(shop['title'])
-            expect(button(page, '已买到')).to_have_attribute('aria-checked', 'true')
+            # Paper's checked prop is not exposed as aria-checked on this web
+            # button. The actual result heading distinguishes done from all.
+            expect(page.get_by_role('heading', name='已完成 · 1 项', exact=True)).to_be_visible()
             target = page.get_by_test_id('shopping-item-' + shop['id'])
             expect(target).to_be_focused()
             button(page, '登记或查看库存：' + shop['title']).click()
@@ -342,6 +353,7 @@ class Run(fixture.Run):
             page.get_by_text('更多选项', exact=True).click()
             fill(page, '截止日期（YYYY-MM-DD，可选）', '2026-01-02')
             self.actual(page, 'PATCH', '/api/items/tasks/' + task['id'], lambda: button(page, '保存').click())
+            expect(page.get_by_role('textbox', name='名称', exact=True)).to_have_count(0)
             expect(button(page, edit)).to_be_enabled()
             fresh = next(t for t in self.get(ctx, '/api/state')['tasks'] if t['id'] == task['id'])
             assert fresh['owner'] == other['id'] and fresh['due'] == '2026-01-02' and not fresh['done']
@@ -395,9 +407,9 @@ def main():
     parser.add_argument('--bundle', required=True, type=Path)
     parser.add_argument('--build-evidence', required=True, type=Path)
     parser.add_argument('--expected-build-evidence', required=True)
-    parser.add_argument('--scenario', choices=('all', *CASES), default='all')
+    parser.add_argument('--scenario', choices=('all', 'shopping', *CASES), default='all')
     args = parser.parse_args()
-    selected = CASES if args.scenario == 'all' else (args.scenario,)
+    selected = CASES if args.scenario == 'all' else CASES[:4] if args.scenario == 'shopping' else (args.scenario,)
     root, bundle, evidence_path = args.source_root.resolve(), args.bundle.resolve(), args.build_evidence.resolve()
     assert sys.dont_write_bytecode and not sys.flags.optimize
     assert re.fullmatch('[a-f0-9]{40}', args.expected_head) and re.fullmatch('[a-f0-9]{64}', args.expected_build_evidence)
