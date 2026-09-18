@@ -122,7 +122,7 @@ function Workspace(props: Props & { identityKey: string }) {
     return () => clearInterval(timer);
   }, [visible]);
   const locked = busy || !!model.unknown || !visible;
-  const people = [...props.state.people.filter(person => ['member1', 'member2'].includes(person.id)), { id: 'shared', name: '共同' }];
+  const people = [...props.state.people, { id: 'shared', name: '共同' }];
   const focusName = (id: string) => people.find(person => person.id === id)?.name || '成员';
   function edit(patch: Partial<DeviceDraft>) { if (!current() || locked || !live.current.draft) return; install({ draft: { ...live.current.draft, ...patch } }); }
   function editPair(patch: Partial<PairDraft>) { if (current() && !locked) install({ pair: { ...live.current.pair, ...patch } }); }

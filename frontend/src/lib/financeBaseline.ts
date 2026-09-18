@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 /** Owner-only read model. Source amounts and coverage are observations, not live balances. */
 export type BaselineRow = { label: string; category: string; status: string; source: string; asOf: string; amountCents: number | null; currency: string;
   includedInRecordedSubtotal: boolean | null; exclusionReason: string | null; dateBasis: string | null; period: string | null; note: string | null };
@@ -102,7 +103,7 @@ export function baselinePage<T>(rows: readonly T[], query: string, page: number,
   return { rows: filtered.slice(selected * size, (selected + 1) * size), page: selected, pages, count: filtered.length };
 }
 export type BaselineSession = { user: { role: 'member' | 'tv'; householdId?: string; id: string; auth_version?: number } | null; csrf?: string | null };
-export const baselineSignature = (s: BaselineSession) => JSON.stringify([s.user?.role, s.user?.householdId, s.user?.id, s.user?.auth_version, s.csrf]);
+export const baselineSignature = sessionIdentity;
 export class BaselineFence {
   private epoch = 0;
   constructor(private expected: string) {}

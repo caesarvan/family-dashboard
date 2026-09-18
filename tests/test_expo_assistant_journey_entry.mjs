@@ -114,8 +114,9 @@ with tempfile.TemporaryDirectory(prefix='assistant-trip-entry-') as folder, patc
 test('journey entry identity binds household, member, role, auth version and csrf', () => {
   const user = { id: 'member1', name: '合成成员', role: 'member', householdId: 'one', auth_version: 1 };
   const current = journeySessionKey({ user, csrf: 'synthetic-a' });
-  assert.equal(current, JSON.stringify(['member', 'one', 'member1', 1, 'synthetic-a']));
-  for (const patch of [{ id: 'member2' }, { householdId: 'two' }, { role: 'tv' }, { auth_version: 2 }]) {
+  assert.equal(current, JSON.stringify(['member', 'one', 'member1', 1, null, null, null, null, 'synthetic-a']));
+  for (const patch of [{ id: 'member2' }, { householdId: 'two' }, { role: 'tv' }, { auth_version: 2 },
+    { membershipRevision: 2 }, { accountId: 'a'.repeat(32) }, { accountAuthVersion: 2 }, { authenticationGeneration: 2 }]) {
     assert.notEqual(journeySessionKey({ user: { ...user, ...patch }, csrf: 'synthetic-a' }), current);
   }
   assert.notEqual(journeySessionKey({ user, csrf: 'synthetic-b' }), current);

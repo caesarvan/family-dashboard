@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import type { Member } from './types';
 
 export const MAX_DOCUMENT_FILE_BYTES = 5_000_000;
@@ -115,7 +116,7 @@ export function newDocumentRequestId(): string {
   if (!globalThis.crypto?.getRandomValues) throw new DocumentError('当前环境无法生成安全上传编号，请使用 HTTPS 浏览器。');
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), n => n.toString(16).padStart(2, '0')).join('');
 }
-export const documentSignature = (s: DocumentSession) => JSON.stringify([s.user?.role, s.user?.householdId, s.user?.id, s.user?.auth_version, s.csrf]);
+export const documentSignature = sessionIdentity;
 export class DocumentFence {
   private epoch = 0;
   constructor(private expected: string) {}

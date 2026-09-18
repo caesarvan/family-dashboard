@@ -1,4 +1,5 @@
 import type { Member } from './types';
+import { sessionIdentity } from './sessionIdentity.ts';
 
 /** Matches the existing local-search prefixes accepted by /assistant/plan. */
 export function isAssistantSearchRequest(prompt: string): boolean {
@@ -24,6 +25,5 @@ export function isJourneyRequest(prompt: string): boolean {
 }
 
 export function journeySessionKey(session: { user: Member | null; csrf?: string | null }): string {
-  const user = session.user;
-  return JSON.stringify([user?.role, user?.householdId, user?.id, user?.auth_version, session.csrf]);
+  return sessionIdentity(session);
 }

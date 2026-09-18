@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import type { Member, Person } from './types';
 
 export type RoutineKind = 'tasks' | 'shopping';
@@ -144,7 +145,7 @@ export function readRoutineConfirmed(raw: unknown, pending: RoutinePending): Rou
   const v = object(raw), plan = readRoutinePlan(v.plan); bool(v.replayed);
   return checkReceipt({ operationKey: key64(v.operationKey), operation: operation(v.operation), planId: plan.id, revision: plan.revision, generated: generated(v.generated), createdAt: plan.updatedAt }, pending);
 }
-export const routineSignature = (s: RoutineSession) => JSON.stringify([s.user?.role, s.user?.householdId, s.user?.id, s.user?.auth_version, s.csrf]);
+export const routineSignature = sessionIdentity;
 export class RoutineFence {
   private epoch = 0;
   constructor(private expected: string) {}

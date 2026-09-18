@@ -5,6 +5,7 @@ import re
 import time
 
 from flask import g, jsonify, request
+import household_memberships
 
 
 MAX_AUTH_VERSION = 9007199254740991
@@ -33,6 +34,24 @@ def init_schema(con):
 def register_members(app, db, Problem, body, require_member, audit):
     with app.app_context():
         init_schema(db())
+        con = db()
+        con.execute('BEGIN IMMEDIATE')
+        try:
+            marker = con.execute("SELECT data FROM settings WHERE id='membership_schema_v1'").fetchone()
+            present = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+            if marker is not None and (marker[0] != '{"version":1}' or not set(household_memberships.TABLES).issubset(present)):
+                raise Problem('成员关系存储不完整，请先恢复备份', 503)
+            household_memberships.schema_initialize(con)
+            for expected in household_memberships.SCHEMA_STATEMENTS:
+                name = expected.split('(')[0].split()[-1]
+                actual = con.execute('SELECT sql FROM sqlite_master WHERE type=? AND name=?', ('table', name)).fetchone()
+                if not actual or ' '.join(actual[0].split()).lower() != ' '.join(expected.split()).lower():
+                    raise Problem('成员关系结构无法核对，请先检查迁移', 503)
+            con.execute("INSERT OR IGNORE INTO settings(id,data) VALUES('membership_schema_v1','{\"version\":1}')")
+            con.commit()
+        except BaseException:
+            con.rollback()
+            raise
     sessions = app.extensions['member_sessions']
 
     def capture():
@@ -120,7 +139,7 @@ def register_members(app, db, Problem, body, require_member, audit):
         no_query()
         with transaction() as (con, identity, role):
             stamp = time.time()
-            rows = con.execute('SELECT id,name,household_role,auth_version FROM users ORDER BY id').fetchall()
+            rows = con.execute("SELECT u.id,u.name,u.household_role,u.auth_version FROM users u JOIN household_memberships m ON m.member_id=u.id AND m.state='active' ORDER BY u.id").fetchall()
             members = []
             for row in rows:
                 if row['household_role'] not in ('admin', 'member') or type(row['auth_version']) is not int or not 1 <= row['auth_version'] <= MAX_AUTH_VERSION:
@@ -143,7 +162,7 @@ def register_members(app, db, Problem, body, require_member, audit):
         with transaction(write=True) as (con, identity, _):
             if member_id == identity[1]:
                 raise Problem('请使用本人账户设置，不能在此操作自己', 403)
-            target = con.execute('SELECT id,household_role,auth_version FROM users WHERE id=?', (member_id,)).fetchone()
+            target = con.execute("SELECT u.id,u.household_role,u.auth_version FROM users u JOIN household_memberships m ON m.member_id=u.id AND m.state='active' WHERE u.id=?", (member_id,)).fetchone()
             if not target:
                 raise Problem('当前家庭中没有这位成员', 404)
             if (target['household_role'] not in ('admin', 'member') or type(target['auth_version']) is not int
@@ -155,7 +174,7 @@ def register_members(app, db, Problem, body, require_member, audit):
             if role_change and next_role == target['household_role']:
                 raise Problem('该成员已是此角色，请重新读取', 409)
             if role_change and next_role == 'member' and target['household_role'] == 'admin':
-                if con.execute("SELECT count(*) FROM users WHERE household_role='admin'").fetchone()[0] <= 1:
+                if con.execute("SELECT count(*) FROM users u JOIN household_memberships m ON m.member_id=u.id AND m.state='active' WHERE u.household_role='admin'").fetchone()[0] <= 1:
                     raise Problem('家庭必须保留至少一位管理员', 409)
             if target['auth_version'] >= MAX_AUTH_VERSION:
                 raise Problem('成员版本已达上限，请联系管理员核对', 409)

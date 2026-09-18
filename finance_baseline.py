@@ -117,7 +117,7 @@ def _validate(conn, private, shared):
     for payload in (private, shared):
         if type(payload.get('schemaVersion')) is not int or payload['schemaVersion'] != 1:
             _fail('财务基线版本不支持')
-        if payload.get('owner') not in ('member1', 'member2'):
+        if not isinstance(payload.get('owner'), str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,80}', payload['owner']):
             _fail('财务基线所属成员不正确')
         if payload.get('currency') != 'CNY':
             _fail('共享财务汇总必须以人民币记录')

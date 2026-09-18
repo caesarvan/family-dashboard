@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 /** Existing-journey v2 editing. UTC/DST normalization belongs to the server. */
 export type TimePoint = { local: string; timeZone: string; offsetMinutes?: number; instant?: string };
 export type Destination = { key: string; country: string; city: string; arrival: string; departure: string; timeZone: string };
@@ -155,7 +156,7 @@ export function readSegmentOperation(raw: unknown, intent: SegmentIntent): Segme
 export const failedSegmentIntent = (intent: SegmentIntent, error: unknown): SegmentIntent | null => intent.uncertain || !(error instanceof SegmentRejected) ? { ...intent, uncertain: true } : null;
 export type SegmentSession = { user: { role: 'member' | 'tv'; householdId?: string; id: string; auth_version?: number } | null; csrf?: string | null };
 export type SegmentGuard = <T>(job: (csrf: string) => Promise<T>) => Promise<T>;
-export const segmentSignature = (s: SegmentSession) => JSON.stringify([s.user?.role, s.user?.householdId, s.user?.id, s.user?.auth_version, s.csrf]);
+export const segmentSignature = sessionIdentity;
 export class SegmentFence {
   private epoch = 0;
   constructor(private expected: string) {}

@@ -192,7 +192,8 @@ class CloudAccounts:
 
     @contextmanager
     def db(self):
-        con = sqlite3.connect(self.path, timeout=15)
+        from membership_storage import connect_household
+        con = connect_household(self.app, self.path, timeout=15)
         con.row_factory = sqlite3.Row
         con.execute('PRAGMA foreign_keys=ON')
         try:
@@ -379,7 +380,13 @@ class CloudAccounts:
             row = con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account_id,)).fetchone()
             if not row or (owner and row['owner'] != owner):
                 raise ProviderError('账号不存在或不属于当前成员', 404)
+            self.active_owner(con, row['owner'])
             return dict(row)
+
+    @staticmethod
+    def active_owner(con, owner):
+        if not con.execute("SELECT 1 FROM household_memberships WHERE member_id=? AND state='active'", (owner,)).fetchone():
+            raise ProviderError('成员已退出家庭，同步已停止', 403)
 
     def media_account_transition(self, con, before, *, tokens=None, identity=None, reauth=False):
         """Media withdrawal shares the account writer's existing transaction.
@@ -415,6 +422,7 @@ class CloudAccounts:
 
     def request_account(self, con, account_id, owner, auth_context=None):
         """Validate an HTTP caller in the same transaction as its final read/write."""
+        self.active_owner(con, owner)
         if auth_context is not None:
             current = self.app.extensions['member_sessions'].validate_context(con, auth_context, member=True)
             if current['owner'] != owner:
@@ -425,6 +433,10 @@ class CloudAccounts:
         return current
 
     def active_provider(self, account, *, auth_context=None):
+        # Re-check before decrypting or refreshing a stored cloud credential.
+        fresh_account = self.account(account['id'], account['owner'])
+        if any(fresh_account[k] != account[k] for k in ('provider', 'client_id', 'subject', 'tokens', 'needs_reauth')):
+            raise ProviderError('账户授权已变化，请重新读取', 409)
         client_id, secret = self.credentials(account['provider'])
         if not secret or client_id != account['client_id']:
             raise ProviderError('应用配置已变更，请重新绑定账号', 401, reauth=True)
@@ -439,6 +451,7 @@ class CloudAccounts:
             tokens.update(fresh)
             with self.db() as con:
                 con.execute('BEGIN IMMEDIATE')
+                self.active_owner(con, account['owner'])
                 current = (self.request_account(con, account['id'], account['owner'], auth_context)
                            if auth_context is not None else con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account['id'],)).fetchone())
                 if not current or any(current[k] != account[k] for k in ('owner','provider','client_id','subject','tokens','needs_reauth')):
@@ -480,6 +493,7 @@ class CloudAccounts:
                     raise ProviderError('授权响应无效，请重新授权', 502)
             with self.db() as con:
                 con.execute('BEGIN IMMEDIATE')
+                self.active_owner(con, owner)
                 current = con.execute('SELECT * FROM cloud_accounts WHERE id=?', (account_id,)).fetchone()
                 if not current or current['owner'] != owner:
                     raise ProviderError('账号不存在或不属于当前成员', 404)
@@ -622,7 +636,7 @@ class CloudAccounts:
                     raise ProviderError('所选来源不可用或重复，请重新读取列表', 400)
                 seen.add(key)
                 scope = entry.get('owner', owner if entry['kind'] == 'calendar' else 'shared')
-                if scope not in {'member1', 'member2', 'shared'} or (entry['kind'] == 'tasks' and scope != 'shared'):
+                if not isinstance(scope, str) or (entry['kind'] == 'tasks' and scope != 'shared'):
                     raise ProviderError('日历归属无效；清单作为家庭共同清单共享', 400)
                 primary = entry.get('primary', False)
                 if not isinstance(primary, bool) or (primary and entry['kind'] != 'tasks'):
@@ -635,6 +649,9 @@ class CloudAccounts:
             with self.db() as con:
                 con.execute('BEGIN IMMEDIATE')
                 self.request_account(con, account_id, owner, auth_context)
+                for _, _, scope, _ in validated:
+                    if scope != 'shared':
+                        self.active_owner(con, scope)
                 if selection_version is not _UNVERSIONED and not secrets.compare_digest(selection_version, self.selection_version(con, account_id)):
                     raise SelectionConflict()
                 total = con.execute('SELECT count(*) FROM cloud_sources WHERE account_id<>?', (account_id,)).fetchone()[0]
@@ -694,6 +711,7 @@ class CloudAccounts:
                 con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
 
     def save_record(self, con, source, account, record):
+        self.active_owner(con, account['owner'])
         remote_id = record['id']
         if source['kind'] == 'tasks' and self.app.extensions.get('task_publish'):
             linked = self.app.extensions['task_publish'].observe(con, source, record)
@@ -732,6 +750,7 @@ class CloudAccounts:
             raise ProviderError('来源内容过多或包含重复记录，同步未发布', 502)
         with self.db() as con:
             con.execute('BEGIN IMMEDIATE')
+            self.active_owner(con, account['owner'])
             if not con.execute('SELECT 1 FROM cloud_sources WHERE id=?', (source['id'],)).fetchone():
                 return
             incoming = {r['id']: r for r in records}

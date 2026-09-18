@@ -241,7 +241,7 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
   const filtered = draft?.rows.filter(r => r.name.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())) || [];
   const pageRows = filtered.slice(offset, offset + 24);
   const chosenCount = draft?.rows.filter(row => row.selected).length || 0;
-  const ownerName = (id: string) => id === 'shared' ? '共同' : props.state.people.find(person => person.id === id)?.name || (id === 'member1' ? '成员一' : '成员二');
+  const ownerName = (id: string) => id === 'shared' ? '共同' : props.state.people.find(person => person.id === id)?.name || '原家庭成员';
   const summary = (row: { name: string; kind: string; owner: string; primary: boolean }) => row.name + ' · ' + (row.kind === 'calendar' ? ownerName(row.owner) : row.primary ? '家庭主清单' : '共同清单');
   const privateVisible = visible && current();
   const dialogStyle = [styles.dialog, { maxHeight: height - 40 }];
@@ -310,7 +310,7 @@ function AccountsWorkspace(props: Props & { identityKey: string }) {
               onPress={() => changeRow(row, { selected: !row.selected, primary: row.selected ? false : row.primary })} />
             {!row.available && <Text variant="bodySmall" style={styles.muted}>本次未发现，已保留；请重新读取，或明确取消。</Text>}
             {row.kind === 'tasks' && row.available && !row.writable && <Text variant="bodySmall" style={styles.muted}>此清单没有写入权限，暂时不能选择。</Text>}
-            {row.selected && row.kind === 'calendar' && <View style={styles.buttons}>{(['member1', 'member2', 'shared'] as SourceOwner[]).map(id => <Button key={id} compact mode={row.owner === id ? 'contained' : 'outlined'}
+            {row.selected && row.kind === 'calendar' && <View style={styles.buttons}>{([...props.state.people.map(person => person.id), 'shared'] as SourceOwner[]).map(id => <Button key={id} compact mode={row.owner === id ? 'contained' : 'outlined'}
               accessibilityLabel={'日历 ' + row.name + ' 归属：' + ownerName(id)} disabled={locked || !!conflict} onPress={() => changeRow(row, { owner: id })}>{ownerName(id)}</Button>)}</View>}
             {row.selected && row.kind === 'tasks' && <Button mode={row.primary ? 'contained' : 'outlined'} disabled={locked || !!conflict || !row.available || !row.writable}
               accessibilityLabel={(row.primary ? '取消主清单：' : '设为主清单：') + row.name} onPress={() => changeRow(row, { primary: !row.primary })}>{row.primary ? '家庭主清单 · 点击取消' : '设为家庭主清单'}</Button>}

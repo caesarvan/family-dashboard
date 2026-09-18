@@ -1,3 +1,4 @@
+import { sessionIdentity } from './sessionIdentity.ts';
 import type { Member } from './types';
 
 export const SETTLEMENT_PATH = '/finance-hub/shopping-settlements';
@@ -140,7 +141,7 @@ export function readSettlementReceipt(raw: unknown, intent: SettlementIntent): S
 }
 export const canEndSettlementReview = (review: SettlementReview | null, intent: SettlementIntent | null, identity: string, epoch: number) =>
   !!review && !!intent && review.intent === intent && review.identity === identity && review.epoch === epoch;
-export const settlementSignature = (s: SettlementSession) => JSON.stringify([s.user?.role, s.user?.householdId, s.user?.id, s.user?.auth_version, s.csrf]);
+export const settlementSignature = sessionIdentity;
 export class SettlementFence {
   private epoch = 0;
   constructor(private expected: string) {}

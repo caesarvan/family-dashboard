@@ -4,7 +4,7 @@ The original household remains at /data/household.sqlite3. A routing cookie only
 chooses a household; its separately signed session still has to authenticate.
 """
 from collections import OrderedDict
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from datetime import datetime, timezone
 import hashlib
 import hmac
@@ -136,6 +136,11 @@ class HouseholdPlatform:
 
     @contextmanager
     def db(self):
+        engine = getattr(self, 'personal_accounts', None)
+        if engine is not None:
+            with engine.guard() as con:
+                yield con
+            return
         con = sqlite3.connect(self.path, timeout=15)
         con.row_factory = sqlite3.Row
         try:
@@ -157,7 +162,8 @@ class HouseholdPlatform:
             return self.app
         if not re.fullmatch(r'[a-f0-9]{24}', uid):
             raise ValueError('Invalid household id')
-        with self.lock:
+        engine = getattr(self, 'personal_accounts', None)
+        with (engine.guard() if engine is not None else nullcontext()), self.lock:
             # A cached Flask app is not evidence that its storage still exists.
             # This improves routing recovery; member auth additionally opens
             # SQLite with mode=rw so a later removal cannot create an empty DB.
@@ -188,6 +194,8 @@ class HouseholdPlatform:
 
     def __call__(self, environ, start_response):
         incoming = Request(environ)
+        if incoming.path.startswith('/api/account/'):
+            return self.personal_accounts.app(environ, start_response)
         def failure(message, status):
             headers = {'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer'}
             if incoming.path.startswith('/api/'):
@@ -259,6 +267,9 @@ class HouseholdPlatform:
 def register_spaces(app, db, Problem, body, require_member, limited, factory):
     platform = app.config.get('HOUSEHOLD_PLATFORM') or HouseholdPlatform(app, factory)
     app.extensions['household_platform'] = platform
+    if not app.config.get('_HOUSEHOLD_CHILD'):
+        from membership_http import install_personal_accounts
+        install_personal_accounts(platform, Problem)
     info = app.config.get('HOUSEHOLD_INFO') or {'id': 'default', 'slug': 'home', 'name': '我们的家'}
 
     @app.get('/api/spaces/current')
@@ -297,7 +308,8 @@ def register_spaces(app, db, Problem, body, require_member, limited, factory):
         household = {'id': secrets.token_hex(12), 'slug': slug, 'name': name.strip(),
                      'created_at': datetime.now(timezone.utc).isoformat()}
         with platform.db() as con:
-            con.execute('BEGIN IMMEDIATE')
+            if not con.in_transaction:
+                con.execute('BEGIN IMMEDIATE')
             invite = con.execute('SELECT * FROM household_invitations WHERE hash=? AND used_at IS NULL AND expires>?',
                                  (hashlib.sha256(token.encode()).hexdigest(), time.time())).fetchone()
             if not invite:

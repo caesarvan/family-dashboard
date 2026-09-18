@@ -39,6 +39,8 @@ from household_media import register_media_library
 from media_playback import register_media_playback
 from inventory_api import register_inventory
 from frontend_runtime import register_frontend_runtime
+from membership_storage import connect_household
+from membership_http import register_membership_routes
 
 TZ = ZoneInfo("Asia/Shanghai")
 ROOT = Path(__file__).parent
@@ -90,7 +92,7 @@ def create_app(config=None):
 
     def db():
         if "db" not in g:
-            g.db = sqlite3.connect(db_path, timeout=15)
+            g.db = connect_household(app, db_path, timeout=15)
             g.db.row_factory = sqlite3.Row
             g.db.execute("PRAGMA foreign_keys=ON")
         return g.db
@@ -344,6 +346,7 @@ def create_app(config=None):
 
     register_sessions(app, sessions, Problem, body, require_member)
     register_members(app, db, Problem, body, require_member, audit)
+    register_membership_routes(app, db, Problem, require_member)
 
     @app.get("/api/state")
     def state():
@@ -363,7 +366,7 @@ def create_app(config=None):
             entities[row["kind"]].append({**json.loads(row["data"]), "id": row["id"], "revision": row["revision"]})
         row = db().execute("SELECT * FROM settings WHERE id='finance'").fetchone()
         finance = {**json.loads(row["data"]), "revision": row["revision"]}
-        people = [dict(row) for row in db().execute("SELECT id,name FROM users ORDER BY id")]
+        people = [dict(row) for row in db().execute("SELECT u.id,u.name FROM users u JOIN household_memberships m ON m.member_id=u.id WHERE m.state='active' ORDER BY u.id")]
         return jsonify(**entities, finance=finance, people=people, updatedAt=now(),
                        household=app.config.get('HOUSEHOLD_INFO') or {'id': 'default', 'slug': 'home', 'name': '我们的家'},
                        wealth=shared_baselines(db()),
@@ -736,7 +739,8 @@ def amount(value, label, maximum=100_000_000_000):
 
 
 def check_owner(owner, db):
-    if not isinstance(owner, str) or owner not in {"shared", "member1", "member2"}:
+    if not isinstance(owner, str) or (owner != 'shared' and not db().execute(
+            "SELECT 1 FROM household_memberships WHERE member_id=? AND state='active'", (owner,)).fetchone()):
         raise Problem("负责人不正确")
 
 
