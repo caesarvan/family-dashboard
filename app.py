@@ -62,6 +62,61 @@ def now():
     return datetime.now(TZ).isoformat(timespec="seconds")
 
 
+def _response_headers(response):
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    if request.path.startswith(("/api/", "/auth/")):
+        response.headers["Cache-Control"] = "no-store"
+    if request.path.startswith('/api/journey-documents'):
+        response.headers['Cache-Control'] = 'private, no-store'
+        if request.path.endswith('/file'):
+            response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox; frame-ancestors 'none'"
+    if request.path.startswith('/auth/'):
+        response.headers['Referrer-Policy'] = 'no-referrer'
+    return response
+
+
+def _register_public_frontend(app):
+    frontend_home = register_frontend_runtime(app, ROOT / 'static')
+
+    @app.get("/")
+    @app.get("/demo")
+    def index():
+        if request.path == '/':
+            return frontend_home()
+        return send_from_directory(ROOT / "static", "index.html")
+
+    @app.get("/static/<path:name>")
+    def asset(name):
+        if any(part.rstrip(' .').lower() == 'experience' for part in name.replace('\\', '/').split('/')):
+            abort(404)
+        return send_from_directory(ROOT / "static", name)
+
+
+def _recovery_app(app):
+    """Public shell and independent personal accounts, without a default DB."""
+    from household_spaces import HouseholdPlatform
+    from membership_http import install_personal_accounts
+
+    app.config['_HOUSEHOLD_RECOVERY_ONLY'] = True
+    _register_public_frontend(app)
+
+    @app.before_request
+    def unavailable():
+        if request.method in {'GET', 'HEAD'} and request.endpoint in {'index', 'expo_frontend', 'asset'}:
+            return None
+        return jsonify(error='此家庭的数据暂不可用，请恢复资料后重新启动', recoveryUrl='/app'), 503
+
+    platform = HouseholdPlatform(app, create_app)
+    app.extensions['household_platform'] = platform
+    install_personal_accounts(platform, Problem)
+    app.wsgi_app = platform
+    return app
+
+
 def create_app(config=None):
     app = Flask(__name__, static_folder=None)
     app.config.update(
@@ -89,6 +144,13 @@ def create_app(config=None):
     data_dir = Path(app.config["DATA_DIR"])
     data_dir.mkdir(parents=True, exist_ok=True)
     db_path = data_dir / "household.sqlite3"
+    app.after_request(_response_headers)
+    # An existing registry means this is an established installation. Missing
+    # default storage must never become a new family seeded from environment
+    # passwords. Recovery registers no household modules or DB connections.
+    if (not app.config.get('_HOUSEHOLD_CHILD') and (data_dir / 'platform.sqlite3').exists()
+            and not db_path.is_file()):
+        return _recovery_app(app)
 
     def db():
         if "db" not in g:
@@ -229,23 +291,6 @@ def create_app(config=None):
                     if not token or not secrets.compare_digest(token, session.get("csrf", "")):
                         raise Problem("会话已更新，请刷新页面再试", 403)
 
-    @app.after_request
-    def headers(response):
-        response.headers["X-Content-Type-Options"] = "nosniff"
-        response.headers["Referrer-Policy"] = "same-origin"
-        response.headers["X-Frame-Options"] = "DENY"
-        response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
-        if request.path.startswith(("/api/", "/auth/")):
-            response.headers["Cache-Control"] = "no-store"
-        if request.path.startswith('/api/journey-documents'):
-            response.headers['Cache-Control'] = 'private, no-store'
-            if request.path.endswith('/file'):
-                response.headers['Content-Security-Policy'] = "default-src 'none'; sandbox; frame-ancestors 'none'"
-        if request.path.startswith('/auth/'):
-            response.headers['Referrer-Policy'] = 'no-referrer'
-        return response
-
     @app.errorhandler(Problem)
     def problem(error):
         return jsonify(error=error.message), error.status
@@ -263,20 +308,7 @@ def create_app(config=None):
         db().execute("SELECT 1").fetchone()
         return jsonify(status="ok")
 
-    frontend_home = register_frontend_runtime(app, ROOT / 'static')
-
-    @app.get("/")
-    @app.get("/demo")
-    def index():
-        if request.path == '/':
-            return frontend_home()
-        return send_from_directory(ROOT / "static", "index.html")
-
-    @app.get("/static/<path:name>")
-    def asset(name):
-        if any(part.rstrip(' .').lower() == 'experience' for part in name.replace('\\', '/').split('/')):
-            abort(404)
-        return send_from_directory(ROOT / "static", name)
+    _register_public_frontend(app)
 
     @app.get("/api/me")
     def me():
