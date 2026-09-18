@@ -270,3 +270,14 @@ def test_overlapping_connections_keep_platform_guard_until_last_transaction(syst
     finally:
         first.close()
         second.close()
+
+
+def test_authentication_proof_does_not_leak_across_requests_in_one_app_context(system):
+    with system.app_context():
+        client = legacy(system)
+        first = read(client, '/api/me')['user']
+        post(client, '/api/logout', {}, member=True)
+        assert read(client, '/api/me')['user'] is None
+        legacy(system, 'member2', client=client)
+        assert read(client, '/api/me')['user']['id'] == 'member2'
+        assert first['id'] == 'member1'
