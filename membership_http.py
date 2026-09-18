@@ -25,13 +25,19 @@ def install_personal_accounts(platform, Problem):
             raise PersonalAccounts.Error('家庭暂不可用，请重新读取', 404)
         # Check before child() enters a nested transaction guard. A missing
         # household is an unavailable list entry, not a failed personal login.
-        if not household_path(household_id).is_file():
+        if not household_available(household_id):
             raise PersonalAccounts.Error('家庭资料暂不可用', 503)
         return platform.child(dict(info))
 
     def household_path(household_id):
         return (Path(platform.root) if household_id == 'default' else
                 Path(platform.root) / 'spaces' / household_id) / 'household.sqlite3'
+
+    def household_available(household_id):
+        # Restoring the file does not turn a recovery-only app into a loaded
+        # household. Keep account errors controlled until an explicit restart.
+        return (not (household_id == 'default' and platform.app.config.get('_HOUSEHOLD_RECOVERY_ONLY'))
+                and household_path(household_id).is_file())
 
     def routed_id():
         raw = request.cookies.get('household_space')
@@ -96,7 +102,7 @@ def install_personal_accounts(platform, Problem):
         # cookie. Independent account recovery also works with an invalid old
         # route or unavailable old household; no missing DB is recreated.
         original = (application(platform_con, original_id)
-                    if original_info and household_path(original_id).is_file() else None)
+                    if original_info and household_available(original_id) else None)
         original_sessions = original.extensions['member_sessions'] if original else None
         raw = request.cookies.get(original.config['SESSION_COOKIE_NAME']) if original else None
         if raw and original_sessions:
