@@ -10,6 +10,7 @@ export type ReminderRecovery={intent:ReminderIntent;filter:ReminderFilter;page:n
 const bad=():never=>{throw new Error('提醒资料暂时无法核对，请重新读取。');};
 const obj=(v:unknown):Record<string,unknown>=>v!==null&&typeof v==='object'&&!Array.isArray(v)?v as Record<string,unknown>:bad();
 const text=(v:unknown,max=128):string=>typeof v==='string'&&v.length>0&&v.length<=max?v:bad();
+const taskTitle=(v:unknown):string=>typeof v==='string'&&v.length>0&&Array.from(v).length<=2048?v:bad();
 const integer=(v:unknown,min=0):number=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=min?v:bad();
 const hex=(v:unknown,len:number)=>typeof v==='string'&&new RegExp('^[a-f0-9]{'+len+'}$').test(v)?v:bad();
 const stamp=(v:unknown):string=>typeof v==='string'&&/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/.test(v)&&Number.isFinite(Date.parse(v))?v:bad();
@@ -24,7 +25,7 @@ export function readReminderPage(raw:unknown,filter:ReminderFilter,page:number,m
     const row=obj(raw),t=obj(row.task),due=text(t.due,10);
     if(!/^\d{4}-\d{2}-\d{2}$/.test(due)||!Number.isFinite(Date.parse(due+'T00:00:00Z'))||new Date(due+'T00:00:00Z').toISOString().slice(0,10)!==due||![memberId,'shared'].includes(String(t.owner)))bad();
     if(!['ready','blocked','done'].includes(String(t.dependencyStatus))||!['unread','read','snoozed'].includes(String(row.status))||filter==='unread'&&row.status!=='unread')bad();
-    const task:ReminderTask={id:text(t.id),title:text(t.title,100),owner:text(t.owner),due,revision:integer(t.revision,1),dependsOn:ids(t.dependsOn),blockedBy:ids(t.blockedBy),dependencyStatus:t.dependencyStatus as ReminderTask['dependencyStatus']};
+    const task:ReminderTask={id:text(t.id),title:taskTitle(t.title),owner:text(t.owner),due,revision:integer(t.revision,1),dependsOn:ids(t.dependsOn),blockedBy:ids(t.blockedBy),dependencyStatus:t.dependencyStatus as ReminderTask['dependencyStatus']};
     if(t.sync!==undefined)task.sync=obj(t.sync);
     const result:TaskReminder={task,occurrence:hex(row.occurrence,64),revision:integer(row.revision),eligibleAt:stamp(row.eligibleAt),status:row.status as TaskReminder['status'],readAt:nullableStamp(row.readAt),snoozedUntil:nullableStamp(row.snoozedUntil)};
     if(result.status==='read'&&!result.readAt||result.status==='snoozed'&&(!result.snoozedUntil||Date.parse(result.snoozedUntil)<=Date.parse(now)))bad();

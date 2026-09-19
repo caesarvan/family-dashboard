@@ -98,14 +98,21 @@ function ReminderWorkspace(props:Props&{identityKey:string}){
   function change(filter:ReminderFilter,page:number){if(locked)return;view.current={filter,page};setFilter(filter);setPage(page);setNotice('');void reload();}
   async function submit(){
     const saved=pending.current;if(!saved)return;
+    let rejected:ApiError|undefined;
     try{
-      const result=await guarded(csrf=>request<unknown>('/task-reminders/'+encodeURIComponent(saved.intent.taskId)+'/actions',
-        {method:'POST',body:JSON.stringify(reminderBody(saved.intent))},csrf));
-      readReminderOperation(result,saved.intent);confirmed();
+      const outcome=await guarded(async csrf=>{
+        try{return {result:await request<unknown>('/task-reminders/'+encodeURIComponent(saved.intent.taskId)+'/actions',
+          {method:'POST',body:JSON.stringify(reminderBody(saved.intent))},csrf)};}
+        catch(e){if(e instanceof ApiError&&[400,404,409,422,429].includes(e.status))return {rejected:e};throw e;}
+      });
+      // A definite rejection belongs to the POST, and is usable only after the
+      // subsequent identity check succeeds. A failed /me leaves intent unknown.
+      if(outcome.rejected){rejected=outcome.rejected;throw rejected;}
+      readReminderOperation(outcome.result,saved.intent);confirmed();
     }catch(e){
-      if(e instanceof ApiError&&[400,404,409,422,429].includes(e.status)){
+      if(rejected&&e===rejected){
         clearReminderRecovery(scope.current);pending.current=null;setRecovery(null);setMissing(false);
-        setNotice(e.code==='reminder_capacity'?'这次操作未保存，提醒历史容量已满，请联系管理员整理。':'这次操作未保存，请核对最新提醒后再操作。');
+        setNotice(rejected.code==='reminder_capacity'?'这次操作未保存，提醒历史容量已满，请联系管理员整理。':'这次操作未保存，请核对最新提醒后再操作。');
         setSnapshot(null);
         try{await readList();}catch{/* Preserve the actual rejected-write explanation; retry is a read. */}
       }else if(pending.current&&current()){setMissing(false);setNotice('操作结果尚未确认，已保留核对记录。不会自动再次提交。');}

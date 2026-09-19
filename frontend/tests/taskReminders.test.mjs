@@ -33,6 +33,14 @@ test('snooze uses the frozen server clock, Shanghai next09 across year and exact
   const operation={...i,revision:1,readAt:null,snoozedUntil:i.snoozedUntil,committedAt:NOW};assert.equal(lib.readReminderOperation({operation},i).revision,1);
   for(const patch of [{taskId:'different'},{revision:0},{snoozedUntil:'2026-09-20T04:00:00Z'},{requestId:'a'.repeat(32)}])assert.throws(()=>lib.readReminderOperation({operation:{...operation,...patch}},i));
 });
+
+test('cloud titles retain the provider 2048 Unicode code point boundary including non-BMP',()=>{
+  for(const title of ['合'.repeat(101),'A'.repeat(2048),'🧭'.repeat(2048)]){
+    const value=page([row(1,{task:task(1,{title,sync:{provider:'microsoft'}})})]);
+    assert.equal(lib.readReminderPage(value,'unread',0,'alice').items[0].task.title,title);
+  }
+  for(const title of ['', 'A'.repeat(2049),'🧭'.repeat(2049)])assert.throws(()=>lib.readReminderPage(page([row(1,{task:task(1,{title})})]),'unread',0,'alice'));
+});
 test('minimal durable envelope excludes title/CSRF, preserves exact retry and clears only confirmed foreign scope',async()=>{
   const store=new MemoryStorage(),l=loader({}, {sessionStorage:store})(resolve(root,'lib/taskReminders.ts')),scope=await l.reminderScope(identity.sessionIdentity(session()));
   const intent=l.reminderIntent(row(),'snooze',NOW,'tomorrow'),value={intent,filter:'all',page:2};l.saveReminderRecovery(scope,value);
@@ -67,6 +75,7 @@ function harness(options={}){
           const target=f.rows.find(r=>r.task.id===taskId);if(target)Object.assign(target,{revision:operation.revision,status:body.action==='read'?'read':'snoozed',readAt:operation.readAt,snoozedUntil:operation.snoozedUntil});}
       }
       if(f.postFault!==undefined)throw new api.ApiError('合成连接中断',f.postFault);
+      if(f.afterPostMeStatus)f.meStatus=f.afterPostMeStatus;
       return{operation:clone(f.operations.get(body.requestId))};
     }
     if(path.startsWith('/task-reminders?')){
@@ -105,6 +114,16 @@ for(const fault of [0,503])test('unknown result survives actual component remoun
 test('receipt404 allows only explicit same-intent retry and never extends snooze',async t=>{
   const h=harness({postFault:503,noCommit:true});t.after(h.close);await h.ready();await h.click('明天 09:00 提醒');const original=clone(h.f.writes[0].body);await h.click('核对操作结果');await h.tick();assert.equal(h.f.writes.length,1);assert.equal(h.controls('重试原操作').length,1);
   h.f.noCommit=false;delete h.f.postFault;await h.click('重试原操作');assert.equal(h.f.writes.length,2);assert.deepEqual(h.f.writes[1].body,original);assert.equal(h.f.operations.size,1);assert.equal(h.storage.values.size,0);
+});
+
+for(const status of [429,404])test('committed POST with failed post-action identity check retains intent until receipt '+status,async t=>{
+  const h=harness({afterPostMeStatus:status});t.after(h.close);await h.ready();await h.click('1 小时后提醒');
+  assert.equal(h.f.writes.length,1);assert.equal(h.f.operations.size,1);assert.equal(h.storage.values.size,1);
+  const original=[...h.storage.values.values()][0],requestId=h.f.writes[0].body.requestId;
+  assert.equal(JSON.parse(original).recovery.intent.requestId,requestId);assert.match(h.text(),/操作待核对/);assert(!h.text().includes('这次操作未保存'));
+  await h.tick();assert.equal(h.f.writes.length,1);assert.equal([...h.storage.values.values()][0],original);
+  delete h.f.meStatus;await h.click('核对操作结果');
+  assert.equal(h.f.writes.length,1);assert(h.f.calls.some(c=>c.path.endsWith(requestId)));assert.equal(h.storage.values.size,0);assert.match(h.text(),/这次提醒操作已确认/);
 });
 test('confirmed receipt plus failed list GET retries reads only',async t=>{
   const h=harness({postFault:503});t.after(h.close);await h.ready();await h.click('标为已读');h.f.listStatus=503;await h.click('核对操作结果');assert.equal(h.storage.values.size,0);assert.equal(h.controls('重试原操作').length,0);await h.click('刷新提醒');assert.equal(h.f.writes.length,1);h.f.listStatus=0;await h.click('刷新提醒');assert.equal(h.f.writes.length,1);
