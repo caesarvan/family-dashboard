@@ -5,7 +5,24 @@ import * as ImagePicker from 'expo-image-picker';
 import * as ImageManipulator from 'expo-image-manipulator';
 import { ApiError } from '../lib/api';
 import { useHousehold } from '../lib/household';
-import { CalendarEvent, Entity, ItemKind, ListItem } from '../lib/types';
+import { CalendarEvent, Entity, ItemKind, ListItem, ShoppingPriority } from '../lib/types';
+import { shoppingSchedule } from '../lib/trips';
+import { SelectionRow } from './SelectionRow';
+
+export function ShoppingScheduleFields({due,priority='normal',onDueChange,onPriorityChange,disabled=false,suffix=''}:{due:string;priority?:ShoppingPriority;onDueChange:(value:string)=>void;onPriorityChange:(value:ShoppingPriority)=>void;disabled?:boolean;suffix?:string}) {
+  const dateLabel='采购截止日期'+suffix+'（可选）';
+  return <View style={styles.schedule}>
+    <View style={styles.scheduleField}><TextInput mode="outlined" dense outlineStyle={{borderRadius:8}} label={dateLabel} accessibilityLabel={dateLabel} placeholder="YYYY-MM-DD" value={due} onChangeText={value=>{if(!disabled)onDueChange(value);}} disabled={disabled} maxLength={10} autoCapitalize="none" autoCorrect={false}/>{!due&&<Text variant="bodySmall">未设截止日</Text>}</View>
+    <View style={[styles.scheduleField,{flexBasis:300}]}><Text variant="labelMedium">优先级</Text>
+      <View accessibilityRole="radiogroup" accessibilityLabel={'采购优先级'+suffix} style={{flexDirection:'row',flexWrap:'wrap'}}>
+        {([{value:'low',label:'低'},{value:'normal',label:'普通'},{value:'high',label:'高'}] as const).map(option=><View key={option.value} style={{flexGrow:1,flexBasis:100,minWidth:100}}>
+          <SelectionRow kind="radio" label={option.label} accessibilityLabel={'采购优先级'+suffix+'：'+option.label}
+            checked={priority===option.value} disabled={disabled} onPress={()=>{if(!disabled)onPriorityChange(option.value);}}/>
+        </View>)}
+      </View>
+    </View>
+  </View>;
+}
 
 function cents(value:string) {
   value=value.trim();
@@ -24,6 +41,7 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
   const [quantity,setQuantity]=useState(existing?.quantity||'1 件'); const [budget,setBudget]=useState(existing?.budget==null?'':String(existing.budget/100));
   const [actual,setActual]=useState(existing?.actual==null?'':String(existing.actual/100));
   const [due,setDue]=useState(existing?.due||''); const [note,setNote]=useState(item?.note||'');
+  const [priority,setPriority]=useState<ShoppingPriority>(existing?.priority??'normal');
   const [done,setDone]=useState(!!existing?.done); const [photos,setPhotos]=useState(existing?.photoIds||[]);
   const [startDay,setStartDay]=useState(localParts(event?.start).day),[startTime,setStartTime]=useState(localParts(event?.start).time);
   const [endDay,setEndDay]=useState(localParts(event?.end).day),[endTime,setEndTime]=useState(event?.end?localParts(event.end).time:'20:00');
@@ -43,7 +61,7 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
       const payload:Record<string,unknown>={title:title.trim(),owner,note};
       if(!payload.title)throw new Error('先填写名称');
       if(kind==='tasks')Object.assign(payload,{done:taskCloud?false:done,owner:taskCloud?'shared':owner,due,tripId:existing?.tripId||'',...(!item?{sourceId}:{})});
-      if(kind==='shopping')Object.assign(payload,{done,quantity,budget:cents(budget),actual:cents(actual),photoIds:photos});
+      if(kind==='shopping')Object.assign(payload,{done,quantity,budget:cents(budget),actual:cents(actual),photoIds:photos,...shoppingSchedule({due:due.trim(),priority})});
       if(kind==='events') {
         if(!/^\d{4}-\d{2}-\d{2}$/.test(startDay)||!/^\d{4}-\d{2}-\d{2}$/.test(endDay)||(!allDay&&(!/^\d{2}:\d{2}$/.test(startTime)||!/^\d{2}:\d{2}$/.test(endTime))))throw new Error('日期用 YYYY-MM-DD，时间用 HH:mm');
         Object.assign(payload,{start:startDay+'T'+(allDay?'00:00':startTime)+':00+08:00',end:endDay+'T'+(allDay?'00:00':endTime)+':00+08:00',allDay,location,source:event?.source||'手动'});
@@ -76,6 +94,7 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
       <TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel={kind==='shopping'?'物品名称':'名称'} label={kind==='shopping'?'物品名称':'名称'} value={title} onChangeText={setTitle} maxLength={100} autoFocus />
       {kind==='tasks'&&!item&&!!sources.length&&<Menu visible={sourceMenu} onDismiss={()=>setSourceMenu(false)} anchor={<Button mode="outlined" icon="cloud-outline" disabled={locked} onPress={()=>{if(!locked)setSourceMenu(true);}}>{sourceId?sources.find(s=>s.id===sourceId)?.name:'看板本地待办'}</Button>}><Menu.Item title="看板本地待办" disabled={locked} onPress={()=>{if(locked)return;setSourceId('');setSourceMenu(false);}}/>{sources.map(s=><Menu.Item key={s.id} title={s.name} disabled={locked} onPress={()=>{if(locked)return;setSourceId(s.id);setSourceMenu(false);}}/>)}</Menu>}
       {!taskCloud&&<SegmentedButtons value={owner} onValueChange={value=>{if(!locked)setOwner(value);}} buttons={[{value:'shared',label:'一起',disabled:locked},...(state?.people||[]).map(person=>({value:person.id,label:person.name,disabled:locked}))]} />}
+      {kind==='shopping'&&<ShoppingScheduleFields due={due} priority={priority} onDueChange={setDue} onPriorityChange={setPriority} disabled={locked}/>}
       {kind==='shopping'&&<><TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="数量" label="数量" value={quantity} onChangeText={setQuantity} maxLength={30}/><TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="预计总价（元，可选）" label="预计总价（元，可选）" value={budget} onChangeText={setBudget} keyboardType="decimal-pad"/><View style={styles.photos}>{photos.map((id,index)=><View key={id}><Image source={{uri:'/api/photos/'+encodeURIComponent(id)}} style={styles.photo}/><IconButton icon="close" accessibilityLabel={'移除第'+(index+1)+'张图片'} size={16} disabled={locked} onPress={()=>{if(!locked)setPhotos(values=>values.filter(value=>value!==id));}}/></View>)}</View><Button mode="outlined" icon="image-plus" disabled={locked||photos.length>=3} loading={uploading} onPress={addPhoto}>添加参考图片 · {photos.length}/3</Button><Text variant="bodySmall">保存后，参考图片与家庭共享。</Text></>}
       {kind==='events'&&<><TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="开始日期（YYYY-MM-DD）" label="开始日期（YYYY-MM-DD）" value={startDay} onChangeText={setStartDay}/>{!allDay&&<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="开始时间（HH:mm）" label="开始时间（HH:mm）" value={startTime} onChangeText={setStartTime}/>}<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel={allDay?'结束日期（不包含当天）':'结束日期（YYYY-MM-DD）'} label={allDay?'结束日期（不包含当天）':'结束日期（YYYY-MM-DD）'} value={endDay} onChangeText={setEndDay}/>{!allDay&&<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="结束时间（HH:mm）" label="结束时间（HH:mm）" value={endTime} onChangeText={setEndTime}/>}<Checkbox.Item label="全天安排" status={allDay?'checked':'unchecked'} disabled={locked} onPress={()=>{if(!locked)setAllDay(!allDay);}}/><TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="地点（可选）" label="地点（可选）" value={location} onChangeText={setLocation} maxLength={200}/><Text variant="bodySmall">时间使用北京时间</Text></>}
       <List.Accordion title="更多选项" left={props=><List.Icon {...props} icon="tune"/>}>
@@ -86,4 +105,4 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
     <Dialog.Actions><Button disabled={busy||uploading} onPress={onDismiss}>{uncertain?'关闭并核对':'取消'}</Button><Button mode="contained" disabled={busy||uploading||uncertain||!title.trim()} loading={busy} onPress={save}>保存</Button></Dialog.Actions>
   </Dialog></Portal>;
 }
-const styles=StyleSheet.create({dialog:{width:'92%',maxWidth:540,alignSelf:'center',maxHeight:'92%',borderRadius:12},scroll:{paddingHorizontal:16},fields:{gap:14,paddingVertical:16},photos:{flexDirection:'row',gap:12,flexWrap:'wrap'},photo:{width:82,height:82,borderRadius:8}});
+const styles=StyleSheet.create({dialog:{width:'92%',maxWidth:540,alignSelf:'center',maxHeight:'92%',borderRadius:12},scroll:{paddingHorizontal:16},fields:{gap:14,paddingVertical:16},schedule:{flexDirection:'row',flexWrap:'wrap',gap:12},scheduleField:{flexGrow:1,flexBasis:210,minWidth:0,maxWidth:'100%',gap:6},photos:{flexDirection:'row',gap:12,flexWrap:'wrap'},photo:{width:82,height:82,borderRadius:8}});

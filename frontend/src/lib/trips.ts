@@ -1,9 +1,9 @@
-import type { CalendarEvent, ListItem, Member, Person, Trip } from './types';
+import type { CalendarEvent, ListItem, Member, Person, ShoppingPriority, Trip } from './types';
 import { memberIdentity, sessionIdentity } from './sessionIdentity.ts';
 
 export type Destination = {key:string;city:string;country:string;arrival:string;departure:string;timeZone?:string};
 export type Preparation = {key:string;title:string;owner:string;due?:string;dueOffsetDays?:number;note:string;category?:string};
-export type Purchase = {key:string;title:string;owner:string;quantity:string;budget:number|null;note:string};
+export type Purchase = {key:string;title:string;owner:string;quantity:string;budget:number|null;note:string;due?:string;priority?:ShoppingPriority};
 export type Segment = {key:string;title:string;start?:unknown;end?:unknown;location?:string;note?:string;kind?:string;[key:string]:unknown};
 export type Plan = {schemaVersion?:1|2;referenceTimezone?:string;title:string;start:string;end:string;international:boolean;memberIds:string[];budget:number;saved:number;paid:number;note:string;destinations:Destination[];checklist?:Preparation[];shopping:Purchase[];segments?:Segment[]};
 type Linked<T> = T & {workflowKey:string};
@@ -43,6 +43,22 @@ export function validDay(value:string):boolean {
   const day=new Date(value+'T00:00:00Z');
   return Number.isFinite(day.getTime())&&day.toISOString().slice(0,10)===value;
 }
+export function shoppingSchedule(value:{due?:unknown;priority?:unknown}):{due:string;priority:ShoppingPriority} {
+  const due=value.due===undefined?'':value.due, priority=value.priority===undefined?'normal':value.priority;
+  if(typeof due!=='string'||due!==''&&!validDay(due))throw new Error('采购截止请填写有效的 YYYY-MM-DD（2000—2100 年），或留空');
+  if(priority!=='low'&&priority!=='normal'&&priority!=='high')throw new Error('采购优先级请选择低、普通或高');
+  return {due,priority};
+}
+export const shoppingPriorityLabel=(priority:ShoppingPriority='normal')=>({low:'低优先级',normal:'普通',high:'高优先级'})[priority];
+export function shoppingScheduleText(item:{due?:string;priority?:ShoppingPriority;done?:boolean},today='',showNormal=false):string {
+  const date=item.due?`${item.due}${!item.done&&today&&item.due<today?' · 已逾期':!item.done&&item.due===today?' · 今天截止':''}`:'未设截止日';
+  return date+((item.priority&&item.priority!=='normal')||showNormal?' · '+shoppingPriorityLabel(item.priority):'');
+}
+export function compareShoppingItems(a:ListItem,b:ListItem):number {
+  const rank={high:0,normal:1,low:2};
+  // Stable ties retain the source order, including legacy records without dates.
+  return Number(a.done)-Number(b.done)||(a.due||'9999').localeCompare(b.due||'9999')||rank[a.priority??'normal']-rank[b.priority??'normal'];
+}
 export function tripDays(start:string,end:string):number {
   if(!validDay(start)||!validDay(end))throw new Error('日期请用有效的 YYYY-MM-DD（2000—2100 年）');
   const days=(Date.parse(end+'T00:00:00Z')-Date.parse(start+'T00:00:00Z'))/86400000+1;
@@ -71,7 +87,7 @@ export function initialPlanningDraft(input:unknown,people:Person[]):Draft {
   if(typeof raw.international!=='boolean'||!Array.isArray(raw.memberIds)||raw.memberIds.some(id=>typeof id!=='string'))throw new Error('旅行草案成员或境外标记不正确');
   const plan:Plan={schemaVersion:1,title:text(raw.title,100),start:text(raw.start,10),end:text(raw.end,10),international:raw.international,memberIds:[...raw.memberIds] as string[],budget:cents(raw.budget),saved:cents(raw.saved),paid:cents(raw.paid),note:text(raw.note,2000),
     destinations:keys(rows(raw.destinations,20)).map(row=>({key:row.key,country:text(row.country,60),city:text(row.city,80),arrival:text(row.arrival,10),departure:text(row.departure,10)})),
-    shopping:keys(rows(raw.shopping,100)).map(row=>({key:row.key,title:text(row.title,100),owner:text(row.owner,100),quantity:text(row.quantity,30),budget:row.budget===null?null:cents(row.budget),note:text(row.note,500)}))};
+    shopping:keys(rows(raw.shopping,100)).map(row=>({key:row.key,title:text(row.title,100),owner:text(row.owner,100),quantity:text(row.quantity,30),budget:row.budget===null?null:cents(row.budget),note:text(row.note,500),...shoppingSchedule({due:row.due,priority:row.priority})}))};
   if(!plan.destinations.length||new Set(plan.memberIds).size!==plan.memberIds.length)throw new Error('旅行草案目的地或成员不正确');
   if(raw.checklist!==undefined)plan.checklist=keys(rows(raw.checklist,100)).map(row=>{
     const result:Preparation={key:row.key,title:text(row.title,100),owner:text(row.owner,100),note:text(row.note,500)};
@@ -98,7 +114,7 @@ export function editDraft(journey:Journey):Draft {
   });
   plan.shopping=plan.shopping.map(row=>{
     const live=journey.shopping.find(item=>item.workflowKey==='shopping:'+row.key);
-    return live?{...row,title:live.title,owner:live.owner,quantity:live.quantity||row.quantity,budget:live.budget??null,note:live.note||''}:row;
+    return live?{...row,title:live.title,owner:live.owner,quantity:live.quantity||row.quantity,budget:live.budget??null,note:live.note||'',...shoppingSchedule(live)}:{...row,...shoppingSchedule(row)};
   });
   return {plan,budget:amountText(plan.budget),saved:amountText(plan.saved),paid:amountText(plan.paid),journeyId:journey.id,revision:journey.revision,observed:recordVersions(journey)};
 }
@@ -115,7 +131,7 @@ export function previewPayload(draft:Draft,people:Person[]) {
   plan.title=plan.title.trim(); if(!plan.title)throw new Error('先填写旅行名称');
   if(!plan.memberIds.length||plan.memberIds.some(id=>!people.some(p=>p.id===id)))throw new Error('请选择当前家庭的出行成员');
   if([...(plan.checklist||[]),...plan.shopping].some(row=>row.owner!=='shared'&&!people.some(p=>p.id===row.owner)))throw new Error('准备与采购负责人须为一起或当前家庭成员');
-  plan.shopping=plan.shopping.map(row=>{const raw=purchaseBudgetText(draft,row);return {...row,budget:raw.trim()===''?null:toCents(raw)};});
+  plan.shopping=plan.shopping.map(row=>{const raw=purchaseBudgetText(draft,row);return {...row,budget:raw.trim()===''?null:toCents(raw),...shoppingSchedule(row)};});
   Object.assign(plan,{budget:toCents(draft.budget),saved:toCents(draft.saved),paid:toCents(draft.paid)});
   return {plan,...(draft.journeyId?{journeyId:draft.journeyId,revision:draft.revision}:draft.tripId?{tripId:draft.tripId,tripRevision:draft.tripRevision}:{})};
 }

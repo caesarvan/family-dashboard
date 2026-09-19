@@ -10,6 +10,8 @@ import ShoppingSettlementPanel from '../components/ShoppingSettlementPanel';
 import InventoryScreen from './InventoryScreen';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { useDisplayDensity } from '../ui/theme';
+import { dayKey } from '../lib/calendar';
+import { compareShoppingItems, shoppingScheduleText } from '../lib/trips';
 
 export const money = (value?:number|null) => Number.isSafeInteger(value) ? '¥'+((value as number)/100).toLocaleString('zh-CN',{maximumFractionDigits:2}) : '未填写';
 
@@ -77,7 +79,8 @@ function ListWorkspace(props: ScreenProps & {kind:'tasks'|'shopping';identityKey
   }
   const [filter,setFilter]=useState('pending'); const [query,setQuery]=useState(''); const shopping=kind==='shopping';
   const all=state[kind], pending=all.filter(item=>!item.done);
-  const items=all.filter(item=>(filter==='all'||item.done===(filter==='done'))&&(!query||(item.title+' '+(item.note||'')).toLocaleLowerCase().includes(query.toLocaleLowerCase()))).sort((a,b)=>Number(a.done)-Number(b.done)||(a.due||'9999').localeCompare(b.due||'9999'));
+  const today=dayKey(new Date());
+  const items=all.filter(item=>(filter==='all'||item.done===(filter==='done'))&&(!query||(item.title+' '+(item.note||'')).toLocaleLowerCase().includes(query.toLocaleLowerCase()))).sort(shopping?compareShoppingItems:(a,b)=>Number(a.done)-Number(b.done)||(a.due||'9999').localeCompare(b.due||'9999'));
   const budget=pending.reduce((sum,item)=>sum+(item.budget||0),0), unknown=pending.filter(item=>!Number.isSafeInteger(item.budget)).length;
   useEffect(()=>{
     if(inventoryShopping||!returnToItem)return;
@@ -107,7 +110,8 @@ function ListWorkspace(props: ScreenProps & {kind:'tasks'|'shopping';identityKey
         <View testID={`${kind}-item-${item.id}`} tabIndex={shopping&&returnToItem===item.id?-1:undefined} style={[styles.row,{paddingVertical:density.rowPadding}]}>
           <CompleteItem title={item.title} checked={item.done} disabled={!!pendingId||!!item.sync?.readOnly} onPress={()=>void onToggle(kind,item)} />
           <View style={styles.body}><Text variant="titleMedium" style={[styles.name,item.done&&{color:theme.colors.onSurfaceVariant,textDecorationLine:'line-through'}]}>{item.title}</Text>
-            <Text variant="bodySmall" style={{color:theme.colors.onSurfaceVariant}}>{item.owner==='shared'?'一起':state.people.find(p=>p.id===item.owner)?.name||'家庭成员'}{item.due?' · '+item.due:''}{shopping?' · '+(item.quantity||'1 件'):''}{item.sync?' · 已同步':''}</Text>
+            <Text variant="bodySmall" style={{color:theme.colors.onSurfaceVariant}}>{item.owner==='shared'?'一起':state.people.find(p=>p.id===item.owner)?.name||'家庭成员'}{!shopping&&item.due?' · '+item.due:''}{shopping?' · '+(item.quantity||'1 件'):''}{item.sync?' · 已同步':''}</Text>
+            {shopping&&<Text variant="bodySmall" style={{color:!item.done&&!!item.due&&item.due<today?theme.colors.error:theme.colors.onSurfaceVariant}}>{shoppingScheduleText(item,today)}</Text>}
             {shopping&&<Text variant="bodySmall">预算 {money(item.budget)}{item.done||Number.isSafeInteger(item.actual)?' · 实付 '+money(item.actual):''}</Text>}
             {!!item.note&&<Text variant="bodySmall" style={{color:theme.colors.onSurfaceVariant}}>{item.note}</Text>}
             {!!item.photoIds?.length&&<View style={styles.photos}>{item.photoIds.map(id=><Image key={id} accessibilityLabel={item.title+'参考图片'} source={{uri:'/api/photos/'+encodeURIComponent(id)}} style={styles.photo} />)}</View>}

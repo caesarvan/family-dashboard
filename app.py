@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import os
 from pathlib import Path
 import secrets
@@ -821,6 +822,14 @@ def validate(kind, value, db):
         check_owner(result["owner"], db)
         result["note"] = text_field(value.get("note", ""), "备注", 500, True)
         if kind == "shopping":
+            due = value.get('due', '')
+            if not isinstance(due, str) or due and not re.fullmatch(r'(?:20\d{2}|2100)-\d{2}-\d{2}', due):
+                raise Problem('采购截止日期须为空或 2000 至 2100 年的 YYYY-MM-DD')
+            result['due'] = date_field(due, '采购截止日期', True)
+            priority = value.get('priority', 'normal')
+            if not isinstance(priority, str) or priority not in ('low', 'normal', 'high'):
+                raise Problem('采购优先级须为 low、normal 或 high')
+            result['priority'] = priority
             result["quantity"] = text_field(value.get("quantity", "1 件"), "数量", 30)
             for key, label in [('budget', '采购预算'), ('actual', '实际花费')]:
                 result[key] = None if value.get(key) is None else amount(value[key], label)

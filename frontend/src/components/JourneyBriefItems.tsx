@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { Button, Divider, HelperText, Text, TextInput } from 'react-native-paper';
-import { briefOwnerOptions, briefPreparationDate, type BriefForm, type BriefItem, type BriefPreparation, type BriefPurchase } from '../lib/journeyBrief';
+import { briefOwnerOptions, briefPreparationDate, briefPurchaseDate, type BriefForm, type BriefItem, type BriefPreparation, type BriefPurchase } from '../lib/journeyBrief';
 import type { Person } from '../lib/types';
 import { SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
@@ -34,6 +34,12 @@ export default function JourneyBriefItems({ form, people, actorId, disabled, ext
     try { return '截止：' + briefPreparationDate(row, form.start) + (row.dueMode === 'offset' ? '，随出发日期调整' : ''); }
     catch { return '截止日期待核对'; }
   }
+  function purchaseDateNote(row: BriefPurchase) {
+    try {
+      const due = briefPurchaseDate(row, form.start);
+      return due ? '截止：' + due + (due > form.end ? '（返程后，请核对）' : '') : '未设截止日期';
+    } catch { return '采购截止日期待核对'; }
+  }
   return <>
     <SectionCard title={`准备事项 · ${form.checklist.length || (form.useDefaultChecklist ? '默认清单' : '无')}`} action={<Button disabled={disabled}
       accessibilityLabel={tasksOpen ? '收起准备事项' : '展开准备事项'} onPress={() => setTasksOpen(!tasksOpen)}>{tasksOpen ? '收起' : '展开'}</Button>}>
@@ -63,13 +69,26 @@ export default function JourneyBriefItems({ form, people, actorId, disabled, ext
     <SectionCard title={`采购清单 · ${form.shopping.length}`} action={<Button disabled={disabled} accessibilityLabel={purchasesOpen ? '收起采购清单' : '展开采购清单'} onPress={() => setPurchasesOpen(!purchasesOpen)}>{purchasesOpen ? '收起' : '展开'}</Button>}>
       <View testID="journey-brief-shopping" style={styles.fields}>
         {purchasesOpen ? <>
-          <Text>预算可留空表示待确认，0 表示明确零预算。采购暂不支持截止日期或改期联动；原文要求保留在备注中。</Text>
+          <Text>预算可留空表示待确认，0 表示明确零预算。截止日期可不设；相对天数只用于当前草案计算，保存后改期需另行勾选确认。</Text>
           {form.shopping.map((row, index) => <View key={row.key} testID={`journey-brief-purchase-${index + 1}`} style={styles.fields}>
             <Text variant="titleSmall">采购 {index + 1}</Text>
             {field(`采购名称 ${index + 1}`, row.title, title => purchase(index, { title }))}
             {owner(row, `采购负责人 ${index + 1}`, value => purchase(index, { owner: value }))}
             <View style={styles.row}><View style={styles.column}>{field(`采购数量 ${index + 1}`, row.quantity, quantity => purchase(index, { quantity }), 30, '如：两只')}</View>
               <View style={styles.column}>{field(`采购预算（元）${index + 1}`, row.budget, budget => purchase(index, { budget }), 14, '待确认')}</View></View>
+            <View accessibilityRole="radiogroup" accessibilityLabel={`采购截止方式 ${index + 1}`} style={styles.row}>
+              {([['none', '不设截止'], ['date', '固定日期'], ['offset', '距出发天数']] as const).map(([mode, label]) => <SelectionRow key={mode} kind="radio" label={label}
+                accessibilityLabel={`采购${mode === 'offset' ? '使用相对天数' : label} ${index + 1}`} checked={row.dueMode === mode} disabled={disabled}
+                onPress={() => row.dueMode !== mode && purchase(index, { dueMode: mode, due: '', dueOffsetDays: '' })} />)}
+            </View>
+            {row.dueMode === 'date' && field(`采购截止日期 ${index + 1}`, row.due, due => purchase(index, { due }), 10, 'YYYY-MM-DD')}
+            {row.dueMode === 'offset' && field(`采购距出发天数 ${index + 1}`, row.dueOffsetDays, dueOffsetDays => purchase(index, { dueOffsetDays }), 4, '-3 表示出发前三天')}
+            <Text accessibilityLiveRegion="polite">{purchaseDateNote(row)}</Text>
+            <View accessibilityRole="radiogroup" accessibilityLabel={`采购优先级 ${index + 1}`} style={styles.row}>
+              {([['normal', '普通'], ['high', '高'], ['low', '低']] as const).map(([priority, label]) => <SelectionRow key={priority} kind="radio" label={label}
+                accessibilityLabel={`采购优先级${label} ${index + 1}`} checked={row.priority === priority} disabled={disabled}
+                onPress={() => purchase(index, { priority })} />)}
+            </View>
             {field(`采购备注 ${index + 1}`, row.note, note => purchase(index, { note }), 500)}
             <Button disabled={disabled} accessibilityLabel={`移除采购 ${index + 1}`} onPress={() => onChange({ shopping: form.shopping.filter((_, i) => i !== index) })}>移除采购</Button><Divider />
           </View>)}

@@ -108,7 +108,8 @@ def items_for(plan, records, places):
             reason = 'completed' if value.get('done') else 'cloud_managed' if value.get('sync') else 'no_date' if not value.get('due') else None
             add(key, 'task', value['title'], value.get('due') or None, value.get('due') or None, reason)
         elif entry['kind'] == 'shopping':
-            add(key, 'shopping', value['title'], reason='no_date')
+            reason = 'completed' if value.get('done') else 'cloud_managed' if value.get('sync') else 'no_date' if not value.get('due') else None
+            add(key, 'shopping', value['title'], value.get('due') or None, value.get('due') or None, reason)
     for row in places:
         reason = 'not_planned' if row['status'] != 'planned' else 'no_date' if not row['start_date'] else None
         add('place:' + row['id'], 'place', row['name'], row['start_date'], row['end_date'], reason)
@@ -201,12 +202,15 @@ def prepare(plan, records, places, start, end, selected, overrides, text, item_k
             if entry:
                 actual = json.loads(entry['data'])
                 row.update({field: actual[field] for field in fields if field in actual})
+                if collection == 'shopping':
+                    # Live omissions mean legacy defaults, never stale plan data.
+                    row.update(due=actual.get('due', ''), priority=actual.get('priority', 'normal'))
                 if collection == 'checklist' and row.get('due'):
                     row['dueOffsetDays'] = (date.fromisoformat(row['due']) - date.fromisoformat(start)).days
     patches, place_patches, issues = {}, {}, []
     warnings = [
         {'code': 'financial_data_preserved', 'key': None, 'message': '预算、预留、已付和采购金额保持不变；请自行核对改签及取消费用。'},
-        {'code': 'shopping_no_due', 'key': None, 'message': '采购没有截止日期字段，采购记录保持不变。'},
+        {'code': 'shopping_schedule', 'key': None, 'message': '仅调整明确选择的未完成采购截止日期；优先级、金额、图片和完成状态保持不变。'},
         {'code': 'bookings_not_changed', 'key': None, 'message': '不会改签或取消真实预订，也不会修改旅行资料或共享权限。'},
         {'code': 'calendar_async', 'key': None, 'message': '既有日历关联保留，日期更新由原同步队列处理；本地保存不代表云端已成功。'}]
     patches['trip'] = {**json.loads(records['trip']['data']), 'start': start, 'end': end}
@@ -270,6 +274,7 @@ def prepare(plan, records, places, start, end, selected, overrides, text, item_k
         updated['segments'][i] = live
         patches[key] = value
     task_rows = {row['key']: row for row in updated['checklist']}
+    shopping_rows = {row['key']: row for row in updated['shopping']}
     for key in selected:
         if index[key]['kind'] == 'task':
             current = json.loads(records[key]['data'])
@@ -277,6 +282,12 @@ def prepare(plan, records, places, start, end, selected, overrides, text, item_k
             row = task_rows.get(key.removeprefix('task:'))
             if row is not None:
                 row.update(due=patches[key]['due'], dueOffsetDays=(date.fromisoformat(patches[key]['due']) - date.fromisoformat(start)).days)
+        elif index[key]['kind'] == 'shopping':
+            current = json.loads(records[key]['data'])
+            patches[key] = {**current, 'due': index[key]['after']['start']}
+            row = shopping_rows.get(key.removeprefix('shopping:'))
+            if row is not None:
+                row['due'] = patches[key]['due']
         elif index[key]['kind'] == 'place':
             place_patches[key.removeprefix('place:')] = index[key]['after']
     for item in items:

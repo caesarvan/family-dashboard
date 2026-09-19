@@ -130,7 +130,7 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         return [{'key': key, 'title': title, 'dueOffsetDays': offset, 'owner': 'shared',
                  'note': note, 'category': 'preparation'} for key, title, offset, note in entries]
 
-    def normalize(raw, con, preserved_dates=None):
+    def normalize(raw, con, preserved_dates=None, shopping_current=None):
         if not isinstance(raw, dict):
             raise Problem('plan 应为对象')
         preserved_dates = preserved_dates or {}
@@ -190,12 +190,24 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                                       'due': due, 'note': text(row.get('note', ''), '准备事项备注', 500, True),
                                       'category': text(row.get('category', 'preparation'), '事项分类', 40)})
         for index, row in enumerate(sequence(raw.get('shopping', []), '采购清单')):
-            plan['shopping'].append({'key': item_key(row.get('key'), f'purchase-{index + 1}'),
+            purchase_key = item_key(row.get('key'), f'purchase-{index + 1}')
+            # Older clients omit the new fields. Preserve the actual linked
+            # entity, not a possibly stale plan; explicit empty/default clears.
+            current_purchase = (shopping_current or {}).get(purchase_key, {})
+            due = row.get('due', current_purchase.get('due', ''))
+            if not isinstance(due, str):
+                raise Problem('采购截止日期须为空或 YYYY-MM-DD')
+            due = date_value(due, '采购截止日期') if due else ''
+            priority = row.get('priority', current_purchase.get('priority', 'normal'))
+            if not isinstance(priority, str) or priority not in ('low', 'normal', 'high'):
+                raise Problem('采购优先级须为 low、normal 或 high')
+            plan['shopping'].append({'key': purchase_key,
                                      'title': text(row.get('title'), '采购名称'),
                                      'quantity': text(row.get('quantity', '1 件'), '采购数量', 30),
                                      'owner': owner(row.get('owner', 'shared'), people),
                                      'budget': amount(row.get('budget'), '采购预算', True),
-                                     'note': text(row.get('note', ''), '采购备注', 500, True)})
+                                     'note': text(row.get('note', ''), '采购备注', 500, True),
+                                     'due': due, 'priority': priority})
         segments = raw.get('segments', [
             {'key': dest['key'], 'title': dest['city'] + ' · 停留', 'start': dest['arrival'],
              'end': dest['departure'], 'location': ' · '.join(filter(None, [dest['country'], dest['city']]))}
@@ -245,7 +257,7 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         for row in plan['shopping']:
             rows['shopping:' + row['key']] = ('shopping', {**shared, 'title': row['title'], 'owner': row['owner'],
                 'quantity': row['quantity'], 'budget': row['budget'], 'actual': None, 'note': row['note'],
-                'done': False, 'photoIds': []})
+                'done': False, 'photoIds': [], 'due': row.get('due', ''), 'priority': row.get('priority', 'normal')})
         segments = [{'key': 'overview', 'title': plan['title'], 'start': plan['start'], 'end': plan['end'],
                      'location': place, 'note': plan['note']}, *plan['segments']]
         for index, row in enumerate(segments):
@@ -413,8 +425,8 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                       'journeyId': uid, 'source': source}
             result = {'journeyId': uid, 'revision': current['revision'], **items[0]['before'], 'items': items,
                       'snapshotToken': snapshot_signer.dumps(claims), 'expiresIn': 1800,
-                      'warnings': [{'code': 'shopping_no_due', 'key': None, 'message': '采购没有截止日期字段，采购记录保持不变。'}],
-                      'capabilities': {'shoppingDue': False}}
+                      'warnings': [],
+                      'capabilities': {'shoppingDue': True}}
             con.rollback()
             current_member(con, session_claim)
             return jsonify(result)
@@ -564,7 +576,9 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                               (row['due'] > prior['end'] or not -730 <= row['dueOffsetDays'] <= 366)},
                 'segments': {row['key']: (row['start'], row['end']) for row in prior['segments'] if 'kind' not in row and
                              not prior['start'] <= row['start'] <= row['end'] <= prior['end']}}
-        plan = normalize(value.get('plan'), con, preserved_dates)
+        shopping_current = {key.removeprefix('shopping:'): json.loads(row['data'])
+                            for key, row in existing.items() if row['kind'] == 'shopping'}
+        plan = normalize(value.get('plan'), con, preserved_dates, shopping_current)
         adoptions = {}
         expected_revision = None
         old_plan = None
@@ -605,7 +619,10 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                    'detach': len(removed), 'policyNotice': POLICY_NOTICE,
                    'calendar': '定时段保存 UTC 时刻；住宿/全天段保留日期且不含排除结束日；既有云端时间语义变化须再确认。',
                    'conflicts': conflicts, 'preserved': preserved, 'resolved': resolved, 'cloudReviews': holds,
-                   'warnings': time_warnings(plan, old_plan),
+                   'warnings': time_warnings(plan, old_plan) + [
+                       {'code': 'shopping_due_after_trip', 'itemKey': 'shopping:' + row['key'],
+                        'message': '此项采购截止晚于返程，请核对；本次保留填写的日期。'}
+                       for row in plan['shopping'] if row['due'] and row['due'] > plan['end']],
                    'removedItems': '移出计划的已有事项保留为独立记录，完成状态和照片不会删除。'}
         claims = {'v': 1, 'actor': g.actor['id'],
                   'household': json.loads(con.execute("SELECT data FROM settings WHERE id='journey_namespace'").fetchone()[0]),

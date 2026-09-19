@@ -120,7 +120,7 @@ def test_snapshot_and_default_preview_never_write_and_optional_dates_stay(app):
     before = snapshot(app)
     current = source(c, d['id'])
     assert snapshot(app) == before
-    assert current['capabilities']['shoppingDue'] is False
+    assert current['capabilities']['shoppingDue'] is True
     overview = next(row for row in current['items'] if row['key'] == 'trip')
     assert not overview['eligible'] and overview['reason'] == 'always_updated'
     proposed = reschedule(c, h, current)
