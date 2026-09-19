@@ -2,6 +2,7 @@
 from dataclasses import FrozenInstanceError, replace
 import json
 import os
+from pathlib import Path
 
 import pytest
 from deploy import assistant_finance_query_release_package as package
@@ -30,8 +31,8 @@ def refresh_evidence(env):
 
 
 def new_docker():
-    raw = (ROOT / 'Dockerfile').read_bytes()
-    # The author branch deliberately does not edit Dockerfile or import WIP app code.
+    raw = trip_tests.trip_docker()
+    # Also runnable after the exact new Docker COPY is integrated into this checkout.
     assert shared.digest(raw) == profile.DOCKER_BEFORE
     raw = raw.replace(profile.COPY_BEFORE, profile.COPY_AFTER, 1)
     assert shared.digest(raw) == profile.DOCKER_AFTER
@@ -74,7 +75,7 @@ def test_new_admission_failure_precedes_output(package_environment, fault):
     if fault == 'missing-module':
         (env['repo'] / 'assistant_finance_query.py').unlink()
     elif fault == 'old-docker':
-        write(env['repo'], 'Dockerfile', (ROOT / 'Dockerfile').read_bytes())
+        write(env['repo'], 'Dockerfile', trip_tests.trip_docker())
     elif fault == 'extra-copy':
         write(env['repo'], 'Dockerfile', new_docker() + b'COPY unexpected.py ./\n')
     elif fault == 'dependency':
@@ -193,7 +194,8 @@ def baseline(tmp_path, monkeypatch):
     root.mkdir(); source.mkdir()
     old = {}
     for name in ('app.py', 'finance_hub.py', 'finance_accounts.py', 'compose.yaml', 'requirements.txt', 'Dockerfile', 'deploy/nginx.conf'):
-        raw = (ROOT / name).read_bytes(); write(root, name, raw); old[name] = shared.digest(raw)
+        raw = trip_tests.trip_docker() if name == 'Dockerfile' else (ROOT / name).read_bytes()
+        write(root, name, raw); old[name] = shared.digest(raw)
     manifest = root / 'RELEASE-MANIFEST.json'; manifest.write_bytes(shared.encoded({'files': old}))
     monkeypatch.setattr(controller.Controller, 'SPEC', replace(controller.SPEC, old_manifest=shared.digest(manifest.read_bytes())))
     env = root / '.env'; env.write_bytes(b'SYNTHETIC=1\n'); env.chmod(0o600)
@@ -226,3 +228,35 @@ def test_existing_builder_carries_the_new_profile(package_environment, tmp_path,
     method = (package_tests.test_recording_build_threads_fixed_baseline_and_parent if phase == 'build'
               else package_tests.test_recording_validation_rechecks_same_fixed_baseline)
     method(package_environment, tmp_path, monkeypatch)
+
+
+@pytest.mark.parametrize('release', ['historical', 'trip', 'finance-query'])
+def test_combined_docker_fixture_roundtrips_exact_original_profiles(tmp_path, monkeypatch, release):
+    # Emulate only the final checkout's approved Docker bytes. All other reads,
+    # temporary Git commits, package extraction and policy checks remain real.
+    combined = new_docker()
+    original_read = Path.read_bytes
+    monkeypatch.setattr(Path, 'read_bytes', lambda path: combined if path == ROOT / 'Dockerfile' else original_read(path))
+    env = trip_tests.environment.__wrapped__(tmp_path, monkeypatch)
+    if release == 'historical':
+        target = shared
+    elif release == 'trip':
+        env = trip_tests.package_environment.__wrapped__(env)
+        target = trip_tests.package
+    else:
+        env = package_environment.__wrapped__(env)
+        target = package
+    result = target.prepare(**env)
+    checked = target.verify_package(env['output_dir'], result['packageSha256'])
+    expected = {'historical': shared.FIXED['Dockerfile'], 'trip': trip_profile.DOCKER_AFTER,
+                'finance-query': profile.DOCKER_AFTER}[release]
+    assert checked['metadata']['fixedFiles']['Dockerfile'] == expected
+
+
+@pytest.mark.parametrize('extra', [b'COPY assistant_finance_query.py ./\n', b'RUN echo unreviewed\n'])
+def test_fixture_refuses_any_unreviewed_docker_change(monkeypatch, extra):
+    raw = new_docker() + extra
+    original_read = Path.read_bytes
+    monkeypatch.setattr(Path, 'read_bytes', lambda path: raw if path == ROOT / 'Dockerfile' else original_read(path))
+    with pytest.raises(AssertionError):
+        trip_tests.trip_docker()

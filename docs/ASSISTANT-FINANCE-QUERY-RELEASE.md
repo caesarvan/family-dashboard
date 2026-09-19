@@ -44,6 +44,8 @@ Docker 仅在原 `assistant_trip_intent.py assistant_trip_change_api.py` COPY �
 
 提交交付时提供真实 pytest stdout、JUnit、命令、返回码及前后源码 SHA，保存在忽略的 `test-results/`。这些测试不读取真实订单、密钥或生产库，不启动模型请求。
 
-2026-09-19 本地 Windows 专项实际 **77 passed / 0 failed / 0 error / 0 skipped**，exit 0，343.65 秒；范围仅为上述两份 release 专项。原执行记录为 `test-results/release-specialized-r1/execution.json`，同目录保留 `stdout.txt` 与 pytest 原生 `results.xml`，被测源码前后哈希一致。另有 AST 比较证明原部署生命周期仅替换发布目录前缀，备份及停机后比对等六个方法原样。尚未新增真实 Linux、业务组合或生产操作。
+2026-09-19 首候选 `1f9f9779e70d26a94e44371d6f5a9e5f6871d047` 的本地 Windows 专项实际 **77 passed / 0 failed / 0 error / 0 skipped**，exit 0，343.65 秒；范围仅为上述两份 release 专项。原执行记录为 `test-results/release-specialized-r1/execution.json`，同目录保留 `stdout.txt` 与 pytest 原生 `results.xml`，被测源码前后哈希一致。另有 AST 比较证明原部署生命周期仅替换发布目录前缀，备份及停机后比对等六个方法原样。
+
+后续仅修改测试夹具以兼容组合后的精确 Dockerfile：先接受已知新 SHA，剥除唯一新增 COPY，再核对原 SHA；不接受其他 Docker 改动。23 项受影响夹具测试另轮实际通过，exit 0，61.25 秒，记录在 `test-results/release-fixture-delta-r2/`；其中模拟最终 Docker 字节，但使用真实临时 Git/包与原验证器。生产工具未改，未重跑整套 77，也不把两轮相加为不同测试总数。尚未新增真实 Linux、业务组合或生产操作。
 
 发布前仍待新完整组合的 fresh Expo、真实浏览器、实际 Linux 构建与精确选定测试、以当前 `5fc52d…` 父镜像创建的双户三库非空 66/9 演练、最终包/算子/审查映射及独立计划审查。旧批 448 项 Linux 通过与真实模型记录不能替代本批证据；本人 A–D 验收、生产新 POST、真实模型/云及实体电视不由本工具测试证明。
