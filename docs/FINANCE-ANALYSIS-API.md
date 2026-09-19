@@ -35,10 +35,11 @@ type Point = {
   date: string;
   valuation: {asOf:string; amountCents:number|null; source:'manual'; updatedAt:string}|null;
   convertedCents: string|null;
-  fx: null|{sourceCurrency:string; targetCurrency:string; rateDate:string;
+  fx: null|{sourceCurrency:string; targetCurrency:string; rateDate:string|null;
     ageDays:number; sourcePerEur:string; targetPerEur:string;
-    sourceVersion:number; targetVersion:number; sourceUrl:string|null;
-    bodySha256:string|null; fetchedAt:string|null; lastCheckedAt:string|null};
+    method:'identity'|'ecb_cross'; observations:Array<{date:string; currency:string;
+      unitsPerEur:string; version:string; sourceUrl:string; bodySha256:string;
+      fetchedAt:string; lastCheckedAt:string}>};
 };
 type Change = {
   originalChangeCents: string|null; recordedNetFlowCents: string;
