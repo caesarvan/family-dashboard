@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.check_expo_task_dependencies_browser import BUILD_REUSE_PATHS, build_source_delta, deliver
+from scripts.check_expo_task_dependencies_browser import BUILD_REUSE_PATHS, build_source_delta, completed_periodic_refresh, deliver
 
 
 @pytest.fixture
@@ -79,3 +79,37 @@ def test_normal_delivery_preserves_real_error_bytes():
     response = SimpleNamespace(status=409, headers={'Content-Type': 'application/json'}, body=lambda: b'{"code":"task_dependency_cycle"}')
     deliver(route, response)
     assert calls == [{'status': 409, 'headers': response.headers, 'body': response.body()}]
+
+
+def test_periodic_refresh_requires_state_eof_then_later_identity_eof():
+    base, listeners, events, order = 'https://127.0.0.1:12345', {}, [], []
+    page = SimpleNamespace(on=lambda name, callback: listeners.__setitem__(name, callback),
+                           remove_listener=lambda name, callback: listeners.pop(name))
+    class Request:
+        # Playwright requests use object identity, even for the same method/URL.
+        def __init__(self, url):
+            self.method, self.url = 'GET', url
+    def response(path, value, label):
+        request = Request(base + path)
+        return SimpleNamespace(request=request, url=request.url, status=200,
+                               finished=lambda: order.append(label + '-eof'), json=lambda: value)
+    preflight = response('/api/me', {'user': {'id': 'member1', 'role': 'member'}}, 'preflight')
+    state = response('/api/state', {'tasks': [{'id': 'original-committed-id'}]}, 'state')
+    identity = response('/api/me', {'user': {'id': 'member1', 'role': 'member'}}, 'identity')
+    events.extend([('request', preflight.request), ('response', preflight),
+                   ('request', state.request), ('response', state),
+                   ('request', identity.request), ('response', identity)])
+    checks = []
+    def settle(_page, check, **_kwargs):
+        checks.append(len(order))
+        # The helper must reject both request-start alone and the earlier /me.
+        while not check():
+            assert events
+            name, value = events.pop(0)
+            listeners[name](value)
+    snapshot, evidence = completed_periodic_refresh(page, base, settle)
+    assert snapshot == {'tasks': [{'id': 'original-committed-id'}]}
+    assert order == ['state-eof', 'identity-eof'] and checks == [0, 1]
+    assert evidence['stateRequestIndex'] == 1 and evidence['identityRequestIndex'] == 2
+    assert evidence['stateStatus'] == evidence['identityStatus'] == 200
+    assert evidence['responseBodiesFinished'] and not listeners and not events

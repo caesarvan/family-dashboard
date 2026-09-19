@@ -69,6 +69,40 @@ def checkbox(page, label):
     return page.get_by_role('checkbox', name=label, exact=True)
 
 
+def completed_periodic_refresh(page, base, settle):
+    """Observe a new state read and its following identity read, through EOF."""
+    requests, responses = [], []
+    def requested(req):
+        if req.method == 'GET' and req.url in (base + '/api/state', base + '/api/me'):
+            requests.append(req)
+    def responded(response):
+        if response.request in requests:
+            responses.append(response)
+    page.on('request', requested); page.on('response', responded)
+    try:
+        settle(page, lambda: any(r.url == base + '/api/state' for r in responses), timeout=16000)
+        state = next(r for r in responses if r.url == base + '/api/state')
+        assert state.status == 200 and state.finished() is None
+        state_value = state.json()
+        state_index = requests.index(state.request)
+        # The /me before /state belongs to the preflight. Only a later request
+        # can be household.refresh's final identity check, after Promise.all.
+        def identity_responses():
+            return [r for r in responses if r.url == base + '/api/me'
+                    and requests.index(r.request) > state_index]
+        settle(page, lambda: bool(identity_responses()))
+        identity = identity_responses()[0]
+        assert identity.status == 200 and identity.finished() is None
+        actor = identity.json()['user']
+        assert actor['role'] == 'member'
+        return state_value, {'stateStatus': state.status, 'identityStatus': identity.status,
+                             'stateRequestIndex': state_index,
+                             'identityRequestIndex': requests.index(identity.request),
+                             'identityMemberId': actor['id'], 'responseBodiesFinished': True}
+    finally:
+        page.remove_listener('request', requested); page.remove_listener('response', responded)
+
+
 class Run(BaseRun):
     def __init__(self, root, bundle, folder, report, out, lifecycle):
         self.exchange_number = 0
@@ -338,9 +372,20 @@ class Run(BaseRun):
                 self.capture(page, fault + '-' + str(width), alert, full_text=alert)
                 # Let an actual periodic read finish. It must not unlock or replay.
                 reads = self.count_requests('GET', '/api/state')
-                self.settle(page, lambda: self.count_requests('GET', '/api/state') > reads, timeout=16000)
+                snapshot, refresh_evidence = completed_periodic_refresh(page, self.base, self.settle)
+                refreshed = next(t for t in snapshot['tasks'] if t['id'] == uid)
+                assert refreshed['revision'] == 1 and refreshed['dependsOn'] == [prerequisite['id']]
+                page.evaluate('() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))')
+                expect(page.get_by_role('button', name='刷新家庭数据', exact=True, include_hidden=True)).to_be_enabled()
+                expect(page.get_by_test_id('tasks-item-' + uid)).to_contain_text(title)
+                assert self.count_requests('GET', '/api/state') > reads
                 expect(button(page, '保存')).to_be_disabled()
+                expect(textbox(page)).to_have_value(title); expect(textbox(page)).to_be_disabled()
+                expect(selected).to_have_attribute('aria-checked', 'true'); expect(selected).to_be_disabled()
                 assert self.count_requests('POST', ITEMS) == before + 1
+                self.record('periodic-refresh-' + fault, {**refresh_evidence, 'task': refreshed,
+                            'renderedOriginalTask': True, 'refreshControlEnabled': True,
+                            'editorFrozen': True, 'postCount': self.count_requests('POST', ITEMS) - before})
                 button(page, '关闭并核对').click()
                 self.open_list(page)
                 expect(page.get_by_test_id('tasks-item-' + uid)).to_contain_text(title)
