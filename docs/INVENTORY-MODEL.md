@@ -1,6 +1,6 @@
-# 库存核心候选：存储、数量与事务契约
+# 库存核心：存储、数量与事务契约
 
-本文件对应独立 `inventory_core.py`，以 `6f3d97855613e9b8ff78df5850652180e083ea76` 为开发基线。模块仅使用标准库与 SQLite，无 Flask、外站、worker、文件读取或应用注册。**当前未接入应用、未迁移或部署**；订单来源解析和 HTTP 预览/确认属于后续 B/C 模块。它不会修改购物 `done/actual`、财务记录、预算、公共余额或旅行 `paid`。
+本文件对应独立 `inventory_core.py`，最初以 `6f3d97855613e9b8ff78df5850652180e083ea76` 为开发基线。模块仅使用标准库与 SQLite，无 Flask、外站、worker、文件读取或自动应用注册。核心和手动库存 HTTP 接口现已由应用工厂显式接入并部署，最近的售后待办发布与独立审计见[发布验收](INVENTORY-FOLLOWUP-ACCEPTANCE.md#inventory-followup-release)。订单来源解析与 HTTP 预览/确认仍需独立模块接入和验收，不能由手动库存已上线推出。核心不会修改购物 `done/actual`、财务记录、预算、公共余额或旅行 `paid`。
 
 第一版确定边界：整数数量、单一明确单位；物品默认本人私密，明确共享后另一成员可做实物动作，owner 管 ACL；手动位置与保修日期；每订单行最多一个活动批次、批次可分次收货。文本 quantityText 不自动转数值，同名不合并，付款不等于收货，退款不等于退货。
 
@@ -109,8 +109,8 @@ source_links的订单外键故意不绑定hub_transactions：来源删除不会�
 
 导出不含请求ID、payload/source digest、line_key或数据库原result。本人sources可含orderId/settlementId，绝不进入shared数组；source已关联的条目不在当前导出可见范围时也不导出。TV与另一家庭须在外层先拒绝。整库备份保留tombstone与所有回执，与个人导出用途不同。
 
-## 验证和未接线边界
+## 核心模块验证与应用验收边界
 
 专项使用两户独立临时SQLite、本地多连接线程、合成购物/金融哨兵：整数/bool/字段/日期/SQL约束，分次收货、超收、负库存、退货与反转，双方共享实物操作/owner管理/撤回，来源唯一与私有导出，采购FK自动解绑双revision，幂等重放/冲突/tombstone不复活，事务失败回滚、持久重启、两连接同revision仅一方成功以及同requestId只一事件。原始失败与最终日志/JUnit在ignored test-results/inventory-core保存。
 
-这些是核心存储测试，**没有验证HTTP/session/CSRF/浏览器、真实订单来源、完整迁移、Docker恢复或生产**。schema仍未注册到app，角色目前只有现有本户users；需root接线后统一验证当前会话、所有路由/列表、导出、源码/Docker COPY与迁移恢复。新媒体等表若先合入，迁移目标须基于当次真实schema重新计算，不能把“此模块增加五表”写成已发布固定表数。
+上述历史结果只证明核心存储行为，不证明 HTTP/session/CSRF、浏览器或生产。应用接入、当前会话、导出和发布的后续证据分别见[库存接口](INVENTORY-API.md)、[采购关联库存验收](SHOPPING-INVENTORY-ACCEPTANCE.md#shopping-inventory-release)和[售后待办验收](INVENTORY-FOLLOWUP-ACCEPTANCE.md#inventory-followup-release)。当前已部署家庭库为 61 张业务表、平台库为 9 张业务表；新模块仍须检查实际 schema，不可把历史“增加五表”当作下一次迁移指令。真实订单来源、本人实际操作和实体设备按各自验收记录判断。
