@@ -32,9 +32,18 @@ HARNESS = 'scripts/check_expo_task_dependencies_browser.py'
 BUILD_REUSE_PATHS = frozenset({HARNESS, 'tests/test_task_dependencies_browser.py',
                              'docs/EXPO-TASK-DEPENDENCIES-BROWSER.md'})
 CASES = ('selection_completion', 'invalid_conflict_clear', 'committed_response_lost')
+CASE_SCREENSHOTS = dict(zip(CASES, (6, 2, 2)))
 WIDTHS = (390, 1280)
 ITEMS = '/api/items/tasks'
 UNKNOWN = '暂时无法确认保存结果。请先关闭并刷新清单，核对后再操作，避免重复添加。'
+
+
+def selected_cases(values):
+    if values is None:
+        return CASES
+    if not values or any(name not in CASES for name in values):
+        raise ValueError('Select at least one known browser case')
+    return tuple(dict.fromkeys(values))
 
 
 def build_source_delta(git, head, evidence, build_head):
@@ -365,10 +374,10 @@ class Run(BaseRun):
                 assert committed['payload']['sourceId'] == ''
                 alert = page.get_by_role('alert')
                 expect(alert).to_have_text(UNKNOWN)
-                expect(textbox(page)).to_have_value(title); expect(textbox(page)).to_be_disabled()
+                expect(textbox(page)).to_have_value(title); expect(textbox(page)).not_to_be_editable()
                 selected = checkbox(page, '取消前置事项：' + prerequisite['title'])
                 expect(selected).to_have_attribute('aria-checked', 'true'); expect(selected).to_be_disabled()
-                expect(textbox(page, '搜索前置事项')).to_be_disabled()
+                expect(textbox(page, '搜索前置事项')).not_to_be_editable()
                 expect(button(page, '保存')).to_be_disabled(); expect(button(page, '清空前置事项')).to_be_disabled()
                 expect(page.get_by_text('已保存待办', exact=True)).not_to_be_visible()
                 rows = [t for t in self.tasks(ctx) if t['title'] == title]
@@ -387,7 +396,7 @@ class Run(BaseRun):
                 expect(page.get_by_test_id('tasks-item-' + uid)).to_contain_text(title)
                 assert self.count_requests('GET', '/api/state') > reads
                 expect(button(page, '保存')).to_be_disabled()
-                expect(textbox(page)).to_have_value(title); expect(textbox(page)).to_be_disabled()
+                expect(textbox(page)).to_have_value(title); expect(textbox(page)).not_to_be_editable()
                 expect(selected).to_have_attribute('aria-checked', 'true'); expect(selected).to_be_disabled()
                 assert self.count_requests('POST', ITEMS) == before + 1
                 self.record('periodic-refresh-' + fault, {**refresh_evidence, 'task': refreshed,
@@ -404,16 +413,18 @@ class Run(BaseRun):
             self.passed('Actual POST committed before response loss or gateway503; frozen editable draft survives polling and explicit refresh discovers the original ID without repeating a write')
 
     @classmethod
-    def run_scenarios(cls, root, bundle, report, out, browser, temp_root):
-        for name in CASES:
+    def run_scenarios(cls, root, bundle, report, out, browser, temp_root, cases=CASES):
+        for name in cases:
             case_out = out / name; case_out.mkdir()
             folder, before, case = None, len(report['checks']), {'name': name, 'passed': False}
+            screenshots_before = len(report['screenshots'])
             try:
                 with ExitStack() as lifecycle:
                     folder = Path(lifecycle.enter_context(tempfile.TemporaryDirectory(prefix='td-', dir=temp_root)))
                     run = cls(root, bundle, folder, report, case_out, lifecycle)
                     getattr(run, name)(browser)
                 assert len(report['checks']) == before + 1 and not folder.exists()
+                assert len(report['screenshots']) - screenshots_before == CASE_SCREENSHOTS[name]
                 assert run.server is None and not run.thread.is_alive()
                 case.update(passed=True, listenerStopped=True)
             except Exception:
@@ -435,7 +446,10 @@ def main():
     parser.add_argument('--bundle', required=True, type=Path)
     parser.add_argument('--expected-build-evidence', required=True)
     parser.add_argument('--temp-root', required=True, type=Path, help='Existing short local parent for exclusive temporary fixtures, e.g. C:/tmp')
+    parser.add_argument('--case', action='append', choices=CASES, dest='cases', help='Run only this case; repeat to select more. Default: all three.')
     args = parser.parse_args()
+    cases = selected_cases(args.cases)
+    expected_screenshots = sum(CASE_SCREENSHOTS[name] for name in cases)
     root, bundle, temp_root = args.source_root.resolve(), args.bundle.absolute(), args.temp_root.resolve()
     assert sys.dont_write_bytecode and not sys.flags.optimize
     assert re.fullmatch('[a-f0-9]{40}', args.expected_head) and re.fullmatch('[a-f0-9]{64}', args.expected_build_evidence)
@@ -460,12 +474,12 @@ def main():
     shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], unexpectedProviderAttempts=[],
                   screenshots=[], scenarioResults=[], scenarioFailures=[], httpEvidence=[], databaseEvidence=[],
-                  requestedChecks=len(CASES), head=head, tree=tree, buildEvidenceSha256=sha(evidence_path),
+                  requestedChecks=len(cases), requestedCases=list(cases), expectedScreenshots=expected_screenshots, head=head, tree=tree, buildEvidenceSha256=sha(evidence_path),
                   harnessSha256=sha(out / 'executed-harness.py'), buildSourceHead=build_head, buildSourceTree=evidence['sourceTree'],
                   buildSourceDelta=build_delta, buildReusePaths=sorted(BUILD_REUSE_PATHS),
                   sourceRoot=str(root), bundleRoot=str(bundle), sourceHashesBefore=hashes(), bundleHashesBefore=export_hashes(bundle),
                   productionWrites=0, realModel=False, realCloud=False, physicalTelevision=False,
-                  scope='Three real local Flask/SQLite/HTTPS/Edge flows. Original dependency CRUD, true completion/409, and committed response loss. Initial historical missing-reference fixture only; no cloud/model/production acceptance.')
+                  scope='Only requestedCases ran as real local Flask/SQLite/HTTPS/Edge flows. Original dependency CRUD, true completion/409, and committed response loss. Initial historical missing-reference fixture only; no cloud/model/production acceptance.')
     original_connect = socket.socket.connect
     def local_connect(sock, address):
         if isinstance(address, tuple) and address[0] not in ('127.0.0.1', '::1', 'localhost'):
@@ -477,8 +491,9 @@ def main():
         with patch.object(socket.socket, 'connect', local_connect), sync_playwright() as pw:
             browser = pw.chromium.launch(channel='msedge', headless=True)
             try:
-                Run.run_scenarios(root, runtime_bundle, report, out, browser, temp_root)
-                assert len(report['checks']) == len(CASES) and len(report['screenshots']) == 10
+                Run.run_scenarios(root, runtime_bundle, report, out, browser, temp_root, cases)
+                assert len(report['checks']) == len(cases) and len(report['screenshots']) == expected_screenshots
+                assert [case['name'] for case in report['scenarioResults']] == list(cases)
                 assert not any(report[key] for key in ('scenarioFailures', 'pageErrors', 'externalRequests', 'unexpectedProviderAttempts'))
                 report['passed'] = True
             finally:
@@ -493,7 +508,7 @@ def main():
             report['fixtureHashesAfter'] = {name: sha(Path(path)) for name, path in report.get('fixtureActualPaths', {}).items()}
             report['fixturesUnchanged'] = bool(report.get('fixtureHashes')) and report['fixtureHashesAfter'] == report['fixtureHashes']
             report['sourceStillFrozen'] = git('rev-parse', 'HEAD') == head and git('rev-parse', 'HEAD^{tree}') == tree and not git('status', '--porcelain=v1')
-            report['temporaryFixtureRemoved'] = len(report['scenarioResults']) == len(CASES) and all(c['temporaryFixtureRemoved'] for c in report['scenarioResults'])
+            report['temporaryFixtureRemoved'] = len(report['scenarioResults']) == len(cases) and all(c['temporaryFixtureRemoved'] for c in report['scenarioResults'])
             report['passed'] = report['passed'] and all(report[k] for k in ('sourceUnchanged', 'bundleUnchanged', 'fixturesUnchanged', 'sourceStillFrozen', 'temporaryFixtureRemoved'))
         except Exception:
             report['passed'] = False; report['finalEvidenceFailure'] = traceback.format_exc()

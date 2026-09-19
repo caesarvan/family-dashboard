@@ -4,9 +4,9 @@ import subprocess
 from types import SimpleNamespace
 
 import pytest
-from playwright.sync_api import sync_playwright
+from playwright.sync_api import expect, sync_playwright
 
-from scripts.check_expo_task_dependencies_browser import BUILD_REUSE_PATHS, add_task_button, build_source_delta, completed_periodic_refresh, deliver
+from scripts.check_expo_task_dependencies_browser import BUILD_REUSE_PATHS, CASES, CASE_SCREENSHOTS, add_task_button, selected_cases, build_source_delta, completed_periodic_refresh, deliver
 
 
 @pytest.fixture
@@ -138,6 +138,28 @@ def test_add_task_locator_handles_real_browser_names_and_rejects_ambiguity():
             page.set_content('<button>添加待办</button><button>批量添加待办</button>')
             with pytest.raises(AssertionError, match='expected to have count'):
                 add_task_button(page)
+            # RN Paper may expose a frozen TextInput as readonly, not disabled.
+            page.set_content('<input aria-label="readonly" readonly value="retained">'
+                             '<input aria-label="disabled" disabled value="retained">'
+                             '<input aria-label="editable" value="retained">')
+            expect(page.get_by_role('textbox', name='readonly', exact=True)).not_to_be_editable()
+            expect(page.get_by_role('textbox', name='disabled', exact=True)).not_to_be_editable()
+            editable = page.get_by_role('textbox', name='editable', exact=True)
+            expect(editable).to_be_editable()
+            editable.fill('changed')
+            expect(editable).to_have_value('changed')
             assert not requests
         finally:
             browser.close()
+
+
+def test_requested_cases_default_deduplicate_validate_and_count_actual_screenshots():
+    assert selected_cases(None) == CASES
+    assert sum(CASE_SCREENSHOTS[name] for name in selected_cases(None)) == 10
+    assert selected_cases(['committed_response_lost', 'committed_response_lost']) == ('committed_response_lost',)
+    assert sum(CASE_SCREENSHOTS[name] for name in selected_cases(['committed_response_lost'])) == 2
+    assert selected_cases(['invalid_conflict_clear', 'selection_completion']) == ('invalid_conflict_clear', 'selection_completion')
+    assert CASE_SCREENSHOTS == dict(zip(CASES, (6, 2, 2)))
+    for invalid in ([], ['unknown'], ['selection_completion', 'unknown']):
+        with pytest.raises(ValueError, match='at least one known'):
+            selected_cases(invalid)
