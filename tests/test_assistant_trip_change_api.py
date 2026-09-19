@@ -156,7 +156,7 @@ def test_suggestion_enters_real_snapshot_preview_apply_and_receipt_recovery(app)
     repeated = apply(client, headers, proposed.json, key)
     assert repeated.status_code == 200 and journey_snapshot(app) == after
     recovered = client.get('/api/journeys/operations/' + key)
-    assert recovered.status_code == 200 and recovered.json['result']['journeyId'] == journey['id']
+    assert recovered.status_code == 200 and recovered.json['result']['id'] == journey['id']
     updated = detail(client, journey['id'])
     assert updated['trip']['start'] == '2028-03-05'
     assert next(row for row in updated['tasks'] if row['workflowKey'] == 'task:pack')['due'] == '2028-03-04'
