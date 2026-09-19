@@ -134,7 +134,8 @@ def test_model_whitelist_and_context_excludes_household_and_tokens(app, monkeypa
     before = counts(app)
     r = c.post('/api/assistant/journey-brief', json={'prompt': PROMPT, 'useModel': True, 'includeHouseholdContext': True}, headers=h)
     assert r.status_code == 200 and r.json['mode'] == 'model'
-    assert set(r.json['brief']) == {'title','start','end','international','budgetCents','destinations','note'}
+    assert set(r.json['brief']) == {'title','start','end','international','budgetCents','destinations','note','checklist','shopping'}
+    assert r.json['brief']['checklist'] == r.json['brief']['shopping'] == r.json['warnings'] == []
     assert set(r.json['brief']['destinations'][0]) == {'country','city','arrival','departure'}
     assert calls == [PROMPT] and counts(app) == before
     assert r.json['brief']['budgetCents']==2000000
