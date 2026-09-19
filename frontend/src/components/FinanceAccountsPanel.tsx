@@ -9,6 +9,7 @@ import { AccountDiscarded, AccountError, AccountFence, AccountRecoveryMemory, Ac
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
 import { useDisplayDensity } from '../ui/theme';
+import FinanceAnalysisPanel from './FinanceAnalysisPanel';
 
 type Props = { onBack: () => void; onPendingChange?: (pending: boolean) => void };
 type Mode = 'list' | 'detail' | 'create' | 'edit' | 'valuation';
@@ -24,9 +25,13 @@ const blank = (asOf: string, account?: FinanceAccount): AccountDraft => ({ name:
 export default function FinanceAccountsPanel(props: Props) {
   const household = useHousehold();
   if (household.user?.role !== 'member') return <EmptyState title="请用成员账户查看本人资产账户" action={<Button contentStyle={styles.touch} onPress={props.onBack}>返回财务</Button>} />;
-  return <Workspace key={household.identityKey} {...props} identity={household.identityKey} actor={accountActor({ user: household.user })} owner={household.user.id} />;
+  return <AccountNavigation key={household.identityKey} {...props} identity={household.identityKey} actor={accountActor({ user: household.user })} owner={household.user.id} />;
 }
-function Workspace(props: Props & { identity: string; actor: string; owner: string }) {
+function AccountNavigation(props: Props & { identity: string; actor: string; owner: string }) {
+  const [analysis, setAnalysis] = useState(false);
+  return analysis ? <FinanceAnalysisPanel onBack={() => setAnalysis(false)} onPendingChange={props.onPendingChange} /> : <Workspace {...props} onAnalysis={() => setAnalysis(true)} />;
+}
+function Workspace(props: Props & { identity: string; actor: string; owner: string; onAnalysis: () => void }) {
   const household = useHousehold(), theme = useTheme(), density = useDisplayDensity();
   const latest = useRef({ household, props }); latest.current = { household, props };
   const [model, setModel] = useState(() => initial(recovery.get(props.actor))), [busy, setBusy] = useState(false);
@@ -139,6 +144,7 @@ function Workspace(props: Props & { identity: string; actor: string; owner: stri
     {!show ? <EmptyState title={connected() && household.online ? '正在核对本人身份和账户' : '离线时隐藏私密账户'} description="同一身份的未保存草稿只在内存中保留，恢复连接后先重新核对身份与账户。"
       action={<Button contentStyle={styles.touch} disabled={busy || !connected() || !household.online || denied.current} onPress={refresh}>重新读取账户</Button>} /> : <>
       {!!model.message && <Text accessibilityLiveRegion="polite">{model.message}</Text>}
+      <Button mode="contained-tonal" contentStyle={styles.touch} disabled={locked || !!model.draft} onPress={() => { if (current() && !pending()) { conceal(true); latest.current.props.onPendingChange?.(false); latest.current.props.onAnalysis(); } }}>查看我的账户分析</Button>
       {model.requestId && <SectionCard title="核对上次保存"><View testID="finance-accounts-unknown" style={stack}><Text>结果尚未确认。没有找到回执不代表未保存。</Text><Text selectable style={styles.wrap}>操作编号：{model.requestId}</Text>
         <Button mode="contained" contentStyle={styles.touch} disabled={disabled} onPress={recover}>核对账户操作结果</Button>
         {model.intent && <Button mode="outlined" contentStyle={styles.touch} disabled={disabled} onPress={retry}>按原账户请求重试</Button>}
