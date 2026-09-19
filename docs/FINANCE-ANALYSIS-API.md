@@ -1,6 +1,6 @@
 # 本人账户分析 API
 
-本批合同，尚未发布。分析只计本人明确选中的 `finance_accounts`；来源报告、当前持仓、共同荷包和付款账本不相加，也不自动生成账户或现金流。账户/估值仍使用原 `/api/finance-accounts` 接口，保留原币、原始日期、未知值和原回执合同。
+本批合同已随固定 source `f25357f` 于 2026-09-19 16:20:25（北京时间）发布，组合、Linux 与生产审计范围见[集中验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。分析只计本人明确选中的 `finance_accounts`；来源报告、当前持仓、共同荷包和付款账本不相加，也不自动生成账户或现金流。账户/估值仍使用原 `/api/finance-accounts` 接口，保留原币、原始日期、未知值和原回执合同。
 
 ## 身份与金额
 

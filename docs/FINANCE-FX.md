@@ -1,6 +1,6 @@
 # 资产分析参考汇率
 
-本批开发候选，尚未部署。`finance_fx.py` 只处理公共参考汇率，不读取、上传或修改账户、持仓、原币估值和交易。调用入口、本人权限、刷新确认与回执见 [分析 API](FINANCE-ANALYSIS-API.md)。
+本批模块已随固定 source `f25357f` 于 2026-09-19 16:20:25（北京时间）发布；组合、实际 Linux、该镜像公共 ECB 读取与生产审计证据见[集中验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。`finance_fx.py` 只处理公共参考汇率，不读取、上传或修改账户、持仓、原币估值和交易。调用入口、本人权限、刷新确认与回执见 [分析 API](FINANCE-ANALYSIS-API.md)。
 
 ## 来源与用途
 
