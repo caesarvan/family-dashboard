@@ -8,6 +8,7 @@ import { PhotoReadDiscarded, PhotoReadFence, type PhotoSession } from '../lib/ph
 import { budgetPayload, centsToDecimal, decimalInput, flowLabels, formatFinanceAmount, ledgerPath, readLedger, readOverview, readReconciliation, readRelation, readRelationPreview, readSharedSnapshot, readTotals, relationLabels, sharedFinanceFields, sharedFinanceLabels, sharedSnapshotPayload, sourceLabel, transactionPatch, validFinanceMonth,
   type Budget, type Candidate, type Flow, type Ledger, type Overview, type Reconciliation, type Relation, type RelationPreview, type SharedSnapshot, type Totals, type Transaction } from '../lib/finance';
 import type { ScreenProps } from '../lib/types';
+import { readFinanceNavigation } from '../lib/assistantFinanceQuery';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import FinanceImportPanel from './FinanceImportPanel';
 import FinanceBaselinePanel from '../components/FinanceBaselinePanel';
@@ -55,7 +56,9 @@ function TransactionCopy({ row }: { row: Transaction }) {
 export default function FinanceScreen(props: ScreenProps) {
   const household = useHousehold();
   if (props.user.role !== 'member') return <EmptyState title="财务明细仅本人查看" description="请使用成员账户登录。电视不能读取个人财务。" />;
-  return <FinanceWorkspace key={household.identityKey} {...props} identityKey={household.identityKey} />;
+  const navigation = props.financeRequest ? readFinanceNavigation(props.financeRequest, household.identityKey) : null;
+  if (props.financeRequest && !navigation) return <EmptyState title="查询月份或登录身份已变化" description="请返回助理重新查询。" />;
+  return <FinanceWorkspace key={household.identityKey + ':' + (navigation?.key || 0)} {...props} identityKey={household.identityKey} />;
 }
 function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
   const styles = useStyles();
@@ -64,9 +67,10 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
   const alive = useRef(false), active = useRef(false), focused = useRef(false), denied = useRef(false), writing = useRef(false), reading = useRef(false);
   const appActive = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive'), epoch = useRef(0);
   const fence = useRef(new PhotoReadFence(() => request<PhotoSession>('/me'), props.user, props.identityKey));
-  const query = useRef<Query>({ month: currentMonth(), q: '', page: 1 });
+  const navigation = props.financeRequest ? readFinanceNavigation(props.financeRequest, props.identityKey) : null;
+  const query = useRef<Query>({ month: navigation?.month || currentMonth(), q: '', page: 1 });
   const [data, setData] = useState<Data | null>(null), [visible, setVisible] = useState(false), [busy, setBusy] = useState(false);
-  const [error, setError] = useState(''), [notice, setNotice] = useState(''), [tab, setTab] = useState<'shared' | 'ledger' | 'budgets'>('shared');
+  const [error, setError] = useState(''), [notice, setNotice] = useState(''), [tab, setTab] = useState<'shared' | 'ledger' | 'budgets'>(navigation?.tab || 'shared');
   const [monthInput, setMonthInput] = useState(query.current.month), [searchInput, setSearchInput] = useState(''), [ledgerChanged, setLedgerChanged] = useState(false);
   const [detail, setDetailState] = useState<Reconciliation | null>(null), detailRef = useRef<Reconciliation | null>(null);
   const [edit, setEditState] = useState<Edit | null>(null), editRef = useRef<Edit | null>(null);
@@ -333,6 +337,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
   }} />;
 
   return <View style={styles.page}>
+    {props.onReturnToQuery && <Button disabled={locked || !privateVisible || !!budget || !!sharedEditor || !!edit || !!candidate || !!revoke} onPress={() => { if (current() && !reading.current && !writing.current && !pendingRef.current && !budgetRef.current && !sharedRef.current && !editRef.current) props.onReturnToQuery?.(); }}>返回查询</Button>}
     <PageHeader title={detail && privateVisible ? '交易详情' : '家庭资金'} description={detail && privateVisible ? '保留原始金额，核对分类与关联。' : '共同资金一起看，个人账本自己管。'} action={<View style={styles.row}>{detail && privateVisible ? <Button disabled={locked} onPress={closeDetail}>返回账本</Button> : <Button icon="file-upload-outline" accessibilityLabel="导入账单" mode="contained" disabled={locked || !privateVisible} onPress={() => { closeDetail(); setImporting(true); }}>导入账单</Button>}<Button icon="refresh" accessibilityLabel={pending ? '刷新核对结果' : '刷新账本'} disabled={busy || !online() || denied.current} onPress={() => { if (!active.current) enter(); else void reload(true); }}>{pending ? '刷新核对结果' : '刷新账本'}</Button></View>} />
     {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     {!!notice && privateVisible && <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text>}

@@ -23,6 +23,7 @@ from finance_analysis import register_finance_analysis
 from household_spaces import register_preferences, register_spaces
 from home_assistant import register_assistant
 from assistant_trip_change_api import register_assistant_trip_change
+from assistant_finance_query import register_assistant_finance_query
 from journey_workflows import register_journeys
 from journey_documents import register_journey_documents
 from journey_places import register_journey_places
@@ -753,6 +754,7 @@ def create_app(config=None):
     register_routines(app, db, Problem, body, require_member, audit)
     register_assistant(app, db, Problem, body, require_member, audit, limited, validate, now)
     register_assistant_trip_change(app, db, Problem, body, require_member, limited)
+    register_assistant_finance_query(app, db, Problem, body, require_member, limited)
     register_portability(app, db, Problem, body, require_member, audit, limited)
     register_spaces(app, db, Problem, body, require_member, limited, create_app)
     return app
