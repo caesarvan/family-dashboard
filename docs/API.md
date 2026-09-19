@@ -1,10 +1,10 @@
 # 家庭看板接口文档
 
-当前部署身份见 [HANDOFF](HANDOFF.md)。个人账户与多家庭成员协作此前完成 58/2→61/9 迁移；本人账户分析现已完成 61/9→66/9，当前为 **66 张户内表与 9 张平台表**，见[分析发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；此前家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+当前部署身份见 [HANDOFF](HANDOFF.md)。个人账户与多家庭成员协作此前完成 58/2→61/9 迁移；本人账户分析完成 61/9→66/9，旅行路线随后完成 66→69；当前为 **69 张户内表与 9 张平台表**。最新旅行准备、采购与分工发布保持结构不变，见[最新发布验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；此前家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
 
-## 旅行路线（本地候选，未上线）
+## 旅行路线（已上线）
 
-路线只保存当前旅行关联地点的明确顺序，默认私人；显式共享后由同户其他成员只读，只有作者可编辑／删除。当前生产仍为 66/9 表，本地候选新增三张路线表后为 69/9。完整 DTO、限制和错误见 [路线 API](JOURNEY-ROUTES.md)，界面与恢复见 [Expo 路线](EXPO-JOURNEY-ROUTES.md)，迁移和发布边界见 [路线发布](JOURNEY-ROUTES-RELEASE.md)。
+路线只保存当前旅行关联地点的明确顺序，默认私人；显式共享后由同户其他成员只读，只有作者可编辑／删除。路线于 2026-09-19 22:56:47（北京时间）上线，新增三张路线表后为 69/9，实际迁移与独立审计见[路线验收](JOURNEY-ROUTES-ACCEPTANCE.md#journey-routes-release)。完整 DTO、限制和错误见 [路线 API](JOURNEY-ROUTES.md)，界面与恢复见 [Expo 路线](EXPO-JOURNEY-ROUTES.md)，迁移和发布边界见 [路线发布](JOURNEY-ROUTES-RELEASE.md)。
 
 | 方法 | 路径 | 用途与返回 |
 |---|---|---|

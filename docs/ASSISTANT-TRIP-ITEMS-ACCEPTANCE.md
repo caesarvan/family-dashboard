@@ -2,7 +2,7 @@
 
 <a id="assistant-trip-items-release"></a>
 
-**当前为已通过本地与 Linux 分段验证的发布候选，尚未上线。** 本页记录本批新增能力，不改变已有旅行功能的历史发布状态。Linux 镜像、199 项测试及合成两户三库保全已有实际结果，独立审计仍在进行；生产尚未 stage／activate。A–D 本人完整验收仍为 0/4，真实云写入和实体电视另验。
+**已于 2026-09-20 01:13:38（北京时间）激活，01:23:44 独立生产只读审计通过。** 本页集中记录旅行准备、采购与成员分工的使用、分段验证和固定发布身份。实际生产一户两库保持 69/9，完整停写备份与启动前后保全通过；Linux 两户三库是另行记录的合成演练。A–D 本人完整验收仍为 0/4，真实云写入和实体电视另验。
 
 ## 使用路径
 
@@ -23,11 +23,11 @@
 - 结构化旅行需求不会因含预算、护照或签证准备被误送至财务查询；同时明确询问“本月花了多少”的混合请求保留财务询问，沿用现有澄清流程。
 - 两位成员同名时用“我／另一位成员”区分；多个同名非本人仍待明确。复杂口语及模型输出仍需本人核对；本批不创建付款、预订或云日历／待办发布队列，不提供签证政策结论。
 
-接口及字段见[简报合同](ASSISTANT-JOURNEY-BRIEF.md)，交互和恢复细节见[Expo 简报](EXPO-JOURNEY-BRIEF.md)，部署合同见[发布工具](ASSISTANT-TRIP-ITEMS-RELEASE.md)。这些页面保留了各自作者阶段的状态；本页集中记录后续组合验证。
+接口及字段见[简报合同](ASSISTANT-JOURNEY-BRIEF.md)，交互和恢复细节见[Expo 简报](EXPO-JOURNEY-BRIEF.md)，部署合同见[发布工具](ASSISTANT-TRIP-ITEMS-RELEASE.md)。接口与交互页保留各自作者阶段的状态；本页集中记录后续组合验证与正式上线结果。
 
-## 固定候选身份
+## 固定发布身份
 
-以下是已准备的候选包身份，**不是生产安装身份**。后续纯文档提交不改变该包的源码绑定。
+以下固定包已经安装到生产。[PR #3](https://github.com/caesarvan/family-dashboard/pull/3) 已合入 main `ec344d58ddfaaa5ff356f398fbcbd0f5073032c7`；main 比下述打包源码增加两份验收文档，运行、前端、测试与发布工具字节一致。后续纯文档提交不改变该包的源码绑定，也不代表服务器文档已同步更新。
 
 | 项目 | 固定值 |
 | --- | --- |
@@ -37,7 +37,7 @@
 | `release-manifest.json` SHA-256 | `47dec854a77262458bc74573f0b36083c856b772c940587d8d1644d44e032b70` |
 | `release.tar.gz` SHA-256 | `41f8fa56a023043aa453bd0f247d2fe04e06f6aa98c7843754bcb3c4666e6bad` |
 | R2 Expo 构建原件 SHA-256 | `558f1c435a243ed59940d4f5250d3814f1cd2e704c98d405286cd34fe4fa55f7` |
-| Linux 候选镜像 | `sha256:dc5ecb91f25017a19a7e59a992e94d8d281a7e68f1e97e0ca0b5dfeaf2872bd6` |
+| 生产 app／sync／media 镜像 | `sha256:dc5ecb91f25017a19a7e59a992e94d8d281a7e68f1e97e0ca0b5dfeaf2872bd6` |
 | 包文件 / 运行文件 / Expo 产物 | 957（934 源码 + 23 产物）/ 127 / 23 |
 | 数据合同 | 户内 69→69 表、平台 9→9 表；无本批 DDL |
 
@@ -59,7 +59,16 @@
 
 浏览器及实际模型中的“重启”均指重建 app 实例并重新读取同一临时数据库；浏览器还重建监听器，不声称重启操作系统或生产服务。R3 无外部请求、页面错误或生产写入，源码、产物、fixture 均保持，临时库已清理。实际模型只使用虚构旅行和本地临时家庭，没有发送真实家庭资料。
 
-Linux 构建于 2026-09-20 00:50:30、两户保全于 00:54:19、199 项测试于 00:57:01 完成（北京时间）。保全演练复用隔离执行器、合成凭据及合成 marker，明确不是生产控制器的原样执行；本机恢复检查不能改写为本轮 Linux 已恢复。三个原件已按下表散列读回，独立审计另行记录。
+Linux 构建于 2026-09-20 00:50:30、两户保全于 00:54:19、199 项测试于 00:57:01 完成（北京时间）。保全演练复用隔离执行器、合成凭据及合成 marker，明确不是生产控制器的原样执行；本机恢复检查不能改写为本轮 Linux 已恢复。三个原件已按下表散列读回；独立审计已核对同一 199 项选择及 JUnit、前后运行与依赖散列、实际命令退出码、两户完整逻辑指纹和三份备份文件散列，结果通过。
+
+## 实际发布与独立生产审计
+
+- `stage`、`activate` 均实际 exit 0，完成时间为 2026-09-20 01:13:38（北京时间）；计划已消费，不可重放。发布目录为 `/opt/family-dashboard-releases/assistant-trip-items-69-20260919T171203879464Z`。
+- 实际生产为 **一户两库**，户内 69→69、平台 9→9，无 DDL。`stoppedBackup.verified` 与 `preservation.verified` 均为 `true`；停写前与新 app 启动后再停写的完整 schema、列、行及序号逻辑指纹同为 `2939f5ad0ef7b4003fdb24860a6a80d76bfbe30442de58305d0ad9680381575b`。
+- 01:23:44 的独立只读审计核对 957 个安装包文件、app／sync／media 各 127 个运行文件、75 个正常 TLS 静态资源的 200 与散列；23 项匿名 GET 拒绝探针均为 401。`/app`、`/app/assistant`、`/app/tv` 与 `/healthz` 返回 200；四服务运行且重启计数为 0，app 健康。
+- 原 `.env` 文件、实际环境变量映射和成员 marker 保持；备份定时器 active，两份保留的停写备份文件散列与记录一致。环境变量排序不同不视为配置内容变化，原件未输出密钥或数据库内容。
+
+审计只核对发布原件、保留备份文件散列、安装及运行文件、容器状态和匿名 GET。未打开活动 SQLite、执行 POST、调用模型或云服务、写入业务、恢复数据库或重启服务；上述 GET 结果不证明 POST 认证或本人工作流通过。启动后的实际业务数据可以继续变化，不能把发布前后停写指纹当作持续实时快照。
 
 ## 保留的失败与修正
 
@@ -83,6 +92,9 @@ Linux 构建于 2026-09-20 00:50:30、两户保全于 00:54:19、199 项测试�
 | `W/integration/test-results/expo-assistant-trip-items-20260919T164451854455Z/result.json`（R3） | `5d18d15f8e7d2b4d26fd052012151261f6624f6e249e18d7053bf793bea0dd97` |
 | `W/assistant-trip-items-release/test-results/assistant-trip-items-release-verification-r1.json` | `6578e7063ce33164ac370307ee9619ebc2a0b9068a3e02a4dbb8338797d37dbd` |
 | `A/assistant-trip-items-package-r1/package.json` | `a740a95187ee2d62fc61483c1799953b6fb769ccc9e5a9444a9144bace8b61b4` |
+| `W/trip-final-review/test-results/assistant-trip-items-linux-independent-review-r1.json` | `4bc7644f936e5c2482597e7a0122745769454922bc0844b98fa6e8f1f1d6d5ad` |
+| `W/trip-final-review/test-results/assistant-trip-items-final-plan-independent-review-r1.json` | `4bd72f770e82d79535616c2adbebf3bbf807c54fe4aa6121439843549b695f23` |
+| `W/trip-build-resume/test-results/assistant-trip-items-production-readonly-review-r1.json` | `4ad1226c392ab0d371df7f1ca36331c03da52e00815c2bd06aacb992a49580d7` |
 
 服务器原件中，`V` 为 `/opt/family-dashboard-candidates/assistant-trip-items-verification-20260920-r1`，`R` 为 `/opt/family-dashboard-candidates/assistant-trip-items-rehearsal-20260920-r1`。它们均为隔离候选／演练目录。
 
@@ -92,13 +104,21 @@ Linux 构建于 2026-09-20 00:50:30、两户保全于 00:54:19、199 项测试�
 | `V/validation/validation.json` | `df9c7968e9c849773aca3468a976bd96bc7a2f62717bbf2b7993e0ef0221cdb1` |
 | `R/result.json` | `bf40d7cd096055c96e61d80555fbe7179a6f86364604b6a0f59ebee3f9eb052d` |
 
-## 发布与本人验收待办
+服务器正式计划与回执所在 `C` 为 `/opt/family-dashboard-candidates/assistant-trip-items-69-20260920-r1`。上述独立审计绑定本次实际回执与发布目录。
 
-| 待办 | 当前证据边界 |
+| 正式发布原件 | SHA-256 |
 | --- | --- |
-| Linux 结果与最终组合独立审计 | 构建、199 项及两户保全均已实际通过；独立审计进行中，尚不宣称通过。 |
-| main 合入、生产 stage／activate | 候选 `codex/integration` 已推送并创建[草稿 PR #3](https://github.com/caesarvan/family-dashboard/pull/3)；主干仍为 `886234bf0590b297cb1c33fa2b6d6c83aff3e670`，待审查及合入。固定包和候选镜像不代表已安装。 |
-| 生产读回、完整停写备份与新启动后保全 | 待完成并记录新运行身份；不得重放旧 66 表迁移。 |
+| `C/release-plan.json` | `1eee1f9d1974657c4c267b70cddfc44836265ce76c7fb49bc03b214b3cbeafe3` |
+| `C/stage.json` | `ad17aaefffb2d5c5969af466d096288dc3236e5fce488ae661f1de94d6dcb819` |
+| `C/activation.json` | `cf936f7a3bb31a96d885da1f8b686ba19786932d21541447c476cd7bbd4bc3c0` |
+
+## 发布结果与本人验收
+
+| 项目 | 当前证据边界 |
+| --- | --- |
+| Linux 结果与最终组合独立审计 | 已通过；同一固定源码、正式 Expo 原件、Linux 199 项和合成两户保全分别绑定，正式计划另经独立只读审查。 |
+| main 合入、生产 stage／activate | PR #3 已合并为 `ec344d58ddfaaa5ff356f398fbcbd0f5073032c7`；本页固定包已实际安装，stage／activate 均成功。 |
+| 生产读回、完整停写备份与新启动后保全 | 一户两库完整保全及独立只读审计通过；保留备份文件已核对，但本批未执行生产恢复。不得重放已完成计划或旧 66 表迁移。 |
 | 本人真实旅行、实际指定日历／清单、改期协作及电视 | 未验收；本批分段结果不能宣布完整场景 A–D 通过。 |
 
 采购结构化截止与改期联动、多个同名非本人成员的进一步识别，以及刷新后的草稿恢复仍是后续产品事项，未作为本批完成能力。
