@@ -1,6 +1,6 @@
 # 采购日期与优先级发布入口
 
-本入口是待审查的发布适配，不表示采购日期与优先级已上线。本批前后端须一起发布；业务合同见 [SHOPPING-SCHEDULE.md](SHOPPING-SCHEDULE.md)，Expo 操作与兼容边界见 [EXPO-SHOPPING-SCHEDULE.md](EXPO-SHOPPING-SCHEDULE.md)。本地政策和记录式生命周期测试不代替 Linux、真实浏览器、生产激活或用户账号验收。
+本入口已通过独立审查并合入 main；正式前后端包、真实浏览器、实际 Linux 298 项和具体离线计划均已有记录，2026-09-20 03:54:39（北京时间）激活，03:55:48 独立只读审计通过；本次计划已消费，不可重放。固定身份及最终状态见[集中验收](SHOPPING-SCHEDULE-ACCEPTANCE.md#shopping-schedule-release)。业务合同见 [SHOPPING-SCHEDULE.md](SHOPPING-SCHEDULE.md)，Expo 操作见 [EXPO-SHOPPING-SCHEDULE.md](EXPO-SHOPPING-SCHEDULE.md)；下方父版约束与作者阶段测试保持历史，不把本地生命周期测试当作真实生产演练。
 
 ## 固定身份与范围
 
