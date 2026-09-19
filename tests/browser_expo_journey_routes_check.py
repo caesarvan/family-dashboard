@@ -5,7 +5,8 @@ sharing, conflict and uncertain writes, and foreground/identity privacy. No
 business success is mocked: response loss follows an actual server commit;
 request loss is separately labelled and followed by a real operation 404.
 Photo provider completions use the existing synthetic recap fixture, while the
-browser reads actual saved metadata and sanitized image bytes over local HTTP.
+browser reads actual saved metadata and sanitized image bytes over loopback
+HTTPS with an ad hoc temporary certificate.
 
 Run with -B -X utf8, --source-root, --expected-head, --bundle and
 --expected-build-evidence. An earlier --build-source-head is accepted only when
@@ -16,6 +17,7 @@ import argparse
 from contextlib import ExitStack, closing
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 import re
 import secrets
@@ -43,6 +45,26 @@ PRIVATE = '合成私人往返路线'
 NAMES = ('合成起点', '合成中间站', '合成终点')
 FACT_TABLES = ('entities', 'journey_workflows', 'journey_links', 'journey_places', 'media_items', 'media_tv_grants')
 ROUTE_TABLES = ('journey_routes', 'journey_route_stops', 'journey_route_operations')
+
+
+def export_hashes(bundle):
+    """Inventory every exported byte, including Windows paths beyond MAX_PATH."""
+    assert bundle.is_dir() and not bundle.is_symlink() and not bundle.is_junction()
+    extended = Path('\\\\?\\' + str(bundle)) if os.name == 'nt' else bundle
+    files = {}
+    def walk_error(error):
+        raise error
+    for current, directories, leaves in os.walk(extended, onerror=walk_error):
+        for name in directories:
+            directory = Path(current) / name
+            assert not directory.is_symlink() and not directory.is_junction()
+        for name in leaves:
+            path = Path(current) / name
+            assert path.is_file() and not path.is_symlink() and not path.is_junction()
+            key = path.relative_to(extended).as_posix()
+            assert key not in files
+            files[key] = sha(path)
+    return files
 
 
 class Run(recap.Run):
@@ -87,6 +109,12 @@ class Run(recap.Run):
         path.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding='utf-8')
         self.report['databaseEvidence'].append({'path': path.relative_to(self.out.parent).as_posix(), 'sha256': sha(path)})
         return value
+
+    def place(self, ctx, journey, name='合成地点', **changes):
+        payload = dict(requestId=secrets.token_hex(16), name=name,
+            journeyId=journey['id'], coordinates={'latitude': 31.234567, 'longitude': 121.456789})
+        payload.update(changes)
+        return self.write(ctx, 'POST', '/api/journey-places', payload, 201)['place']
 
     def setup_places(self, ctx, *, shared=False):
         journey = self.journey(ctx)
@@ -436,7 +464,7 @@ def main():
     parser.add_argument('--bundle', required=True, type=Path)
     parser.add_argument('--expected-build-evidence', required=True)
     args = parser.parse_args()
-    root, bundle = args.source_root.resolve(), args.bundle.resolve()
+    root, bundle = args.source_root.resolve(), args.bundle.absolute()
     assert sys.dont_write_bytecode and not sys.flags.optimize
     assert re.fullmatch('[a-f0-9]{40}', args.expected_head) and re.fullmatch('[a-f0-9]{64}', args.expected_build_evidence)
     def git(*command):
@@ -456,7 +484,7 @@ def main():
     def hashes():
         return {name: sha(root / name) for name in names}
     def exports():
-        return {p.relative_to(bundle).as_posix(): sha(p) for p in bundle.rglob('*') if p.is_file()}
+        return export_hashes(bundle)
     assert exports() == evidence['files'] and all(sha(root / name) == value for name, value in evidence['inputFiles'].items())
     assert sha(Path(__file__)) == sha(root / HARNESS)
     out = root / 'test-results' / ('expo-journey-routes-' + datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ'))
@@ -469,7 +497,7 @@ def main():
         'reusedBuild': build_head != head, 'buildSourceDelta': git('diff', '--name-only', build_head, head).splitlines(),
         'sourceRoot': str(root), 'bundleRoot': str(bundle), 'sourceHashesBefore': hashes(), 'bundleHashesBefore': exports(),
         'productionWrites': 0, 'realModel': False, 'realCloud': False, 'physicalTelevision': False,
-        'scope': 'Four synthetic real Flask/SQLite/HTTPS/Edge route flows; saved photo provider jobs are synthetic, business DTOs/image reads real. Visibility/blur events are simulated browser events, not physical-device acceptance.'}
+        'scope': 'Four synthetic real Flask/SQLite/loopback HTTPS/Edge route flows with an ad hoc temporary certificate; saved photo provider jobs are synthetic, business DTOs/image reads real. Visibility/blur events are simulated browser events, not physical-device acceptance.'}
     original_connect = socket.socket.connect
     def local_connect(sock, address):
         if isinstance(address, tuple) and address[0] not in ('127.0.0.1', '::1', 'localhost'):
