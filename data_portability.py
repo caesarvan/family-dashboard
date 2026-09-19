@@ -14,6 +14,7 @@ from flask import g, jsonify, send_file
 from finance_accounts import export_owned_accounts
 from finance_analysis import export_owned_analysis
 from finance_baseline import shared_baselines
+from finance_source_bridge import ImportSession
 from shopping_settlement import export_owned_settlements
 from household_routines import export_shared_routines
 from spending_observations import export_owned_spending_observations
@@ -52,6 +53,27 @@ INVENTORY_ACQUISITION_FIELDS = {'id','itemId','shoppingId','kind','orderedQty','
 INVENTORY_MOVEMENT_FIELDS = {'id','acquisitionId','actor','kind','deltaQty','occurredOn','reason','reversesId','createdAt'}
 INVENTORY_SOURCE_FIELDS = {'id','acquisitionId','orderId','settlementId','status','revision'}
 INVENTORY_OPERATION_FIELDS = {'id','operation','itemId','acquisitionId','createdAt'}
+REMINDER_OPERATION_FIELDS = {'taskId': str, 'occurrence': str, 'action': str, 'revision': int,
+                             'readAt': (str, type(None)), 'snoozedUntil': (str, type(None)),
+                             'committedAt': str}
+
+
+def exported_task_reminders(con, owner):
+    """Owner history only, including removed-task references; never receipt blobs."""
+    result = {'states': [], 'operations': []}
+    available = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    if 'task_reminders' in available:
+        result['states'] = [dict(row) for row in con.execute(
+            'SELECT task_id AS taskId,due,read_at AS readAt,snoozed_until AS snoozedUntil,'
+            'revision,created_at AS createdAt,updated_at AS updatedAt '
+            'FROM task_reminders WHERE owner=? ORDER BY task_id,due', (owner,))]
+    if 'task_reminder_operations' in available:
+        for row in con.execute('SELECT result FROM task_reminder_operations WHERE owner=? '
+                               'ORDER BY created_at,request_id', (owner,)):
+            receipt = json.loads(row['result'])
+            result['operations'].append({key: receipt[key] for key, allowed in REMINDER_OPERATION_FIELDS.items()
+                if key in receipt and type(receipt[key]) in (allowed if isinstance(allowed, tuple) else (allowed,))})
+    return result
 
 
 def cell(value):
@@ -183,17 +205,17 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
 
     @app.get('/api/portability/summary')
     def export_summary():
-        require_member()
-        con, uid = db(), g.actor['id']
+        access = ImportSession(app, db, Problem, require_member)
+        con, uid = access.con, access.owner
+        con.rollback()
         con.execute('BEGIN')
-        current = app.extensions['member_sessions'].current(con)
-        if (current['owner'] != uid or current['auth_version'] != g.actor.get('auth_version')
-                or g.actor.get('householdId') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
-            raise Problem('登录或家庭已变化，请重新打开',401)
+        access.check()
         counts = {name: con.execute(f'SELECT count(*) FROM {table} WHERE owner=?', (uid,)).fetchone()[0]
                   for name, table in [('transactions','hub_transactions'),('investments','hub_investments'),
                                       ('budgets','hub_budgets'),('financeBaselines','finance_baselines'),
                                       ('assistantPlans','assistant_plans')]}
+        for name, table in (('taskReminderStates', 'task_reminders'), ('taskReminderOperations', 'task_reminder_operations')):
+            counts[name] = con.execute('SELECT count(*) FROM '+table+' WHERE owner=?', (uid,)).fetchone()[0] if table in tables(con) else 0
         shared = {r[0]: r[1] for r in con.execute('SELECT kind,count(*) FROM entities GROUP BY kind')}
         documents = exported_documents(con, uid, include_shared=True) if 'journey_documents' in tables(con) else {'personal': [], 'shared': []}
         counts['journeyDocuments'] = len(documents['personal'])
@@ -218,7 +240,8 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
             counts['financeAnalysis'] = {name: con.execute('SELECT count(*) FROM ' + table + ' WHERE owner=?', (uid,)).fetchone()[0]
                 for name, table in [('profiles', 'finance_account_profiles'), ('cashflows', 'finance_account_cashflows'),
                                     ('reviews', 'finance_account_reviews'), ('operations', 'finance_analysis_operations')]}
-        con.commit()
+        con.rollback()
+        access.fresh()
         return jsonify(personal=counts, shared=shared, format='zip',
                        note='导出的是当前保存的记录，并非已覆盖全部金融账户。家庭相册、采购图片和旅行资料仅含说明与元数据，不包含图片或文件；照片原图仍在来源平台，旅行文件可在资料夹逐份下载。账号连接需要重新授权。')
 
@@ -232,12 +255,11 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
         if not EXPORT_SLOT.acquire(blocking=False):
             raise Problem('正在准备另一份数据副本，请稍后重试', 429)
         try:
-            con, uid = db(), g.actor['id']
+            access = ImportSession(app, db, Problem, require_member)
+            con, uid = access.con, access.owner
+            con.rollback()
             con.execute('BEGIN')
-            current = app.extensions['member_sessions'].current(con)
-            if (current['owner'] != uid or current['auth_version'] != g.actor.get('auth_version')
-                    or g.actor.get('householdId') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
-                raise Problem('登录或家庭已变化，请重新打开', 401)
+            access.check()
             available = tables(con)
             exported = datetime.now(timezone.utc)
             snapshot = {'schemaVersion': 1, 'exportedAt': exported.isoformat(),
@@ -249,6 +271,8 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                                      'inventory': 'manual_records',
                                      'externalCredentialsIncluded': False, 'completeFinancialCoverage': False}, 'personal': {}}
             personal = snapshot['personal']
+            personal['taskReminders'] = exported_task_reminders(con, uid)
+            snapshot['coverage']['taskReminders'] = 'owner_state_and_minimal_operation_history_without_task_content'
             documents = exported_documents(con, uid, include_shared=value.get('includeShared', False)) if 'journey_documents' in available else {'personal': [], 'shared': []}
             personal['journeyDocuments'] = documents['personal']
             places = exported_places(con, uid, include_shared=value.get('includeShared', False))
@@ -409,16 +433,12 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     'personal.journeyRoutes 含本人未删除路线；勾选共同记录才含 shared.journeyRoutes 中伙伴明确共享路线。站点按当前授权及原顺序投影，共享路线的作者也只看到共享坐标。不可用站点仅保留位置，不跨缺口连线；不含隐藏地点编号、历史回执或请求摘要。路线顺序不代表导航或实际到访。\n',
                     'personal.householdMedia 仅含本人已确认保存照片的说明、尺寸、来源文件名与旅行关联；shared.householdMedia 仅含仍获授权的伙伴共享照片说明，不包含原始文件名。没有照片文件、下载网址、选片清单、令牌、TV许可或后台任务。加密预览和后台记录仅在服务器整库备份中保留。\n',
                     'personal.inventory 包含本人物品及批次、实物流水；sources 和 operations 只含本人且在本次可见范围内的最小来源关联与操作摘要。shared.inventory 仅含伙伴当前共享物品及其批次、实物流水，不含伙伴的金融来源或操作回执。归档记录、请求标识、载荷散列、原回执内容不在此副本内；整库备份另行保留。数量不代表付款、退款或估值。\n',
+                    'personal.taskReminders 仅含本人持久提醒状态与最小操作历史，含任务已删除或改期后保留的引用；不含任务标题快照、他人状态、请求编号、请求摘要、原回执或凭证。状态按导出快照保存，不表示任务当前仍适用或暂缓尚未到期。此私人历史不会因勾选共同记录而变成共享数据，不能用于导入或重放操作。\n',
                     '不含登录密码、令牌、应用密钥；迁移后须重新绑定第三方。此文件不是可直接覆盖 SQLite 的灾难恢复备份，当前没有一键还原此文件的接口。\n',
                     '本文件含个人资料和财务内容，请保存在你控制的设备上。\n'])
                 entry('manifest.json', [json.dumps({'schemaVersion':1,'files':dict(digests),'exportedAt':exported.isoformat()},ensure_ascii=False,indent=2)])
             con.execute('BEGIN IMMEDIATE')
-            latest = app.extensions['member_sessions'].current(con)
-            if (latest['owner'],latest['auth_version']) != (uid,current['auth_version']):
-                raise Problem('登录状态已变化，请重新登录后导出',401)
-            if (app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default') != current_household
-                    or g.actor.get('householdId') != current_household):
-                raise Problem('家庭已变化，请重新打开后导出',401)
+            access.check()
             if (exported_routes(con, uid, current_household, app.config['SECRET_KEY'],
                                 include_shared=value.get('includeShared', False)) != routes
                     or exported_places(con, uid, include_shared=value.get('includeShared', False)) != places):
