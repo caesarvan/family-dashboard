@@ -36,7 +36,7 @@ function clarification(status = 'clarify') { return { ...result(), status, messa
 
 test('entry routes colloquial finance and mixed requests intact while preserving search and explicit list creation', () => {
   for (const p of ['我本月花了多少', '预算还剩多少', '上月餐饮支出', '2026-08旅行支出', '查一下本月消费并把预算改到5000', '老婆支出多少', '公共荷包还剩多少', '帮我瞧瞧上个月餐饮方面用了多少钱', '八月支出多少', '开销多少', '这月开支', '上月花销']) assert(api.isAssistantFinanceQuery(p), p);
-  for (const p of ['搜索：预算', '查找旅行支出', '找一下荷包', '待办：查预算', '采购：旅行账本', '任务：整理支出', '创建待办核对预算', '请帮我添加任务核对预算', '帮我新建一条待办提醒核对本月预算', '冰岛旅行推迟三天']) assert.equal(api.isAssistantFinanceQuery(p), false, p);
+  for (const p of ['搜索：预算', '查找旅行支出', '找一下荷包', '待办：查预算', '采购：旅行账本', '任务：整理支出', '创建待办核对预算', '请帮我添加任务核对预算', '帮我新建一条待办提醒核对本月预算', '冰岛旅行推迟三天', '计划一次冰岛旅行，预算5000', '我想规划一趟旅行预算5000', '冰岛旅行延后三天，预算保持不变']) assert.equal(api.isAssistantFinanceQuery(p), false, p);
 });
 test('wire keeps each currency, signed remaining budget and exact integer cents', () => {
   assert.deepEqual(clone(api.readFinanceQuery(result())), result());

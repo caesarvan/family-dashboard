@@ -1,5 +1,5 @@
 import { validFinanceMonth } from './finance';
-import { isAssistantSearchRequest } from './assistantJourney';
+import { isAssistantSearchRequest, isExistingTripChangeRequest } from './assistantJourney';
 import type { FinanceNavigationRequest } from './types';
 
 export type FinanceQuery = { scope: 'personal' | 'shared' | 'public'; month: string | null; metric: 'spending' | 'budget' | 'summary'; currency: string | null; category: string | null };
@@ -27,6 +27,9 @@ export function isAssistantFinanceQuery(prompt: string): boolean {
   const p = prompt.trim();
   if (isAssistantSearchRequest(p) || /^(?:待办|采购|任务)\s*[:：]/.test(p)
     || /^(?:请|帮我|请帮我)?(?:创建|新建|添加)(?:(?:一|两|几|\d+)(?:个|项|条))?(?:待办|任务|采购)/.test(p)) return false;
+  const financeQuestion = /(?:查|看看|瞧瞧|多少|还剩|余额|开销|开支|花销|支出|消费)/.test(p);
+  if (!financeQuestion && (isExistingTripChangeRequest(p)
+    || /^(?:请|帮我|请帮我|我想|我要)?(?:计划|规划|安排|准备|创建|新建).*(?:旅行|旅游|行程)/.test(p))) return false;
   return /(?:预算|支出|消费|开销|开支|花销|账单|账本|荷包|共同资金|公共资金|长期储蓄|生活费)/.test(p)
     || /(?:本月|这个月|这月|上月|上个月|\d{4}年\d{1,2}月|\d{4}-\d{2}).*(?:花了?多少|花费|用了?多少钱)/.test(p);
 }
