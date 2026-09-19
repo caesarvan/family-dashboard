@@ -3,6 +3,8 @@
 Run against a frozen integrated source and that source's exact Expo export.
 No provider answers or business responses are fabricated. One authentic response
 is delayed until another member logs in to exercise stale identity handling.
+An explicitly named earlier build is reusable only with an identical frontend
+tree; its original build identity remains in the result.
 """
 import argparse
 from contextlib import ExitStack, closing
@@ -22,6 +24,7 @@ from unittest.mock import patch
 from zoneinfo import ZoneInfo
 
 from playwright.sync_api import expect, sync_playwright
+from werkzeug.serving import ThreadedWSGIServer
 import browser_expo_finance_check as fixture
 from browser_expo_finance_check import Run as BaseRun, button, row, sha, visibility
 
@@ -32,8 +35,13 @@ CASES = ('budget_and_month_navigation', 'empty_clarify_and_search', 'identity_an
 
 
 class Run(BaseRun):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(self, root, bundle, folder, report, out, lifecycle):
+        # server_close must join active requests before Windows deletes SQLite.
+        assert ThreadedWSGIServer.block_on_close is True
+        lifecycle.enter_context(patch.object(ThreadedWSGIServer, 'daemon_threads', False))
+        super().__init__(root, bundle, folder, report, out, lifecycle)
+        assert self.server.daemon_threads is False and self.server.block_on_close is True
+        self.report['requestThreadShutdown'] = {'daemonThreads': False, 'blockOnClose': True}
         assert Path(self.source.__file__).resolve() == (self.root / 'app.py').resolve()
         assert QUERY in {rule.rule for rule in self.application.url_map.iter_rules()}
         names = {HARNESS: str(Path(__file__).resolve()),
@@ -243,6 +251,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-root', required=True, type=Path)
     parser.add_argument('--expected-head', required=True)
+    parser.add_argument('--build-source-head', help='Explicit earlier build commit; the complete frontend tree must be identical.')
     parser.add_argument('--bundle', required=True, type=Path)
     parser.add_argument('--expected-build-evidence', required=True)
     args = parser.parse_args()
@@ -256,7 +265,12 @@ def main():
     evidence_path = bundle.parent / 'build-evidence.json'
     assert sha(evidence_path) == args.expected_build_evidence
     evidence = json.loads(evidence_path.read_text(encoding='utf-8'))
-    assert evidence['sourceHead'] == head and evidence['sourceTree'] == tree
+    build_head = args.build_source_head or head
+    assert re.fullmatch('[a-f0-9]{40}', build_head)
+    assert evidence['sourceHead'] == build_head and evidence['sourceTree'] == git('rev-parse', build_head + '^{tree}')
+    if build_head != head:
+        git('merge-base', '--is-ancestor', build_head, head)
+        assert git('rev-parse', build_head + ':frontend') == git('rev-parse', head + ':frontend'), 'Reused build frontend differs'
     names = subprocess.check_output(['git', '--no-replace-objects', 'ls-files', '-z'], cwd=root).decode('utf-8').rstrip('\0').split('\0')
     def hashes():
         return {name: sha(root / name) for name in names}
@@ -269,6 +283,7 @@ def main():
     shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], providerAttempts=[], screenshots=[], scenarioResults=[], scenarioFailures=[],
         requestedChecks=len(CASES), head=head, tree=tree, buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'),
+        buildSourceHead=build_head, buildSourceTree=evidence['sourceTree'], reusedBuild=build_head != head,
         sourceRoot=str(root), bundleRoot=str(bundle), sourceHashesBefore=hashes(), bundleHashesBefore=exports(),
         productionWrites=0, realModel=False, realCloud=False, physicalTelevision=False,
         scope='Three independent temporary Flask/SQLite/HTTPS/Edge natural-language finance flows with real business responses and synthetic records.')
