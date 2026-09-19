@@ -10,13 +10,15 @@ from deploy import steady_release_package as steady
 from deploy import steady_release_plan as plan
 from deploy import membership_release_package as shared
 from deploy import membership_release_build as builder
-from test_membership_release_package import environment, write, commit, ROOT
+from test_membership_release_package import environment, write, commit, ROOT, historical_fixed_blob
 
 
 @pytest.fixture
 def package_environment(environment):
     for name in (*plan.OPERATORS, 'steady_release_plan.py'):
         write(environment['repo'], 'deploy/' + name, (ROOT / 'deploy' / name).read_bytes())
+    write(environment['repo'], 'Dockerfile', (ROOT / 'Dockerfile').read_bytes())
+    write(environment['repo'], 'inventory_sources.py', b'# synthetic inventory sources module\n')
     environment['commit'] = commit(environment['repo'])
     return environment
 
@@ -33,10 +35,15 @@ def test_real_package_cross_baseline_rejection_and_recursive_verification(packag
     assert checked['metadata']['parentImage'] == steady.PARENT_IMAGE
     assert checked['metadata']['oldManifestSha256'] == steady.OLD_MANIFEST
     assert checked['metadata']['kind'] == 'steady-release-package'
+    assert checked['metadata']['fixedFiles'] == shared.fixed_files(steady.BASELINE)
+    assert checked['metadata']['runtimeFiles']['inventory_sources.py'] == shared.digest(
+        checked['blobs']['inventory_sources.py'])
     with pytest.raises(ValueError):
         original(package_environment['output_dir'], result['packageSha256'])
     with pytest.raises(ValueError):
         original(package_environment['output_dir'], result['packageSha256'], baseline='memberships-r3-steady')
+    with pytest.raises(ValueError):
+        original(package_environment['output_dir'], result['packageSha256'], baseline='shopping-r1-steady')
     with pytest.raises(ValueError, match='unsupported release baseline'):
         original(package_environment['output_dir'], result['packageSha256'], baseline='arbitrary')
 
@@ -57,6 +64,7 @@ def test_recording_build_threads_fixed_baseline_and_parent(package_environment, 
             raw = shared.encoded([{'Id': args[-1], 'Config': {'User': 'dashboard'}, 'RootFS': {'Layers': layers}}])
         elif args[0] == 'build':
             assert (cwd / 'Dockerfile').read_text().startswith('FROM ' + steady.PARENT_IMAGE + '\n')
+            assert (cwd / 'runtime/inventory_sources.py').read_bytes() == value['blobs']['inventory_sources.py']
             Path(args[args.index('--iidfile') + 1]).write_text(image)
         elif args[0] == 'create': raw = container.encode()
         elif args[0] == 'start': raw = shared.encoded(value['metadata']['runtimeFiles'])
@@ -193,9 +201,9 @@ def test_assembly_rejects_incomplete_or_changed_evidence(assembly, changed):
         plan.assemble(**assembly)
 
 
-def test_explicit_followup_test_input_is_packaged_without_opening_other_frontend_paths(package_environment):
+@pytest.mark.parametrize('name', ['frontend/tests/inventoryFollowup.test.mjs', 'frontend/tests/inventorySources.test.mjs'])
+def test_explicit_inventory_test_input_is_packaged_without_opening_other_frontend_paths(package_environment, name):
     env = package_environment
-    name = 'frontend/tests/inventoryFollowup.test.mjs'
     write(env['repo'], name, b'// synthetic followup test input\n')
     env['commit'] = commit(env['repo'])
     evidence = json.loads(env['build_evidence'].read_text())
@@ -210,4 +218,52 @@ def test_explicit_followup_test_input_is_packaged_without_opening_other_frontend
     tracked = shared.tracked_files(env['repo'], env['commit'])
     with pytest.raises(ValueError, match='new frontend input needs an explicit packaging policy'):
         shared.selected_sources(tracked | {'frontend/tests/unreviewed.mjs'},
-                                (env['repo'] / 'deploy/prepare_release.py').read_bytes())
+                                (env['repo'] / 'deploy/prepare_release.py').read_bytes(), baseline=steady.BASELINE)
+
+
+@pytest.mark.parametrize('baseline', [None, 'memberships-r3-steady', 'shopping-r1-steady'])
+def test_historical_baselines_keep_original_docker_and_do_not_admit_new_test_input(environment, baseline):
+    result = shared.prepare(**environment, baseline=baseline)
+    verified = shared.verify_package(environment['output_dir'], result['packageSha256'], baseline=baseline)
+    assert verified['metadata']['fixedFiles'] == shared.FIXED
+    assert verified['blobs']['Dockerfile'] == historical_fixed_blob('Dockerfile')
+    assert 'inventory_sources.py' not in verified['metadata']['runtimeFiles']
+    with pytest.raises(ValueError):
+        steady.verify_package(environment['output_dir'], result['packageSha256'])
+    with pytest.raises(ValueError, match='new frontend input needs an explicit packaging policy'):
+        shared.selected_sources(set(verified['metadata']['sourceFiles']) | {'frontend/tests/inventorySources.test.mjs'},
+                                verified['blobs']['deploy/prepare_release.py'], baseline=baseline)
+
+
+@pytest.mark.parametrize('fault', ['missing-module', 'old-docker', 'extra-docker-command', 'extra-copy-module'])
+def test_new_baseline_requires_module_and_exact_docker_bytes_before_creating_output(package_environment, fault):
+    env = package_environment
+    if fault == 'missing-module':
+        (env['repo'] / 'inventory_sources.py').unlink()
+    else:
+        docker = (env['repo'] / 'Dockerfile').read_bytes()
+        if fault == 'old-docker':
+            docker = historical_fixed_blob('Dockerfile')
+        elif fault == 'extra-docker-command':
+            docker += b'RUN echo unreviewed\n'
+        else:
+            docker = docker.replace(b'inventory_sources.py ./', b'inventory_sources.py unreviewed.py ./')
+        write(env['repo'], 'Dockerfile', docker)
+    env['commit'] = commit(env['repo'])
+    with pytest.raises(ValueError, match='allowlisted file missing' if fault == 'missing-module' else 'dependency/config pin'):
+        steady.prepare(**env)
+    assert not env['output_dir'].exists()
+
+
+def test_fixed_baseline_pins_are_isolated():
+    assert steady.BASELINE == 'followup-r1-steady'
+    assert steady.PARENT_IMAGE == 'sha256:8e7092a44ba311f6ac333500cfab2c6dcf5137484cf02d9aca1f52590963815c'
+    assert steady.OLD_MANIFEST == 'd926bba0c7fc7374f8b0c0d6b661f51b5a0a15029428bfa016e92b750ddbd85c'
+    historical = historical_fixed_blob('Dockerfile')
+    candidate = (ROOT / 'Dockerfile').read_bytes()
+    assert historical.count(shared.INVENTORY_COPY_BEFORE) == 1
+    assert candidate == historical.replace(shared.INVENTORY_COPY_BEFORE, shared.INVENTORY_COPY_AFTER, 1)
+    fixed = shared.fixed_files(steady.BASELINE)
+    assert {n for n in shared.FIXED if shared.FIXED[n] != fixed[n]} == {'Dockerfile'}
+    fixed['requirements.txt'] = '0' * 64
+    assert shared.fixed_files(steady.BASELINE)['requirements.txt'] == shared.FIXED['requirements.txt']

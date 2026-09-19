@@ -14,6 +14,7 @@ import FinanceBaselinePanel from '../components/FinanceBaselinePanel';
 import FinanceSourceImportPanel from '../components/FinanceSourceImportPanel';
 import FinanceAccountsPanel from '../components/FinanceAccountsPanel';
 import ShoppingSettlementPanel from '../components/ShoppingSettlementPanel';
+import InventoryScreen from './InventoryScreen';
 
 type Data = { overview: Overview; ledger: Ledger; shared: Totals[]; finance: SharedSnapshot };
 type Query = { month: string; q: string; page: number; snapshot?: string };
@@ -90,13 +91,19 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     accountsPendingRef.current = value; props.onFinanceAccountsPending?.(value);
   }, [props.identityKey, props.onFinanceAccountsPending]);
   const [settlement, setSettlementState] = useState<string | null>(null), settlementRef = useRef<string | null>(null), settlementPendingRef = useRef(false);
+  const [inventoryOrder, setInventoryOrderState] = useState<string | null>(null), inventoryOrderRef = useRef<string | null>(null), inventoryPendingRef = useRef(false);
+  const setInventoryOrder = (value: string | null) => { inventoryOrderRef.current = value; setInventoryOrderState(value); };
+  const notifyInventoryPending = useCallback((value: string | null) => {
+    if (!alive.current || latest.current.identityKey !== props.identityKey || !inventoryOrderRef.current) return;
+    inventoryPendingRef.current = !!value; props.onInventoryPending?.(value);
+  }, [props.identityKey, props.onInventoryPending]);
   const settlementFence = useRef(new PhotoReadFence(() => request<PhotoSession>('/me'), props.user, props.identityKey));
   const setSettlement = (id: string | null) => { settlementRef.current = id; setSettlementState(id); };
   const notifySettlementPending = useCallback((value: boolean) => {
     if (!alive.current || latest.current.identityKey !== props.identityKey || !settlementRef.current) return;
     settlementPendingRef.current = value; props.onShoppingSettlementPending?.(value);
   }, [props.identityKey, props.onShoppingSettlementPending]);
-  const current = () => alive.current && active.current && focused.current && appActive.current && !denied.current && !baselineRef.current && !sourceImportRef.current && !accountsRef.current && !settlementRef.current && latest.current.identityKey === props.identityKey && latest.current.online && online() && foreground();
+  const current = () => alive.current && active.current && focused.current && appActive.current && !denied.current && !baselineRef.current && !sourceImportRef.current && !accountsRef.current && !settlementRef.current && !inventoryOrderRef.current && latest.current.identityKey === props.identityKey && latest.current.online && online() && foreground();
   const setDetail = (v: Reconciliation | null) => { detailRef.current = v; setDetailState(v); };
   const setEdit = (v: Edit | null) => { editRef.current = v; setEditState(v); };
   const setBudget = (v: BudgetDraft | null) => { budgetRef.current = v; setBudgetState(v); };
@@ -106,6 +113,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
   function conceal(clear = false) {
     active.current = false; ++epoch.current; fence.current.invalidate(); reading.current = false; writing.current = false;
     setVisible(false); setBusy(false); setData(null); setPreview(null); setRevoke(null);
+    if (clear) { setInventoryOrder(null); inventoryPendingRef.current = false; props.onInventoryPending?.(null); }
     if (clear) { closeDetail(); setBudget(null); setSharedEditor(null); setPending(null); setNotice(''); setError(''); setImporting(false); setImportMonths([]); setBaseline(false); setSourceImport(false); sourcePendingRef.current = false; props.onFinanceSourcePending?.(false); setAccounts(false); accountsPendingRef.current = false; props.onFinanceAccountsPending?.(false); settlementFence.current.invalidate(); setSettlement(null); settlementPendingRef.current = false; props.onShoppingSettlementPending?.(false); }
   }
   function failure(caught: unknown) {
@@ -302,6 +310,19 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
       && settlementRef.current === target && latest.current.identityKey === props.identityKey && latest.current.online && online() && foreground());
     void latest.current.refresh();
   }
+  function openOrderInventory() {
+    if (!current() || reading.current || writing.current || pendingRef.current || budgetRef.current || sharedRef.current || detailRef.current?.transaction.kind !== 'orders') return;
+    const draft = editRef.current;
+    if (draft && (draft.conflict || draft.category !== draft.original.category || draft.flow !== draft.original.flow || draft.shared !== (draft.original.visibility === 'shared'))) { setNotice('分类或共享设置尚未保存，请先保存核对，或重新读取交易后再登记库存。'); return; }
+    ++epoch.current; fence.current.invalidate(); setVisible(false); setData(null); setError(''); setNotice(''); setCandidate(null); setPreview(null); setRevoke(null);
+    setInventoryOrder(detailRef.current.transaction.id);
+  }
+  function closeOrderInventory() {
+    if (!alive.current || !focused.current || inventoryPendingRef.current || latest.current.identityKey !== props.identityKey) return;
+    setInventoryOrder(null); props.onInventoryPending?.(null);
+    if (current()) void reload(true); else enter();
+  }
+  if (inventoryOrder) return <InventoryScreen {...props} inventoryRequest={undefined} orderSourceId={inventoryOrder} onReturnToFinance={closeOrderInventory} onInventoryPending={notifyInventoryPending} />;
   if (settlement) return <ShoppingSettlementPanel key={props.identityKey + ':' + settlement} transactionId={settlement} onClose={closeSettlement} onSaved={settlementSaved} onPendingChange={notifySettlementPending} />;
   if (accounts) return <FinanceAccountsPanel onBack={closeAccounts} onPendingChange={notifyAccountsPending} />;
   if (sourceImport) return <FinanceSourceImportPanel onBack={closeSourceImport} onPendingChange={notifySourcePending} />;
@@ -341,6 +362,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
           {detail.transaction.orderItems?.map((item, index) => <View key={index} style={styles.white}><Text>{item.title}</Text>{!!item.variant && <Text>{item.variant}</Text>}<Text style={styles.muted}>数量原文：{item.quantityText || '未记录'} · 商品金额原文：{item.listedAmountText || '未记录'} · 原工作表第 {item.sourceLine} 行</Text>{!!item.productUrl && <Text selectable style={styles.wrap}>{item.productUrl}</Text>}</View>)}
           <Text style={styles.muted}>金额和原始文件内容保留原值，分类核对不会改写来源。商品金额原文不用于重复计算订单实付。</Text>
           <Button icon="receipt-text-check-outline" mode="outlined" accessibilityLabel="核对采购实付" contentStyle={{ minHeight: 44 }} disabled={locked || ledgerChanged} onPress={openSettlement}>核对采购实付</Button>
+          {detail.transaction.kind === 'orders' && <Button testID="finance-order-inventory" icon="package-variant-closed" mode="outlined" accessibilityLabel="登记或查看订单库存" contentStyle={{ minHeight: 44 }} disabled={locked || ledgerChanged} onPress={openOrderInventory}>登记或查看订单库存</Button>}
         </View></SectionCard>
         {edit && <SectionCard title="核对分类与共享"><View style={styles.stack}><TextInput accessibilityLabel="交易分类" label="交易分类" maxLength={60} mode="outlined" style={styles.input} disabled={locked} value={edit.category} onChangeText={value => setEdit({ ...edit, category: value })} /><View style={styles.row}>{(Object.entries(flowLabels) as [Flow, string][]).map(([flow, label]) => <Button key={flow} disabled={locked} mode={edit.flow === flow ? 'contained' : 'outlined'} onPress={() => setEdit({ ...edit, flow, shared: ['expense', 'refund'].includes(flow) ? edit.shared : false })}>{label}</Button>)}</View><Check label={sharedConsent} checked={edit.shared} disabled={locked || edit.original.kind !== 'payments' || !['expense', 'refund'].includes(edit.flow)} onPress={() => setEdit({ ...edit, shared: !edit.shared })} /><Text style={styles.muted}>共享后家人可见该月的消费与退款金额汇总；标题、账户、来源、编号和本人收入仍仅本人可见。</Text>{edit.conflict && <Text style={styles.warning}>记录已变化，原输入保留。请重新读取交易，再核对最新版本。</Text>}<View style={styles.row}><Button mode="contained" disabled={locked || edit.conflict || ledgerChanged} onPress={() => void saveTransaction()}>保存核对</Button><Button disabled={locked} onPress={() => void openTransaction(detail.transaction.id)}>重新读取交易</Button></View></View></SectionCard>}
         <SectionCard title="订单、付款与退款"><View style={styles.stack}><Text style={styles.muted}>{detail.note}</Text><View style={styles.row}><TextInput label="查找订单或付款" accessibilityLabel="查找订单或付款" maxLength={160} mode="outlined" style={[styles.input, styles.search]} disabled={locked} value={relationQuery} onChangeText={setRelationQuery} /><Button disabled={locked} onPress={() => void openTransaction(detail.transaction.id, false, relationQuery.trim())}>查找关联</Button></View>

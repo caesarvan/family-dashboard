@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 import { runInNewContext } from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import * as model from '../src/lib/inventory.ts';
+import * as sources from '../src/lib/inventorySources.ts';
 
 const require = createRequire(new URL('../package.json', import.meta.url));
 const ts = require('typescript');
@@ -24,7 +25,7 @@ function harness() {
   const f = {
     session: { user: { id: 'member1', name: '甲', role: 'member', householdId: 'house-one', auth_version: 1 }, csrf: 'synthetic-csrf' },
     item: { id: itemId, owner: 'member1', title: 'PRIVATE ITEM', unit: '件', variant: '', location: '', visibility: 'private', reorderPoint: null, belowThreshold: false, revision: 1, onHandQty: 0, inTransitQty: 0, plannedQty: 1, canRead: true, canMutate: true, canManage: true },
-    batch: { id: acquisitionId, itemId, kind: 'purchase', shoppingId: null, orderedQty: 1, orderState: 'ordered', orderedOn: null, expectedOn: null, warrantyUntil: null, afterSalesState: 'open', note: 'PRIVATE ORDER AND AMOUNT', revision: 1, itemRevision: 1, canMutate: true, canEditAllFields: true, editableFields: ['afterSalesState', 'note'], onHandQty: 0, receivedQty: 0, returnedQty: 0, remainingExpectedQty: 1 },
+    batch: { id: acquisitionId, itemId, kind: 'purchase', shoppingId: null, orderedQty: 1, orderState: 'ordered', orderedOn: null, expectedOn: null, warrantyUntil: null, afterSalesState: 'open', note: 'PRIVATE ORDER AND AMOUNT', revision: 1, itemRevision: 1, canMutate: true, canManageSources: true, canEditAllFields: true, editableFields: ['afterSalesState', 'note'], onHandQty: 0, receivedQty: 0, returnedQty: 0, remainingExpectedQty: 1 },
     link: association(), calls: [], receipt: null, getFailure: 0, postFailure: '', denied: false, gate: null,
   };
   const slots = [], effects = [], cleanups = [], lifecycle = new Map();
@@ -69,7 +70,7 @@ function harness() {
     'react-native': { AppState: { addEventListener: (_name, fn) => { lifecycle.set('app', fn); return { remove() {} }; } }, Platform: { OS: 'web' }, StyleSheet: { create: v => v }, View: 'View' },
     'expo-router': { useFocusEffect: fn => useEffect(fn, [fn]) },
     'react-native-paper': { ...Object.fromEntries(['ActivityIndicator', 'Button', 'Divider', 'Icon', 'Portal', 'Searchbar', 'Text', 'TextInput', 'TouchableRipple'].map(k => [k, k])), Dialog: Object.assign(props => props.visible ? react.createElement('Dialog', props, ...props.children) : null, { Title: 'DialogTitle', Content: 'DialogContent', Actions: 'DialogActions' }), List: { Accordion: 'Accordion' }, useTheme: () => ({ colors: {} }) },
-    '../lib/api': { ApiError, request }, '../lib/calendar': { dayKey: () => '2026-09-18' }, '../lib/household': { useHousehold: () => household }, '../lib/inventory': model,
+    '../lib/api': { ApiError, request }, '../lib/calendar': { dayKey: () => '2026-09-18' }, '../lib/household': { useHousehold: () => household }, '../lib/inventory': model, '../lib/inventorySources': sources, '../components/InventorySourcePanel': { default: 'InventorySourcePanel' },
     '../ui/components': { EmptyState: 'EmptyState', PageHeader: 'PageHeader', SectionCard: 'SectionCard' },
   };
   const exports = {};

@@ -474,4 +474,6 @@ def register_inventory(app, db, Problem, *, initialize=True, validate=None):
             result = api.result(con,actor,core.get_operation(con,actor,request_id))
         return jsonify(result)
 
+    from inventory_sources import register_inventory_sources
+    register_inventory_sources(api, safe_endpoint)
     return api

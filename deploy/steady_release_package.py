@@ -1,4 +1,4 @@
-"""Fixed shopping R1 61/9 baseline entry point; shared package/build checks stay strict."""
+"""Fixed followup R1 61/9 baseline entry point; shared package/build checks stay strict."""
 import argparse
 import json
 from pathlib import Path
@@ -10,7 +10,7 @@ if __package__ in (None, ''):
 from deploy import membership_release_package as package
 from deploy import membership_release_build as builder
 
-BASELINE = 'shopping-r1-steady'
+BASELINE = 'followup-r1-steady'
 KIND, PARENT_IMAGE, OLD_MANIFEST = package.baseline_values(BASELINE)
 
 
