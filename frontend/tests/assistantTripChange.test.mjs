@@ -112,6 +112,7 @@ function harness(kind = 'change', options = {}) {
   const mocks = { react, 'react-native': { AppState: { currentState: 'active', addEventListener: (_key, fn) => { lifecycle.set('app', fn); return { remove() {} }; } }, StyleSheet: { create: value => value }, View: 'View' }, 'expo-router': { useFocusEffect: fn => useEffect(fn, [fn]) },
     'react-native-paper': { ...Object.fromEntries(['ActivityIndicator', 'Button', 'Checkbox', 'Chip', 'Dialog', 'Divider', 'HelperText', 'Portal', 'Text', 'TextInput'].map(key => [key, key])), useTheme: () => ({ colors: { onSurfaceVariant: 'gray' } }) },
     '../lib/api': { ApiError, request }, '../lib/household': { useHousehold: () => household }, '../ui/components': { EmptyState: 'EmptyState', PageHeader: 'PageHeader', SectionCard: 'SectionCard' }, '../ui/SelectionRow': { SelectionRow: 'SelectionRow' },
+    '../components/AssistantFinanceQueryPanel': { __esModule: true, default: 'AssistantFinanceQueryPanel' },
     '../screens/JourneyReschedulePanel': { __esModule: true, default: 'JourneyReschedulePanel' }, '../lib/assistant': { AssistantFlow, memberKey: identity.memberIdentity },
     './JourneyBriefPanel': { __esModule: true, default: 'JourneyBriefPanel' }, './TripsScreen': { __esModule: true, default: 'TripsScreen' }, '../components/ExistingTripChangePanel': { __esModule: true, default: 'ExistingTripChangePanel' },
   };

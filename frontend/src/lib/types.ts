@@ -16,6 +16,7 @@ export type HomeLayout = { revision: number; order: string[]; hidden: string[] }
 export type TaskSource = { id: string; name: string; provider: string; writable?: boolean };
 export type FamilyState = { revision: number; household?: { id: string; name: string; slug: string }; people: Person[]; events: CalendarEvent[]; tasks: ListItem[]; shopping: ListItem[]; trips: Trip[]; finance: SharedFinance; sync?: { taskSources?: TaskSource[]; primaryTaskSource?: { id: string }; health?: { state?: string } } };
 export type Entity = CalendarEvent | ListItem | Trip;
+export type FinanceNavigationRequest = { key: number; identityKey: string; screen: 'finance'; tab: 'ledger' | 'budgets' | 'shared'; month: string | null };
 export type ScreenProps = {
   onReschedulePending?: (pending: boolean) => void;
   onDevicePending?: (message: string | null) => void;
@@ -36,6 +37,8 @@ export type ScreenProps = {
   onNavigate: (route: RouteName) => void; onEdit: (kind: ItemKind, item?: Entity) => void;
   onToggle: (kind: 'tasks' | 'shopping', item: ListItem) => Promise<void>;
   pendingId?: string; onLegacy: (fragment: string) => void;
+  financeRequest?: FinanceNavigationRequest;
+  onReturnToQuery?: () => void;
   tripRequest?: { key: number; id?: string };
   inventoryRequest?: { key: number; id?: string };
   onInventory: (id?: string) => void;
