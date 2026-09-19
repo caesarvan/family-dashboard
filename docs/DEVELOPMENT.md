@@ -4,9 +4,9 @@
 
 先读 [项目规则](../AGENTS.md) 和 [Git 指导](GIT-WORKFLOW.md)。每个任务使用集成人指定的独立分支、worktree、base 和允许路径；非作者审查后合入 integration，组合验收及再次审查通过后再进入 main。不要在主仓、集成目录或其他作者目录直接开发。
 
-## 旅行路线开发入口（本地候选）
+## 旅行路线开发入口
 
-路线 API、应用注册、导出和 Expo 入口已包含在本地候选源码；当前生产仍为 66/9，路线候选初始化为 69/9，源码接入不等于完成浏览器验收或上线。接口与权限见 [路线合同](JOURNEY-ROUTES.md)，导出接缝见 [路线数据副本](JOURNEY-ROUTES-PORTABILITY.md)，使用和未知结果恢复见 [Expo 路线](EXPO-JOURNEY-ROUTES.md)，迁移与固定发布流程见 [路线发布](JOURNEY-ROUTES-RELEASE.md)。
+路线 API、应用注册、导出和 Expo 入口已于 2026-09-19 22:56:47（北京时间）上线；生产实际一户两库完成户内 66→69、平台 9→9，22:57:29 独立只读审计通过。固定源码、镜像、浏览器与 Linux 证据及本人验收边界见[路线验收](JOURNEY-ROUTES-ACCEPTANCE.md#journey-routes-release)。接口与权限见 [路线合同](JOURNEY-ROUTES.md)，导出接缝见 [路线数据副本](JOURNEY-ROUTES-PORTABILITY.md)，使用和未知结果恢复见 [Expo 路线](EXPO-JOURNEY-ROUTES.md)，迁移与固定发布流程见 [路线发布](JOURNEY-ROUTES-RELEASE.md)。
 
 后端由 `app.py` 先注册 `journey_workflows`、`journey_documents`、`journey_places`，再调用 `register_journey_routes(app, db, Problem, body, require_member)`，随后才注册个人导出。各户子应用复用同一工厂与独立库。新模块的 `initialize_journey_routes(con)` 不开始或提交事务；应用注册与显式迁移各自负责原子初始化。`Dockerfile` 须复制 `journey_routes.py`，发布 profile、迁移 DDL 和所有户库备份须同步绑定；不能只发布前端或重放旧表数的算子。
 
