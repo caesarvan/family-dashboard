@@ -41,7 +41,7 @@ def exported_reference_fx(con):
     return rows, {'scope': 'public_ecb_reference_cache', 'totalRows': total, 'includedRows': len(rows),
                   'rowLimit': MAX_REFERENCE_FX_ROWS, 'complete': total == len(rows),
                   'selection': 'rate_date_desc_currency_version', 'historicalReportReconstruction': False}
-ENTITY_FIELDS = {'title','owner','done','due','tripId','journeyId','quantity','budget','actual','note',
+ENTITY_FIELDS = {'title','owner','done','due','priority','tripId','journeyId','quantity','budget','actual','note',
                  'photoIds','start','end','allDay','location','source','imported','destination','saved','paid',
                  'travelTiming','startDate','endDateExclusive','workflowKey'}
 INVENTORY_ITEM_FIELDS = {'id','owner','visibility','title','variant','unit','location','revision',
