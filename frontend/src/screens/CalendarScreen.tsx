@@ -2,10 +2,11 @@ import React, { useEffect, useRef, useState } from 'react';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { Button, IconButton, ProgressBar, SegmentedButtons, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import type { CalendarEvent, CalendarMode, ScreenProps } from '../lib/types';
-import { bounds, dayKey, duration, isLocalEvent, rangeDays, rangeSummary, shiftDay, shortDay, timeLabel, weekday, weekNames } from '../lib/calendar';
+import { bounds, calendarConflicts, dayKey, duration, isLocalEvent, rangeDays, rangeSummary, shiftDay, shortDay, timeLabel, weekday, weekNames } from '../lib/calendar';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
 import { useDisplayDensity } from '../ui/theme';
+import CalendarConflictsPanel from '../ui/CalendarConflictsPanel';
 
 export function RangeControls({ props }: { props: ScreenProps }) {
   const density = useDisplayDensity();
@@ -73,6 +74,7 @@ export default function CalendarScreen(props: ScreenProps) {
   useEffect(() => { setAnchor(undefined); setSelected(dayKey()); }, [props.mode, props.user.householdId, props.user.id, props.user.auth_version]);
   if (props.user.role !== 'member') return <EmptyState title="请使用成员账户查看日程" />;
   const days = rangeDays(props.mode, anchor), summary = rangeSummary(props.state.events, days, props.focus);
+  const conflicts = calendarConflicts(props.state.events, days, props.focus);
   const chosen = days.includes(selected) ? selected : days.includes(dayKey()) ? dayKey() : days[0];
   const daily = summary.days.find(day => day.day === chosen)!;
   const focusName = props.state.people.find(person => person.id === props.focus)?.name || '所选成员';
@@ -90,6 +92,7 @@ export default function CalendarScreen(props: ScreenProps) {
       {daily.events.length ? daily.events.map(event => <EventRow key={event.id} event={event} day={chosen} props={props} />)
         : <EmptyState title="这天还没有安排" action={<Button contentStyle={styles.buttonContent} onPress={() => props.onEdit('events')}>添加安排</Button>} />}
     </SectionCard>
+    <CalendarConflictsPanel key={`${props.focus}:${days.join(',')}`} conflicts={conflicts} props={props} focusName={focusName} />
     <Text variant="bodySmall">北京时间 · 重叠时段合并统计，全天安排不计入忙碌时长。</Text>
   </View>;
 }
