@@ -276,6 +276,41 @@ def test_model_target_assistance_cannot_drop_explicit_negation():
     assert 'negated_request' in result['issues']
 
 
+@pytest.mark.parametrize('prompt,issue', [
+    ('把冰岛旅行改到2026-10-08至2026-10-15', 'unconsumed_date_expression'),
+    ('把冰岛旅行改到2026-10-08，2026-10-09才对', 'unconsumed_date_expression'),
+    ('把冰岛旅行推迟三天半', 'partial_day_shift'),
+    ('把冰岛旅行推迟三天又六小时', 'partial_day_shift'),
+    ('把冰岛旅行推迟三天，五天才对', 'unconsumed_date_expression'),
+])
+def test_first_date_cannot_hide_explicit_range_correction_or_partial_day(prompt, issue):
+    candidates = catalog(detail(title='冰岛旅行'))
+    result = plan_existing_trip(prompt, candidates)
+    assert result['intent'] == 'reschedule_existing' and result['status'] == 'needs_input'
+    assert result['draft'] is None and issue in result['issues']
+    model = model_output(candidates, change=result['change'])
+    assisted = plan_existing_trip(prompt, candidates, model_output=model)
+    assert assisted['status'] == 'needs_input' and assisted['draft'] is None
+    assert issue in assisted['issues']
+
+
+@pytest.mark.parametrize('prompt', ['冰岛旅行不可以推迟三天', '取消把冰岛旅行推迟三天的请求'])
+def test_model_target_assistance_preserves_prohibition_and_cancel_request(prompt):
+    candidates = catalog(detail(title='冰岛旅行'))
+    result = plan_existing_trip(prompt, candidates, model_output=model_output(candidates))
+    assert result['intent'] == 'reschedule_existing' and result['status'] == 'needs_input'
+    assert result['draft'] is None and 'negated_request' in result['issues']
+
+
+@pytest.mark.parametrize('prompt', ['把冰岛旅行和巴黎旅行都推迟三天', '把冰岛和巴黎旅行推迟三天'])
+def test_model_target_assistance_cannot_narrow_multiple_named_trips(prompt):
+    candidates = catalog(detail(title='冰岛旅行'), detail(2, title='巴黎旅行'))
+    result = plan_existing_trip(prompt, candidates, model_output=model_output(candidates,
+        target='冰岛旅行' if '冰岛旅行' in prompt else '冰岛', candidateRefs=[candidates[0]['ref']]))
+    assert result['intent'] == 'reschedule_existing' and result['status'] == 'needs_input'
+    assert result['draft'] is None and 'multiple_trip_targets' in result['issues']
+
+
 @pytest.mark.parametrize('patch', [
     {'journeyId': 'f' * 24}, {'actions': [{'kind': 'write'}]}, {'previewToken': 'fake'},
     {'targetText': '不存在的请求文字'}, {'candidateRefs': [None]}, {'candidateRefs': ['invalid']},

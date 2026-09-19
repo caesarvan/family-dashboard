@@ -60,10 +60,11 @@ type Plan = {
 - 推迟／延后／延迟／后移为正日历天，提前／前移为负日历天。当前支持 1–366 的阿拉伯数字，以及一位和十位常用中文数字；未支持写法要求补充，不由模型猜测。
 - 「改到2026-10-08」与「改到2026年10月8日」给出明确出发日，并保持当前旅行日历天数；「10月8日」保留 `monthDay: '10-08'` 和 `missingFields: ['year']`，不根据今天或原旅行年份推测。
 - 日期范围与原引擎一致，为 2000–2100 年。相对首尾日期直接调用原 `journey_reschedule.shifted`；不以毫秒或 UTC 小时推移。跨年、闰日由原日历计算处理。
-- 同时给出多个日期动作、互相矛盾的改期、否定、混合新增、只改返程或仅改某部分、指定时刻／时区，都保留问题且不输出可用 `draft`。重复同一动作不会被静默折叠为一次，也不会累计执行。
+- 同时给出多个日期动作、互相矛盾的改期、否定／取消请求、混合新增、只改返程或仅改某部分、指定时刻／时区，都保留问题且不输出可用 `draft`。重复同一动作不会被静默折叠为一次，也不会累计执行。日期范围、未重复动词的后句更正、半天或额外小时均要求补充，不能只截取第一个日期或整数天数。
+- 一次只建议修改一趟旅行。原文命名多个旅行时返回 `multiple_trip_targets`；模型补全目标不能把复数要求偷偷缩窄到其中一趟。
 - 来源中的多时区保留；无效／缺少必须时区阻止日期建议。适配器不判断具体航班／活动时刻是否跨夏令时缺口或重叠：那是原改期预览的职责。测试明确验证日期建议能够交给原 `move_segment`，并由原引擎返回不存在的当地时刻问题。
 
-`issues` 为固定代码，包含 `invalid_shift_days`、`invalid_start_date`、`multiple_date_instructions`、`conflicting_date_requests`、`negated_request`、`mixed_create_and_modify`、`alternative_request`、`ambiguous_shift_range`、`partial_change_requires_manual_review`、`time_or_timezone_requires_manual_review`、`model_intent_conflict`、`model_date_conflict`、`model_target_conflict`、`unchanged_dates`、`date_out_of_range` 及来源时区代码。UI 应据代码给出简明澄清，不能将 `not_found` 当作不存在这趟旅行或可以新建的证明。
+`issues` 为固定代码，包含 `invalid_shift_days`、`invalid_start_date`、`multiple_date_instructions`、`conflicting_date_requests`、`negated_request`、`mixed_create_and_modify`、`alternative_request`、`ambiguous_shift_range`、`partial_day_shift`、`unconsumed_date_expression`、`multiple_trip_targets`、`partial_change_requires_manual_review`、`time_or_timezone_requires_manual_review`、`model_intent_conflict`、`model_date_conflict`、`model_target_conflict`、`unchanged_dates`、`date_out_of_range` 及来源时区代码。UI 应据代码给出简明澄清，不能将 `not_found` 当作不存在这趟旅行或可以新建的证明。
 
 ## 实际模型适配
 
@@ -93,6 +94,6 @@ result = model_trip_intent(app.config, original_prompt, current_candidates,
 
 ## 本分支验证与剩余接线
 
-`tests/test_assistant_trip_intent.py` 使用合成记录和模型输出，60 项通过。涵盖日期有／无年份、正负日历天、闰日与原 DST 阻塞、矛盾／否定／多动作（包括第二动作未提供可解析日期）、同名候选、已选引用与原请求一致、当前权限过滤、模型字段与引用限制、隐私投影、提示注入作为数据、提供方失败不回退及无网络。
+`tests/test_assistant_trip_intent.py` 使用合成记录和模型输出，69 项通过。涵盖日期有／无年份、正负日历天、闰日与原 DST 阻塞、矛盾／否定／取消／多动作（包括第二动作未提供可解析日期）、双日期范围、后句更正、半天／额外小时、多旅行请求不能由模型缩窄、同名候选、已选引用与原请求一致、当前权限过滤、模型字段与引用限制、隐私投影、提示注入作为数据、提供方失败不回退及无网络。
 
 本机系统 Python 没有 pytest；最终执行使用主项目既有 `.venv/Scripts/python.exe` 的依赖，在本独立 worktree 运行。本批未安装依赖、修改共享文件、增加表或调用真实模型。没有完成 Flask 路由、UI、完整端到端 AI 接入、真实用户旅行、云写入或生产发布；上述接线由独立分支实现和验收。该模块文件还需由集成人加入实际加载／Docker／发布白名单，不能只合入纯函数就宣称产品可用。

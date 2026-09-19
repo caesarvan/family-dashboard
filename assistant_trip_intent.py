@@ -169,6 +169,8 @@ def _change(prompt):
     if len(list(MODIFY.finditer(prompt))) > 1:
         issues.append('multiple_date_instructions')
     for match in SHIFT.finditer(prompt):
+        if re.match(r'\s*(?:半|[零又]?\s*[0-9一二两三四五六七八九十]+\s*(?:小时|钟头|分钟))', prompt[match.end():]):
+            issues.append('partial_day_shift')
         if re.match(r'\s*(?:到|至|~|～|-)\s*[0-9一二两三四五六七八九十百]+\s*天', prompt[match.end():]):
             issues.append('ambiguous_shift_range')
         value = _number(match[2])
@@ -190,6 +192,16 @@ def _change(prompt):
                 changes.append({'kind': 'start_date', 'days': None, 'startDate': date_only(exact, 'start'), 'monthDay': None})
         except (ValueError, TimeIssue):
             issues.append('invalid_start_date')
+    # An accepted first date must not silently swallow a later range endpoint or
+    # correction that omits the change verb. Keep unsupported expressions visible.
+    remaining = prompt
+    consumed = sorted([*SHIFT.finditer(prompt), *ABSOLUTE.finditer(prompt)], key=lambda item: item.start(), reverse=True)
+    for match in consumed:
+        remaining = remaining[:match.start()] + ' ' * (match.end() - match.start()) + remaining[match.end():]
+    first_action = MODIFY.search(prompt)
+    remainder = remaining[first_action.start():] if first_action else remaining
+    if re.search(r'\d{4}-\d{1,2}-\d{1,2}|(?:\d{4}年)?\d{1,2}月\d{1,2}[日号]|[0-9一二两三四五六七八九十百]+\s*(?:天|日|号)', remainder):
+        issues.append('unconsumed_date_expression')
     unique = {json.dumps(c, sort_keys=True): c for c in changes}
     if len(unique) > 1:
         issues.append('conflicting_date_requests')
@@ -278,7 +290,7 @@ def plan_existing_trip(prompt, candidates, *, selected_ref=None, model_output=No
         return output
     output['intent'] = 'reschedule_existing'
     change, issues = _change(prompt)
-    if (re.search(r'不要|别(?:再)?(?:把|将|改|推|提)|不想|取消改期|不需要', prompt)
+    if (re.search(r'不要|别(?:再)?(?:把|将|改|推|提)|不想|取消|不需要|不可以|不能|不可|不允许', prompt)
             or re.search(r'(?:不|无需|不用|不必)(?:再|要|能|会|打算)?\s*(?:' + MODIFY.pattern + ')', prompt)):
         issues.append('negated_request')
     if re.search(r'新建|新增|创建|计划一[趟次]|安排一[趟次]', prompt):
@@ -291,6 +303,14 @@ def plan_existing_trip(prompt, candidates, *, selected_ref=None, model_output=No
         issues.append('time_or_timezone_requires_manual_review')
     target = _target(prompt)
     matches = _matches(target, catalog)
+    # Model target assistance may not reduce a multi-trip request to one named
+    # trip. This adapter supports a single trip per original preview/apply flow.
+    parts = [re.sub(r'(?:的)?(?:旅行|行程|旅游)?(?:都|分别)?$', '', part).strip()
+             for part in re.split(r'和|与|以及|及|还有|、|，|,', target)]
+    named_sets = [_matches(part, catalog) for part in parts if part]
+    if (re.search(r'(?:旅行|行程|旅游)\s*(?:和|与|以及|及|还有|、|，|,)|(?:都|分别)$|^(?:这些|这几|这两)', target)
+            or len(named_sets) > 1 and all(named_sets) and len({c['ref'] for group in named_sets for c in group}) > 1):
+        issues.append('multiple_trip_targets')
     if model_output is not None:
         model = decode_model_intent(model_output, prompt, catalog)
         if model['intent'] != output['intent']:
@@ -321,10 +341,10 @@ def plan_existing_trip(prompt, candidates, *, selected_ref=None, model_output=No
         selected = matches[0] if len(matches) == 1 and target else None
     output['selected'] = selected
     if not matches:
-        output['status'] = 'not_found'
+        output['status'] = 'needs_input' if issues else 'not_found'
         missing.append('trip')
     elif selected is None:
-        output['status'] = 'choose_trip'
+        output['status'] = 'needs_input' if issues else 'choose_trip'
         missing.append('trip')
     else:
         output['issues'] = sorted(set(output['issues'] + selected['sourceIssues']))
