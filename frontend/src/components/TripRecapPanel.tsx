@@ -8,7 +8,7 @@ import { RecapDiscarded, RecapError, RecapFence, recapId, recapPagePath, recapRe
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { useDisplayDensity } from '../ui/theme';
 
-type Props = { journeyId: string; onBack: () => void };
+type Props = { journeyId: string; onBack: () => void; initialTab?: Tab; backLabel?: string };
 type Tab = 'journey' | 'places' | 'photos';
 type Selection = { tab: Tab; places: number; photos: number; photoId: string };
 const connected = () => typeof navigator === 'undefined' || navigator.onLine !== false;
@@ -19,7 +19,7 @@ const status = { visited: '已明确确认到访', planned: '已计划', wish: '
 export default function TripRecapPanel(props: Props) {
   const household = useHousehold();
   if (household.user?.role !== 'member' || !recapId(props.journeyId)) return <EmptyState title="暂时无法打开旅行回顾" description="请用成员账户重新选择旅行。"
-    action={<Button contentStyle={styles.touch} onPress={props.onBack}>返回旅行详情</Button>} />;
+    action={<Button contentStyle={styles.touch} onPress={props.onBack}>{props.backLabel || '返回旅行详情'}</Button>} />;
   return <Workspace key={household.identityKey + ':' + props.journeyId} {...props} identityKey={household.identityKey} owner={household.user.id} />;
 }
 
@@ -27,8 +27,8 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
   const household = useHousehold(), density = useDisplayDensity(), theme = useTheme();
   const latest = useRef({ household, props }); latest.current = { household, props };
   const [data, setData] = useState<RecapSnapshot | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
-  const [tab, setTab] = useState<Tab>('journey'), [eventPage, setEventPage] = useState(0), [photoUrl, setPhotoUrl] = useState('');
-  const selection = useRef<Selection>({ tab: 'journey', places: 0, photos: 0, photoId: '' });
+  const [tab, setTab] = useState<Tab>(props.initialTab || 'journey'), [eventPage, setEventPage] = useState(0), [photoUrl, setPhotoUrl] = useState('');
+  const selection = useRef<Selection>({ tab: props.initialTab || 'journey', places: 0, photos: 0, photoId: '' });
   const alive = useRef(false), focused = useRef(false), active = useRef(false), departed = useRef(false), denied = useRef(false);
   const foreground = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive'), pageHidden = useRef(false);
   const windowFocused = useRef(typeof document === 'undefined' || document.hasFocus());
@@ -128,7 +128,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
   </View>;
   const ownerName = (owner: string) => owner === 'shared' ? '共同' : household.state?.people.find(p => p.id === owner)?.name || '成员';
   return <View testID="trip-recap-panel" style={{ gap: density.screenGap }}>
-    <PageHeader title="旅行回顾" description="把这趟旅行的安排、地点和照片放在一起看。" action={button('返回旅行详情', back, false)} />
+    <PageHeader title="旅行回顾" description="把这趟旅行的安排、地点和照片放在一起看。" action={button(props.backLabel || '返回旅行详情', back, false)} />
     {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     {busy && <ActivityIndicator accessibilityLabel="正在核对旅行回顾" />}
     {!showData || !data ? <EmptyState title={busy ? '正在读取当前可见内容' : !connected() || !household.online ? '离线时隐藏旅行回顾' : '回顾内容已隐藏'}
