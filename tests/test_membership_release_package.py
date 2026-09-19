@@ -38,6 +38,7 @@ def historical_fixed_blob(name):
         # Reconstruct only the audited COPY addition, then assert the original
         # immutable digest. Keep this fixture runnable without repository Git.
         raw = raw.replace(package.INVENTORY_COPY_AFTER, package.INVENTORY_COPY_BEFORE)
+        raw = raw.replace(b'COPY finance_analysis.py finance_fx.py ./\n', b'')
     assert package.digest(raw) == package.FIXED[name]
     return raw
 
