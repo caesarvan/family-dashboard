@@ -106,6 +106,8 @@ class Run(followup.Run):
     def open_order(self, page, order, line='item:0', *, select=True):
         self.open_finance(page)
         self.ledger(page, '2026-09')
+        fill(page, '搜索账本', ORDER_TITLE)
+        button(page, '搜索').click()
         self.transaction(page, order['title'])
         button(page, '登记或查看订单库存').click()
         if select:
@@ -186,6 +188,7 @@ class Run(followup.Run):
             expect(page.get_by_role('heading', name='交易详情', exact=True)).to_be_visible(timeout=20000)
             button(page, '返回账本').click()
             expect(page.get_by_role('textbox', name='账本月份', exact=True)).to_have_value('2026-09')
+            expect(page.get_by_role('textbox', name='搜索账本', exact=True)).to_have_value(ORDER_TITLE)
             assert self.protected() == self.protected_before
             self.restart()
             self.open_order(page, order, select=False)
@@ -225,6 +228,18 @@ class Run(followup.Run):
             expect(button(page, '返回库存批次')).to_be_disabled()
             request_id = dropped['body']['requestId']
             assert dropped['result']['operation']['replayed'] is False
+            uid = current['acquisition']['id']
+            receipts = self.query('SELECT request_id,operation,item_id,acquisition_id,result '
+                                  'FROM inventory_operations WHERE request_id=?', (request_id,))
+            assert len(receipts) == 1
+            receipt = receipts[0]
+            assert receipt[:4] == (request_id, 'attach_source', current['item']['id'], uid)
+            result = json.loads(receipt[4])
+            links = self.query("SELECT id,owner,acquisition_id,order_id,line_key,revision "
+                               "FROM inventory_source_links WHERE status='active'")
+            assert len(links) == 1 and links[0][2:5] == (uid, order['id'], 'item:0')
+            assert result['sourceLinkId'] == dropped['result']['operation']['sourceLinkId'] == links[0][0]
+            assert result['sourceRevision'] == links[0][5]
             committed = self.no_write_snapshot()
             self.capture(page, 'unknown-source-result', 390, page.get_by_test_id('inventory-source-pending'),
                          ready=('核对原来源操作',), disabled=('返回库存批次',))
@@ -233,10 +248,15 @@ class Run(followup.Run):
             assert self.count_requests('POST', path) == 1
             assert self.count_requests('GET', P + '/operations/' + request_id) == 1
             assert self.no_write_snapshot() == committed
+            assert self.query('SELECT request_id,operation,item_id,acquisition_id,result '
+                              'FROM inventory_operations WHERE request_id=?', (request_id,)) == receipts
+            assert self.query("SELECT id,owner,acquisition_id,order_id,line_key,revision "
+                              "FROM inventory_source_links WHERE status='active'") == links
             assert self.physical(ctx, current['acquisition']['id']) == before_physical
             assert self.table_rows(('inventory_movements',)) == movements
             self.report['droppedSourceResponse'] = {'actualStatus': dropped['status'], 'requestId': request_id,
-                'confirmPosts': 1, 'receiptGets': 1, 'noSecondMutation': True}
+                'confirmPosts': 1, 'receiptGets': 1, 'noSecondMutation': True,
+                'uniqueOriginalReceipt': True, 'uniqueMatchingSource': True}
             page.unroute(self.base + path, drop)
             self.finish_case('committed source response loss preserves pending state and recovers by original GET, with no duplicate source or stock change')
 
@@ -257,6 +277,11 @@ class Run(followup.Run):
             try:
                 shared = self.get(partner, P + '/acquisitions/' + uid)
                 assert not {'order', 'orderId', 'source', 'lineKey', 'sourceLinkId'} & set(shared['acquisition'])
+                assert shared['acquisition']['canManageSources'] is False
+                private_values = (order['id'], 'SYNTHETIC_ORDER', ORDER_TITLE, SECOND_TITLE,
+                                  '合成规格甲', '合成规格乙', '两盒（请核对）')
+                serialized = json.dumps(shared, ensure_ascii=False)
+                assert all(value not in serialized for value in private_values), 'Partner JSON exposed a private order sentinel'
                 self.get(partner, P + '/orders/' + order['id'], 404)
                 self.get(partner, P + '/acquisitions/' + uid + '/source', 403)
                 partner_page = partner.new_page()
@@ -265,6 +290,10 @@ class Run(followup.Run):
                 expect(button(partner_page, '编辑批次')).to_be_enabled(timeout=20000)
                 expect(partner_page.get_by_text(ORDER_TITLE, exact=True)).to_have_count(0)
                 expect(partner_page.get_by_test_id('inventory-source-current')).to_have_count(0)
+                expect(button(partner_page, '查看本人订单来源')).to_have_count(0)
+                dom = partner_page.locator('body').inner_text() + '\n' + partner_page.locator('[aria-label]').evaluate_all(
+                    "nodes => nodes.map(node => node.getAttribute('aria-label')).join('\\n')")
+                assert all(value not in dom for value in private_values), 'Partner DOM exposed a private order sentinel'
                 changed = self.write(ctx, 'PATCH', '/api/finance-hub/transactions/' + order['id'],
                     {'revision': order['revision'], 'category': '本人主动修改分类'})
                 # Deliberate external-source mutation is separate from the
