@@ -1,6 +1,6 @@
 # 旅行简报中的准备事项、采购与分工
 
-状态：已形成组合发布候选，**尚未上线**。开发基线为 `886234bf0590b297cb1c33fa2b6d6c83aff3e670`，已验组合源码为 `882dce5d0bc7bba182d4fe4ba1175c040123e6fd`。本批推进完整家庭旅行协作场景中的清单生成与分工；其他地图、日历、改期及真实账号验收仍保留原范围，不因本批测试通过而宣称场景 A 完成。用户路径、固定包身份和实际分段结果集中于[使用与验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。
+状态：**已于 2026-09-20 01:13:38（北京时间）激活，01:23:44 独立生产只读审计通过。** 开发基线为 `886234bf0590b297cb1c33fa2b6d6c83aff3e670`，已验组合源码为 `882dce5d0bc7bba182d4fe4ba1175c040123e6fd`。本批推进完整家庭旅行协作场景中的清单生成与分工；其他地图、日历、改期及真实账号验收仍保留原范围，不因本批测试通过而宣称场景 A 完成。用户路径、固定包身份和实际分段结果集中于[使用与验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。
 
 ## 用户结果与接缝
 
@@ -24,6 +24,7 @@
 | `codex/root-assistant-trip-items` | 集成记录、开发说明修正及必要接线；集成人独占主集成 worktree |
 | `codex/trip-build-resume` | 忽略目录中的单次构建续跑、合成 Linux 演练脚本；经集成人另行审查执行 |
 | `codex/trip-items-acceptance-docs` | 本集成说明与集中验收文档；不修改固定包源码或产物 |
+| `codex/trip-items-published-docs` | README、交接、部署、本批三份说明及 API／数据模型入口的上线状态；纯文档，交由非作者审查 |
 
 各作者只修改自己的 worktree，固定提交交付后由非作者审查。集成人按后端、前端、验收脚本依赖合入，再执行组合验证；未通过的候选不推进 `main` 或生产。
 
@@ -37,4 +38,4 @@
 
 上述是完整验收要求。当前分段已核对：组合后端首轮 173 项通过；模型接缝修正后实际 NVIDIA 合成需求 28 个检查通过；R2 Expo 两组 TypeScript、71 项 Node、23 个产物通过；R3 实际浏览器四条流程及四张采样图通过；发布工具本机专项 43 项通过。固定包另在实际 Linux 镜像完成 199 项通过、零失败／错误／跳过，以及旧路线父镜像创建两户三库后的 69/9 启动保全；本轮 Linux 未执行备份恢复。各轮提交与覆盖不同，不累计或互相替代。
 
-模型 R1 来源／分工失败、浏览器 R1 长路径失败及 R2 路由失败均保留，修正后才取得后续结果。R2 Expo 在原 `npm ci` 完成后中断，经原件与进程核对后仅续跑原 phases 1–4，未覆盖或重做 phase 0。详细原件、候选镜像及 SHA 见[集中验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md)。候选已推送并创建草稿 PR #3，独立审计进行中；主干合入、生产 stage／activate 和独立线上读回仍待完成，A–D 本人完整验收仍为 0/4。
+模型 R1 来源／分工失败、浏览器 R1 长路径失败及 R2 路由失败均保留，修正后才取得后续结果。R2 Expo 在原 `npm ci` 完成后中断，经原件与进程核对后仅续跑原 phases 1–4，未覆盖或重做 phase 0。详细原件、生产镜像及 SHA 见[集中验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md)。[PR #3](https://github.com/caesarvan/family-dashboard/pull/3) 已合入 main `ec344d58ddfaaa5ff356f398fbcbd0f5073032c7`；相对打包源码仅追加两份验收文档，运行字节保持。实际生产 stage／activate、一户两库 69/9 全组停写备份与保全、独立只读审计均通过；本批没有 DDL 或生产恢复。A–D 本人完整验收仍为 0/4，真实云与实体电视另验。

@@ -1,15 +1,16 @@
 # 联合开发接手说明
 
-## 最新发布：旅行路线
+## 最新发布：旅行准备、采购与成员分工
+
+**2026-09-20 01:13:38（北京时间）激活成功，01:23:44 独立只读审计通过。** 从「更多 → 家庭助理」输入旅行需求，核对准备事项、采购及成员分工，再预览并明确保存。[使用、固定身份与集中验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release) · [开发接缝与分支责任](ASSISTANT-TRIP-ITEMS-INTEGRATION.md) · [发布合同](ASSISTANT-TRIP-ITEMS-RELEASE.md)。PR #3 已合入 main `ec344d58ddfaaa5ff356f398fbcbd0f5073032c7`；生产包仍绑定源码 `882dce5d0bc7bba182d4fe4ba1175c040123e6fd`，其后文档提交不改变包身份。实际一户两库保持 69/9，无 DDL；本次计划已消费，不可重放。A–D 本人完整验收仍为 0/4，真实云与实体电视未验收。
+
+## 此前发布：旅行路线
 
 **2026-09-19 22:56:47（北京时间）激活，22:57:29 独立只读审计通过。** 生产实际一户两库完成户内 66→69、平台 9→9 保全；四服务运行、app 健康、0 重启。R2 正式 Expo 五阶段、73 项 Node、四场景真实临时浏览器及视觉核对、Linux 189 项零跳过和合成迁移／恢复演练分别通过。完整源码／构建／包／镜像／计划／回执身份集中在[路线使用与验收](JOURNEY-ROUTES-ACCEPTANCE.md#journey-routes-release)，迁移边界见[发布说明](JOURNEY-ROUTES-RELEASE.md)。本次计划已消费，不可重放；后续纯文档提交不改变运行包。
 
 实际入口为「旅行 → 旅行详情 → 旅行路线」。私人默认，明确家庭共享后其他成员只读；支持重复站点、排序、授权坐标连线和照片往返。缺口断线，排序不确认到访；共享路线对作者也只呈现共享投影。路线不授予 TV 许可，A–D 本人完整验收仍为 0/4，真实云与实体电视待验。
 
-路线发布之后优先处理以下两项，均不混入本批：
-
-- 接通一句旅行需求中的准备事项、采购和成员分工：服务端按当前家庭成员候选消歧，显示可编辑草案，沿用预览和明确保存；现有手工流程保留。
-- 另批定义采购截止日期与改期联动。当前采购没有截止日期合同，不能声称已随旅行改期；原请求回执、版本核对与未知结果恢复约束继续保留。
+旅行需求中的准备、采购和分工已由最新版本接通。采购结构化截止日期与改期联动仍需另批定义，不能声称采购已随旅行改期；原请求回执、版本核对与未知结果恢复约束继续保留。
 
 ## 此前发布：助理预算与支出查询
 
@@ -396,7 +397,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | 本人数据副本 | `data_portability.py`、`static/data-portability.js` | [导出契约](PORTABILITY.md)；仅本人私密与显式勾选的共同记录。排除令牌、会话/设备认证表和暂存预览；不是数据库恢复包 |
 | 部署与备份 | `Dockerfile`、`compose.yaml`、`deploy/` | [部署指导](DEPLOYMENT.md)、[运维说明](OPERATIONS.md)；源码白名单、现有配置、全部家庭、停止写入、成组备份及相配恢复 |
 
-[PLATFORM-ROUTES](PLATFORM-ROUTES.md) 与[机器索引](contract-inventory.json)保留手动账户历史版本在隔离新库生成的 162 个方法／路径模板、58 张户内表与 2 张平台表，不能作为当前总数或全部线上路由已执行的证明。当前为 66 张户内表与 9 张平台表；原账户六个操作见[账户 API](FINANCE-ACCOUNTS-API.md)，本批九个分析操作见[分析 API](FINANCE-ANALYSIS-API.md)，实际发布证据见[集中验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
+[PLATFORM-ROUTES](PLATFORM-ROUTES.md) 与[机器索引](contract-inventory.json)保留手动账户历史版本在隔离新库生成的 162 个方法／路径模板、58 张户内表与 2 张平台表，不能作为当前总数或全部线上路由已执行的证明。当前为 69 张户内表与 9 张平台表；原账户六个操作见[账户 API](FINANCE-ACCOUNTS-API.md)，此前九个分析操作见[分析 API](FINANCE-ANALYSIS-API.md)，实际最新发布证据见[集中验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
 
 ## 例行计划公共接缝
 
@@ -404,7 +405,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 
 `data_portability.py` 只在 `includeShared=true` 时加入 `shared.routines`。`home_assistant.py` 调用只读 `brief(con)`；`static/home-assistant.js` 按存在的数据显示例行计划待处理组。`static/product-shell.js` 提供三个入口并在共享状态刷新时通知例行模块；通知不发送请求、不重置草稿。新模块在 `product-shell.js` 之前加载。公开接口为 `HouseholdRoutines.open({planId?})`、`refresh()` 和 `notifyStateChanged()`。返回桥支持原待办／采购编辑器与 TaskPublish 初始选择页；保留未保存字段、图片和写中保护，显式返回重新核对原计划，不接管助理外层的关闭返回处理。Docker COPY 和 `deploy/prepare_release.py` 白名单都包含新后端。
 
-144 路由／53 户内表／2 平台表以及隔离结构索引的 162 路由／58 户内表／2 平台表均为此前版本；当前 66/9 结构及新增接口以文首本批验收为准。资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
+144 路由／53 户内表／2 平台表以及隔离结构索引的 162 路由／58 户内表／2 平台表均为此前版本；当前 69/9 结构及新增接口以文首本批验收为准。资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
 
 ## 已开发与待真实验证
 
@@ -460,7 +461,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 5. 明确接口/迁移/隐私变化后再编码。公共 API、数据模型、用户步骤、错误行为和相应测试一起交付；金额是整数分、不同币种分别计算，日期语义按旅行契约。
 6. 由集成人检查合并结果，完成对应组合测试、冻结、打包及发布。源码打包只收白名单，不生成凭据，也不是内容脱敏器；不能把私人文件临时放到 `docs/tests/static/deploy`。
 
-部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已部署家庭库为 66 张业务表、平台库为 9 张业务表；已完成的 55→58、58/2→61/9、61/9→66/9 及更早固定迁移均不能重放。下一次更新须先核对最近的[发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)和实际镜像／清单，再按[普通更新](STEADY-RELEASE.md)适配已安装基线；历史发布计划不能直接复用。成员迁移与恢复边界见[成员发布](MEMBERSHIPS-RELEASE-R3.md)及其原始记录。
+部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已部署家庭库为 69 张业务表、平台库为 9 张业务表；已完成的 55→58、58/2→61/9、61/9→66/9、66→69 及更早固定迁移均不能重放。下一次更新须先核对最近的[发布验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)和实际镜像／清单，再按[普通更新](STEADY-RELEASE.md)适配已安装基线；历史发布计划不能直接复用。成员迁移与恢复边界见[成员发布](MEMBERSHIPS-RELEASE-R3.md)及其原始记录。
 
 更新保留 `.env` 和主密钥，先关闭 web 并停止备份定时器，再停止 media／sync／app，核对注册目录、全部家庭与完整备份组后执行受审迁移。app 启动读回通过才开放 media／sync／web；本次控制器任何失败均停止并保全现场，不自动恢复数据库。需要恢复时另行确定相配源码、密钥、注册目录与家庭映射，不能让旧镜像盲接未知库；已有业务写入时不能用旧快照覆盖。**恢复后先使目标家庭旧成员登录失效并重新核对或撤回旧电视许可，再开放入口及 worker**。具体步骤见 [部署与恢复](DEPLOYMENT.md#6-备份恢复与回滚)、[运维](OPERATIONS.md) 和 [会话恢复要求](MEMBER-SESSIONS.md#恢复后使旧成员登录失效)。上一财务版本的 165／119 项离线激活／控制器恢复、79 项文档零结构检查均不是生产恢复演练。
 

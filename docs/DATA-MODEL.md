@@ -1,8 +1,8 @@
 # 数据模型、同步一致性与隐私边界
 
-> 当前生产为 **66 张户内表与 9 张平台表**，账户分析已完成 61/9→66/9，见[分析发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)；随后财务查询发布未新增 DDL。**本地路线候选为 69/9，尚未上线**。当前安装身份见 [HANDOFF](HANDOFF.md)，本地源码结构见 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)。下面较早版本的表数仅描述各自历史状态。
+> 当前生产为 **69 张户内表与 9 张平台表**。旅行路线已于 2026-09-19 22:56:47（北京时间）完成 66→69，见[路线验收](JOURNEY-ROUTES-ACCEPTANCE.md#journey-routes-release)；最新旅行准备、采购与分工于 2026-09-20 01:13:38 激活，01:23:44 独立只读审计通过，69/9 不变，无本批 DDL，见[最新验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。当前安装身份见 [HANDOFF](HANDOFF.md)，本地源码结构见 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)。下面较早版本的表数仅描述各自历史状态。
 
-## 旅行路线与持久操作回执（本地候选 66→69）
+## 旅行路线与持久操作回执（已上线，66→69 迁移已完成）
 
 唯一 DDL 为 [journey_routes.py](../journey_routes.py) 的 `SCHEMA_SQL`；`initialize_journey_routes(con)` 要求开启外键及已有 users／journey_workflows／journey_places，由调用者控制事务，不隐式提交。新增三张户内表及两个路线查询索引，不修改原 66 表或 9 张平台表。完整约束与恢复规则见 [路线合同](JOURNEY-ROUTES.md)，迁移、完整备份与失败现场处理见 [路线发布](JOURNEY-ROUTES-RELEASE.md)；不得重放旧 61→66 迁移。
 
