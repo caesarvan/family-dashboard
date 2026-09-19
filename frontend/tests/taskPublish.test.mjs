@@ -159,6 +159,21 @@ test('pause, resume and uncertain retry use existing publication paths',async()=
   const wire=state();wire.publications=[publication()];const h=harness({wire});await h.flush();await h.click('暂停同步');assert(h.text().includes('已暂停同步'));await h.click('恢复同步');assert(h.text().includes('等待同步'));
   h.f.wire.publications[0].status='uncertain';await h.click('刷新状态');await h.click('再次核对原清单');assert(h.f.calls.some(row=>row.path.endsWith('/retry')));
 });
+test('a periodic state read disables writes until it completes, then resume sends once',async()=>{
+  const wire=state();wire.publications=[publication('paused')];const h=harness({wire});await h.flush();
+  let release;h.f.stateGate=new Promise(resolve=>{release=resolve;});await h.tick();
+  assert(h.disabled('恢复同步'),'Visible resume must not silently discard a click during background polling');
+  assert(!h.f.calls.some(row=>row.path.endsWith('/resume')));
+  release();await h.flush();assert(!h.disabled('恢复同步'));await h.click('恢复同步');
+  assert.equal(h.f.calls.filter(row=>row.path.endsWith('/resume')).length,1);assert(h.text().includes('等待同步'));
+});
+test('unknown confirmation retry remains disabled during a later background read',async()=>{
+  const h=harness({confirmError:true,commit:false});await selectAndPreview(h);await h.click('确认连接这 1 项待办');
+  await h.click('核对当前状态');let release;h.f.stateGate=new Promise(resolve=>{release=resolve;});await h.tick();
+  assert(h.disabled('使用原确认再次核对'));assert(h.disabled('核对当前状态'));
+  release();await h.flush();h.f.commit=true;h.f.confirmError=false;await h.click('使用原确认再次核对');
+  const calls=h.f.calls.filter(row=>row.path.endsWith('/confirm'));assert.equal(calls.length,2);assert.deepEqual(calls[0].body,calls[1].body);
+});
 test('reconnection selects only original matching source, and preview makes reuse visible',async()=>{
   const wire=state();wire.publications=[{...publication('disconnected'),reconnectSourceIds:['source2']}];const h=harness({wire});await h.flush();await h.click('选择清单：Microsoft To Do · 家庭主清单 · 合成账户');assert(h.disabled('选择待办：核对护照'));
   await h.click('选择清单：Microsoft To Do · 本人清单 · 合成账户');assert(!h.disabled('选择待办：核对护照'));await h.click('选择待办：核对护照');await h.click('预览选中待办');assert.equal(h.f.calls.find(row=>row.path.endsWith('/preview')).body.sourceId,'source2');assert(h.text().includes('重新连接原清单，保留云端原任务'));
