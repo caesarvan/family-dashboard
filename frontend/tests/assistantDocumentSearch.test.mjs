@@ -158,6 +158,7 @@ for(const option of [{documents:[]},{documentStatus:403}])test('removed/revoked 
 test('real photo entry re-reads the original item through PhotoReadFence and returns to original search',async t=>{
   const h=harness({matches:[photoMatch()]});t.after(h.close);await h.search();await h.click('查看照片 旧照片说明');
   assert.equal(h.control('照片说明')[0].props.value,'当前照片说明');assert(h.f.calls.includes('/media/items/'+photoId));
+  assert(!h.text().includes('保留你的未保存修改'));assert(!h.text().includes('你的草稿仍保留'));
   assert(h.nodes().some(n=>n.type==='Image'&&n.props.source?.uri==='/api/media/items/'+photoId+'/preview'));
   // Header return is disabled while details are open; the dialog action is the
   // enabled return and keeps the same confirmation path for edited photos.
@@ -168,6 +169,17 @@ test('photo edits require explicit discard before returning and search never gra
   const h=harness({matches:[photoMatch()]});t.after(h.close);await h.search();await h.click('查看照片 旧照片说明');await h.input('照片说明','本人未保存文字');
   h.control('返回搜索').find(n=>!n.props.disabled).props.onPress();await h.flush();assert(h.text().includes('未保存的输入将丢弃'));assert.equal(h.control('照片说明')[0].props.value,'本人未保存文字');
   await h.click('确认');assert(h.text().includes('搜索结果'));assert.equal(h.f.mutations.length,1);
+});
+test('actual photo draft survives a changed server version and explicit refresh keeps its recovery message',async t=>{
+  const h=harness({matches:[photoMatch()]});t.after(h.close);await h.search();await h.click('查看照片 旧照片说明');
+  await h.input('照片说明','本人未保存的照片说明');await h.offline();
+  h.f.photo={...h.f.photo,revision:3,caption:'服务器后来更新的照片说明'};await h.online();
+  assert.equal(h.control('照片说明')[0].props.value,'本人未保存的照片说明');
+  assert(h.text().includes('照片已更新。你的草稿仍保留，请读取当前版本后核对。'));
+  await h.click('读取当前版本，保留我的修改');
+  assert.equal(h.control('照片说明')[0].props.value,'本人未保存的照片说明');
+  assert(h.text().includes('已读取当前版本，保留你的未保存修改；请比较后再保存。'));
+  assert.equal(h.f.mutations.length,1);assert.equal(h.f.mutations[0].path,'/assistant/plan');
 });
 for(const option of [{photoStatus:404},{failMeAfterPhoto:true}])test('missing photo or final identity read failure cannot install a search snapshot '+JSON.stringify(option),async t=>{
   const h=harness({matches:[photoMatch()],...option});t.after(h.close);await h.search();await h.click('查看照片 旧照片说明');

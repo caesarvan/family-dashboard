@@ -168,7 +168,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
       tvConsent: retained ? retained.tvConsent : false, blocked,
       suggestionReview: !!(resuming && previous?.suggestionReview),
       message: resuming ? blocked ? previous?.suggestionReview ? '旅行关联需要核对，页面不会自动重发。' : '照片已更新。你的草稿仍保留，请读取当前版本后核对。' : previous?.message || ''
-        : keepDraft ? '已读取当前版本，保留你的未保存修改；请比较后再保存。' : '' };
+        : retained ? '已读取当前版本，保留你的未保存修改；请比较后再保存。' : '' };
     editorRef.current = next; setEditor(next);
   }
   async function readAction(action: () => Promise<void>) {
