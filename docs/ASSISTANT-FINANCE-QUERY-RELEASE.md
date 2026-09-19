@@ -28,7 +28,7 @@ Docker 仅在原 `assistant_trip_intent.py assistant_trip_change_api.py` COPY �
 
 新 baseline 为 `assistant-trip-change-r1-finance-query`，计划类型为 `assistant-finance-query-release-plan`。不可变 `ReleaseSpec` 由固定 Python 入口选择；没有从计划 JSON 或 CLI 指定任意模块/profile 的入口。历史 baseline 的常量、默认包格式与原 14 个算子名单保持不变；新计划绑定 18 个算子，包括四个新入口/profile 和实际执行的共享 controller、plan、package/build/data。`controllerSha256` 绑定新薄入口，另核对实际导入位置；共享实现同时受 `operatorHashes` 与包源码双重绑定。
 
-新包必须保留全部已安装的 inventory/finance/trip 模块，并包含 `assistant_finance_query.py`；新增前端专项只明确允许 `frontend/tests/assistantFinanceQuery.test.mjs`。根业务文件允许变更的范围为 `app.py`、`finance_hub.py`、`assistant_finance_query.py`、`Dockerfile`、`README.md`。依赖、compose、nginx、环境摘要与旧运行模块删除仍受原严格检查。
+新包必须保留全部已安装的 inventory/finance/trip 模块，并包含 `assistant_finance_query.py`；新增前端专项只明确允许 `frontend/tests/assistantFinanceQuery.test.mjs`。根业务文件允许变更的范围为 `app.py`、`finance_hub.py`、`finance_source_bridge.py`、`assistant_finance_query.py`、`Dockerfile`、`README.md`。`finance_source_bridge.py` 仅为本批导入引擎缺失时错误处理修复纳入现有模块改动范围；业务修复须另行审查并绑定新源码、包和 Linux 验证，旧候选构建与演练记录不覆盖修订。历史 profile、`membership_storage.py`、依赖、compose、nginx、环境摘要与旧运行模块删除仍受原严格检查。
 
 ## 数据与执行顺序
 

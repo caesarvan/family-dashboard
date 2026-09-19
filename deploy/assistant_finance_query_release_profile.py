@@ -16,5 +16,6 @@ RUNTIME_ADDITIONS = frozenset({'inventory_sources.py', 'finance_analysis.py', 'f
 FRONTEND_TESTS = frozenset({'frontend/tests/inventoryFollowup.test.mjs', 'frontend/tests/inventorySources.test.mjs',
                           'frontend/tests/financeAnalysis.test.mjs', 'frontend/tests/assistantTripChange.test.mjs',
                           'frontend/tests/assistantFinanceQuery.test.mjs'})
-CHANGED_ROOT_FILES = frozenset({'app.py', 'finance_hub.py', 'assistant_finance_query.py', 'Dockerfile', 'README.md'})
+CHANGED_ROOT_FILES = frozenset({'app.py', 'finance_hub.py', 'finance_source_bridge.py',
+                               'assistant_finance_query.py', 'Dockerfile', 'README.md'})
 SCHEMA_BEFORE = SCHEMA_AFTER = (66, 9)
