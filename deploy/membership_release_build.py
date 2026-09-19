@@ -291,7 +291,7 @@ def container_validate(runtime=Path('/app'), support=Path('/test-support'), proo
         plugin = SelectionPlugin(selection)
         code = int(pytest.main(['-q', '-p', 'no:cacheprovider', '--import-mode=append', '--rootdir=' + str(support),
                                '--junitxml=' + str(proof / 'results.xml'),
-                               *[str(support / n) for n in selection['modules']]], plugins=[plugin]))
+                               *[str(support / n) for n in selection['nodeids']]], plugins=[plugin]))
         evidence.update(collected=plugin.collected, deselected=plugin.deselected, reports=plugin.reports)
         evidence['loadedAfter'] = loaded_modules(runtime, expected)
         evidence['after'] = tree_hashes(runtime)

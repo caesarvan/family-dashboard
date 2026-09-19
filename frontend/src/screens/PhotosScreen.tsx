@@ -22,16 +22,18 @@ const anyDraft = (e: Editor) => dirty(e) || e.tvConsent || [...e.grants].sort().
 const draftKey = (e: Editor) => JSON.stringify([e.item.id, e.item.revision, e.caption, e.visibility, e.journeyId, e.grants, e.tvConsent]);
 const toggle = (ids: string[], id: string) => ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id];
 
-export default function PhotosScreen(props: ScreenProps) {
+type Props = ScreenProps & { initialPhotoId?: string; onBack?: () => void };
+export default function PhotosScreen(props: Props) {
   const household = useHousehold();
   const identityKey = (household as typeof household & { identityKey?: string }).identityKey;
   const actor = identityKey || memberIdentity(props.user);
   // The key makes clearing private React state synchronous with identity changes.
   if (props.user.role !== 'member') return <EmptyState title="请用成员账户管理相册" description="电视仅能读取单独授予该设备的照片。" />;
-  return <PhotoWorkspace key={actor} {...props} identityKey={identityKey} />;
+  if (props.initialPhotoId !== undefined && !isMediaId(props.initialPhotoId)) return <EmptyState title="照片入口无法核对" action={props.onBack ? <Button onPress={props.onBack}>返回搜索</Button> : undefined} />;
+  return <PhotoWorkspace key={actor + ':' + (props.initialPhotoId || '')} {...props} identityKey={identityKey} />;
 }
 
-function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
+function PhotoWorkspace(props: Props & { identityKey?: string }) {
   const household = useHousehold(); const latest = useRef(household); latest.current = household;
   const theme = useTheme(); const { width, height } = useWindowDimensions();
   const alive = useRef(false); const active = useRef(false); const locked = useRef(false);
@@ -44,6 +46,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
     const session = await suggestionRequest<PhotoSession>('/me'); freshSession.current = session; return session;
   }, props.user, props.identityKey));
   const serial = useRef({ gallery: 0, detail: 0, imports: 0 });
+  const initialPhoto = useRef(props.initialPhotoId || '');
   const [denied, setDenied] = useState(false); const [focused, setFocused] = useState(false);
   const [busy, setBusy] = useState(false); const [loading, setLoading] = useState(true);
   const [error, setError] = useState(''); const [notice, setNotice] = useState('');
@@ -150,6 +153,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
     setSuggestionVersion(value => value + 1);
     const data = await checked(async () => {
       const { item } = await request<{ item: Photo }>(`/media/items/${id}`); validatePhoto(item);
+      if (item.id !== id) throw new Error('照片读取结果与所选内容不一致，请返回后重新查询。');
       const grants = item.canManage ? await request<{ revision: number; deviceIds: string[] }>(`/media/items/${id}/tv-grants`) : { revision: item.revision, deviceIds: [] };
       if (grants.revision !== item.revision) throw new Error('照片正在更新，请重新打开核对。');
       return { item, grants: grants.deviceIds };
@@ -164,7 +168,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
       tvConsent: retained ? retained.tvConsent : false, blocked,
       suggestionReview: !!(resuming && previous?.suggestionReview),
       message: resuming ? blocked ? previous?.suggestionReview ? '旅行关联需要核对，页面不会自动重发。' : '照片已更新。你的草稿仍保留，请读取当前版本后核对。' : previous?.message || ''
-        : keepDraft ? '已读取当前版本，保留你的未保存修改；请比较后再保存。' : '' };
+        : retained ? '已读取当前版本，保留你的未保存修改；请比较后再保存。' : '' };
     editorRef.current = next; setEditor(next);
   }
   async function readAction(action: () => Promise<void>) {
@@ -216,11 +220,16 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
           }
         }
       }
-      if (editorRef.current) {
-        try { await readEditor(editorRef.current.item.id, true, true); }
+      const detailId = editorRef.current?.item.id || initialPhoto.current;
+      if (detailId) {
+        try {
+          await readEditor(detailId, true, !!editorRef.current);
+          if (current() && ticket === epoch.current) initialPhoto.current = '';
+        }
         catch (caught) {
           if (!current() || ticket !== epoch.current) return;
           if (!(caught instanceof ApiError) || ![404, 410].includes(caught.status)) throw caught;
+          initialPhoto.current = '';
           editorRef.current = null; setEditor(null); setError('照片已移除或不再可见。');
         }
       }
@@ -395,7 +404,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   }
   function decide() {
     const action = decision; setDecision(null);
-    if (action === 'discard') { serial.current.detail++; editorRef.current = null; setEditor(null); }
+    if (action === 'discard') { serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); }
     if (action === 'delete' && editor) void write(`/media/items/${editor.item.id}`, 'DELETE', { revision: editor.item.revision }, async () => { setEditor(null); await gallery(); setNotice('已移除看板副本，Google Photos 原图保留。'); }, 'editor');
     if (action === 'cancel' && importDetail) void write(`/media/imports/${importDetail.import.id}`, 'DELETE', { revision: importDetail.import.revision }, async () => {
       setConfirmReceipt(null); setConfirmReview(false); setPersist(false); await readImport(importDetail.import.id); await support();
@@ -408,14 +417,15 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
   const activeImport = imports.some(item => !terminalImport(item.state)) || !!row && !terminalImport(row.state);
   const columns = width < 540 ? 2 : width < 960 ? 3 : 4;
   const cardWidth = `${100 / columns - 1.7}%` as `${number}%`;
-  const closeEditor = () => { if (busy) return; if (editor && (anyDraft(editor) || editor.blocked)) setDecision('discard'); else { serial.current.detail++; editorRef.current = null; setEditor(null); } };
+  const closeEditor = () => { if (busy) return; if (editor && (anyDraft(editor) || editor.blocked)) setDecision('discard'); else { serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); } };
   const renderPhoto = (item: Photo, label: string, large = false) => <Image accessibilityLabel={label} source={{ uri: imageUri(item) }} style={large ? styles.detailImage : styles.thumbnail} resizeMode={large ? 'contain' : 'cover'} />;
   const checkbox = (label: string, checked: boolean, change: () => void, disabled = false) => <Checkbox.Item label={label} status={checked ? 'checked' : 'unchecked'} onPress={change} disabled={disabled} position="leading" labelStyle={styles.checkLabel} style={styles.checkRow} />;
-  if (denied) return <EmptyState title="正在核对登录身份" description="原账户的照片和编辑内容已清空。" />;
+  const backToSearch = props.onBack ? <Button contentStyle={{ minHeight: 44 }} disabled={busy || !!editor || !!createReceipt || !!confirmReceipt || !available()} onPress={props.onBack}>返回搜索</Button> : undefined;
+  if (denied) return <EmptyState title="正在核对登录身份" description="原账户的照片和编辑内容已清空。" action={backToSearch} />;
   if (!focused || !available()) return <EmptyState title={loading && available() ? '正在核对照片权限' : '照片内容已隐藏'} description={error || '联网并回到页面后，将重新核对当前身份；未保存的修改仍保留在此页面内。'}
-    action={<Button contentStyle={{ minHeight: 44 }} disabled={!available() || loading} onPress={() => void lifecycle.current.resume()}>重新读取相册</Button>} />;
+    action={<View style={styles.actions}><Button contentStyle={{ minHeight: 44 }} disabled={!available() || loading} onPress={() => void lifecycle.current.resume()}>重新读取相册</Button>{backToSearch}</View>} />;
   return <View style={styles.page}>
-    <PageHeader title="相册" description="自己留下，按你的选择分享。" action={<View style={styles.actions}><Button accessibilityLabel="电视与播放" mode="outlined" icon="television" disabled={busy || !!editor || importOpen || !!createReceipt || !!confirmReceipt} onPress={() => props.onNavigate('devices')}>电视与播放</Button><Button accessibilityLabel="选择照片" mode="contained" icon="plus" disabled={busy} onPress={() => setImportOpen(value => !value)}>选择照片</Button></View>} />
+    <PageHeader title="相册" description="自己留下，按你的选择分享。" action={<View style={styles.actions}>{backToSearch}<Button accessibilityLabel="电视与播放" mode="outlined" icon="television" disabled={busy || !!editor || importOpen || !!createReceipt || !!confirmReceipt} onPress={() => props.onNavigate('devices')}>电视与播放</Button><Button accessibilityLabel="选择照片" mode="contained" icon="plus" disabled={busy} onPress={() => setImportOpen(value => !value)}>选择照片</Button></View>} />
     {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     {!!notice && <Text accessibilityLiveRegion="polite">{notice}</Text>}
     {importOpen && <SectionCard title="从 Google Photos 选择" action={<Button disabled={busy} onPress={() => setImportOpen(false)}>收起</Button>}>
@@ -508,7 +518,7 @@ function PhotoWorkspace(props: ScreenProps & { identityKey?: string }) {
             <Button textColor={theme.colors.error} disabled={busy || editor.blocked} onPress={() => setDecision('delete')}>移除看板副本</Button><Text variant="bodySmall">Google Photos 原图保留。</Text>
           </> : <><Text variant="titleMedium">{editor.item.caption || '家庭共享照片'}</Text><Text>由上传者管理，你可以查看当前共享的照片。</Text>{!!editor.item.journey && <Text>关联旅行：{editor.item.journey.title}</Text>}</>}
         </>}
-      </ScrollView></Dialog.ScrollArea><Dialog.Actions><Button disabled={busy} onPress={closeEditor}>关闭</Button></Dialog.Actions>
+      </ScrollView></Dialog.ScrollArea><Dialog.Actions><Button disabled={busy} onPress={closeEditor}>{props.onBack ? '返回搜索' : '关闭'}</Button></Dialog.Actions>
     </Dialog>
     <Dialog visible={!!decision} onDismiss={() => setDecision(null)} style={styles.dialog}><Dialog.Title>{decision === 'discard' ? '离开照片详情？' : decision === 'delete' ? '移除这张照片？' : '取消本次选择？'}</Dialog.Title><Dialog.Content><Text>{decision === 'discard' ? '未保存的输入将丢弃。关闭页面不会撤销已经提交的操作。' : decision === 'delete' ? '将删除看板副本，并收回家庭共享及电视展示。Google Photos 原图保留。' : '清理未确认的临时预览，Google Photos 原图保留。已经发出的请求仍会由服务器处理。'}</Text></Dialog.Content><Dialog.Actions><Button onPress={() => setDecision(null)}>返回</Button><Button onPress={decide}>确认</Button></Dialog.Actions></Dialog></Portal>
   </View>;

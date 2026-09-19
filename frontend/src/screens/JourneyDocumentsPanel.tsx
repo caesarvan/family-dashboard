@@ -11,7 +11,7 @@ import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
 import { useDisplayDensity } from '../ui/theme';
 
-type Props = { journeyId?: string; onBack: () => void; onPendingChange?: (pending: boolean) => void };
+type Props = { journeyId?: string; initialDocumentId?: string; onBack: () => void; onPendingChange?: (pending: boolean) => void };
 type Fields = { title: string; journeyId: string | null; segmentKey: string; visibility: 'private' | 'shared' };
 type Editor = { kind: 'upload' | 'edit'; base: JourneyDocument | null; fields: Fields; file: DocumentFile | null; initialJourney: string | null };
 type Intent = { kind: 'upload'; payload: DocumentUploadPayload } | { kind: 'edit'; id: string; payload: DocumentPatchPayload } | { kind: 'delete'; id: string; payload: { revision: number } };
@@ -47,13 +47,14 @@ function pickFile(signal: AbortSignal): Promise<File | null> {
 export default function JourneyDocumentsPanel(props: Props) {
   const household = useHousehold();
   if (household.user?.role !== 'member') return <EmptyState title="请用成员账户查看旅行资料" />;
-  return <Workspace key={`${household.identityKey}:${props.journeyId || 'library'}`} {...props} identityKey={household.identityKey} owner={household.user.id} />;
+  if (props.initialDocumentId !== undefined && !/^[a-f0-9]{32}$/.test(props.initialDocumentId)) return <EmptyState title="资料入口无法核对" action={<Button onPress={props.onBack}>返回搜索</Button>} />;
+  return <Workspace key={`${household.identityKey}:${props.journeyId || 'library'}:${props.initialDocumentId || ''}`} {...props} identityKey={household.identityKey} owner={household.user.id} />;
 }
 
 function Workspace(props: Props & { identityKey: string; owner: string }) {
   const household = useHousehold(), theme = useTheme(), density = useDisplayDensity();
   const latest = useRef({ household, props }); latest.current = { household, props };
-  const [model, setModel] = useState<Model>(empty), live = useRef(model);
+  const [model, setModel] = useState<Model>(() => ({ ...empty(), focus: props.initialDocumentId || null })), live = useRef(model);
   const [visible, setVisible] = useState(false), [busy, setBusy] = useState(false), [message, setMessage] = useState(''), [error, setError] = useState('');
   const [search, setSearch] = useState(''), [page, setPage] = useState(0), [choice, setChoice] = useState<Choice>(null), [choiceSearch, setChoiceSearch] = useState(''), [choicePage, setChoicePage] = useState(0);
   const [leaving, setLeaving] = useState<'panel' | 'editor' | 'unknown' | null>(null), [deleting, setDeleting] = useState(false);
@@ -101,6 +102,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
     try { list = await readList(ticket, signal); }
     catch (caught) {
       if (!(caught instanceof DocumentError) || caught.status !== 404 || !props.journeyId || !current(ticket)) throw caught;
+      if (props.initialDocumentId) throw new DocumentError('原旅行已不可用，这份资料已移出原搜索范围。请返回搜索重新查询。', 404);
       // This 404 already passed the original request's before/after identity fence.
       list = await readList(ticket, signal, null);
       if (current(ticket)) setMessage('原旅行当前不可用，已读取你的资料库。文件可在此重新关联。');
@@ -127,7 +129,9 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
     if (!current(ticket)) return;
     install({ list, review, segments, blocked: !!review || before.blocked, checked: !!before.unknown });
     if (before.focus && !before.editor && !before.unknown && !list.documents.some(item => item.id === before.focus)) {
-      install({ focus: null }); setMessage('这份资料已不在当前列表，请查看最新资料库。');
+      install({ focus: null });
+      if (before.focus === props.initialDocumentId) setError('这份资料已移除、移出当前范围，或不再对你可见。请返回搜索重新查询。');
+      else setMessage('这份资料已不在当前列表，请查看最新资料库。');
     }
     setVisible(true);
   }
@@ -292,7 +296,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
   </View>;
   return <View testID="journey-documents-panel" style={{ gap: density.screenGap }}>
     <PageHeader title={props.journeyId ? '旅行资料' : '我的旅行资料'} description="预订凭证集中保存。默认仅本人，分享由你决定。"
-      action={<Button contentStyle={styles.touch} accessibilityLabel="返回旅行资料入口" disabled={busy || !!model.unknown} onPress={() => back('panel')}>返回</Button>} />
+      action={<Button contentStyle={styles.touch} accessibilityLabel={props.initialDocumentId ? '返回资料搜索' : '返回旅行资料入口'} disabled={busy || !!model.unknown} onPress={() => back('panel')}>{props.initialDocumentId ? '返回搜索' : '返回'}</Button>} />
     {!!message && <Text testID="journey-documents-message">{message}</Text>}{!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     {busy && <ActivityIndicator accessibilityLabel="正在处理旅行资料" />}
     {!visible ? <EmptyState title="旅行资料已隐藏" description="正在核对身份；离线和后台期间仅在内存保留你的草稿。"
@@ -322,7 +326,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
         <View accessibilityRole="radiogroup" accessibilityLabel="资料共享范围">
           <SelectionRow kind="radio" label="仅本人可见" checked={editor.fields.visibility === 'private'} disabled={locked} onPress={() => edit({ visibility: 'private' })} />
           <SelectionRow kind="radio" label="与家庭共享" checked={editor.fields.visibility === 'shared'} disabled={locked || !editor.fields.journeyId} onPress={() => edit({ visibility: 'shared' })} />
-        </View><Text variant="bodySmall">解除旅行关联后只对本人可见。资料不会发送到云日历、助理或电视。</Text>
+        </View><Text variant="bodySmall">解除旅行关联后只对本人可见。文件内容不会发送到 AI、云日历或电视。</Text>
         {actions(<><Button contentStyle={styles.touch} mode="contained" disabled={locked || editor.kind === 'edit' && !dirty(model)} onPress={save}>{editor.kind === 'upload' ? '确认上传资料' : '保存资料修改'}</Button>
           <Button contentStyle={styles.touch} disabled={busy || !!model.unknown} onPress={() => back('editor')}>返回资料列表</Button></>)}
       </View></SectionCard> : focusedRecord && !model.unknown ? <SectionCard title="资料详情"><View testID="journey-document-detail" style={{ gap: density.sectionGap }}>

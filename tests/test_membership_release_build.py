@@ -220,6 +220,23 @@ def test_actual_pytest_reads_runtime_and_real_sqlite(tmp_path, dependencies):
     assert build.junit_result(proof / 'results.xml', selection)['passed'] == 1
 
 
+def test_actual_pytest_selects_frozen_nodes_without_running_other_module_tests(tmp_path, dependencies):
+    body = SQLITE_CASE + '''
+def test_unselected_failure():
+    raise AssertionError('Unselected test must not execute')
+def test_unselected_browser():
+    raise AssertionError('Browser must not launch during API-only validation')
+'''
+    process, record, proof, selection = actual_validation(tmp_path, dependencies, body)
+    assert process.returncode == 0, process.stdout.decode() + process.stderr.decode()
+    assert record['runtimeVerifiedBefore'] and record['runtimeVerifiedAfter']
+    assert record['before'] == record['after'] and record['sourceBefore'] == record['sourceAfter']
+    assert record['collected'] == selection['nodeids'] and record['deselected'] == []
+    assert set(record['reports']) == set(selection['nodeids'])
+    assert build.junit_result(proof / 'results.xml', selection) == {
+        'tests': 1, 'passed': 1, 'skipped': 0, 'failures': 0, 'errors': 0}
+
+
 @pytest.mark.parametrize('fault', ['missing-node', 'skip', 'source-mutation', 'runtime-mutation', 'shadow'])
 def test_actual_pytest_rejects_incomplete_or_drifting_validation(tmp_path, dependencies, fault):
     body = SQLITE_CASE
