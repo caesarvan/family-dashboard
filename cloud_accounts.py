@@ -850,6 +850,8 @@ class CloudAccounts:
             source = dict(row)
         if source['kind'] != 'tasks':
             raise ProviderError('日程为只读同步，请在原日历中修改', 403)
+        if not existing and payload.get('dependsOn'):
+            raise ProviderError('云端清单不支持前置事项，请选择看板本地任务后保存', 400)
         if not existing and (payload.get('owner', 'shared') != 'shared' or payload.get('tripId')):
             raise ProviderError('云端任务使用共同归属；旅行准备可选择看板本地清单', 400)
         aid = source['account_id']

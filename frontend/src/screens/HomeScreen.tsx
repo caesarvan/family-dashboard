@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Button, Divider, IconButton, Text, useTheme } from 'react-native-paper';
 import type { ListItem, ScreenProps } from '../lib/types';
+import { dependencyStates } from '../lib/taskDependencies';
 import { bounds, dayKey, duration, eventsForDay, overlapsDay, rangeDays, rangeSummary, shortDay } from '../lib/calendar';
 import { EmptyState, SectionCard } from '../ui/components';
 import { useDisplayDensity } from '../ui/theme';
@@ -41,8 +42,9 @@ export default function HomeScreen(props: ScreenProps) {
     .sort((a, b) => bounds(a).start - bounds(b).start || a.id.localeCompare(b.id)).slice(0, 3);
   const chosenDay = selectedDay && days.includes(selectedDay) ? selectedDay : undefined;
   const appointments = chosenDay ? eventsForDay(state.events, chosenDay, props.focus).slice(0, 3) : upcoming;
+  const dependencyState=dependencyStates(state.tasks);
   const tasks = state.tasks.filter(item => !item.done && (!item.due || item.due <= days.at(-1)!))
-    .sort((a, b) => (a.due || '9999').localeCompare(b.due || '9999') || a.id.localeCompare(b.id));
+    .sort((a, b) => Number(dependencyState.get(a.id)!.blocked)-Number(dependencyState.get(b.id)!.blocked) || (a.due || '9999').localeCompare(b.due || '9999') || a.id.localeCompare(b.id));
   const due = tasks.filter(item => item.due).length, overdue = tasks.filter(item => item.due && item.due < today).length;
   const shopping = state.shopping.filter(item => !item.done);
   const trip = state.trips.filter(item => item.end >= today).sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id))[0];
@@ -52,7 +54,7 @@ export default function HomeScreen(props: ScreenProps) {
   const wide = width >= 1000;
   const bento = { backgroundColor: theme.colors.surfaceVariant, borderWidth: 0, borderRadius: wide ? 40 : 24 };
   async function toggle(item: ListItem) {
-    if (pending.current || props.pendingId || item.sync?.readOnly) return;
+    if (pending.current || props.pendingId || item.sync?.readOnly || dependencyState.get(item.id)!.blocked) return;
     const original = current.current; pending.current = true; setBusy(item.id); setError('');
     try { await props.onToggle('tasks', item); }
     catch { if (original === current.current) setError('未能更新待办，请核对当前状态后重试。'); }
@@ -79,8 +81,8 @@ export default function HomeScreen(props: ScreenProps) {
     </SectionCard>,
     tasks: <SectionCard style={[styles.bento, bento]} title="先做这几件" action={<Button contentStyle={styles.primaryContent} compact onPress={() => props.onNavigate('tasks')}>全部待办</Button>}>
       {tasks.length ? tasks.slice(0, 4).map(item => <View key={item.id} style={[styles.task, { paddingVertical: density.rowPadding }]}>
-        <CompleteTask title={item.title} disabled={!!(busy || props.pendingId || item.sync?.readOnly)} onPress={() => void toggle(item)} />
-        <View style={styles.flex}><Text variant="titleSmall">{item.title}</Text><Text variant="bodySmall" style={muted}>{item.due ? `${item.due < today ? '已逾期 · ' : ''}${shortDay(item.due)}` : '未设日期'} · {owner(item.owner)}{item.sync?.readOnly ? ' · 来源只读' : ''}</Text></View>
+        <CompleteTask title={item.title} disabled={!!(busy || props.pendingId || item.sync?.readOnly || dependencyState.get(item.id)!.blocked)} onPress={() => void toggle(item)} />
+        <View style={styles.flex}><Text variant="titleSmall">{item.title}</Text><Text variant="bodySmall" style={muted}>{item.due ? `${item.due < today ? '已逾期 · ' : ''}${shortDay(item.due)}` : '未设日期'} · {owner(item.owner)}{item.sync?.readOnly ? ' · 来源只读' : ''}</Text>{dependencyState.get(item.id)!.message&&<Text variant="bodySmall" style={muted}>{dependencyState.get(item.id)!.message}</Text>}</View>
         {!item.sync && <Button contentStyle={styles.primaryContent} compact accessibilityLabel={`编辑待办：${item.title}`} disabled={!!(busy || props.pendingId)}
           onPress={() => { if (!busy && !props.pendingId) props.onEdit('tasks', item); }}>编辑</Button>}
       </View>) : <EmptyState title="到期待办已处理完" action={<Button contentStyle={styles.primaryContent} onPress={() => props.onEdit('tasks')}>添加待办</Button>} />}
