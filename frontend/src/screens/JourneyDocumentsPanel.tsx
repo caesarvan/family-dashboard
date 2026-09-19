@@ -102,6 +102,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
     try { list = await readList(ticket, signal); }
     catch (caught) {
       if (!(caught instanceof DocumentError) || caught.status !== 404 || !props.journeyId || !current(ticket)) throw caught;
+      if (props.initialDocumentId) throw new DocumentError('原旅行已不可用，这份资料已移出原搜索范围。请返回搜索重新查询。', 404);
       // This 404 already passed the original request's before/after identity fence.
       list = await readList(ticket, signal, null);
       if (current(ticket)) setMessage('原旅行当前不可用，已读取你的资料库。文件可在此重新关联。');

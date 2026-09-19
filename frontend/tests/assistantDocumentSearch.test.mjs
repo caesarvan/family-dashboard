@@ -72,6 +72,7 @@ function harness(options={}) {
     else if(path.startsWith('/journey-documents')){
       if(f.documentStatus)throw new documents.DocumentError('资料已不可用，请返回搜索重新查询。',f.documentStatus);
       const scoped=new URL('https://synthetic.invalid'+path).searchParams.get('journeyId');
+      if(scoped&&f.scopedDocumentStatus)throw new documents.DocumentError('原旅行已不可用',f.scopedDocumentStatus);
       value={journey:scoped?{id:scoped,title:journey.title,revision:1}:null,segments:[],journeys:[{id:journeyId,title:journey.title}],documents:clone(f.documents),limits:{maxFileBytes:5000000,formats:['pdf','jpg','jpeg','png','webp']}};
     }
     else if(path.startsWith('/media/items?'))value={items:[],total:0,hasMore:false};
@@ -136,6 +137,18 @@ test('journey-null document search opens the freshly authorized personal library
 test('partner shared document opens only currently authorized details without management or automatic file reads',async t=>{
   const h=harness({matches:[docMatch({visibility:'shared'})],documents:[record({owner:'bob',canManage:false,visibility:'shared'})]});t.after(h.close);await h.search();await h.click('查看资料 旧资料标题');
   assert(h.text().includes('伙伴共享，只可下载'));assert.equal(h.control('编辑资料').length,0);assert.equal(h.control('删除这份资料').length,0);assert.equal(h.control('下载资料').length,1);assert(!h.f.calls.some(p=>p.endsWith('/file')));
+});
+test('deleted original journey cannot redirect a targeted search hit into the personal orphan library',async t=>{
+  const h=harness({scopedDocumentStatus:404,documents:[record({journeyId:null,unlinked:true})]});t.after(h.close);await h.search();await h.click('查看资料 旧资料标题');
+  assert(h.text().includes('这份资料已移出原搜索范围'));assert(!h.f.calls.includes('/journey-documents'));
+  assert(!h.nodes().some(n=>n.props.testID==='journey-document-detail'));assert.equal(h.control('下载资料').length,0);
+  h.f.matches=[docMatch({journey:null})];await h.click('返回资料搜索');await h.click('查看资料 旧资料标题');
+  assert(h.f.calls.includes('/journey-documents'));assert(h.text().includes('当前资料标题'));assert(h.text().includes('未关联旅行'));
+});
+test('standalone journey documents keep the existing personal-library recovery after original journey 404',async t=>{
+  const h=harness({screen:'documents',scopedDocumentStatus:404,documents:[record({journeyId:null,unlinked:true})]});t.after(h.close);h.props.journeyId=journeyId;await h.flush();
+  assert(h.f.calls.includes('/journey-documents?journeyId='+journeyId));assert(h.f.calls.includes('/journey-documents'));
+  assert(h.text().includes('原旅行当前不可用，已读取你的资料库'));assert.equal(h.control('查看资料：当前资料标题').length,1);
 });
 for(const option of [{documents:[]},{documentStatus:403}])test('removed/revoked document target fails explicitly and can return to search '+JSON.stringify(option),async t=>{
   const h=harness(option);t.after(h.close);await h.search();await h.click('查看资料 旧资料标题');
