@@ -13,16 +13,22 @@ from deploy import assistant_trip_change_release_data as data
 from deploy import assistant_trip_change_release_controller as controller
 from deploy.membership_release_controller import need, read, regular, relative, put, sha, source_hashes, verify_junit
 
-ENV_SHA256 = 'a72d456815cf113b1ac0c1e032ac8c45b300ccf2cb499520c14b7f54d5314e07'
-OPERATORS = ('assistant_trip_change_release_controller.py', 'assistant_trip_change_release_package.py', 'assistant_trip_change_release_data.py', 'assistant_trip_change_release_plan.py',
-             'membership_release_controller.py', 'membership_release_package.py',
-             'membership_release_build.py', 'membership_release_data.py',
-             'assistant_trip_change_release_profile.py', 'check_finance_analysis_migration.py', 'steady_release_data.py', 'finance_analysis_release_data.py',
-             'membership_migration.py', 'backup.py')
+ENV_SHA256 = controller.SPEC.env_sha256
+OPERATORS = controller.SPEC.operators
 
 
 def assemble(package_dir, package_sha256, build_dir, build_sha256, validation_dir,
              validation_sha256, reviews, reviews_sha256, candidate):
+    return _assemble(package_dir, package_sha256, build_dir, build_sha256, validation_dir,
+                     validation_sha256, reviews, reviews_sha256, candidate,
+                     package=package, controller_type=controller.Controller)
+
+
+def _assemble(package_dir, package_sha256, build_dir, build_sha256, validation_dir,
+              validation_sha256, reviews, reviews_sha256, candidate, *, package, controller_type):
+    # Callers are fixed Python entry points; no profile/module name comes from JSON or CLI.
+    spec = controller_type.SPEC
+    need(package.BASELINE == spec.baseline, 'entry_profile_mismatch')
     package_dir, build_dir, validation_dir = [regular(p, directory=True) for p in (package_dir, build_dir, validation_dir)]
     verified = package.verify_package(package_dir, package_sha256)
     meta = verified['metadata']
@@ -93,12 +99,12 @@ def assemble(package_dir, package_sha256, build_dir, build_sha256, validation_di
     # Preserve JUnit order for the shared controller's exact skip comparison.
     allowed.sort(key=lambda item: identities.index([item['classname'], item['name']]))
     verify_junit(junit, identities, allowed)
-    plan = {'schemaVersion': 1, 'kind': 'assistant-trip-change-release-plan', 'packageSha256': package_sha256,
+    plan = {'schemaVersion': 1, 'kind': spec.plan_kind, 'packageSha256': package_sha256,
             'imageId': build['imageId'], 'parentImage': package.PARENT_IMAGE, 'webImage': controller.WEB_IMAGE,
-            'oldManifestSha256': package.OLD_MANIFEST, 'envSha256': ENV_SHA256,
-            'controllerSha256': sha(regular(Path(controller.__file__)).read_bytes()),
+            'oldManifestSha256': package.OLD_MANIFEST, 'envSha256': spec.env_sha256,
+            'controllerSha256': sha(regular(Path(__file__).with_name(spec.controller_file)).read_bytes()),
             'packageVerifierSha256': sha(regular(Path(package.package.__file__)).read_bytes()),
-            'operatorHashes': {'deploy/' + n: sha(regular(Path(__file__).with_name(n)).read_bytes()) for n in OPERATORS},
+            'operatorHashes': {'deploy/' + n: sha(regular(Path(__file__).with_name(n)).read_bytes()) for n in spec.operators},
             'membershipMarkerSha256': data.MEMBERSHIP_MARKER_SHA256,
             'reviews': review_hashes, 'testCases': identities, 'allowedSkips': allowed,
             'build': {'path': 'build/build.json', 'sha256': build_sha256},
@@ -106,19 +112,19 @@ def assemble(package_dir, package_sha256, build_dir, build_sha256, validation_di
     source_hashes(candidate / 'source', verified['manifest']['files'], exact=True)
     put(candidate / 'release-plan.json', plan)
     digest = sha((candidate / 'release-plan.json').read_bytes())
-    check = controller.Controller(candidate, digest)
+    check = controller_type(candidate, digest)
     check.validate_evidence()  # Read-only originals; no Docker call.
     need(package.verify_package(package_dir, package_sha256) == verified, 'original_package_changed')
     return {'candidate': str(candidate), 'planSha256': digest, 'sourceHead': meta['sourceHead'],
             'imageId': build['imageId'], 'assembled': True, 'reviewRequired': True, 'productionOperations': False}
 
 
-def main(argv=None):
+def main(argv=None, *, assemble_fn=assemble):
     parser = argparse.ArgumentParser(description=__doc__)
     for field in ('package-dir', 'package-sha256', 'build-dir', 'build-sha256', 'validation-dir',
                   'validation-sha256', 'reviews', 'reviews-sha256', 'candidate'):
         parser.add_argument('--' + field, required=True)
-    print(json.dumps(assemble(**vars(parser.parse_args(argv)))))
+    print(json.dumps(assemble_fn(**vars(parser.parse_args(argv)))))
 
 
 if __name__ == '__main__':

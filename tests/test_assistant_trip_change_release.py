@@ -1,4 +1,5 @@
 """Immutable 66/9 source package and recorded failure order, no Docker or network."""
+from dataclasses import replace
 import json
 import os
 
@@ -189,7 +190,7 @@ def baseline(tmp_path, monkeypatch):
         path = root / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(raw)
         old[name] = common.sha(raw)
     manifest = root / 'RELEASE-MANIFEST.json'; manifest.write_text(json.dumps({'files': old}))
-    monkeypatch.setattr(controller, 'OLD_MANIFEST', common.sha(manifest.read_bytes()))
+    monkeypatch.setattr(controller.Controller, 'SPEC', replace(controller.SPEC, old_manifest=common.sha(manifest.read_bytes())))
     env = root / '.env'; env.write_bytes(b'SYNTHETIC=1\n'); env.chmod(0o600)
     if os.name == 'nt':
         monkeypatch.setattr(controller.stat, 'S_IMODE', lambda _: 0o600)
