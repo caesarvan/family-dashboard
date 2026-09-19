@@ -45,6 +45,10 @@ class Run(BaseRun):
         assert digests[HARNESS] == self.report['harnessSha256']
         assert self.report.setdefault('fixtureActualPaths', names) == names
         assert self.report.setdefault('fixtureHashes', digests) == digests
+        def forbidden_provider(*_args, **_kwargs):
+            self.report['providerAttempts'].append(self.out.name)
+            raise AssertionError('Model requests are forbidden in local browser acceptance')
+        self.lifecycle.enter_context(patch.object(sys.modules['home_assistant'], '_model_json', forbidden_provider))
         today = datetime.now(ZoneInfo('Asia/Shanghai')).date()
         self.month = today.strftime('%Y-%m')
         self.previous = (today.replace(day=1) - timedelta(days=1)).strftime('%Y-%m')
@@ -56,9 +60,13 @@ class Run(BaseRun):
     def protected(self):
         assert self.database.resolve().is_relative_to(self.folder.resolve())
         with closing(sqlite3.connect(self.database)) as con:
-            return {name: hashlib.sha256(repr(sorted(con.execute('SELECT * FROM ' + name).fetchall(), key=repr)).encode()).hexdigest()
-                    for name in ('hub_transactions', 'hub_imports', 'hub_import_receipts',
-                                 'hub_reconciliations', 'hub_budgets', 'assistant_plans', 'entities', 'audit')}
+            excluded = {'users', 'member_sessions', 'member_session_browsers', 'attempts'}
+            tables = [(name, sql) for name, sql in con.execute("SELECT name,sql FROM sqlite_master WHERE type='table' ORDER BY name")
+                      if name not in excluded]
+            assert self.report.setdefault('protectedTables', [name for name, _ in tables]) == [name for name, _ in tables]
+            assert self.report.setdefault('authenticationTablesExcluded', sorted(excluded)) == sorted(excluded)
+            return {name: hashlib.sha256(repr((sql, sorted(con.execute('SELECT * FROM "' + name.replace('"', '""') + '"').fetchall(), key=repr))).encode()).hexdigest()
+                    for name, sql in tables}
 
     def open_assistant(self, page):
         page.goto(self.base + '/app/assistant')
@@ -276,7 +284,7 @@ def main():
             try:
                 Run.run_scenarios(root, bundle, report, out, browser)
                 assert len(report['checks']) == len(CASES) and len(report['screenshots']) == 2
-                assert not report['scenarioFailures'] and not report['pageErrors'] and not report['externalRequests']
+                assert not report['scenarioFailures'] and not report['pageErrors'] and not report['externalRequests'] and not report['providerAttempts']
                 report['passed'] = True
             finally:
                 browser.close()
