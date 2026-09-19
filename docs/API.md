@@ -1,6 +1,19 @@
 # 家庭看板接口文档
 
-当前部署身份见 [HANDOFF](HANDOFF.md)，当前为 58 张户内表与两张平台注册表，已有家庭角色列。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+当前部署身份见 [HANDOFF](HANDOFF.md)。个人账户与多家庭成员协作已完成 58/2→61/9 迁移，当前为 **61 张户内表与 9 张平台表**，见[成员体系发布](MEMBERSHIPS-RELEASE-R3.md)。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；此前家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+
+## 库存售后待办（候选，未发布）
+
+完整字段、错误和恢复协议见[库存 API](INVENTORY-API.md#明确创建售后待办)，持久关系见[数据模型](DATA-MODEL.md#inventory-followup)，当前验证与发布边界见[售后待办验收](INVENTORY-FOLLOWUP-ACCEPTANCE.md)。本增量不新增 DDL，不写财务或云端。
+
+| 方法 | 路径 | 用途与返回 |
+|---|---|---|
+| POST | `/api/inventory/acquisitions/<id>/followup` | 当前家庭成员提交原 `requestId`、物品 `itemRevision`、批次 `revision` 和 `data:{title,owner,due,note}`；首次 201、原意图重放 200，返回 `{operation,item,acquisition}`，`operation.entityId` 指向本地任务 |
+| GET | `/api/inventory/acquisitions/<id>/followup` | 当前库存权限下返回 `{itemId,acquisitionId,state,task}`；`state` 为 `none\|linked\|deleted`，`none/deleted` 时 `task:null`，`linked` 的 `task` 仅含当前任务 `id/revision/title/owner/due/done/note` |
+
+首次创建要求批次处于售后处理中，沿用当前会话、库存 ACL、CSRF、双版本和事务。每批次至多一条明确创建的家庭共享任务，负责人仅表示分工；文字来自明确输入，不自动复制私人物品名称、来源或金额。不同成员或不同请求号重复创建返回冲突；任务删除后保留关联，不自动补建。
+
+原 key 有成功回执时直接重放，不再执行首次创建的状态与依赖校验；仍须具备当前身份和库存权限。任务后来修改、删除或售后关闭不改变历史 `entityId`。`GET /api/inventory/operations/<requestId>` 仍仅原发起者可读；共享成员通过 followup GET 读取当前任务，不能取得另一成员的回执。历史成功不等于任务当前存在，客户端应重读当前关联。
 
 ## 本人手动资产／负债账户（已发布）
 

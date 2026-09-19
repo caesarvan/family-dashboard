@@ -236,7 +236,8 @@ def test_strict_create_envelopes(app,value):
 
 
 @pytest.mark.parametrize('raw',['null','[]','{"requestId":"a","requestId":"b","data":{}}',
-    '{"requestId":"'+('a'*32)+'","data":{"title":"x","unit":"u","reorderPoint":NaN}}','x'*17000])
+    '{"requestId":"'+('a'*32)+'","data":{"title":"x","unit":"u","reorderPoint":NaN}}','x'*17000],
+    ids=['null-root','array-root','duplicate-keys','nonfinite-number','oversized-payload'])
 def test_json_limits_duplicates_and_nonfinite(app,raw):
     c,h = login(app)
     assert c.post(P+'/items',data=raw,headers=h,content_type='application/json').status_code==400

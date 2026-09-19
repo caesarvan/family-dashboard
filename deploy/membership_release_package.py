@@ -47,10 +47,14 @@ def baseline_values(baseline=None):
     # Explicit audited callers only; defaults keep the original migration contract.
     if baseline is None:
         return 'membership-release-package', PARENT_IMAGE, OLD_MANIFEST
-    need(baseline == 'memberships-r3-steady', 'unsupported release baseline')
+    if baseline == 'memberships-r3-steady':
+        return ('steady-release-package',
+                'sha256:c8e3da47800e3d11f609677bd6aca5f69aef6e7d7a49827c04fb6bea29946771',
+                'c89f045dbf6456b7dcd50c8c340dea09d60a020765735ba7f27ad6e80e383e54')
+    need(baseline == 'shopping-r1-steady', 'unsupported release baseline')
     return ('steady-release-package',
-            'sha256:c8e3da47800e3d11f609677bd6aca5f69aef6e7d7a49827c04fb6bea29946771',
-            'c89f045dbf6456b7dcd50c8c340dea09d60a020765735ba7f27ad6e80e383e54')
+            'sha256:3ebb0a10eaf3aac44c5646478f25d49b85a66d9130007286ac869274e99b6c68',
+            '910b4ab67459d47dd77ec32fbb986fe298e71c24baf75c39c334ebc4db89fb1e')
 
 
 def baseline_kwargs(baseline):
@@ -187,6 +191,7 @@ def selected_sources(tracked, policy):
     need(not any(n.startswith(PREFIX) for n in tracked), 'generated exports must not be tracked')
     selected = required | {n for n in tracked if n.startswith(tuple(f + '/' for f in constants['FOLDERS'])
                                                              + ('frontend/src/', 'frontend/public/'))}
+    selected |= tracked & {'frontend/tests/inventoryFollowup.test.mjs'}
     need(required_build_inputs(tracked) <= selected, 'new frontend input needs an explicit packaging policy')
     return selected
 

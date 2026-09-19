@@ -1,19 +1,19 @@
 # 61/9 普通源码更新
 
-本工具已用于 2026-09-18 15:12:56（北京时间）的本批普通更新；15:14:36 独立只读审计通过，生产一户两库保持 61→61 / 9→9。此前正式镜像构建、47 项 Linux 验证和两户三库合成保全演练分别通过。固定身份及结果集中在[采购关联库存验收](SHOPPING-INVENTORY-ACCEPTANCE.md#shopping-inventory-release)。用于已完成成员迁移后的普通源码更新，家庭库保持 61 张业务表，平台库保持 9 张业务表。它不执行 `warm_once`，不退休、覆盖或重建成功迁移的 `membership-release-attempt.json`。
+本工具此前版本已用于 2026-09-18 15:12:56（北京时间）的采购关联库存更新；15:14:36 独立只读审计通过，生产一户两库保持 61→61 / 9→9。当前源码正为售后待办候选适配新的固定基线，尚未用这版工具再次部署。此前正式镜像构建、47 项 Linux 验证和两户三库合成保全演练分别通过。固定身份及结果集中在[采购关联库存验收](SHOPPING-INVENTORY-ACCEPTANCE.md#shopping-inventory-release)。用于已完成成员迁移后的普通源码更新，家庭库保持 61 张业务表，平台库保持 9 张业务表。它不执行 `warm_once`，不退休、覆盖或重建成功迁移的 `membership-release-attempt.json`。
 
-本版工具固定接受本次发布前已经独立审计的 R3 基线，不能通过环境变量或任意 CLI 参数切换。生产现已更新为本批新镜像/manifest，**不能在当前生产重放这份旧基线计划**；下一次更新须核对并审查新的基线。下表保留本次工具的固定输入：
+当前工具固定接受已独立审计的采购关联库存 R1 基线（`shopping-r1-steady`），不能通过环境变量或任意 CLI 参数切换。下面是下一次候选更新的输入；旧 R3 发布计划仍不可重放。基线身份来自上述已完成的独立只读审计，新的候选包、镜像、计划和实际发布仍须分别验证：
 
 | 身份 | 固定值 |
 |---|---|
-| 父镜像 | `sha256:c8e3da47800e3d11f609677bd6aca5f69aef6e7d7a49827c04fb6bea29946771` |
-| 已安装 manifest | `c89f045dbf6456b7dcd50c8c340dea09d60a020765735ba7f27ad6e80e383e54` |
+| 父镜像 | `sha256:3ebb0a10eaf3aac44c5646478f25d49b85a66d9130007286ac869274e99b6c68` |
+| 已安装 manifest | `910b4ab67459d47dd77ec32fbb986fe298e71c24baf75c39c334ebc4db89fb1e` |
 | 成功迁移标记 | `d223842c531e115b21430e860ffa8e742b1fbf0616942a228d04009e66dedb93` |
 | 原 `.env` SHA256 | `a72d456815cf113b1ac0c1e032ac8c45b300ccf2cb499520c14b7f54d5314e07` |
 
 标记摘要由成功 R3 `proof/attempt/attempt.json` 重建，并已与当时只读审计绑定。它只证明迁移身份；**本次数据保全使用本次停写快照**，不会把上次迁移后的旧数据当作当前数据，允许中间发生正常业务写入。
 
-当前源码变更范围只接受 `inventory_api.py`、Expo 导出、`frontend/`、文档、测试及发布工具。Compose、Dockerfile、依赖与其他应用模块必须保持原字节。后续扩大产品变更或改变基线应修改代码、独立审查，不能改 manifest 绕过守卫。
+当前源码变更范围只接受 `app.py`、`inventory_api.py`、Expo 导出、`frontend/`、文档、测试及发布工具。售后待办在 `app.py` 的候选改动只用于注入已有任务校验器；具体产品差异仍须独立审查冻结。Compose、Dockerfile、依赖与其他应用模块必须保持原字节。后续扩大产品变更或改变基线应修改代码、独立审查，不能改 manifest 绕过守卫。
 
 ## 文件与兼容性
 
@@ -21,7 +21,7 @@
 - [steady_release_plan.py](../deploy/steady_release_plan.py)：离线装配独立候选目录和可审查 plan，绑定源码、工具字节、构建、实际测试原件和审查文件。
 - [steady_release_controller.py](../deploy/steady_release_controller.py)：受审 plan 的 `stage / activate`，复用原控制器的 Docker 身份、环境传递、证据读取、互斥锁和失败停止逻辑。
 - [steady_release_data.py](../deploy/steady_release_data.py)：完整 registry 组备份保留及新 app 初始化后 schema、全部行、序列、版本、registry 和标记保全。
-- 原 `membership_release_package/build/data.py` 默认仍为原 58/2 → 61/9 合同。新入口仅显式选择代码固定的 `memberships-r3-steady`；备份助手显式使用 `phase='after'`，原默认不变。
+- 原 `membership_release_package/build/data.py` 默认仍为原 58/2 → 61/9 合同。新入口仅显式选择代码固定的 `shopping-r1-steady`；包校验器保留此前 `memberships-r3-steady` 的显式验证合同并拒绝跨基线包；备份助手显式使用 `phase='after'`，原默认不变。
 
 ## 准备和审查
 
