@@ -1,6 +1,22 @@
 # 数据模型、同步一致性与隐私边界
 
-> 当前线上为 **61 张户内表与 9 张平台表**。个人账户与多家庭成员协作已完成 58/2→61/9 迁移，见[成员体系发布](MEMBERSHIPS-RELEASE-R3.md)。此前本人手动账户的 55→58 发布见[账户发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md)。当前安装身份见 [HANDOFF](HANDOFF.md)，结构索引见 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)。下面较早版本的表数仅描述各自历史状态。
+> 当前生产为 **66 张户内表与 9 张平台表**，账户分析已完成 61/9→66/9，见[分析发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)；随后财务查询发布未新增 DDL。**本地路线候选为 69/9，尚未上线**。当前安装身份见 [HANDOFF](HANDOFF.md)，本地源码结构见 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)。下面较早版本的表数仅描述各自历史状态。
+
+## 旅行路线与持久操作回执（本地候选 66→69）
+
+唯一 DDL 为 [journey_routes.py](../journey_routes.py) 的 `SCHEMA_SQL`；`initialize_journey_routes(con)` 要求开启外键及已有 users／journey_workflows／journey_places，由调用者控制事务，不隐式提交。新增三张户内表及两个路线查询索引，不修改原 66 表或 9 张平台表。完整约束与恢复规则见 [路线合同](JOURNEY-ROUTES.md)，迁移、完整备份与失败现场处理见 [路线发布](JOURNEY-ROUTES-RELEASE.md)；不得重放旧 61→66 迁移。
+
+| 表 | 键与关系 | 内容及保留边界 |
+|---|---|---|
+| `journey_routes` | id 主键；owner 外键 users；journey_id 外键 journey_workflows，删除旅行后置 null | title、visibility、revision、创建／更新时间和软删除标记；删除路线清空标题、关联与站位，保留墓碑及成功回执 |
+| `journey_route_stops` | 主键 (route_id,position)；路线删除时级联；place_id 外键 journey_places，地点硬删后置 null | 0..99 的有序站位，同一地点可重复；读取不可用站位时只投影 index/state，不输出保存的隐藏引用 |
+| `journey_route_operations` | 主键 (owner,request_id)；owner 外键 users，route_id 外键路线 | 请求摘要、操作种类、目标路线、结果 revision、完成时间；不保存请求正文、地名、坐标或历史响应 DTO |
+
+路线默认私人，只有作者可写；共享路线对作者与其他成员均采用地点的公共投影。共享路线中的地点变私人、删除或脱离该旅行后保留匿名缺口；连线不跨缺口或无授权坐标站位。`sourceVersion` 是绑定当前家庭／查看者、路线、旅程、全部站位和地点状态的服务器 HMAC，不是客户端可解释的隐藏地点摘要。PUT 结合路线 revision、源版本与各地点版本作并发核对；`keepUnavailableIndex` 只可保留同一原快照中仍不可用的槽，不能新增或复制隐藏引用。
+
+写事务在身份重验后用 `BEGIN IMMEDIATE` 原子保存业务与回执；已有同键同内容成功回执先恢复，当前投影重新读取，不把历史结果安装回业务表。回执仅原成员／当前家庭可读，不写共享 audit 或 `/api/state` 活动广播。路线不修改地点、到访、媒体许可或云端数据。
+
+个人 ZIP 仅导出未删除路线的当前允许字段；共享范围和发送前重投影见 [路线数据副本](JOURNEY-ROUTES-PORTABILITY.md)。副本不含墓碑、原站点外键、请求摘要／编号、源版本或操作回执，不能用于完整恢复；管理员数据库组备份须保留三表全部内容与关联。
 
 <a id="inventory-followup"></a>
 
