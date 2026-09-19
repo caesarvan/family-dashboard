@@ -323,10 +323,11 @@ class Controller(shared.Controller):
         return report
 
 
-def main(argv=None, *, controller_type=Controller):
+def main(argv=None, *, controller_type=Controller, description=None):
     import argparse
     import signal
-    parser = argparse.ArgumentParser(description=__doc__.replace('66/9', '/'.join(map(str, controller_type.SPEC.schema_pair))))
+    parser = argparse.ArgumentParser(description=(__doc__.replace('66/9', '/'.join(map(str, controller_type.SPEC.schema_pair)))
+                                                  if description is None else description))
     parser.add_argument('action', choices=['stage', 'activate'])
     parser.add_argument('candidate', type=Path)
     parser.add_argument('plan_sha256')

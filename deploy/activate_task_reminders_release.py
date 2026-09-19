@@ -184,7 +184,7 @@ class Controller(previous.Controller):
 
 
 def main(argv=None):
-    shared.main(argv, controller_type=Controller)
+    shared.main(argv, controller_type=Controller, description=__doc__)
 
 
 if __name__ == '__main__':

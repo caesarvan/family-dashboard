@@ -302,3 +302,20 @@ def test_existing_builder_carries_the_exact_new_profile(package_environment, tmp
     function = (package_tests.test_recording_build_threads_fixed_baseline_and_parent if phase == 'build'
                 else package_tests.test_recording_validation_rechecks_same_fixed_baseline)
     function(package_environment, tmp_path, monkeypatch)
+
+
+@pytest.mark.parametrize('entry,description', [
+    (core.main, core.__doc__),
+    (previous_controller.main, core.__doc__.replace('66/9', '69/9')),
+    (controller.main, controller.__doc__),
+], ids=['legacy-default-66', 'task-dependencies-default-69', 'reminders-migration-71'])
+def test_cli_help_uses_explicit_migration_description_and_preserves_old_defaults(capsys, entry, description):
+    # argparse exits before runtime admission, release locks, Docker or writes.
+    with pytest.raises(SystemExit) as stopped:
+        entry(['--help'])
+    assert stopped.value.code == 0
+    output = capsys.readouterr()
+    assert ' '.join(description.split()) in ' '.join(output.out.split())
+    assert not output.err
+    if entry is controller.main:
+        assert '69/9 -> 71/9' in output.out and 'No DDL migration' not in output.out

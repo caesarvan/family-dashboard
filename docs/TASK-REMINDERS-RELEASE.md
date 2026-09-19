@@ -19,6 +19,8 @@
 
 入口为 `deploy/build_task_reminders_release.py` 的 prepare／verify／build／validate／assemble，以及 `deploy/activate_task_reminders_release.py` 的 stage／activate。固定 profile 为 `task-dependencies-r2-task-reminders`；不能从 JSON 或 CLI 增加 profile、可变模块或改变父版。32 个发布工具逐文件绑定，包含未修改的 `check_task_reminders_migration.py`。
 
+提醒入口显式提供 69/9→71/9 的 CLI 帮助文案；共享 `main` 的可选 description 参数默认保持旧入口行为，运行时准入、锁与信号处理不变。
+
 运行范围从 105 增至 106 个非 Expo 文件：新增 `task_reminders.py`；只允许改变已有的 `app.py`、`sync_worker.py`、`household_memberships.py`、`data_portability.py`。其余 **101 文件**的名称／摘要映射固定为 `bfb422fbe62093446a2f6c14e0a6a705470b6b2e4e27989b509624a46665f3c0`，包 metadata 不能扩大豁免。所有运行文件仍须逐字节匹配新包。
 
 Dockerfile 只在已有依赖 COPY 行加入 `task_reminders.py`；这一行从原 CRLF 变为 LF，其余字节保持。固定 Docker SHA 为 `6960db583e7c84dbeddd3c026054b989a878e31e56c9787728c9e9cde3bfebc9` → `7fca420d3f86a35742385f7b39719c6d5ebf6c9d08c0e764333ae15ebb46763f`。Compose、env、requirements、依赖锁文件和固定 `prepare_release.py` 不变。强制包含新的前端提醒测试及明确列名的提醒／依赖 browser 脚本，不放宽整个 `scripts/` 目录。正式包必须使用最终已审工具和匹配的 fresh Expo 原件；脚本入包不等于业务演练通过。
