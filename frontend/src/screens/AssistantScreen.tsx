@@ -7,7 +7,9 @@ import { assistantPlanOptions, assistantTripRequest, isAssistantSearchRequest, i
 import type { Draft, Session } from '../lib/trips';
 import JourneyBriefPanel from './JourneyBriefPanel';
 import TripsScreen from './TripsScreen';
-import { AssistantFlow, AssistantState, memberKey, type Match } from '../lib/assistant';
+import { AssistantFlow, AssistantState, assistantContentRequest, memberKey, type Match } from '../lib/assistant';
+import JourneyDocumentsPanel from './JourneyDocumentsPanel';
+import PhotosScreen from './PhotosScreen';
 import { useHousehold } from '../lib/household';
 import type { ScreenProps } from '../lib/types';
 import { PageHeader, SectionCard } from '../ui/components';
@@ -26,7 +28,9 @@ type JourneyPanel = { kind: 'brief'; key: number; prompt: string; useModel: bool
   | { kind: 'finance_query'; key: number; prompt: string; useModel: boolean; modelConfigured: boolean }
   | { kind: 'trip_change'; key: number; prompt: string; useModel: boolean; modelConfigured: boolean }
   | { kind: 'planning'; key: number; draft: Draft }
-  | { kind: 'existing'; key: number; id: string };
+  | { kind: 'existing'; key: number; id: string }
+  | { kind: 'documents'; key: number; id: string; journeyId?: string }
+  | { kind: 'media'; key: number; id: string };
 type SearchReturn = { query: string; offset: number };
 
 export function AssistantScreen(props: ScreenProps) {
@@ -113,10 +117,21 @@ function AssistantEntry(props: ScreenProps) {
     const next: JourneyPanel = { kind: 'existing', ...target };
     panelRef.current = next; setPanel(next);
   };
+  const openContent = (match: Match, prompt: string, search: SearchReturn) => {
+    if (!available() || panelRef.current) return;
+    const next = assistantContentRequest(match, sequence.current + 1);
+    if (!next) return;
+    sequence.current = next.key; setSourcePrompt(prompt); setSourceSearch({ query: search.query, offset: search.offset });
+    panelRef.current = next; setPanel(next);
+  };
   if (!panel) return <AssistantWorkspace {...props} initialPrompt={sourcePrompt} initialSearch={sourceSearch}
-    onJourney={begin} onTripChange={beginTripChange} onFinanceQuery={beginFinanceQuery} onExistingTrip={openExisting} />;
+    onJourney={begin} onTripChange={beginTripChange} onFinanceQuery={beginFinanceQuery} onExistingTrip={openExisting} onContent={openContent} />;
   if (panel.kind === 'finance_query') return <AssistantFinanceQueryPanel key={panel.key} initialPrompt={panel.prompt} initialUseModel={panel.useModel} modelConfigured={panel.modelConfigured} screenProps={props}
     onBack={prompt => { if (available()) { setSourcePrompt(prompt); panelRef.current = null; setPanel(null); } }} />;
+  if (panel.kind === 'documents') return <JourneyDocumentsPanel key={panel.key} journeyId={panel.journeyId} initialDocumentId={panel.id} onPendingChange={pendingDocuments}
+    onBack={() => { if (available() && panelRef.current?.key === panel.key && !documentsPending.current) { panelRef.current = null; setPanel(null); } }} />;
+  if (panel.kind === 'media') return <PhotosScreen {...props} key={panel.key} initialPhotoId={panel.id}
+    onBack={() => { if (available() && panelRef.current?.key === panel.key) { panelRef.current = null; setPanel(null); } }} />;
   const allowed = visible && household.online;
   return <View>
     {!allowed && <SectionCard title="旅行草稿暂时隐藏">
@@ -153,6 +168,7 @@ function AssistantWorkspace(props: ScreenProps & {
   onTripChange: (prompt: string, useModel: boolean, modelConfigured: boolean) => void;
   onFinanceQuery: (prompt: string, useModel: boolean, modelConfigured: boolean) => void;
   onExistingTrip: (match: Match, prompt: string, search: SearchReturn) => void;
+  onContent: (match: Match, prompt: string, search: SearchReturn) => void;
 }) {
   const household = useHousehold(), theme = useTheme();
   const latest = useRef({ household, user: props.user }); latest.current = { household, user: props.user };
@@ -205,13 +221,13 @@ function AssistantWorkspace(props: ScreenProps & {
   const changedPrompt = !!draft && prompt.trim() !== view?.planPrompt;
   const people = props.state.people;
   return <View style={styles.page}>
-    <PageHeader title="家庭助理" description="查询预算支出、整理清单或规划旅行。" />
+    <PageHeader title="家庭助理" description="查询预算支出、找资料照片、整理清单或规划旅行。" />
     <SectionCard title="今天想处理什么？">
       <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} multiline label="告诉助理你的需求" accessibilityLabel="告诉助理你的需求" value={prompt}
         onChangeText={setPrompt} disabled={editingLocked} maxLength={2000} style={styles.input}
         placeholder="待办：明天预约保洁；确认酒店" />
-      <View style={styles.choices}>{['待办：明天预约保洁；确认酒店', '采购：收纳袋；转换插头', '搜索：电池', '本月花了多少', '看看这周安排'].map(text =>
-        <Chip key={text} disabled={editingLocked} onPress={() => { if (!editingLocked) setPrompt(text); }}>{text.startsWith('待办') ? '整理待办' : text.startsWith('采购') ? '准备采购' : text.startsWith('搜索') ? '查找家里物品' : text === '本月花了多少' ? '查询支出' : '本周概览'}</Chip>)}</View>
+      <View style={styles.choices}>{['待办：明天预约保洁；确认酒店', '采购：收纳袋；转换插头', '搜索：电池', '搜索：旅行凭证', '本月花了多少', '看看这周安排'].map(text =>
+        <Chip key={text} disabled={editingLocked} onPress={() => { if (!editingLocked) setPrompt(text); }}>{text.startsWith('待办') ? '整理待办' : text.startsWith('采购') ? '准备采购' : text === '搜索：旅行凭证' ? '找资料照片' : text.startsWith('搜索') ? '查找家里物品' : text === '本月花了多少' ? '查询支出' : '本周概览'}</Chip>)}</View>
       <SelectionRow label="使用已配置的 AI 整理" checked={useModel} disabled={editingLocked || !view?.modelConfigured}
         onPress={() => { if (!editingLocked && view?.modelConfigured) { setUseModel(!useModel); setIncludeContext(false); } }} />
       {localSearch && <Text variant="bodySmall">本次只查找已有记录，不会发送给 AI。</Text>}
@@ -231,6 +247,7 @@ function AssistantWorkspace(props: ScreenProps & {
           }
         }}>{financeQuery ? '查询' : '整理并预览'}</Button>
       <Text variant="bodySmall">输入“搜索 关键词”“查找关键词”或“找一下关键词”可查找当前可见的记录；搜索始终只在本地进行。</Text>
+      <Text variant="bodySmall">资料可按标题、文件名或关联旅行查找；照片可按说明或关联旅行查找。</Text>
     </SectionCard>
     {!!view?.error && <HelperText type="error" accessibilityRole="alert">{view.error}</HelperText>}
     {!!view?.notice && <Text accessibilityLiveRegion="polite">{view.notice}</Text>}
@@ -262,7 +279,18 @@ function AssistantWorkspace(props: ScreenProps & {
     {view?.search && foreground && household.online && !view.expired && <SectionCard title={`搜索结果 · ${view.search.total} 条`}>
       {!view.search.matches.length && <Text>没有找到当前可见的匹配记录。</Text>}
       {view.search.matches.map(item => <View key={item.kind + ':' + item.id} testID={'assistant-search-' + item.kind + '-' + item.id} style={styles.result}>
-        <Text variant="titleMedium">{item.title}</Text><Text variant="bodySmall">{({ tasks: '待办', shopping: '采购', events: '日程', trips: '旅行', media: '照片', places: '地点', inventory: '家庭物品' })[item.kind]}</Text>
+        <Text variant="titleMedium">{item.title}</Text><Text variant="bodySmall">{({ tasks: '待办', shopping: '采购', events: '日程', trips: '旅行', media: '照片', places: '地点', inventory: '家庭物品', documents: '资料' })[item.kind]}</Text>
+        {(item.kind === 'documents' || item.kind === 'media') && <>
+          {item.kind === 'documents' && <Text variant="bodySmall">{item.filename}</Text>}
+          <Text variant="bodySmall">{item.visibility === 'shared' ? '家庭共享' : '仅本人'} · {item.journey?.title || '未关联旅行'}</Text>
+          {!!assistantContentRequest(item, 1) && <Button mode="outlined" contentStyle={{ minHeight: 44 }} disabled={editingLocked}
+            accessibilityLabel={(item.kind === 'documents' ? '查看资料 ' : '查看照片 ') + item.title} onPress={() => {
+              const current = flow?.state;
+              if (editingLocked || !current?.ready || current.busy || current.expired || current.pending || !current.search) return;
+              const latestMatch = current.search.matches.find(match => match.kind === item.kind && match.id === item.id);
+              if (latestMatch) props.onContent(latestMatch, prompt, { query: current.search.query, offset: current.search.offset });
+            }}>{item.kind === 'documents' ? '查看资料' : '查看照片'}</Button>}
+        </>}
         {item.kind === 'inventory' && <>
           <Text variant="bodySmall">{inventorySummary(item)}</Text>
           {!!item.location && <Text variant="bodySmall">存放位置：{item.location}</Text>}
