@@ -1,10 +1,10 @@
 # 路线三表迁移与发布
 
-状态：本批发布工具候选，尚未构建、演练 Linux 容器或上线。路线业务与生产接线需在独立审查后的同源组合中验证；工具分支不复制业务模块。这里不代表本人或 TV 验收，也不改变 A–D 的 0/4 口径。
+状态：**2026-09-19 22:56:47（北京时间）已上线，22:57:29 独立只读审计通过。** R2 正式 Expo 构建、四场景真实临时浏览器与视觉核对、Linux 189 项零跳过、合成迁移／恢复演练分别通过。实际生产一户两库完成户内 66→69、平台 9→9，原数据、环境及成员迁移 marker 保全，四服务恢复。完整发布身份与本次执行记录集中在[路线验收](JOURNEY-ROUTES-ACCEPTANCE.md#journey-routes-release)。本次计划已消费，不可重放；上线不代表本人或 TV 验收，也不改变 A–D 的 0/4 口径。
 
 ## 固定基线与范围
 
-`build_journey_routes_release.py` 的显式 profile 为 `finance-query-r2-journey-routes`。已安装财务查询基线固定为：
+`build_journey_routes_release.py` 的显式 profile 为 `finance-query-r2-journey-routes`。本次升级前的财务查询基线固定为：
 
 | 项目 | 身份 |
 | --- | --- |
@@ -43,7 +43,7 @@ python -B deploy/activate_journey_routes_release.py stage <new-candidate> <revie
 python -B deploy/activate_journey_routes_release.py activate <new-candidate> <same-reviewed-plan-sha>
 ```
 
-以上是待执行流程，不是运行记录。生产 controller 仅允许 Linux root、固定候选根目录、无环境 Docker/Compose selector；复用发布锁、独占 stage/activation、真实服务环境绑定、异常后停止新 writer、不自动恢复旧应用。数据容器保留原网络禁用、只读镜像、非 root uid、受控内存/tmpfs 和最小 mount；启动后校验的数据 volume 为只读。
+以上是命令形状示意，不是本次运行回执，也不能替代固定计划与原件核对。生产 controller 仅允许 Linux root、固定候选根目录、无环境 Docker/Compose selector；复用发布锁、独占 stage/activation、真实服务环境绑定、异常后停止新 writer、不自动恢复旧应用。数据容器保留原网络禁用、只读镜像、非 root uid、受控内存/tmpfs 和最小 mount；启动后校验的数据 volume 为只读。
 
 ## 合成验证范围
 

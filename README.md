@@ -2,7 +2,9 @@
 
 源码仓库：[caesarvan/family-dashboard](https://github.com/caesarvan/family-dashboard)（私有，访问与 clone 需要获授权的 GitHub 账号）。`main` 为稳定源码，`codex/integration` 为集成候选；各任务在独立分支／worktree 开发，经 PR 独立审查后合入。`git push` 或 PR 合并不代表上线，生产仍按[既有发布流程](docs/DEPLOYMENT.md)执行。
 
-**最新上线：助理预算与支出只读查询（2026-09-19 19:42:01，北京时间），19:42:33 独立只读审计通过。** 从「更多 → 家庭助理」点「查询支出」或输入问题，默认本地解释，可选模型理解口语；各币种净支出与预算分别核对，公共资金仅显示已确认手工快照。[使用步骤](docs/EXPO-FINANCE-QUERY.md) · [分段验收与发布身份](docs/ASSISTANT-FINANCE-QUERY-ACCEPTANCE.md#assistant-finance-query-release)。A–D 本人完整验收仍为 0/4。
+**最新上线：旅行路线（2026-09-19 22:56:47，北京时间），22:57:29 独立只读审计通过。** 从「旅行 → 旅行详情 → 旅行路线」选择地点、安排顺序，默认仅自己可见；明确共享后其他成员只读。支持重复站点、聚焦地图、缺口断线及照片往返。[使用与集中验收](docs/JOURNEY-ROUTES-ACCEPTANCE.md#journey-routes-release)。生产一户两库完成 66→69／平台 9 表保全；路线不增加电视许可，A–D 本人完整验收仍为 0/4。
+
+**此前上线：助理预算与支出只读查询（2026-09-19 19:42:01，北京时间），19:42:33 独立只读审计通过。** 从「更多 → 家庭助理」点「查询支出」或输入问题，默认本地解释，可选模型理解口语；各币种净支出与预算分别核对，公共资金仅显示已确认手工快照。[使用步骤](docs/EXPO-FINANCE-QUERY.md) · [分段验收与发布身份](docs/ASSISTANT-FINANCE-QUERY-ACCEPTANCE.md#assistant-finance-query-release)。A–D 本人完整验收仍为 0/4。
 
 **此前上线：AI 已有旅行改期（2026-09-19 17:39:23，北京时间），17:40:24 独立只读审计通过。** 从一句改期需求进入已有旅行、核对日期与联动事项，再预览确认保存。[使用与集中验收](docs/ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。A–D 本人真实完整验收仍为 0/4，真实云和实体电视另验。
 
