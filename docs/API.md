@@ -1,8 +1,14 @@
 # 家庭看板接口文档
 
-当前部署身份见 [HANDOFF](HANDOFF.md)。个人账户与多家庭成员协作已完成 58/2→61/9 迁移，当前为 **61 张户内表与 9 张平台表**，见[成员体系发布](MEMBERSHIPS-RELEASE-R3.md)。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；此前家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+当前部署身份见 [HANDOFF](HANDOFF.md)。个人账户与多家庭成员协作此前完成 58/2→61/9 迁移；本人账户分析现已完成 61/9→66/9，当前为 **66 张户内表与 9 张平台表**，见[分析发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；此前家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
 
-## 库存售后待办（候选，未发布）
+## 本人账户分析（已发布）
+
+2026-09-19 16:20:25（北京时间）已发布九个操作：报告读取、明确更新公共参考汇率、账户分类／流动性设置、资金事件的列表／新增／修改／删除、精确区间核对及原操作回执读取。路径位于 `/api/finance-analysis/`，完整方法、字段、限制和恢复语义见[分析 API](FINANCE-ANALYSIS-API.md)，汇率来源与版本见[FX 合同](FINANCE-FX.md)。
+
+仅当前家庭本人可读写；报告读取不出网，刷新须明确确认，写入带 CSRF。未知结果先读同一 requestId 的回执，再读当前报告；旧回执不复活已删事件。现有 `/api/finance-accounts` 的原币账户／估值合同不变，分析不与来源报告、持仓、共同荷包或付款账本加总。
+
+## 库存售后待办（已发布）
 
 完整字段、错误和恢复协议见[库存 API](INVENTORY-API.md#明确创建售后待办)，持久关系见[数据模型](DATA-MODEL.md#inventory-followup)，当前验证与发布边界见[售后待办验收](INVENTORY-FOLLOWUP-ACCEPTANCE.md)。本增量不新增 DDL，不写财务或云端。
 
@@ -46,7 +52,7 @@
 
 **历史版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 当时旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
 
-> 本文保留基础版本 35 个 HTTP 操作的详细字段。平台扩展后的完整路由见 [当前路由索引](PLATFORM-ROUTES.md)；新家庭、偏好、助理与旅行见 [平台扩展](PLATFORM.md)，账单/XLSX/投资见 [财务导入](FINANCE-IMPORT.md)，通用文件手动四列映射的字段与会话契约见 [列映射](FINANCE-COLUMN-MAPPING.md)。请勿把下方基础接口计数当作新版本总数。
+> 本文保留基础版本 35 个 HTTP 操作的详细字段。历史平台扩展路由见 [路由索引](PLATFORM-ROUTES.md)，后续新增以本页模块入口与各自合同为准；新家庭、偏好、助理与旅行见 [平台扩展](PLATFORM.md)，账单/XLSX/投资见 [财务导入](FINANCE-IMPORT.md)，通用文件手动四列映射的字段与会话契约见 [列映射](FINANCE-COLUMN-MAPPING.md)。请勿把下方基础接口计数当作新版本总数。
 
 ## 旅行资料接口
 

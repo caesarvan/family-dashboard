@@ -1,15 +1,15 @@
 # 本人账户分析：61/9 → 66/9 发布合同
 
-本批是候选发布工具；本文不表示已经上线。集成人在独立审查及组合验证通过后，才构建、演练、组装并执行发布。API 见 [本人账户分析](FINANCE-ANALYSIS-API.md)。旧的账户三表常量、已执行的 55→58 和 58/2→61/9 迁移保持；不能重放它们，也不能重用已经消耗的 `followup-r1-steady` 计划。
+本批工具已完成独立审查、组合验证、实际 Linux 构建和双户演练，并于 2026-09-19 16:20:25（北京时间）完成实际激活，16:20:57 独立只读审计通过。stage／activation、生产一户两库 61→66／平台 9→9 及保全原件见[集中验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。本批 `order-inventory-r1-finance-analysis` 固定起点已消费，不得重放。API 见 [本人账户分析](FINANCE-ANALYSIS-API.md)。旧的账户三表常量、已执行的 55→58 和 58/2→61/9 迁移保持；不能重放它们，也不能重用已经消耗的 `followup-r1-steady` 计划。
 
 ## 固定起点与允许变更
 
-新 profile 为 `order-inventory-r1-finance-analysis`，集中在 `deploy/finance_analysis_release_profile.py`。它只接受当前本人订单关联库存版本：
+新 profile 为 `order-inventory-r1-finance-analysis`，集中在 `deploy/finance_analysis_release_profile.py`。它只接受本批迁移前的本人订单关联库存版本；这是固定历史起点，不是可用于后续更新的通用入口：
 
 | 身份 | 完整值 |
 |---|---|
-| 已安装 source | `fe0c56ba5537e70207ae5b98213e3daa1daef95a` |
-| 已安装 manifest SHA-256 | `c4d5ecc38675e6d9d97569664cb8141d4cfd030f52c6086449b8ea8d84ebf080` |
+| 本批迁移前 source | `fe0c56ba5537e70207ae5b98213e3daa1daef95a` |
+| 本批迁移前 manifest SHA-256 | `c4d5ecc38675e6d9d97569664cb8141d4cfd030f52c6086449b8ea8d84ebf080` |
 | 父镜像 | `sha256:32905e70879d28f36b0e584d69f03434e4a1bf38e580c0ca1aeb1ed7ae3a3cc6` |
 | 独立只读审计 SHA-256 | `feee58ab01565aa0ed061edf013d46f7414b369e7b36b811ae849f27a18c2625` |
 | 新 Dockerfile SHA-256 | `b1668b82416b3afa86ed8dc138fd6183204faeb6b0f89871381f9fb633d86116` |

@@ -1,6 +1,8 @@
 # 联合开发接手说明
 
-**最新上线：本人订单关联库存（2026-09-19 13:57:12，北京时间）。** 已安装 main `e863febba02a6a90bc4a656292152d40187240a3` 与受验 source `fe0c56ba5537e70207ae5b98213e3daa1daef95a` 同树 `aefe80a65e1f41ad5c05b146d9513b529e762acc`。本地 API 227、发布工具 102、组合 Node 26、实际浏览器 3 条流程／4 图与 Linux 227 分别通过；原 Expo wrapper 失败及已审恢复证据保留。stage／activate 实际退出 0，生产一户两库保持 61/9，13:59:04 独立只读审计通过。使用、来源隐私和原回执恢复见[操作说明](EXPO-INVENTORY-SOURCES.md)，固定发布身份与原件见[本批验收](INVENTORY-SOURCES-ACCEPTANCE.md#inventory-sources-release)。本次 `followup-r1-steady` 基线已消费，不可重放；后续纯文档不改变运行包，本人真实订单与云写入未验收，实体电视仍不可用。
+**最新上线：本人账户分析（2026-09-19 16:20:25，北京时间），16:20:57 独立只读审计通过。** 本人账户的趋势、分类／流动性、原币资金进出、区间核对与 ECB 公共参考汇率已发布；生产实际一户两库完成 61→66／平台 9→9，旧数据与配置保全。Windows 258、全新构建 Node 23、真实浏览器三场景及独立趋势补充、Linux 244 和两户三库演练分别通过。A–D 本人真实完整验收仍为 0/4；并行 AI 改期不在本批发布包中。 main `d135e124b67c43364bea813da843f50823d4a54c` 与 source `f25357f935d64774922efa68d42a2ba41bb18037` 同树 `1efb6a439fd8fdd95a1af5c4958296452ccfcb71`；固定 plan `9c83d3a22e41a9d573ab68fea1031ed159027bcd3e459835e9555e6346c2d8e9`。身份、失败原件与未验范围见[集中验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。
+
+**此前上线：本人订单关联库存（2026-09-19 13:57:12，北京时间）。** 已安装 main `e863febba02a6a90bc4a656292152d40187240a3` 与受验 source `fe0c56ba5537e70207ae5b98213e3daa1daef95a` 同树 `aefe80a65e1f41ad5c05b146d9513b529e762acc`。本地 API 227、发布工具 102、组合 Node 26、实际浏览器 3 条流程／4 图与 Linux 227 分别通过；原 Expo wrapper 失败及已审恢复证据保留。stage／activate 实际退出 0，生产一户两库保持 61/9，13:59:04 独立只读审计通过。使用、来源隐私和原回执恢复见[操作说明](EXPO-INVENTORY-SOURCES.md)，固定发布身份与原件见[本批验收](INVENTORY-SOURCES-ACCEPTANCE.md#inventory-sources-release)。本次 `followup-r1-steady` 基线已消费，不可重放；后续纯文档不改变运行包，本人真实订单与云写入未验收，实体电视仍不可用。
 
 **此前上线：售后关联家庭待办（2026-09-19 12:34:35，北京时间）。** 从采购关联库存的批次详情明确创建本地家庭待办；完成任务与关闭售后各自保存，不复制私人来源或改动库存／财务。main `0d2f4133d45597bca6f28ce3140a8f5aaf7657fe` 与受验 source `db7babc1de573614593620832b7f9a817af73623` 同树；R2 Linux 164/164、合成两户三库演练及实际一户两库 61/9 保全通过，12:35:42 独立只读审计通过。R1 准入失败、本地分轮视觉与发布身份见[本批验收](INVENTORY-FOLLOWUP-ACCEPTANCE.md#inventory-followup-release)。后续文档不改变运行包；本人真实操作、云写入与实体电视仍未验收，电视暂不可用。
 
@@ -367,7 +369,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | 本人数据副本 | `data_portability.py`、`static/data-portability.js` | [导出契约](PORTABILITY.md)；仅本人私密与显式勾选的共同记录。排除令牌、会话/设备认证表和暂存预览；不是数据库恢复包 |
 | 部署与备份 | `Dockerfile`、`compose.yaml`、`deploy/` | [部署指导](DEPLOYMENT.md)、[运维说明](OPERATIONS.md)；源码白名单、现有配置、全部家庭、停止写入、成组备份及相配恢复 |
 
-路由定位入口是 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)：当前相同业务源码在隔离新库实际生成 162 个方法／路径模板，包含 6 个手动账户接口；这不是额外执行了全部线上路由；[机器索引](contract-inventory.json) 由实际应用的隔离新库生成。当前 58 张户内表与 2 张平台表，新增账户、按日估值及操作回执三表；字段见 [账户 API](FINANCE-ACCOUNTS-API.md)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
+[PLATFORM-ROUTES](PLATFORM-ROUTES.md) 与[机器索引](contract-inventory.json)保留手动账户历史版本在隔离新库生成的 162 个方法／路径模板、58 张户内表与 2 张平台表，不能作为当前总数或全部线上路由已执行的证明。当前为 66 张户内表与 9 张平台表；原账户六个操作见[账户 API](FINANCE-ACCOUNTS-API.md)，本批九个分析操作见[分析 API](FINANCE-ANALYSIS-API.md)，实际发布证据见[集中验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
 
 ## 例行计划公共接缝
 
@@ -375,7 +377,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 
 `data_portability.py` 只在 `includeShared=true` 时加入 `shared.routines`。`home_assistant.py` 调用只读 `brief(con)`；`static/home-assistant.js` 按存在的数据显示例行计划待处理组。`static/product-shell.js` 提供三个入口并在共享状态刷新时通知例行模块；通知不发送请求、不重置草稿。新模块在 `product-shell.js` 之前加载。公开接口为 `HouseholdRoutines.open({planId?})`、`refresh()` 和 `notifyStateChanged()`。返回桥支持原待办／采购编辑器与 TaskPublish 初始选择页；保留未保存字段、图片和写中保护，显式返回重新核对原计划，不接管助理外层的关闭返回处理。Docker COPY 和 `deploy/prepare_release.py` 白名单都包含新后端。
 
-144 路由／53 户内表／2 平台表也是此前版本；当前相同业务源码的隔离结构索引为 162 路由／58 户内表／2 平台表。资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
+144 路由／53 户内表／2 平台表以及隔离结构索引的 162 路由／58 户内表／2 平台表均为此前版本；当前 66/9 结构及新增接口以文首本批验收为准。资料版 106／43、例行版 101／40 和采购版 98／37 是历史范围。最终结果见 [VALIDATION](VALIDATION.md)，不沿用历史通过数。
 
 ## 已开发与待真实验证
 
@@ -431,7 +433,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 5. 明确接口/迁移/隐私变化后再编码。公共 API、数据模型、用户步骤、错误行为和相应测试一起交付；金额是整数分、不同币种分别计算，日期语义按旅行契约。
 6. 由集成人检查合并结果，完成对应组合测试、冻结、打包及发布。源码打包只收白名单，不生成凭据，也不是内容脱敏器；不能把私人文件临时放到 `docs/tests/static/deploy`。
 
-部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已部署家庭库为 61 张业务表、平台库为 9 张业务表；已完成的 55→58、58/2→61/9 及更早固定迁移均不能重放。下一次更新须先核对最近的[发布验收](INVENTORY-FOLLOWUP-ACCEPTANCE.md#inventory-followup-release)和实际镜像／清单，再按[普通更新](STEADY-RELEASE.md)适配已安装基线；历史发布计划不能直接复用。成员迁移与恢复边界见[成员发布](MEMBERSHIPS-RELEASE-R3.md)及其原始记录。
+部署人员分清 [空服务器安装](DEPLOYMENT.md#3-空服务器首次安装) 与已有数据更新。当前已部署家庭库为 66 张业务表、平台库为 9 张业务表；已完成的 55→58、58/2→61/9、61/9→66/9 及更早固定迁移均不能重放。下一次更新须先核对最近的[发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)和实际镜像／清单，再按[普通更新](STEADY-RELEASE.md)适配已安装基线；历史发布计划不能直接复用。成员迁移与恢复边界见[成员发布](MEMBERSHIPS-RELEASE-R3.md)及其原始记录。
 
 更新保留 `.env` 和主密钥，先关闭 web 并停止备份定时器，再停止 media／sync／app，核对注册目录、全部家庭与完整备份组后执行受审迁移。app 启动读回通过才开放 media／sync／web；本次控制器任何失败均停止并保全现场，不自动恢复数据库。需要恢复时另行确定相配源码、密钥、注册目录与家庭映射，不能让旧镜像盲接未知库；已有业务写入时不能用旧快照覆盖。**恢复后先使目标家庭旧成员登录失效并重新核对或撤回旧电视许可，再开放入口及 worker**。具体步骤见 [部署与恢复](DEPLOYMENT.md#6-备份恢复与回滚)、[运维](OPERATIONS.md) 和 [会话恢复要求](MEMBER-SESSIONS.md#恢复后使旧成员登录失效)。上一财务版本的 165／119 项离线激活／控制器恢复、79 项文档零结构检查均不是生产恢复演练。
 
