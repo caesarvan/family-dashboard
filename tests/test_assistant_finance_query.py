@@ -554,6 +554,23 @@ def test_auth_tv_csrf_origin_and_injected_parameters(app):
     assert submit(tv, headers).status_code == 403
 
 
+@pytest.mark.parametrize('use_model', [False, True])
+def test_missing_session_engine_fails_closed_before_finance_or_model(app, monkeypatch, use_model):
+    client, headers = member(app)
+    seed(app)
+    budget(app)
+    calls = model(app, monkeypatch)
+    before = domain_snapshot(app)
+    def unexpected_projection(*_args, **_kwargs):
+        raise AssertionError('Finance projection must not run without a session engine')
+    monkeypatch.setattr(api, 'answer', unexpected_projection)
+    monkeypatch.delitem(app.extensions, 'member_sessions')
+    response = submit(client, headers, useModel=use_model)
+    assert response.status_code == 503
+    assert response.json == {'error': '会话验证暂不可用，请稍后重试'}
+    assert calls == [] and domain_snapshot(app) == before
+
+
 @pytest.mark.parametrize('payload', [{'prompt': ''}, {'prompt': []}, {'prompt': True},
     {'prompt': '消费', 'useModel': 'true'}, {'prompt': '消费', 'owner': 'member2'},
     {'prompt': '消费\x00'}, {'prompt': '消' * 2001}])

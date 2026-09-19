@@ -61,10 +61,10 @@ class ImportSession:
     """One captured HTTP identity, checked in fresh SQLite snapshots."""
     def __init__(self, app, db, Problem, require_member):
         require_member()
-        self.app, self.con, self.Problem, self.require_member = app, db(), Problem, require_member
         self.engine = app.extensions.get('member_sessions')
         if self.engine is None:
             raise Problem('会话验证暂不可用，请稍后重试', 503)
+        self.app, self.con, self.Problem, self.require_member = app, db(), Problem, require_member
         self.actor = dict(g.actor)
         self.original = dict(getattr(g, 'member_session', None) or {})
         self.owner = self.actor.get('id')
