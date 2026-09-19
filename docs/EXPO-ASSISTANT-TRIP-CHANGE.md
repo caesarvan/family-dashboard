@@ -47,3 +47,13 @@
 后续单独提交的 `tests/browser_expo_assistant_trip_change_check.py` 复用既有临时 Flask／SQLite／HTTPS／Edge fixture，准备三条最短真实路径：改期与丢失回执恢复、候选／缺年／源变更、搜索优先与响应期间真实成员切换。它要求已冻结的组合源码、精确 head 和 Expo 构建证据散列；所有成功业务响应来自实际接口。故障注入只丢弃一次真实已提交响应，身份场景先取得真实响应再切换会话，没有替换业务 JSON。
 
 脚本在本作者 worktree 仅通过 Python AST 与 diff 检查，尚未运行浏览器。手机 390px／桌面 1280px 的两张截图、三条路径结果、临时数据清理、源码／产物运行前后散列和禁止外网／真实模型计数须由组合运行实际生成，不能把本次脚本准备记为通过。
+
+### 浏览器 R1 后的测试器修订
+
+固定组合 `b75f4dda95c39065eb37bb9b94cf650c6befd34d` 的 R1 实际完成前两条场景，第三条在测试器 `Route.fulfill` 处报 `Route is already handled!`。原记录 `assistant-trip-change-build-r1/test-results/expo-trip-change-20260919T083940417646Z/result.json` 保留，第三条不能算通过。
+
+`actual_post` 原先在取得响应时就计为完成，但身份切换回调仍可能让出事件循环，外层会提前注销路由。完成记录现移至回调与 `fulfill`／`abort` 成功之后；不屏蔽路由异常、不改变产品响应。真实 Edge 与 loopback HTTP 的局部回归在旧 helper 下两项均复现提前注销，在修订后交付与丢弃两条分支均通过。此局部回归只验证测试器生命周期，第三条产品场景仍须组合复验。
+
+仅测试器修订可显式传 `--build-source-head b75f4dda95c39065eb37bb9b94cf650c6befd34d` 复用原构建。默认仍要求运行源码与构建相同；显式复用时校验该提交为当前 head 的祖先、构建证据精确绑定该 head/tree，且差异只允许本脚本、`tests/test_trip_change_browser_lifecycle.py` 和本文。所有前端 inputFiles 字节、完整构建产物散列、固定运行 head/clean 状态及运行前后检查继续生效。结果分别记录运行 head/tree、构建 head/tree 和允许的源码差异；不将测试器增量标作重新构建。
+
+聚焦命令 `python -B -X utf8 -m pytest -q tests/test_trip_change_browser_lifecycle.py` 结果为 9 项通过（19.58 秒）：两项真实路由生命周期与七项实际临时 Git 仓库的构建适用性检查，包括默认拒绝隐式复用、业务／前端变化、错误 tree 和非祖先。该轮没有重新构建 Expo、运行完整三场景、调用模型或访问生产。
