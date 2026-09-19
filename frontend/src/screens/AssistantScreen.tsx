@@ -3,7 +3,7 @@ import { AppState, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Button, Checkbox, Chip, Divider, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
 import { request } from '../lib/api';
-import { assistantPlanOptions, assistantTripRequest, isAssistantSearchRequest, isJourneyRequest, journeySessionKey } from '../lib/assistantJourney';
+import { assistantPlanOptions, assistantTripRequest, isAssistantSearchRequest, isExistingTripChangeRequest, isJourneyRequest, journeySessionKey } from '../lib/assistantJourney';
 import type { Draft, Session } from '../lib/trips';
 import JourneyBriefPanel from './JourneyBriefPanel';
 import TripsScreen from './TripsScreen';
@@ -12,6 +12,7 @@ import { useHousehold } from '../lib/household';
 import type { ScreenProps } from '../lib/types';
 import { PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
+import ExistingTripChangePanel from '../components/ExistingTripChangePanel';
 
 function inventorySummary(item: Match) {
   const quantities = [item.onHandQty, item.inTransitQty, item.plannedQty];
@@ -20,6 +21,7 @@ function inventorySummary(item: Match) {
 }
 
 type JourneyPanel = { kind: 'brief'; key: number; prompt: string; useModel: boolean; prepare: boolean }
+  | { kind: 'trip_change'; key: number; prompt: string; useModel: boolean; modelConfigured: boolean }
   | { kind: 'planning'; key: number; draft: Draft }
   | { kind: 'existing'; key: number; id: string };
 type SearchReturn = { query: string; offset: number };
@@ -87,6 +89,12 @@ function AssistantEntry(props: ScreenProps) {
     setSourcePrompt(prompt); setSourceSearch(undefined);
     setPanel({ kind: 'brief', key: ++sequence.current, prompt, useModel, prepare });
   };
+  const beginTripChange = (prompt: string, useModel: boolean, modelConfigured: boolean) => {
+    if (!available() || panelRef.current) return;
+    setSourcePrompt(prompt); setSourceSearch(undefined);
+    const next: JourneyPanel = { kind: 'trip_change', key: ++sequence.current, prompt, useModel, modelConfigured };
+    panelRef.current = next; setPanel(next);
+  };
   const openExisting = (match: Match, prompt: string, search: SearchReturn) => {
     if (!available() || panelRef.current) return;
     const target = assistantTripRequest(match, sequence.current + 1);
@@ -97,7 +105,7 @@ function AssistantEntry(props: ScreenProps) {
     panelRef.current = next; setPanel(next);
   };
   if (!panel) return <AssistantWorkspace {...props} initialPrompt={sourcePrompt} initialSearch={sourceSearch}
-    onJourney={begin} onExistingTrip={openExisting} />;
+    onJourney={begin} onTripChange={beginTripChange} onExistingTrip={openExisting} />;
   const allowed = visible && household.online;
   return <View>
     {!allowed && <SectionCard title="旅行草稿暂时隐藏">
@@ -105,7 +113,14 @@ function AssistantEntry(props: ScreenProps) {
       <Button onPress={() => void verify()}>重新连接旅行</Button>
     </SectionCard>}
     <View style={allowed ? undefined : { display: 'none' }}>
-      {panel.kind === 'brief' ? <JourneyBriefPanel key={panel.key} user={props.user} people={props.state.people}
+      {panel.kind === 'trip_change' ? <ExistingTripChangePanel key={panel.key} initialPrompt={panel.prompt} initialUseModel={panel.useModel} modelConfigured={panel.modelConfigured}
+        onPendingChange={pendingReschedule}
+        onBack={prompt => { if (ready.current && available() && !reschedulePending.current) { setSourcePrompt(prompt); setPanel(null); } }}
+        onSaved={id => {
+          if (!ready.current || !available() || reschedulePending.current || panelRef.current?.key !== panel.key) return;
+          void latest.current.refresh(); setPanel({ kind: 'existing', key: ++sequence.current, id });
+        }} />
+        : panel.kind === 'brief' ? <JourneyBriefPanel key={panel.key} user={props.user} people={props.state.people}
         initialPrompt={panel.prompt} initialUseModel={panel.useModel} prepareOnOpen={panel.prepare}
         onCancel={() => { if (ready.current && available()) setPanel(null); }}
         onPrepared={draft => {
@@ -124,6 +139,7 @@ function AssistantEntry(props: ScreenProps) {
 
 function AssistantWorkspace(props: ScreenProps & {
   initialPrompt?: string; initialSearch?: SearchReturn; onJourney: (prompt: string, useModel: boolean, prepare: boolean) => void;
+  onTripChange: (prompt: string, useModel: boolean, modelConfigured: boolean) => void;
   onExistingTrip: (match: Match, prompt: string, search: SearchReturn) => void;
 }) {
   const household = useHousehold(), theme = useTheme();
@@ -171,6 +187,7 @@ function AssistantWorkspace(props: ScreenProps & {
   const locked = !view?.ready || view.busy || view.expired || !foreground || !household.online;
   const editingLocked = locked || !!view?.pending;
   const localSearch = isAssistantSearchRequest(prompt);
+  const tripChange = isExistingTripChangeRequest(prompt);
   const selected = view?.selected || [], draft = view?.plan, receipt = view?.receipt;
   const changedPrompt = !!draft && prompt.trim() !== view?.planPrompt;
   const people = props.state.people;
@@ -185,14 +202,15 @@ function AssistantWorkspace(props: ScreenProps & {
       <SelectionRow label="使用已配置的 AI 整理" checked={useModel} disabled={editingLocked || !view?.modelConfigured}
         onPress={() => { if (!editingLocked && view?.modelConfigured) { setUseModel(!useModel); setIncludeContext(false); } }} />
       {localSearch && <Text variant="bodySmall">本次只查找已有记录，不会发送给 AI。</Text>}
-      {useModel && !localSearch && <><Text variant="bodySmall">本次文字会发送给已配置的 AI 服务。结果是建议，尚未执行。</Text>
-        <SelectionRow label="附带近期日程和待办标题" checked={includeContext} disabled={editingLocked}
-          onPress={() => { if (!editingLocked) setIncludeContext(!includeContext); }} /></>}
+      {useModel && !localSearch && <><Text variant="bodySmall">{tripChange ? '本次文字及必要候选的旅行标题、日期、时区会发送给已配置的 AI。结果是建议，尚未改期。' : '本次文字会发送给已配置的 AI 服务。结果是建议，尚未执行。'}</Text>
+        {!tripChange && <SelectionRow label="附带近期日程和待办标题" checked={includeContext} disabled={editingLocked}
+          onPress={() => { if (!editingLocked) setIncludeContext(!includeContext); }} />}</>}
       {!view?.modelConfigured && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>可直接整理本地待办、采购或搜索已有记录。</Text>}
       <Button mode="contained" loading={!!view?.busy && !view?.pending} disabled={editingLocked || !prompt.trim()}
         onPress={() => {
           if (editingLocked || !prompt.trim()) return;
-          if (isJourneyRequest(prompt)) props.onJourney(prompt, useModel, true);
+          if (isExistingTripChangeRequest(prompt)) props.onTripChange(prompt, useModel, !!view?.modelConfigured);
+          else if (isJourneyRequest(prompt)) props.onJourney(prompt, useModel, true);
           else {
             const options = assistantPlanOptions(prompt, useModel, includeContext);
             void flow?.plan(prompt, options.useModel, options.includeHouseholdContext);

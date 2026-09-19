@@ -18,9 +18,16 @@ export function assistantTripRequest(match: { kind: unknown; id: unknown }, key:
 }
 
 /** Explicit list/search commands retain precedence over words inside the request. */
+export function isExistingTripChangeRequest(prompt: string): boolean {
+  const text = prompt.trim();
+  return !isAssistantSearchRequest(text) && !/^(待办|采购|任务)\s*[:：]/.test(text)
+    && /(旅行|行程|旅游|出发|返程)/.test(text)
+    && /(推迟|延后|延迟|后移|提前|前移|改期|改到|改为|移到|挪到|调整到|调整为)/.test(text);
+}
+
 export function isJourneyRequest(prompt: string): boolean {
   const text = prompt.trim();
-  return !isAssistantSearchRequest(text) && !/^(待办|采购)\s*[:：]/.test(text)
+  return !isAssistantSearchRequest(text) && !isExistingTripChangeRequest(text) && !/^(待办|采购|任务)\s*[:：]/.test(text)
     && /(旅行|行程|旅游|出发日期|返程日期)/.test(text);
 }
 
