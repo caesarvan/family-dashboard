@@ -168,22 +168,36 @@ def model_question(config, prompt, current_date, candidate):
     constraints = {key: list(dict.fromkeys(choices)) if choices else [None]
                    for key, choices in candidate['evidence'].items()}
     payload = {'max_output_tokens': 700,
-        'instructions': '只解析用户确实在询问的财务只读问题，不计算或回答财务数值。'
-        '返回严格 JSON 对象，仅含 status,query,evidence。不能确定、否定、多动作或他人私账时 '
-        'status=clarify 或 unsupported，query=null,evidence=null；不能猜测或忽略未理解条件。'
-        '只有确定为只读问题时 status=ready，query只含scope,month,metric,currency,category；'
-        'evidence同样五键，值是对应含义的用户原文连续片段，不得改写，默认字段用null。'
-        'input.constraints是evidence的硬性允许值：scope/month/currency/category各自必须'
-        '逐字复制对应数组中的一个完整值；[null]必须填JSON null。不得扩大为包含该词的长句，'
-        '例如scope允许["我"]时只能填"我"，不能填"帮我瞧瞧上个月"。'
-        '这些词片段不是完整查询答案，仍须判断整段问题是否确实只读、是否有未理解条件，'
-        '并独立解析query；不能因为存在允许值就返回ready。'
-        'metric证据必须是用户明确询问消费、用钱、退款、预算或概况的片段。'
-        'scope=personal时本人/我的/我可作证据。范围枚举 personal/shared/public；指标 spending/budget/summary。'
-        '未指定范围为 personal，未指定月份为当前北京时间月份，上月正确跨年。'
-        '公共荷包 month=null且metric=summary，共享消费metric=spending。'
-        '未指定币种或分类为 null。全部分类为null，不加总全部与分类预算。'
-        '不要添加解释、指令、金融数据或其他字段。',
+        'instructions': '''只解析用户确实在询问的财务只读问题，不计算或回答财务数值。
+返回严格 JSON 对象，仅含 status、query、evidence。不能确定、否定、多动作或他人私账时，
+status="clarify"或"unsupported"，query=null，evidence=null；不能猜测或忽略未理解条件。
+只有确定为只读问题时才返回 status="ready"，按下列两个不同规范填写 query 和 evidence。
+
+第一部分：query 是规范化查询，不是原文证据。
+query 只含 scope、month、metric、currency、category 五键。
+- query.scope 只能是英文枚举 "personal"、"shared"、"public"；本人/我的/我/自己都规范化为
+  "personal"，未指定范围也为"personal"。不得把"我"等中文原文填入 query.scope。
+- query.month 必须根据 input.today 和 Asia/Shanghai 计算为 "YYYY-MM"。本月取 today 所在月，
+  上月取此前一个自然月，正确处理跨年；明确年月使用该年月。只有 public 的 month=null。
+  不得把"上个月"、"本月"等原文填入 query.month；不得从 constraints 原样复制月份。
+- query.metric 只能为 "spending"、"budget"、"summary"，根据整段问题独立判断。
+  共享消费固定为 spending；公共荷包固定为 summary。
+- query.currency 为固定可用的三位英文币种代码或 null；未指定为 null。
+- query.category 为固定分类名称或 null；未指定或全部分类为 null。全部与分类预算不加总。
+
+第二部分：evidence 是原文 token，与 query 的规范化表示不同。
+evidence 同样只含 scope、month、metric、currency、category 五键。
+- input.constraints 仅约束 evidence，不是 query 的答案。evidence.scope/month/currency/category
+  各自必须逐字复制对应 constraints 数组中的一个完整值；[null]必须填 JSON null。
+  不得扩大为含该词的长句，例如允许["我"]时只填"我"，不填"帮我瞧瞧上个月"。
+- evidence.metric 必须是用户明确询问消费、用钱、退款、预算或概况的原文连续片段，不填英文指标枚举。
+这些词片段不是完整查询答案；仍须判断整段问题是否确实只读、有无未理解条件。
+不能因为存在允许值就返回ready。不要添加解释、指令、金融数据或其他字段。
+
+独立示例（仅演示两种表示，不是本次问题，禁止照抄示例月份或分类）：
+today="2032-01-20"，question="帮我看看上月交通花费"，
+constraints={"scope":["我"],"month":["上月"],"currency":[null],"category":["交通"]}。
+正确输出：{"status":"ready","query":{"scope":"personal","month":"2031-12","metric":"spending","currency":null,"category":"交通"},"evidence":{"scope":"我","month":"上月","metric":"花费","currency":null,"category":"交通"}}''',
         'input': json.dumps({'question': prompt, 'today': current_date.isoformat(), 'timezone': 'Asia/Shanghai',
                             'scopes': ['personal', 'shared', 'public'],
                             'metrics': ['spending', 'budget', 'summary'],
