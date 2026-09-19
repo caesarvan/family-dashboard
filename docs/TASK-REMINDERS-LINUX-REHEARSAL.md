@@ -10,7 +10,7 @@
 2. 调用实际 `check_task_reminders_migration.begin/migrate`，先完整备份，再按运行模块实际 DDL 新增两张空表，得到 71/9。
 3. 只启动真实 app 并初始化全部已注册家庭；随后独立检查旧 69 表的 schema、行、序列、平台注册库 9 表及 marker 全部保全，两张新表仍为空。**不启动 worker，也不豁免 `settings` heartbeat。**
 4. 从迁移前完整备份复制到全新 `/proof/restored-old`，执行候选文档提取出的真实恢复程序，再用 `verify_rollback` 核对原 69/9 完整组。
-5. 在新 71/9 库通过真实本地 Flask 登录、任务创建、提醒列表、已读／暂缓、回执查询与同请求重放，生成每户两条提醒状态及两条回执。截止日固定为过去的合法日期，暂缓时刻从实际 `serverNow` 加一小时计算。此阶段才允许新增任务与会话／审计记录；财务、路线和 `settings` 哨兵仍核对不变。
+5. 在新 71/9 库通过真实本地 Flask 登录、任务创建、提醒列表、已读／暂缓、回执查询与同请求重放，生成每户两条提醒状态及两条回执。截止日固定为过去的合法日期，暂缓时刻从实际 `serverNow` 加一小时计算。此阶段才允许新增任务与会话／审计记录：每次创建仅允许 `settings.meta` 的 SQL revision 增加 1，两次合计精确增加 2；其 data 和其余 settings 行必须原样，提醒动作／回执查询／重放也须保持完整 settings 不变。财务与路线哨兵继续逐表核对。`populated-settings.json` 保留每户前后摘要和精确版本差异；这项边界不用于豁免前面的迁移或 app-only 检查。
 6. 固定非空 71/9 全组参考快照，真实 app 重启后严格核对；完整备份后，在另一全新 `/proof/restored-current` 执行同一文档恢复程序，再核对全部提醒状态、回执、原数据和 marker。
 
 恢复程序只允许把文档唯一 `/data` 根路径映射为两个固定演练目录，保留原程序及映射后摘要。恢复后的服务不启动，为精确比较保留会话，不执行生产恢复时的会话失效步骤。因此结果仅证明隔离的数据库内容恢复，不能声称完整生产故障切换、真实用户重新登录或提醒后台持续运行已验证。
@@ -27,7 +27,7 @@ python -B deploy/task_reminders_linux_rehearsal.py --candidate <已核验候选�
 
 ## 分开记录工具检查与业务演练
 
-`tests/test_task_reminders_linux_rehearsal.py` 是离线工具检查，禁止实际子进程或网络。检查真实生成程序、来源／父身份、哨兵和空表汇总、恢复根路径、隔离参数，以及记录式执行器的阶段失败与禁止重放。执行器替身用于检查编排，**不能作为迁移、API 或恢复业务成功的证据**。
+`tests/test_task_reminders_linux_rehearsal.py` 禁止实际子进程或网络。原 31 项工具检查覆盖真实生成程序、来源／父身份、哨兵和空表汇总、恢复根路径、隔离参数，以及记录式执行器的阶段失败与禁止重放。执行器替身用于检查编排，**不能作为迁移、API 或恢复业务成功的证据**。另有本地真实 Flask／SQLite 闭合检查执行完整非空提醒生成程序，仅映射本机模块路径，验证两次创建导致 meta +2、提醒动作不改 settings，并拒绝意外 meta 或其他 settings 漂移；此本地检查不替代 Linux 迁移与恢复演练。
 
 ```text
 python -B -X utf8 -m pytest tests/test_task_reminders_linux_rehearsal.py -q --basetemp=<新临时目录> --junitxml=<新XML路径>

@@ -1,4 +1,4 @@
-"""Rehearsal safety/identity/failure checks; no app, Docker, network or database."""
+"""Offline tool checks plus real temporary Flask population; no Docker or network."""
 import ast
 from copy import deepcopy
 import json
@@ -207,7 +207,10 @@ def test_populated_program_calls_real_task_and_reminder_apis_without_sql_state_i
     assert 'INSERT INTO task_reminders' not in program and 'INSERT INTO task_reminder_operations' not in program
     assert 'current.snapshot_current(root)' in program and "proof/'populated-api-receipts.json'" in program
     assert "value['tables'][table]==before['databases'][relative]['tables'][table]" in program
-    assert set(rehearsal.FINANCE_TABLES) | set(rehearsal.ROUTE_COUNTS) | {'settings'} <= set(strings)
+    assert set(rehearsal.FINANCE_TABLES) | set(rehearsal.ROUTE_COUNTS) <= set(strings)
+    assert program.count('check_settings(relative,index+1)') == 2
+    assert "settings_summary[relative]=check_settings(relative,2)" in program
+    assert "proof/'populated-settings.json'" in program
 
 
 def test_route_sentinel_anchor_drift_is_rejected(inputs, monkeypatch):
@@ -246,3 +249,76 @@ def test_summary_refuses_missing_sentinels_or_initial_rows(tmp_path, fault):
         assert actual['newReminderTablesEmpty'] is True and actual['preservedRouteRowsPerHousehold'] == rehearsal.ROUTE_COUNTS
     else:
         with pytest.raises(ValueError): rehearsal.check_group(tmp_path)
+
+
+@pytest.mark.parametrize('fault', [None, 'extra-meta', 'other-setting'])
+def test_generated_population_real_flask_settings_boundary(inputs, tmp_path, monkeypatch, fault):
+    """Execute the generated population, real APIs and full snapshots locally.
+
+    This current-71 fixture does not claim to execute the old Linux parent or
+    migrate it. Only fixed container paths / seed counts are adapted locally.
+    """
+    from contextlib import closing
+    import sqlite3
+    import app as runtime_app
+    from flask import request
+    from deploy import membership_release_data as data
+    from deploy import check_task_reminders_migration as current
+
+    root, proof = tmp_path / 'data', tmp_path / 'proof'
+    root.mkdir(); proof.mkdir()
+    for key, value in rehearsal.previous.SYNTHETIC_ENV.items(): monkeypatch.setenv(key, value)
+    monkeypatch.setenv('DATA_DIR', str(root))
+    _, source, verified = inputs
+    code, _ = rehearsal.programs(verified['blobs'], rehearsal.restore.documented_programs(source)[0])
+    seed = rehearsal.routes.replace_once(code['SEED'],
+        "from pathlib import Path\nroot=Path('/data');proof=Path('/proof');runtime=Path('/app')\n", '')
+    seed = rehearsal.routes.replace_once(seed, 'len(tables)==69', 'len(tables)==71')
+    seed = rehearsal.routes.replace_once(seed, "'householdTables':69", "'householdTables':71")
+    # Preserve pytest's no-network stub when generated code installs its own.
+    monkeypatch.setattr(socket.socket, 'connect', socket.socket.connect)
+    exec(compile(seed, '<real-current-71-synthetic-seed>', 'exec'),
+         {'Path': Path, 'root': root, 'proof': proof, 'runtime': ROOT})
+    reference = current.snapshot_current(root)
+    assert reference['households'] == 2 and len(reference['databases']) == 3
+    data._write_new(proof/'after.json', reference)
+    original_factory = runtime_app.create_app
+    injections = []
+    if fault:
+        def factory(*args, **kwargs):
+            application = original_factory(*args, **kwargs)
+            @application.after_request
+            def drift(response):
+                if (not injections and request.method == 'POST'
+                        and request.path.startswith('/api/task-reminders/')
+                        and request.path.endswith('/actions') and response.status_code == 200):
+                    path = Path(application.config['DATA_DIR'])/'household.sqlite3'
+                    with closing(sqlite3.connect(path)) as con:
+                        if fault == 'extra-meta': con.execute("UPDATE settings SET revision=revision+1 WHERE id='meta'")
+                        else: con.execute("UPDATE settings SET data=? WHERE id='finance'", ('{"unexpected":true}',))
+                        con.commit()
+                    injections.append(request.path)
+                return response
+            return application
+        monkeypatch.setattr(runtime_app, 'create_app', factory)
+    population = rehearsal.routes.replace_once(rehearsal.POPULATE_REMINDERS,
+        "Path('/app/app.py')", 'Path(' + repr(str(ROOT/'app.py')) + ')')
+    namespace = {'Path': Path, 'root': root, 'proof': proof, 'current': current, 'data': data,
+                 'json': json, 'os': os, 'contract': {'syntheticMarkerSha256': rehearsal.sha(rehearsal.previous.SYNTHETIC_MARKER)}}
+    if fault:
+        with pytest.raises(AssertionError, match='population_settings_changed'):
+            exec(compile(population, '<real-reminder-population>', 'exec'), namespace)
+        assert len(injections) == 1 and not (proof/'populated-reference.json').exists()
+    else:
+        exec(compile(population, '<real-reminder-population>', 'exec'), namespace)
+        settings = json.loads((proof/'populated-settings.json').read_bytes())
+        receipts = json.loads((proof/'populated-api-receipts.json').read_bytes())
+        assert len(settings) == len(receipts) == 2
+        for name, values in settings.items():
+            assert values['taskCreations'] == 2
+            assert values['metaRevisionAfter'] == values['metaRevisionBefore'] + 2
+            assert values['beforeSha256'] != values['afterSha256']
+            assert {item['action'] for item in receipts[name]} == {'read', 'snooze'}
+        populated = json.loads((proof/'populated-reference.json').read_bytes())
+        assert current.verify_restore(populated, root,
+            marker_sha256=namespace['contract']['syntheticMarkerSha256'])['verified'] is True

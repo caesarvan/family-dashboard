@@ -37,14 +37,30 @@ from datetime import datetime,timedelta
 import socket,sqlite3
 def no_network(*args,**kwargs):raise RuntimeError('populate_network_forbidden')
 socket.socket.connect=no_network
+before=data._read_json(proof/'after.json')
+assert current.verify_restore(before,root,marker_sha256=contract['syntheticMarkerSha256'])['verified']
+def settings_rows(relative):
+ with closing(sqlite3.connect(data._relative(root,relative))) as con:
+  return con.execute('SELECT id,data,revision FROM settings ORDER BY id').fetchall()
+settings_reference={name:settings_rows(name) for name in before['databases'] if name!='platform.sqlite3'}
+def check_settings(relative,creates):
+ rows=settings_reference[relative]
+ meta=[row for row in rows if row[0]=='meta']
+ assert len(meta)==1 and not any(row[0]=='task-reminders-worker' for row in rows)
+ expected=[(name,value,revision+(creates if name=='meta' else 0)) for name,value,revision in rows]
+ assert settings_rows(relative)==expected,'population_settings_changed'
+ return {'beforeSha256':data._digest(rows),'afterSha256':data._digest(expected),
+  'taskCreations':creates,'metaRevisionBefore':meta[0][2],'metaRevisionAfter':meta[0][2]+creates}
 import app
 assert Path(app.__file__).resolve()==Path('/app/app.py')
 application=app.create_app()
 platform=application.extensions['household_platform']
 origin=os.environ['PUBLIC_ORIGIN']
 receipts={}
+settings_summary={}
 def request(client,method,path,**kwargs):return client.open(path,method=method,base_url=origin,**kwargs)
 for household in platform.households():
+ relative='household.sqlite3' if household['id']=='default' else 'spaces/'+household['id']+'/household.sqlite3'
  child=platform.child(household)
  client=child.test_client()
  password=os.environ['MEMBER1_PASSWORD'] if household['id']=='default' else 'synthetic-child-password-one'
@@ -52,11 +68,13 @@ for household in platform.households():
  assert login.status_code==200,login.status_code
  me=request(client,'GET','/api/me');assert me.status_code==200
  headers={'X-CSRF-Token':me.json['csrf'],'Origin':origin}
+ check_settings(relative,0)
  saved=[]
  for index,action in enumerate(('read','snooze')):
   created=request(client,'POST','/api/items/tasks',json={'title':'Synthetic reminder '+action,
    'owner':'member1' if action=='read' else 'shared','due':'2000-01-01','sourceId':''},headers=headers)
   assert created.status_code==201,created.status_code
+  check_settings(relative,index+1)
   task_id=created.json['id']
   page=request(client,'GET','/api/task-reminders?filter=all&page=0');assert page.status_code==200
   entry=next(value for value in page.json['items'] if value['task']['id']==task_id)
@@ -73,11 +91,12 @@ for household in platform.households():
   assert recovered.status_code==200 and recovered.json==response.json
   replay=request(client,'POST','/api/task-reminders/'+task_id+'/actions',json=intent,headers=headers)
   assert replay.status_code==200 and replay.json==response.json
+  check_settings(relative,index+1)
   saved.append(operation)
  page=request(client,'GET','/api/task-reminders?filter=all&page=0');assert page.status_code==200
  assert {x['status'] for x in page.json['items']}=={'read','snoozed'}
  assert page.json['worker']['lastCheckedAt'] is None
- relative='household.sqlite3' if household['id']=='default' else 'spaces/'+household['id']+'/household.sqlite3'
+ settings_summary[relative]=check_settings(relative,2)
  with closing(sqlite3.connect(data._relative(root,relative))) as con:
   assert con.execute("SELECT count(*) FROM settings WHERE id='task-reminders-worker'").fetchone()[0]==0
   assert con.execute('SELECT count(*) FROM task_reminders').fetchone()[0]==2
@@ -87,16 +106,16 @@ for household in platform.households():
 with closing(sqlite3.connect(root/'platform.sqlite3')) as con:
  assert con.execute('PRAGMA wal_checkpoint(TRUNCATE)').fetchone()[0]==0
 reference=current.snapshot_current(root)
-before=data._read_json(proof/'after.json')
 assert reference['households']==2 and len(reference['databases'])==3 and len(receipts)==2
 for relative,value in reference['databases'].items():
  if relative!='platform.sqlite3':
   assert all(value['tables'][n]['count']==2 for n in current.NEW_TABLES)
-  for table in ('settings','finance_account_profiles','finance_account_cashflows','finance_account_reviews',
+  for table in ('finance_account_profiles','finance_account_cashflows','finance_account_reviews',
    'finance_analysis_operations','finance_fx_rates','journey_routes','journey_route_stops','journey_route_operations'):
    assert value['tables'][table]==before['databases'][relative]['tables'][table]
 data._write_new(proof/'populated-reference.json',reference)
 data._write_new(proof/'populated-api-receipts.json',receipts)
+data._write_new(proof/'populated-settings.json',settings_summary)
 print(json.dumps({'populated':True,'households':2,'statesPerHousehold':2,'receiptsPerHousehold':2,
  'actions':['read','snooze'],'seedMethod':'real local authenticated Flask task/reminder APIs; same-intent replay checked',
  'workerStarted':False}))
