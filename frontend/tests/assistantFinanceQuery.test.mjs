@@ -21,6 +21,15 @@ function loader(mocks = {}, globals = {}) {
   return load;
 }
 const load = loader(), api = load(resolve(root, 'lib/assistantFinanceQuery.ts'));
+// Exact prompt from browser_expo_assistant_trip_items_check.py example(), R2 scene 1.
+const tripItemsPrompt = [
+  '旅行名称：合成采购准备旅行', '出发日期：2027-10-01', '返程日期：2027-10-06',
+  '旅行类型：境外', '家庭总预算（人民币）：20000.25元', '日本/东京 2027-10-01 至 2027-10-06',
+  '准备：合成核对护照 | 负责人：我 | 出发前：3天',
+  '准备：合成打印行程 | 负责人：合成同行 | 截止日期：2027-09-30',
+  '采购：合成转换插头 | 数量：2 件 | 负责人：合成同行 | 预算：123.45元',
+  '采购：合成收纳袋 | 数量：1 件 | 负责人：我 | 预算：未知',
+].join('\n');
 function result(metric = 'summary') {
   return { status: 'ready', mode: 'local', message: '查询本人 2026-08 已记录支出与预算。', query: { scope: 'personal', month: '2026-08', metric, currency: null, category: null },
     totals: [{ currency: 'CNY', count: 4, expenseCents: 123456, refundCents: 10000, netSpendCents: 113456 }, { currency: 'USD', count: 2, expenseCents: 2050, refundCents: 0, netSpendCents: 2050 }],
@@ -37,6 +46,21 @@ function clarification(status = 'clarify') { return { ...result(), status, messa
 test('entry routes colloquial finance and mixed requests intact while preserving search and explicit list creation', () => {
   for (const p of ['我本月花了多少', '预算还剩多少', '上月餐饮支出', '2026-08旅行支出', '查一下本月消费并把预算改到5000', '老婆支出多少', '公共荷包还剩多少', '帮我瞧瞧上个月餐饮方面用了多少钱', '八月支出多少', '开销多少', '这月开支', '上月花销']) assert(api.isAssistantFinanceQuery(p), p);
   for (const p of ['搜索：预算', '查找旅行支出', '找一下荷包', '待办：查预算', '采购：旅行账本', '任务：整理支出', '创建待办核对预算', '请帮我添加任务核对预算', '帮我新建一条待办提醒核对本月预算', '冰岛旅行推迟三天', '计划一次冰岛旅行，预算5000', '我想规划一趟旅行预算5000', '冰岛旅行延后三天，预算保持不变']) assert.equal(api.isAssistantFinanceQuery(p), false, p);
+});
+test('structured journey fields with budgets and preparation checks stay in the trip brief', () => {
+  const journey = load(resolve(root, 'lib/assistantJourney.ts'));
+  for (const prompt of [tripItemsPrompt, tripItemsPrompt.replace('核对护照', '检查护照'), tripItemsPrompt.replace('打印行程', '查看签证'),
+    tripItemsPrompt.replaceAll('\n', '；').replaceAll('：', ':'),
+    '出发日期：2027-10-01\n家庭总预算：5000元\n返程日期：2027-10-06\n旅行名称：合成旅行']) {
+    assert.equal(api.isAssistantFinanceQuery(prompt), false, prompt); assert.equal(journey.isJourneyRequest(prompt), true);
+  }
+});
+test('trip budget questions and explicit mixed queries retain complete finance input', () => {
+  for (const prompt of ['旅行预算还剩多少', '查上月旅行花费', '查预算并修改旅行', '计划一次冰岛旅行，并查上月旅行支出',
+    tripItemsPrompt + '\n另查上月旅行花费', tripItemsPrompt + '\n旅行预算还剩多少',
+    tripItemsPrompt + '\n查本月支出并把预算改成100元']) assert.equal(api.isAssistantFinanceQuery(prompt), true, prompt);
+  for (const prompt of ['搜索：' + tripItemsPrompt, '待办：检查旅行预算', '采购：旅行账本',
+    '帮我新建一条待办提醒核对本月预算', '冰岛旅行延后三天，预算保持不变', '计划一次冰岛旅行，预算5000']) assert.equal(api.isAssistantFinanceQuery(prompt), false, prompt);
 });
 test('wire keeps each currency, signed remaining budget and exact integer cents', () => {
   assert.deepEqual(clone(api.readFinanceQuery(result())), result());
@@ -170,6 +194,21 @@ test('search and explicit creation keep existing flow, finance queries take prec
   await h.input('告诉助理你的需求', '待办：整理旅行预算'); await h.click('整理并预览'); assert.equal(h.f.planCalls.length, 2);
   await h.input('告诉助理你的需求', '上月旅行支出和预算'); assert(!h.control('附带近期日程和待办标题')); await h.click('查询'); assert(h.control('财务问题')); assert.equal(h.posts().length, 1);
   await h.click('返回助理'); assert.equal(h.control('告诉助理你的需求').props.value, '上月旅行支出和预算');
+});
+test('actual Assistant opens the original R2 trip brief instead of sending a finance query', async t => {
+  for (const prompt of [tripItemsPrompt, tripItemsPrompt.replace('核对护照', '检查护照')]) {
+    const h = harness('assistant'); t.after(h.close); await h.settle(); await h.input('告诉助理你的需求', prompt);
+    assert(!h.control('查询')); await h.click('整理并预览');
+    const brief = h.nodes().find(node => node.type === 'JourneyBriefPanel');
+    assert(brief); assert.equal(brief.props.initialPrompt, prompt); assert.equal(h.posts().length, 0); assert.equal(h.f.planCalls.length, 0);
+  }
+});
+test('actual Assistant sends an entire mixed trip and finance request for clarification', async t => {
+  const prompt = tripItemsPrompt + '\n查本月支出并把预算改成100元';
+  const h = harness('assistant', { response: clarification('unsupported') }); t.after(h.close); await h.settle();
+  await h.input('告诉助理你的需求', prompt); await h.click('查询');
+  assert.equal(h.posts().length, 1); assert.equal(h.posts()[0].body.prompt, prompt);
+  assert.equal(h.control('财务问题').props.value, prompt); assert(!h.control('查看本人账本')); assert.equal(h.f.mutations, undefined);
 });
 test('successful late response is discarded after session changes, including the final /me failure', async t => {
   for (const options of [{ identityAfterPost: true }, { failFinalMe: true }]) { const h = harness('panel', options); t.after(h.close); await h.settle(); assert(!h.control('财务问题')); assert(!h.text().includes('1,134.56')); assert(h.text().includes('隐藏') || h.text().includes('已清除')); }
