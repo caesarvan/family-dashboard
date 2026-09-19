@@ -112,7 +112,10 @@ def test_rehashed_metadata_cannot_exempt_ninth_runtime_or_widen_scripts(package_
     selected = policy.selected_sources(names, checked['blobs']['deploy/prepare_release.py'], baseline=package.BASELINE)
     assert 'scripts/unreviewed.py' not in selected and package.BROWSER_SCRIPTS <= selected
     # Old dispatch/allowlist paths cannot acquire the new module or script.
-    old_selected = policy.selected_sources(names, checked['blobs']['deploy/prepare_release.py'], baseline=previous_package.BASELINE)
+    with pytest.raises(ValueError, match='new frontend input needs an explicit packaging policy'):
+        policy.selected_sources(names, checked['blobs']['deploy/prepare_release.py'], baseline=previous_package.BASELINE)
+    old_inputs = names - (package.FRONTEND_TESTS - previous_package.FRONTEND_TESTS)
+    old_selected = policy.selected_sources(old_inputs, checked['blobs']['deploy/prepare_release.py'], baseline=previous_package.BASELINE)
     assert not (package.BROWSER_SCRIPTS | {'task_dependencies.py'}) & old_selected
     assert policy.baseline_values(None)[0] == 'membership-release-package'
     assert policy.fixed_files(previous_package.BASELINE)['Dockerfile'] == package.DOCKER_BEFORE
