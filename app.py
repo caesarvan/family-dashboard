@@ -19,6 +19,7 @@ from shopping_media import register_media, validate_photo_ids, sync_photo_refs
 from finance_baseline import register_finance_baseline, shared_baselines
 from finance_source_bridge import register_finance_source_bridge
 from finance_accounts import register_finance_accounts
+from finance_analysis import register_finance_analysis
 from household_spaces import register_preferences, register_spaces
 from home_assistant import register_assistant
 from journey_workflows import register_journeys
@@ -734,6 +735,7 @@ def create_app(config=None):
     register_finance_baseline(app, db, require_member, audit)
     register_finance_source_bridge(app, db, Problem, body, require_member, audit)
     register_finance_accounts(app, db, Problem, body, require_member, audit)
+    register_finance_analysis(app, db, Problem, body, require_member, audit)
     register_preferences(app, db, Problem, body, require_member, audit)
     register_dashboard_layout(app, db, Problem, body, require_member, audit)
     register_journeys(app, db, Problem, body, require_member, audit)

@@ -9,6 +9,7 @@ COPY cloud_accounts.py cloud_providers.py sync_worker.py ./
 COPY google_photos_picker.py media_crypto.py media_images.py household_media.py media_import_worker.py media_playback.py ./
 COPY shopping_media.py shopping_settlement.py finance_baseline.py spending_observations.py ./
 COPY finance_source_bridge.py finance_accounts.py journey_time.py journey_reschedule.py ./
+COPY finance_analysis.py finance_fx.py ./
 COPY household_spaces.py journey_workflows.py finance_hub.py home_assistant.py ./
 COPY journey_documents.py journey_places.py ./
 COPY inventory_core.py inventory_api.py inventory_sources.py ./

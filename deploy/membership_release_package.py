@@ -50,6 +50,9 @@ def baseline_values(baseline=None):
     # Explicit audited callers only; defaults keep the original migration contract.
     if baseline is None:
         return 'membership-release-package', PARENT_IMAGE, OLD_MANIFEST
+    if baseline == 'order-inventory-r1-finance-analysis':
+        from deploy import finance_analysis_release_profile as analysis
+        return analysis.KIND, analysis.PARENT_IMAGE, analysis.OLD_MANIFEST
     if baseline == 'memberships-r3-steady':
         return ('steady-release-package',
                 'sha256:c8e3da47800e3d11f609677bd6aca5f69aef6e7d7a49827c04fb6bea29946771',
@@ -66,6 +69,9 @@ def baseline_values(baseline=None):
 
 def fixed_files(baseline=None):
     baseline_values(baseline)
+    if baseline == 'order-inventory-r1-finance-analysis':
+        from deploy import finance_analysis_release_profile as analysis
+        return {**FIXED, 'Dockerfile': analysis.DOCKER_AFTER}
     return {**FIXED, **({'Dockerfile': FOLLOWUP_DOCKER_SHA256} if baseline == 'followup-r1-steady' else {})}
 
 
@@ -200,6 +206,9 @@ def selected_sources(tracked, policy, *, baseline=None):
     required = set(constants['FILES']) | {SELF} | {'frontend/' + n for n in
         ('package.json', 'package-lock.json', 'app.json', 'tsconfig.json', 'README.md', 'LICENSE',
          'tests/journeySegments.test.ts', 'tsconfig.tests.json', 'typecheck.mjs')}
+    if baseline == 'order-inventory-r1-finance-analysis':
+        from deploy import finance_analysis_release_profile as analysis
+        required |= analysis.RUNTIME_ADDITIONS | {'deploy/finance_analysis_release_profile.py'}
     if baseline == 'followup-r1-steady':
         required.add('inventory_sources.py')
     need(required <= tracked, 'allowlisted file missing from Git')
@@ -209,11 +218,13 @@ def selected_sources(tracked, policy, *, baseline=None):
     selected |= tracked & {'frontend/tests/inventoryFollowup.test.mjs'}
     if baseline == 'followup-r1-steady':
         selected |= tracked & {'frontend/tests/inventorySources.test.mjs'}
+    if baseline == 'order-inventory-r1-finance-analysis':
+        selected |= tracked & analysis.FRONTEND_TESTS
     need(required_build_inputs(tracked) <= selected, 'new frontend input needs an explicit packaging policy')
     return selected
 
 
-def export_blobs(directory):
+def export_blobs(directory, *, baseline=None):
     directory = checked(directory, True)
     result = {}
     for folder, dirs, files in os.walk(directory):
@@ -223,16 +234,21 @@ def export_blobs(directory):
             path = Path(folder) / name
             relative = source_name(path.relative_to(directory).as_posix(), True)
             result[relative] = plain(path)
-    validate_export_names(result)
+    validate_export_names(result, baseline=baseline)
     return result
 
 
-def validate_export_names(names):
+def validate_export_names(names, *, baseline=None):
     names_unique(list(names))
     need(all(n in ('index.html', 'metadata.json') or PurePosixPath(n).suffix.lower() in EXPORT_TYPES for n in names),
          'unexpected export extension')
-    need(len(names) == 23 and 'index.html' in names and 'metadata.json' in names,
-         'complete 23-file export required')
+    if baseline == 'order-inventory-r1-finance-analysis':
+        from deploy import finance_analysis_release_profile as analysis
+        need(3 <= len(names) <= MAX_FILES and 'index.html' in names and 'metadata.json' in names,
+             'complete bounded export required')
+    else:
+        need(len(names) == 23 and 'index.html' in names and 'metadata.json' in names,
+             'complete 23-file export required')
     need(sum(n.startswith('_expo/static/js/web/entry-') and n.endswith('.js') for n in names) == 1,
          'exactly one Expo entry required')
 
@@ -248,7 +264,7 @@ def validate_maps(metadata, manifest, evidence, *, baseline=None):
     files = hash_map(manifest['files'], True)
     source = hash_map(metadata['sourceFiles'])
     exports = hash_map(metadata['exportFiles'], True)
-    validate_export_names(exports)
+    validate_export_names(exports, baseline=baseline)
     need(not any(n.startswith(PREFIX) for n in source), 'source/export overlap')
     need(files == {**source, **{PREFIX + n: h for n, h in exports.items()}}, 'manifest partition differs')
     need(metadata['runtimeFiles'] == runtime_files(files), 'runtime partition differs')
@@ -262,7 +278,7 @@ def validate_maps(metadata, manifest, evidence, *, baseline=None):
     inputs = hash_map(evidence['inputFiles'])
     need(set(inputs) == required_build_inputs(source) and all(source[n] == h for n, h in inputs.items()),
          'build input set/bytes differs')
-    need(hash_map(evidence['files'], True) == exports and len(exports) == 23, 'export evidence differs')
+    need(hash_map(evidence['files'], True) == exports, 'export evidence differs')
     need(metadata['inputFiles'] == inputs and metadata['buildSourceHead'] == evidence['head']
          and metadata['buildSourceTree'] == evidence['tree'], 'input provenance differs')
     checksum(metadata['sourceHead'], 40); checksum(metadata['tree'], 40)
@@ -293,7 +309,7 @@ def inspect_inputs(repo, commit, export_dir, build_evidence, evidence_sha256, *,
     need(inputs == required_build_inputs(tracked_files(repo, build_head)) == set(evidence['inputFiles']), 'build input set incomplete')
     built = namespace['read_git_blobs'](repo, build_head, sorted(inputs))
     need(all(digest(built[n]) == evidence['inputFiles'][n] == digest(blobs[n]) for n in inputs), 'build source bytes differ')
-    generated = export_blobs(export_dir)
+    generated = export_blobs(export_dir, baseline=baseline)
     source_hashes = {n: digest(v) for n, v in blobs.items()}
     export_hashes = {n: digest(v) for n, v in generated.items()}
     blobs.update({PREFIX + n: v for n, v in generated.items()})
