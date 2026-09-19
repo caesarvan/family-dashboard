@@ -164,13 +164,20 @@ def parse_question(prompt, current_date, *, allow_model=False):
 
 
 def model_question(config, prompt, current_date, candidate):
-    """Only user text, the clock and fixed enums cross the provider boundary."""
+    """Only question-derived evidence choices, text, clock and fixed enums leave."""
+    constraints = {key: list(dict.fromkeys(choices)) if choices else [None]
+                   for key, choices in candidate['evidence'].items()}
     payload = {'max_output_tokens': 700,
         'instructions': '只解析用户确实在询问的财务只读问题，不计算或回答财务数值。'
         '返回严格 JSON 对象，仅含 status,query,evidence。不能确定、否定、多动作或他人私账时 '
         'status=clarify 或 unsupported，query=null,evidence=null；不能猜测或忽略未理解条件。'
         '只有确定为只读问题时 status=ready，query只含scope,month,metric,currency,category；'
         'evidence同样五键，值是对应含义的用户原文连续片段，不得改写，默认字段用null。'
+        'input.constraints是evidence的硬性允许值：scope/month/currency/category各自必须'
+        '逐字复制对应数组中的一个完整值；[null]必须填JSON null。不得扩大为包含该词的长句，'
+        '例如scope允许["我"]时只能填"我"，不能填"帮我瞧瞧上个月"。'
+        '这些词片段不是完整查询答案，仍须判断整段问题是否确实只读、是否有未理解条件，'
+        '并独立解析query；不能因为存在允许值就返回ready。'
         'metric证据必须是用户明确询问消费、用钱、退款、预算或概况的片段。'
         'scope=personal时本人/我的/我可作证据。范围枚举 personal/shared/public；指标 spending/budget/summary。'
         '未指定范围为 personal，未指定月份为当前北京时间月份，上月正确跨年。'
@@ -180,7 +187,8 @@ def model_question(config, prompt, current_date, candidate):
         'input': json.dumps({'question': prompt, 'today': current_date.isoformat(), 'timezone': 'Asia/Shanghai',
                             'scopes': ['personal', 'shared', 'public'],
                             'metrics': ['spending', 'budget', 'summary'],
-                            'currencies': sorted(set(CURRENCIES.values())), 'categories': list(CATEGORIES)}, ensure_ascii=False)}
+                            'currencies': sorted(set(CURRENCIES.values())), 'categories': list(CATEGORIES),
+                            'constraints': constraints}, ensure_ascii=False)}
     value = home_assistant._model_json(config, payload)
     valid = type(value) is dict and set(value) == {'status', 'query', 'evidence'}
     if valid and value['status'] in ('clarify', 'unsupported') and value['query'] is value['evidence'] is None:
