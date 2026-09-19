@@ -1,6 +1,6 @@
 # Expo 旅行准备同步到主清单
 
-本页描述独立前端候选，尚未合入或部署；不能将本地验证当作真实 Microsoft / Google 云写入通过。沿用 [待办发布契约](TASK-PUBLISH.md)，复用既有任务、队列和冲突处理，没有新增接口、数据表或依赖。
+**2026-09-20 02:33:11（北京时间）已上线，02:35:58 独立只读审计通过。** 从「已保存旅行 → 准备 → 同步到主清单」开始。沿用 [待办发布契约](TASK-PUBLISH.md)，复用既有任务、队列和冲突处理，没有新增接口、数据表或依赖。固定身份、分段结果及尚未完成的本人验收见[集中验收](EXPO-JOURNEY-TASKS-ACCEPTANCE.md#expo-trip-task-publish-release)；真实 Microsoft / Google 云写入仍须本人授权目标并验证。
 
 ## 家庭使用流程
 
@@ -28,11 +28,11 @@
 
 发布状态 `published` 结合 `localChangesPending` 判断当前内容；`true` 为待同步，`null` 为待核对。`canManage=false` 的项目只显示状态。断开或删除不会提供盲目重建按钮。重试创建是否只能查找原任务仍由现有后端持久状态决定，前端不重置首次发送标记。
 
-`GET /api/task-publish/state?journeyId=...` 每 10 秒读取一次本地状态，后台暂停；不直接请求第三方。`POST /preview` 不写入队列；`POST /confirm` 明确连接选中任务。冲突预览经已有后端读取远端，用户的两种明确决定继续用 `/publications/<id>/conflict-confirm`。详细权限、持续同步及删除/重连规则以 [TASK-PUBLISH](TASK-PUBLISH.md) 为准。
+`GET /api/task-publish/state?journeyId=...` 每 10 秒读取一次本地状态，后台暂停；不直接请求第三方。状态读取期间禁用暂停／恢复等修改操作，回到前台先重新读取，避免用旧状态发出操作。`POST /preview` 不写入队列；`POST /confirm` 明确连接选中任务。冲突预览经已有后端读取远端，用户的两种明确决定继续用 `/publications/<id>/conflict-confirm`。详细权限、持续同步及删除/重连规则以 [TASK-PUBLISH](TASK-PUBLISH.md) 为准。
 
 ## 验证范围
 
-本批使用独立 worktree 的锁文件执行 `npm ci --no-audit --no-fund`，不修改 package 文件。局部验证入口：
+正式 R2 使用独立 detached worktree 和自有 `npm ci` 依赖；两组 TypeScript、53 项 Node、23 个导出产物通过。日常局部验证入口：
 
 ```sh
 cd frontend
@@ -42,4 +42,4 @@ node --test tests/taskPublish.test.mjs
 
 测试执行实际 TSX 面板与身份 fence，HTTP 值为合成输入；覆盖原任务选择、完整预览、未知提交的只读恢复与原凭证重试、两个冲突决定、暂停恢复/重试、重连白名单、权限提示、迟到响应、Cookie-only 身份切换、后台/离线恢复及导航锁。另以现有 `tests/test_task_publish.py` 的真实 Flask/SQLite 与合成双提供方夹具，实际读取状态/预览/确认/发布/冲突 DTO 并由新 helper 校验，真实 provider 请求为零。
 
-这些检查不证明真实浏览器布局、键盘/触屏、真实云端或生产部署通过。后续集成需要新导出与真实临时浏览器验证、发布白名单审查及非作者审查；不得把此候选混入正在发布的其他冻结版本。实际 Microsoft / Google 写入和本人完整场景 A 仍需用户选择授权目标、确认并读回。
+后续组合已完成：R3 临时 HTTPS Flask／SQLite／Edge 八条双提供方流程通过，390／1280 宽度的六张 Microsoft 场景截图经非作者逐图核对；实际隔离 Linux 的待办 API 61 项通过，生产已激活并通过独立只读审计。浏览器提供方 HTTP 使用合成替身，六图不覆盖全部滚动位置或 Google 特定画面，也不证明真实触屏、实体电视或 native。实际 Microsoft / Google 写入和本人完整场景 A 仍需用户选择授权目标、确认并读回；A–D 完整验收为 0/4。失败修正和原件见[集中验收](EXPO-JOURNEY-TASKS-ACCEPTANCE.md#expo-trip-task-publish-release)。

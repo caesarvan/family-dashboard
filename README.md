@@ -2,7 +2,9 @@
 
 源码仓库：[caesarvan/family-dashboard](https://github.com/caesarvan/family-dashboard)（私有，访问与 clone 需要获授权的 GitHub 账号）。`main` 为稳定源码，`codex/integration` 为集成候选；各任务在独立分支／worktree 开发，经 PR 独立审查后合入。`git push` 或 PR 合并不代表上线，生产仍按[既有发布流程](docs/DEPLOYMENT.md)执行。
 
-**最新上线：旅行准备、采购与成员分工（2026-09-20 01:13:38，北京时间），激活成功，01:23:44 独立只读审计通过。** 从「更多 → 家庭助理」整理旅行需求，核对可编辑的准备事项、采购预算和负责人，再预览并明确保存。[使用与集中验收](docs/ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。保持 69/9 表结构，无本批迁移；A–D 本人完整验收仍为 0/4，真实云与实体电视另验。
+**最新上线：Expo 旅行准备同步到主清单（2026-09-20 02:33:11，北京时间），02:35:58 独立只读审计通过。** 打开「已保存旅行 → 准备 → 同步到主清单」，选择原事项及目标清单，预览后明确确认；支持进度核对、冲突选择与原目标重连。[操作说明](docs/EXPO-JOURNEY-TASKS.md) · [使用与集中验收](docs/EXPO-JOURNEY-TASKS-ACCEPTANCE.md#expo-trip-task-publish-release)。本批只接通前端，复用既有同步后端，保持 69/9；真实 Microsoft／Google 云写入、实体电视及 A–D 本人完整验收（0/4）仍待验证。
+
+**此前上线：旅行准备、采购与成员分工（2026-09-20 01:13:38，北京时间），激活成功，01:23:44 独立只读审计通过。** 从「更多 → 家庭助理」整理旅行需求，核对可编辑的准备事项、采购预算和负责人，再预览并明确保存。[使用与集中验收](docs/ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。保持 69/9 表结构，无本批迁移；A–D 本人完整验收仍为 0/4，真实云与实体电视另验。
 
 **此前上线：旅行路线（2026-09-19 22:56:47，北京时间），22:57:29 独立只读审计通过。** 从「旅行 → 旅行详情 → 旅行路线」选择地点、安排顺序，默认仅自己可见；明确共享后其他成员只读。支持重复站点、聚焦地图、缺口断线及照片往返。[使用与集中验收](docs/JOURNEY-ROUTES-ACCEPTANCE.md#journey-routes-release)。生产一户两库完成 66→69／平台 9 表保全；路线不增加电视许可，A–D 本人完整验收仍为 0/4。
 
@@ -481,6 +483,7 @@ node --test tests/test_calendar_views.js
 | [账单导入与投资](docs/FINANCE-IMPORT.md) | CSV／GB18030／XLSX、预览确认、去重、预算、私有账本、估值口径 |
 | [旅行云日历发布](docs/CALENDAR-PUBLISH.md) | 写权限升级、发布队列、幂等、远端读回、暂停与冲突核对 |
 | [本地待办同步发布](docs/TASK-PUBLISH.md) | 旅行/助理/本地任务写入主清单、完成回流、冲突与不确定结果恢复 |
+| [Expo 旅行准备同步](docs/EXPO-JOURNEY-TASKS.md) · [验收](docs/EXPO-JOURNEY-TASKS-ACCEPTANCE.md#expo-trip-task-publish-release) · [发布](docs/EXPO-JOURNEY-TASKS-RELEASE.md) | 已保存旅行中的原事项选择、预览确认、状态核对与冲突处理；本批固定身份和真实验收边界 |
 | [个人数据导出](docs/PORTABILITY.md) | ZIP/JSON/CSV 格式、本人范围、家庭共享勾选、限额与恢复边界 |
 | [开发与多 agent 协作](docs/DEVELOPMENT.md) | 本地环境、公共接缝、文件所有权、测试和交接模板 |
 | [隔离恢复演练](docs/RECOVERY-REHEARSAL.md) | 虚构两户、全新 Docker 卷、原文档恢复、登录/照片/隔离验证及自动清理 |
