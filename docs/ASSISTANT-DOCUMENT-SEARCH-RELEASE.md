@@ -1,6 +1,6 @@
 # 资料与照片搜索发布入口
 
-这是采购版本之后的独立发布适配，准备入口不表示本批已经部署。业务操作见 [助理资料与照片搜索](ASSISTANT-DOCUMENT-SEARCH-UI.md)，浏览器边界见 [验收工具](EXPO-ASSISTANT-DOCUMENT-SEARCH-BROWSER.md)。本地临时打包和记录式生命周期检查不替代实际 Linux、生产激活及本人账户验证。
+这是采购版本之后的独立发布适配；实际发布状态、使用步骤与固定身份见[集中验收](ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release)，准备入口本身不表示部署完成。业务操作见 [助理资料与照片搜索](ASSISTANT-DOCUMENT-SEARCH-UI.md)，浏览器边界见 [验收工具](EXPO-ASSISTANT-DOCUMENT-SEARCH-BROWSER.md)。本地临时打包和记录式生命周期检查不替代实际 Linux、生产激活及本人账户验证。
 
 ## 固定父版本与运行范围
 
@@ -22,7 +22,7 @@
 ## 构建、审查和候选
 
 1. 独立审查作者提交后，由集成人合入并固定完整 source head/tree。最终前端输入必须逐字节匹配独立构建证据，不能因为变更只是提示文字而继续使用旧导出。
-2. 使用新入口的 `prepare` 创建独占输出目录，再用 `verify` 读回包、清单、归档和原始构建证据。沿用已有 build-evidence 转换合同，转换记录与原始 Expo 证据须同时保留。
+2. 使用新入口的 `prepare` 创建独占输出目录，再用 `verify` 读回包、清单、归档和原始构建证据。本批 R2 原始 `build-evidence.json` 已是 `kind: membership-expo-build`，SHA256 为 `813a0fe023ccff9d7a5c08d330cf658a4bbd27af0a8613130b73e5ad10ae16d8`；直接使用该原件及固定 SHA，无需格式转换或另造转换记录。
 3. 在隔离环境运行同一入口的 `build`、`validate`。Linux selection、source、manifest、明确 nodeid、JUnit 及 runtime 来源记录须属于同一包。记录式测试不会被计为实际 Docker/Linux 验收。
 4. 将代码、包、Linux、前端、浏览器和演练的审查原件交给 `assemble`。生成的 `assistant-document-search-release-plan` 固定 27 个 operator，包含前版完整链与本批两个入口。独立审查明确计划 SHA 后，集成人才可按授权执行 `stage`／`activate`。
 
