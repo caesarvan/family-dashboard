@@ -51,10 +51,16 @@ test('precise formatting, known-asset percentages and inclusive period limit avo
   assert.throws(() => analysis.analysisQuery({ ...query, start: '2025-01-01', end: '2026-01-02' }));
   assert.throws(() => analysis.analysisQuery({ ...query, start: '2026-02-30' })); assert.throws(() => analysis.analysisQuery({ ...query, accountIds: [] }));
 });
-test('trend breaks at partial or old valuation points and preserves known zero and negative amounts', () => {
-  const raw = [{ date: '2026-01-01', summary: { ...summary(), knownNetCents: '-500' } }, { date: '2026-01-02', summary: { ...summary(), complete: false } }, { date: '2026-01-03', summary: { ...summary(), knownNetCents: '0' } }, { date: '2026-01-04', summary: { ...summary(), knownNetCents: '500' } }];
+test('trend breaks at missing valuation or FX points and preserves known zero and negative amounts', () => {
+  const raw = [{ date: '2026-01-01', summary: { ...summary(), knownNetCents: '-500' } }, { date: '2026-01-02', summary: { ...summary(), complete: false, coverage: { ...coverage(), convertedCount: 0, missingFxCount: 1 } } }, { date: '2026-01-03', summary: { ...summary(), knownNetCents: '0' } }, { date: '2026-01-04', summary: { ...summary(), knownNetCents: '500' } }];
   const trend = analysis.analysisTrend(raw); assert.equal(trend.gapCount, 1); assert.equal(trend.points[1].y, null); assert.equal(trend.points[2].y, .5); assert.equal(trend.min, '-500'); assert.equal(trend.max, '500'); assert.equal(trend.segments.length, 1); assert.equal(trend.segments[0].from.date, '2026-01-03');
-  assert.equal(analysis.analysisTrend([{ date: '2026-01-01', summary: { ...summary(), complete: false } }]).min, null);
+  assert.equal(analysis.analysisTrend([{ date: '2026-01-01', summary: { ...summary(), complete: false, coverage: { ...coverage(), convertedCount: 0, missingFxCount: 1 } } }]).min, null);
+});
+
+test('trend carries fully known old valuations with distinct points and dashed adjoining segments', () => {
+  const current = summary(), carried = { ...summary(), complete: false, coverage: { ...coverage(), olderValuationCount: 1 } }, missing = { ...summary(), complete: false, coverage: { ...coverage(), knownValuationCount: 0, convertedCount: 0, unknownValuationCount: 1 } };
+  const trend = analysis.analysisTrend([{ date: '2026-01-01', summary: current }, { date: '2026-01-02', summary: carried }, { date: '2026-01-03', summary: carried }, { date: '2026-01-04', summary: missing }, { date: '2026-01-05', summary: current }]);
+  assert.equal(trend.carriedCount, 2); assert.equal(trend.gapCount, 1); assert.equal(trend.points[1].y, .5); assert.equal(trend.points[1].carried, true); assert.equal(trend.points[0].carried, false); assert.equal(trend.points[3].y, null); assert.equal(trend.segments.length, 2); assert(trend.segments.every(s => s.carried)); assert(!trend.segments.some(s => s.to.date === '2026-01-05'));
 });
 test('write intents bind account/event/CAS and require explicit interval confirmation', () => {
   const draft = { date: query.end, direction: 'out', amount: '123.45', note: 'synthetic' }, intent = analysis.cashflowIntent(account(), draft, flow(), rid);
