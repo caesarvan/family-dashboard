@@ -50,6 +50,9 @@ def baseline_values(baseline=None):
     # Explicit audited callers only; defaults keep the original migration contract.
     if baseline is None:
         return 'membership-release-package', PARENT_IMAGE, OLD_MANIFEST
+    if baseline == 'assistant-document-search-r1-task-dependencies':
+        from deploy import build_task_dependencies_release as dependencies
+        return dependencies.KIND, dependencies.PARENT_IMAGE, dependencies.OLD_MANIFEST
     if baseline == 'shopping-schedule-r1-assistant-document-search':
         from deploy import build_assistant_document_search_release as documents
         return documents.KIND, documents.PARENT_IMAGE, documents.OLD_MANIFEST
@@ -90,6 +93,9 @@ def baseline_values(baseline=None):
 
 def fixed_files(baseline=None):
     baseline_values(baseline)
+    if baseline == 'assistant-document-search-r1-task-dependencies':
+        from deploy import build_task_dependencies_release as dependencies
+        return {**FIXED, 'Dockerfile': dependencies.DOCKER_AFTER}
     if baseline == 'shopping-schedule-r1-assistant-document-search':
         from deploy import build_assistant_document_search_release as documents
         return {**FIXED, 'Dockerfile': documents.DOCKER_AFTER}
@@ -248,6 +254,10 @@ def selected_sources(tracked, policy, *, baseline=None):
     required = set(constants['FILES']) | {SELF} | {'frontend/' + n for n in
         ('package.json', 'package-lock.json', 'app.json', 'tsconfig.json', 'README.md', 'LICENSE',
          'tests/journeySegments.test.ts', 'tsconfig.tests.json', 'typecheck.mjs')}
+    if baseline == 'assistant-document-search-r1-task-dependencies':
+        from deploy import build_task_dependencies_release as dependencies
+        required |= dependencies.RUNTIME_ADDITIONS | dependencies.FRONTEND_TESTS | dependencies.BROWSER_SCRIPTS | {
+            'deploy/build_task_dependencies_release.py', 'deploy/activate_task_dependencies_release.py'}
     if baseline == 'shopping-schedule-r1-assistant-document-search':
         from deploy import build_assistant_document_search_release as documents
         required |= documents.RUNTIME_ADDITIONS | documents.FRONTEND_TESTS | {
@@ -323,7 +333,8 @@ def validate_export_names(names, *, baseline=None):
     if baseline in ('order-inventory-r1-finance-analysis', 'finance-analysis-r1-assistant-trip-change',
                     'assistant-trip-change-r1-finance-query', 'finance-query-r2-journey-routes',
                     'journey-routes-r1-assistant-trip-items', 'assistant-trip-items-r1-expo-task-publish',
-                    'expo-trip-tasks-r1-shopping-schedule', 'shopping-schedule-r1-assistant-document-search'):
+                    'expo-trip-tasks-r1-shopping-schedule', 'shopping-schedule-r1-assistant-document-search',
+                    'assistant-document-search-r1-task-dependencies'):
         from deploy import finance_analysis_release_profile as analysis
         need(3 <= len(names) <= MAX_FILES and 'index.html' in names and 'metadata.json' in names,
              'complete bounded export required')
@@ -349,6 +360,15 @@ def validate_maps(metadata, manifest, evidence, *, baseline=None):
     need(not any(n.startswith(PREFIX) for n in source), 'source/export overlap')
     need(files == {**source, **{PREFIX + n: h for n, h in exports.items()}}, 'manifest partition differs')
     need(metadata['runtimeFiles'] == runtime_files(files), 'runtime partition differs')
+    if baseline == 'assistant-document-search-r1-task-dependencies':
+        from deploy import build_task_dependencies_release as dependencies
+        non_expo = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
+        preserved = {n: h for n, h in non_expo.items() if n not in dependencies.CHANGED_RUNTIME_FILES}
+        need(len(non_expo) == dependencies.NON_EXPO_RUNTIME_COUNT
+             and dependencies.CHANGED_RUNTIME_FILES <= non_expo.keys()
+             and len(preserved) == dependencies.PRESERVED_RUNTIME_COUNT
+             and digest(encoded(preserved)) == dependencies.PRESERVED_RUNTIME_SHA256,
+             'task dependencies non-Expo runtime differs from installed 97-file preservation baseline')
     if baseline == 'shopping-schedule-r1-assistant-document-search':
         from deploy import build_assistant_document_search_release as documents
         non_expo = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
