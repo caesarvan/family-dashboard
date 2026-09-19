@@ -50,6 +50,9 @@ def baseline_values(baseline=None):
     # Explicit audited callers only; defaults keep the original migration contract.
     if baseline is None:
         return 'membership-release-package', PARENT_IMAGE, OLD_MANIFEST
+    if baseline == 'expo-trip-tasks-r1-shopping-schedule':
+        from deploy import build_shopping_schedule_release as shopping
+        return shopping.KIND, shopping.PARENT_IMAGE, shopping.OLD_MANIFEST
     if baseline == 'assistant-trip-items-r1-expo-task-publish':
         from deploy import build_expo_trip_task_publish_release as tasks
         return tasks.KIND, tasks.PARENT_IMAGE, tasks.OLD_MANIFEST
@@ -84,6 +87,9 @@ def baseline_values(baseline=None):
 
 def fixed_files(baseline=None):
     baseline_values(baseline)
+    if baseline == 'expo-trip-tasks-r1-shopping-schedule':
+        from deploy import build_shopping_schedule_release as shopping
+        return {**FIXED, 'Dockerfile': shopping.DOCKER_AFTER}
     if baseline == 'assistant-trip-items-r1-expo-task-publish':
         from deploy import build_expo_trip_task_publish_release as tasks
         return {**FIXED, 'Dockerfile': tasks.DOCKER_AFTER}
@@ -236,6 +242,10 @@ def selected_sources(tracked, policy, *, baseline=None):
     required = set(constants['FILES']) | {SELF} | {'frontend/' + n for n in
         ('package.json', 'package-lock.json', 'app.json', 'tsconfig.json', 'README.md', 'LICENSE',
          'tests/journeySegments.test.ts', 'tsconfig.tests.json', 'typecheck.mjs')}
+    if baseline == 'expo-trip-tasks-r1-shopping-schedule':
+        from deploy import build_shopping_schedule_release as shopping
+        required |= shopping.RUNTIME_ADDITIONS | shopping.FRONTEND_TESTS | {
+            'deploy/build_shopping_schedule_release.py', 'deploy/activate_shopping_schedule_release.py'}
     if baseline == 'assistant-trip-items-r1-expo-task-publish':
         from deploy import build_expo_trip_task_publish_release as tasks
         required |= tasks.RUNTIME_ADDITIONS | {'deploy/build_expo_trip_task_publish_release.py',
@@ -302,7 +312,8 @@ def validate_export_names(names, *, baseline=None):
          'unexpected export extension')
     if baseline in ('order-inventory-r1-finance-analysis', 'finance-analysis-r1-assistant-trip-change',
                     'assistant-trip-change-r1-finance-query', 'finance-query-r2-journey-routes',
-                    'journey-routes-r1-assistant-trip-items', 'assistant-trip-items-r1-expo-task-publish'):
+                    'journey-routes-r1-assistant-trip-items', 'assistant-trip-items-r1-expo-task-publish',
+                    'expo-trip-tasks-r1-shopping-schedule'):
         from deploy import finance_analysis_release_profile as analysis
         need(3 <= len(names) <= MAX_FILES and 'index.html' in names and 'metadata.json' in names,
              'complete bounded export required')
@@ -328,6 +339,15 @@ def validate_maps(metadata, manifest, evidence, *, baseline=None):
     need(not any(n.startswith(PREFIX) for n in source), 'source/export overlap')
     need(files == {**source, **{PREFIX + n: h for n, h in exports.items()}}, 'manifest partition differs')
     need(metadata['runtimeFiles'] == runtime_files(files), 'runtime partition differs')
+    if baseline == 'expo-trip-tasks-r1-shopping-schedule':
+        from deploy import build_shopping_schedule_release as shopping
+        non_expo = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
+        preserved = {n: h for n, h in non_expo.items() if n not in shopping.CHANGED_RUNTIME_FILES}
+        need(len(non_expo) == shopping.NON_EXPO_RUNTIME_COUNT
+             and shopping.CHANGED_RUNTIME_FILES <= non_expo.keys()
+             and len(preserved) == shopping.PRESERVED_RUNTIME_COUNT
+             and digest(encoded(preserved)) == shopping.PRESERVED_RUNTIME_SHA256,
+             'shopping non-Expo runtime differs from installed 99-file preservation baseline')
     if baseline == 'assistant-trip-items-r1-expo-task-publish':
         from deploy import build_expo_trip_task_publish_release as tasks
         preserved = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
