@@ -338,7 +338,32 @@ class Run(BaseRun):
             self.refresh_status(page)
             self.exchange(page, TP + '/publications/' + rid + '/pause', lambda: button(page, '暂停同步').click())
             expect(button(page, '恢复同步')).to_be_enabled()
+            # Hold the next real periodic read. Management buttons must reflect
+            # that read's occupancy, rather than silently dropping a click.
+            held, delivered = [], False
+            polling_url = self.base + TP + '/state?journeyId=' + saved['id']
+            def hold_poll(route):
+                response = route.fetch(max_redirects=0)
+                assert response.status == 200
+                held.append((route, response))
+            page.route(polling_url, hold_poll, times=1)
+            try:
+                deadline = time.monotonic() + 20
+                while not held and time.monotonic() < deadline:
+                    page.wait_for_timeout(100)
+                assert held, 'Expected the actual periodic state read'
+                expect(button(page, '恢复同步')).to_be_disabled()
+                self.record('held-authentic-background-state', held[0][1].json())
+                held[0][0].fulfill(response=held[0][1])
+                delivered = True
+                expect(button(page, '恢复同步')).to_be_enabled()
+            finally:
+                if held and not delivered:
+                    held[0][0].abort('failed')
+                page.unroute(polling_url, hold_poll)
+            resumes = self.count_requests('POST', TP + '/publications/' + rid + '/resume')
             self.exchange(page, TP + '/publications/' + rid + '/resume', lambda: button(page, '恢复同步').click())
+            assert self.count_requests('POST', TP + '/publications/' + rid + '/resume') == resumes + 1
             self.process(rid)
             accounts = self.application.extensions['cloud_accounts']
             accounts.select_sources('account-mine', 'member1', [])

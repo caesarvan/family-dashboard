@@ -30,13 +30,13 @@ function TaskWorkspace(props:Props&{identityKey:string}){
   const appActive=useRef(AppState.currentState!=='background'&&AppState.currentState!=='inactive');
   const fence=useRef(new PlaceFence(()=>request<PlaceSession>('/me'),props.identityKey));
   const submitted=useRef<Pending|null>(null),recovered=useRef(false);
-  const [snapshot,setSnapshot]=useState<TaskState|null>(null),[visible,setVisible]=useState(false),[busy,setBusy]=useState(false);
+  const [snapshot,setSnapshot]=useState<TaskState|null>(null),[visible,setVisible]=useState(false),[busy,setBusy]=useState(false),[refreshing,setRefreshing]=useState(false);
   const [error,setError]=useState(''),[notice,setNotice]=useState(''),[selected,setSelected]=useState(''),[ids,setIds]=useState<string[]>([]);
   const [query,setQuery]=useState(''),[taskPage,setTaskPage]=useState(0),[sourcePage,setSourcePage]=useState(0),[statusPage,setStatusPage]=useState(0);
   const [preview,setPreview]=useState<TaskPreview|null>(null),[comparison,setComparison]=useState<Comparison|null>(null),[unknown,setUnknown]=useState(false),[checked,setChecked]=useState(false);
   const current=()=>alive.current&&active.current&&focused.current&&!denied.current&&appActive.current&&foreground()&&connected()
     &&latest.current.online&&latest.current.identityKey===props.identityKey&&latest.current.user?.role==='member';
-  const locked=busy||unknown||!household.online;
+  const locked=busy||refreshing||unknown||!household.online;
   // Use the parent's existing travel-operation navigation guard; selections and
   // unknown writes remain in this instance until explicitly discarded/read back.
   useEffect(()=>{props.onPendingChange?.(busy||unknown||ids.length>0||!!preview||!!comparison);},[busy,unknown,ids.length,preview,comparison]);
@@ -60,7 +60,7 @@ function TaskWorkspace(props:Props&{identityKey:string}){
   const fetchState=async()=>readTaskState(await guarded(()=>request<unknown>('/task-publish/state?journeyId='+encodeURIComponent(props.journeyId))),props.journeyId);
   async function reload(background=false){
     if(!current()||working.current||reading.current)return;
-    const ticket=epoch.current;reading.current=true;if(!background)setBusy(true);
+    const ticket=epoch.current;reading.current=true;setRefreshing(true);if(!background)setBusy(true);
     try{
       const value=await fetchState();if(!current()||ticket!==epoch.current)return;
       setSnapshot(value);setVisible(true);setError('');
@@ -73,7 +73,7 @@ function TaskWorkspace(props:Props&{identityKey:string}){
         }else{setUnknown(true);setNotice('已读取当前状态，刚才操作的回执仍未确认。请先核对下方进度。');}
       }
     }catch(failure){if(ticket===epoch.current){failed(failure);setSnapshot(null);setVisible(false);}}
-    finally{reading.current=false;if(ticket===epoch.current)setBusy(false);else if(current()){setBusy(false);void reload();}}
+    finally{reading.current=false;setRefreshing(false);if(ticket===epoch.current)setBusy(false);else if(current()){setBusy(false);void reload();}}
   }
   function enter(){
     if(!alive.current||active.current||!focused.current||denied.current||!appActive.current||!foreground()||!connected()||!latest.current.online)return;
@@ -164,9 +164,9 @@ function TaskWorkspace(props:Props&{identityKey:string}){
   const activeComparison=comparison&&snapshot.publications.find(row=>row.id===comparison.id);
   return <View style={styles.page}>
     <PageHeader title="旅行待办同步" description="把准备事项带到常用清单，继续使用同一份任务。"/>
-    <View style={styles.row}><Button icon="arrow-left" disabled={busy||unknown} onPress={back}>{ids.length||preview||comparison?'取消本页选择并返回旅行':'返回旅行'}</Button><Button loading={busy} disabled={busy} onPress={()=>void reload()}>{unknown?'核对当前状态':'刷新状态'}</Button></View>
+    <View style={styles.row}><Button icon="arrow-left" disabled={busy||unknown} onPress={back}>{ids.length||preview||comparison?'取消本页选择并返回旅行':'返回旅行'}</Button><Button loading={busy} disabled={busy||refreshing} onPress={()=>void reload()}>{unknown?'核对当前状态':'刷新状态'}</Button></View>
     {!!error&&<Text accessibilityRole="alert">{error}</Text>}{!!notice&&<Text accessibilityLiveRegion="polite">{notice}</Text>}
-    {unknown&&<SectionCard title="先核对刚才的操作"><Text>请求可能已经完成。下方显示当前进度，不会自动重新提交。</Text>{checked&&<View style={styles.fields}>{submitted.current?.kind==='confirm'&&<Button disabled={busy} onPress={()=>void confirm(true)}>使用原确认再次核对</Button>}<Button disabled={busy} onPress={acknowledge}>已核对，保留当前状态</Button></View>}</SectionCard>}
+    {unknown&&<SectionCard title="先核对刚才的操作"><Text>请求可能已经完成。下方显示当前进度，不会自动重新提交。</Text>{checked&&<View style={styles.fields}>{submitted.current?.kind==='confirm'&&<Button disabled={busy||refreshing} onPress={()=>void confirm(true)}>使用原确认再次核对</Button>}<Button disabled={busy} onPress={acknowledge}>已核对，保留当前状态</Button></View>}</SectionCard>}
     {!unknown&&(comparison?<SectionCard title="核对两边内容"><View style={styles.fields}><Text variant="titleMedium">看板本地</Text>{fields(comparison.value.local)}<Divider/><Text variant="titleMedium">云端清单</Text>{fields(comparison.value.remote)}<Text>采用云端内容仍保留看板负责人、旅行关联和原任务。</Text><View style={styles.row}><Button disabled={locked||!activeComparison?.canManage} onPress={()=>activeComparison&&void command(activeComparison,'conflict-confirm','remote')}>采用云端内容</Button><Button mode="contained" disabled={locked||!activeComparison?.canManage} onPress={()=>activeComparison&&void command(activeComparison,'conflict-confirm','local')}>确认以本地更新云端</Button><Button disabled={busy} onPress={()=>setComparison(null)}>暂不处理</Button></View></View></SectionCard>:preview?<SectionCard title="确认连接待办"><View style={styles.fields}><Text variant="titleMedium">{provider(preview.source.provider)} · {preview.source.name}{preview.source.primary?' · 家庭主清单':''}</Text><Text>{preview.source.accountName}</Text>{!preview.source.writeAuthorized&&<Text>账户尚缺待办写入权限。可以先确认，账户拥有者完成授权后才能同步。</Text>}{preview.tasks.map(row=><View key={row.id}>{taskCard(row)}</View>)}<Text variant="bodySmall">{preview.note}</Text><View style={styles.row}><Button disabled={busy} onPress={()=>setPreview(null)}>返回选择</Button><Button mode="contained" disabled={locked} onPress={()=>void confirm()}>确认连接这 {preview.tasks.length} 项待办</Button></View></View></SectionCard>:<SectionCard title="选择清单与准备事项"><View style={styles.fields}>
       <Text variant="bodySmall">看板负责人继续保留，不会转换成云端指派。仅勾选并确认的事项会持续同步。</Text>
       {snapshot.sources.length?<><View accessibilityRole="radiogroup" accessibilityLabel="目标待办清单">{snapshot.sources.slice(sp*12,(sp+1)*12).map(row=><SelectionRow key={row.id} kind="radio" label={provider(row.provider)+' · '+row.name+' · '+row.accountName+(row.primary?' · 家庭主清单':'')+(!row.writeAuthorized?' · 需授权':'')} accessibilityLabel={'选择清单：'+provider(row.provider)+' · '+row.name+' · '+row.accountName} checked={selected===row.id} disabled={locked} onPress={()=>chooseSource(row.id)}/>)}</View>{snapshot.sources.length>12&&pager(sp,snapshot.sources.length,setSourcePage)}
