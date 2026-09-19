@@ -167,6 +167,16 @@ test('same-name assignment distinguishes self and one other without guessing amo
   assert.equal(options[1].disabled, false); assert.equal(options[2].disabled, true); assert.equal(options[3].disabled, true);
 });
 
+test('warning count accepts the 500-entry legal item boundary and rejects 501', () => {
+  const checklist = Array.from({ length: 100 }, (_, i) => taskItem({ key: 'brief-task-' + (i + 1), sourceText: '', owner: null, dueOffsetDays: null }));
+  const shopping = Array.from({ length: 100 }, (_, i) => purchaseItem({ key: 'brief-purchase-' + (i + 1), sourceText: '', owner: null, quantity: '' }));
+  const value = { ...brief({ checklist, shopping }), warnings: Array.from({ length: 500 }, (_, i) => `第 ${i + 1} 条原文信息待核对`) };
+  const parsed = readJourneyBrief(value, '原文', ['alice'], people);
+  assert.equal(parsed.warnings.length, 500); assert.equal(parsed.form.checklist.length, 100); assert.equal(parsed.form.shopping.length, 100);
+  assert.equal(parsed.form.checklist[99].owner, null); assert.equal(parsed.form.shopping[99].budget, '');
+  value.warnings.push('第 501 条说明'); assert.throws(() => readJourneyBrief(value, '原文', ['alice'], people), /整理说明格式/);
+});
+
 const session = (patch = {}) => ({ user: { id: 'alice', householdId: 'synthetic-household', role: 'member', auth_version: 1 }, csrf: 'synthetic-csrf', ...patch });
 test('success and endpoint failure both check identity before and after request', async () => {
   let reads = 0; const initial = session(), fence = new PhotoReadFence(async () => { reads++; return initial; }, initial.user, photoSignature(initial));

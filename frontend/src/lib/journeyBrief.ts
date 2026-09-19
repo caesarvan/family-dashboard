@@ -88,7 +88,7 @@ export function readJourneyBrief(value: unknown, prompt: string, memberIds: stri
   const shopping = rows(brief.shopping === undefined ? [] : brief.shopping, '采购清单').map(row => ({ ...briefItem(row, prompt, people),
     quantity: text(row.quantity, '采购数量', 30), budget: row.budgetCents === null ? '' : briefAmountText(cents(row.budgetCents)) }));
   const warnings = result.warnings === undefined ? [] : result.warnings;
-  if (!Array.isArray(warnings) || warnings.length > 300) throw new Error('整理说明格式无效。');
+  if (!Array.isArray(warnings) || warnings.length > 500) throw new Error('整理说明格式无效。');
   return { mode: result.mode, notice: text(result.notice, '整理说明', 2000), warnings: warnings.map(v => text(v, '整理说明', 2000)), form: {
     title: text(brief.title, '旅行名称', 100), start: briefDay(brief.start, true), end: briefDay(brief.end, true),
     budget: brief.budgetCents === null ? '' : briefAmountText(cents(brief.budgetCents)), international: brief.international,
