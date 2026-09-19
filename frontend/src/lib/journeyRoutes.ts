@@ -222,3 +222,63 @@ export function adjacentRouteSegments(stops: RouteStop[]): RouteSegment[] {
     && stops[index + 1].state === 'available' && (stops[index + 1] as Extract<RouteStop, { state: 'available' }>).place.coordinates
     ? [{ fromIndex: index, toIndex: index + 1 }] : []);
 }
+
+type MapPoint = { x: number; y: number };
+export type RouteViewMarker = { point: MapPoint; indices: number[]; names: string[]; approximate: boolean; label: string; width: number };
+const mapPoint = (point: Coordinates): MapPoint => ({ x: (point.longitude + 180) * 1000 / 360, y: (90 - point.latitude) * 500 / 180 });
+const stationLabel = (indices: number[]) => indices.length <= 3 ? indices.map(n => n + 1).join('、') : `${indices[0] + 1} +${indices.length - 1}`;
+
+/** Route-only camera. Units after projection are CSS pixels, including station badges. */
+export function routeMapLayout(map: RouteMap, width: number, height: number, fullWorld = false) {
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 112 || height <= 112) throw new Error('地图尺寸无效');
+  const points = map.markers.map(marker => mapPoint(marker.point));
+  let global = fullWorld || !points.length;
+  let centerX = 500, centerY = 250, scale = Math.min((width - 112) / 1000, (height - 112) / 500);
+  if (points.length && !fullWorld) {
+    // Cut the longitude circle at its largest empty interval, not at Greenwich.
+    const xs = Array.from(new Set(points.map(p => p.x % 1000))).sort((a, b) => a - b);
+    let gap = -1, start = xs[0];
+    xs.forEach((x, i) => { const next = xs[(i + 1) % xs.length] + (i === xs.length - 1 ? 1000 : 0); if (next - x > gap) { gap = next - x; start = next % 1000; } });
+    const spanX = 1000 - gap, ys = points.map(p => p.y), minY = Math.min(...ys), maxY = Math.max(...ys);
+    const candidateCenter = start + spanX / 2;
+    // A worldwide route can cross the chosen empty cut. In that case retain
+    // the world frame so a legal line cannot end at a different world copy.
+    global = map.lines.some(line => {
+      const a = mapPoint(line.from).x, b = mapPoint(line.to).x, shift = Math.round((candidateCenter - (a + b) / 2) / 1000) * 1000;
+      return Math.min(a, b) + shift < start - 1e-7 || Math.max(a, b) + shift > start + spanX + 1e-7;
+    });
+    if (!global) {
+      centerX = candidateCenter; centerY = (minY + maxY) / 2;
+      // A single point, including repeated visits, retains a one-degree context.
+      scale = Math.min((width - 112) / Math.max(1000 / 360, spanX), (height - 112) / Math.max(500 / 180, maxY - minY));
+    }
+  }
+  const viewport = { x: centerX - width / scale / 2, y: centerY - height / scale / 2, width: width / scale, height: height / scale };
+  const project = (p: MapPoint): MapPoint => ({ x: (p.x - viewport.x) * scale, y: (p.y - viewport.y) * scale });
+  const lines = map.lines.map(line => {
+    const from = mapPoint(line.from), to = mapPoint(line.to);
+    // Shift both ends together: preserve the original antimeridian split.
+    const shift = global ? 0 : Math.round((centerX - (from.x + to.x) / 2) / 1000) * 1000;
+    return { ...line, from: project({ ...from, x: from.x + shift }), to: project({ ...to, x: to.x + shift }) };
+  });
+  const markers: RouteViewMarker[] = map.markers.map((marker, i) => {
+    const p = points[i], x = global ? p.x : p.x + Math.round((centerX - p.x) / 1000) * 1000, label = stationLabel(marker.indices);
+    return { point: project({ ...p, x }), indices: [...marker.indices], names: [...marker.names], approximate: marker.approximate, label, width: Math.max(36, label.length * 9 + 18) };
+  });
+  // Very close coordinates can remain visually coincident even after fitting.
+  // Merge overlapping badges without changing coordinates or connecting gaps.
+  let merged = true;
+  while (merged) {
+    merged = false;
+    outer: for (let i = 0; i < markers.length; i++) for (let j = i + 1; j < markers.length; j++) {
+      const a = markers[i], b = markers[j];
+      if (Math.abs(a.point.x - b.point.x) >= (a.width + b.width) / 2 + 8 || Math.abs(a.point.y - b.point.y) >= 44) continue;
+      const count = a.indices.length + b.indices.length;
+      a.point = { x: (a.point.x * a.indices.length + b.point.x * b.indices.length) / count, y: (a.point.y * a.indices.length + b.point.y * b.indices.length) / count };
+      a.indices = [...a.indices, ...b.indices].sort((x, y) => x - y); a.names.push(...b.names); a.approximate ||= b.approximate;
+      a.label = stationLabel(a.indices); a.width = Math.max(36, a.label.length * 9 + 18);
+      markers.splice(j, 1); merged = true; break outer;
+    }
+  }
+  return { viewport, scale, lines, markers, global };
+}

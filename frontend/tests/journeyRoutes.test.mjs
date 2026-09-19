@@ -61,6 +61,73 @@ test('geometry numbers repeated coordinates together, marks coarse lines, and ha
   const d = detail([place(4, 180), place(5, -180), place(4, 180)], true), map = api.routeGeometry(d.route.stops, d.segments);
   assert.deepEqual(clone(map.markers[0].indices), [0, 2]); assert(map.lines.every(l => l.approximate && Number.isFinite(l.to.latitude) && l.from.longitude === l.to.longitude));
 });
+
+test('route viewport separates nearby roundtrip stations at phone and desktop CSS sizes', () => {
+  const a = { ...place(), coordinates: { latitude: 31.234567, longitude: 121.456789 } }, b = { ...place(5), coordinates: { latitude: 32.234567, longitude: 122.456789 } };
+  const d = detail([a, a, b]), map = api.routeGeometry(d.route.stops, d.segments), original = clone(map);
+  for (const [width, height] of [[318, 240], [1176, 360]]) {
+    const focused = api.routeMapLayout(map, width, height), world = api.routeMapLayout(map, width, height, true);
+    assert(focused.viewport.width < 30); assert(focused.scale > world.scale * 20);
+    assert.deepEqual(clone(focused.markers.map(m => m.label)), ['1、2', '3']);
+    assert(Math.abs(focused.markers[0].point.y - focused.markers[1].point.y) >= 120);
+    for (const marker of focused.markers) {
+      assert(marker.point.x - marker.width / 2 >= 0 && marker.point.x + marker.width / 2 <= width);
+      assert(marker.point.y >= 18 && marker.point.y <= height - 18);
+    }
+  }
+  assert.deepEqual(clone(map), original);
+});
+
+test('route viewport fits both antimeridian directions without reversing or lengthening split lines', () => {
+  for (const [a, b] of [[179, -179], [-179, 179], [180, -180]]) {
+    const d = detail([place(4, a), place(5, b)]), map = api.routeGeometry(d.route.stops, d.segments), fit = api.routeMapLayout(map, 318, 240);
+    assert(!fit.global); assert(fit.viewport.width < 30); assert.equal(fit.lines.length, map.lines.length);
+    for (const line of fit.lines) for (const point of [line.from, line.to]) assert(point.x >= 55 && point.x <= 263 && point.y >= 55 && point.y <= 185);
+    if (a !== 180) { assert.equal(fit.lines.length, 2); assert(Math.abs(fit.lines[0].to.x - fit.lines[1].from.x) < 1e-7); }
+    else assert.equal(fit.markers.length, 1);
+  }
+  const d = detail([place(4, 170), place(5, 0), place(6, -170)]), map = api.routeGeometry(d.route.stops, d.segments), world = api.routeMapLayout(map, 318, 240);
+  assert(world.global); // A line traverses the otherwise empty cut: do not attach it to another copy.
+  assert(Math.abs(world.lines[0].to.x - world.markers[1].point.x) < 1e-7);
+});
+
+test('route viewport keeps empty, singleton, polar and close-point badges finite and never invents gap lines', () => {
+  const empty = api.routeMapLayout({ markers: [], lines: [] }, 318, 240); assert(empty.global); assert.equal(empty.markers.length, 0);
+  for (const latitude of [-90, 90]) {
+    const p = { ...place(), coordinates: { latitude, longitude: 20 } }, d = detail([p, p, p]), map = api.routeGeometry(d.route.stops, d.segments), fit = api.routeMapLayout(map, 318, 240);
+    assert(fit.viewport.height >= 500 / 180); assert.equal(fit.markers[0].label, '1、2、3'); assert(Math.abs(fit.markers[0].point.y - 120) < 1e-7);
+  }
+  const a = place(), b = { ...place(5), coordinates: { ...place().coordinates, longitude: place().coordinates.longitude + 0.00001 } };
+  const d = detail([a, null, b]), fit = api.routeMapLayout(api.routeGeometry(d.route.stops, d.segments), 318, 240);
+  assert.equal(fit.lines.length, 0); assert.equal(fit.markers.length, 1); assert.equal(fit.markers[0].label, '1、3');
+  const hidden = detail([{ ...place(), coordinates: null, coordinatePrecision: 'hidden' }, a]);
+  const visible = api.routeMapLayout(api.routeGeometry(hidden.route.stops, hidden.segments), 318, 240);
+  assert.deepEqual(clone(visible.markers[0].indices), [1]); assert.equal(visible.lines.length, 0);
+  const hundred = detail(Array.from({ length: 100 }, () => a)), grouped = api.routeMapLayout(api.routeGeometry(hundred.route.stops, hundred.segments), 318, 240);
+  assert.equal(grouped.markers[0].label, '1 +99'); assert.equal(grouped.markers[0].indices.length, 100); assert(grouped.markers[0].width < 100);
+  const shared = detail([place(), place(5, 90, 'hidden')], true), sharedMap = api.routeGeometry(shared.route.stops, shared.segments), sharedFit = api.routeMapLayout(sharedMap, 318, 240);
+  const publicOnly = api.routeMapLayout(api.routeGeometry([shared.route.stops[0]], []), 318, 240);
+  assert.deepEqual(clone(sharedFit.viewport), clone(publicOnly.viewport)); assert(sharedFit.markers[0].approximate); assert.equal(sharedFit.lines.length, 0);
+});
+
+test('route web map uses CSS-sized numbers, capped height, keyboard selection and reversible focus; ordinary map unchanged', () => {
+  let index = 0; const state = [], selected = [];
+  const react = { useState(initial) { const i = index++; if (!(i in state)) state[i] = initial; return [state[i], value => { state[i] = value; }]; },
+    useRef: () => ({ current: null }), useEffect: () => {}, createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.flat(Infinity).filter(c => c !== null && c !== undefined && c !== false) } }) };
+  const web = loader({ react, 'react-native': { View: 'View' }, 'react-native-paper': { Button: 'Button', Text: 'Text', useTheme: () => ({ colors: {} }) } })(resolve(root, 'ui/WorldMap.web.tsx')).default;
+  const a = place(), b = { ...place(5), coordinates: { latitude: 46.123456, longitude: 13.345678 } }, d = detail([a, a, b]), map = api.routeGeometry(d.route.stops, d.segments);
+  const render = (routeMap = map, selectedRouteIndex) => { index = 0; return web({ places: [], onSelect() {}, onPick() {}, routeMap, selectedRouteIndex, onRouteSelect: n => selected.push(n) }); };
+  const nodes = tree => typeof tree !== 'object' || !tree ? [] : [tree, ...(tree.props?.children || []).flatMap(nodes)];
+  let tree = render(); tree.props.onLayout({ nativeEvent: { layout: { width: 318 } } }); tree = render();
+  let all = nodes(tree), svg = all.find(n => n.type === 'svg'); assert.equal(svg.props.viewBox, '0 0 318 240'); assert.equal(svg.props.style.height, 240);
+  assert.deepEqual(all.filter(n => n.type === 'text').map(n => n.props.children.join('')), ['1、2', '3']); assert(all.filter(n => n.type === 'text').every(n => n.props.fontSize === '14'));
+  all.find(n => n.type === 'g' && n.props.role === 'button').props.onKeyDown({ key: 'Enter', preventDefault() {} });
+  nodes(render(map, 0)).find(n => n.type === 'g' && n.props.role === 'button').props.onKeyDown({ key: ' ', preventDefault() {} }); assert.deepEqual(selected, [0, 1]);
+  all.find(n => n.type === 'Button').props.onPress(); tree = render(); assert.equal(nodes(tree).find(n => n.type === 'Button').props.children.join(''), '聚焦路线');
+  nodes(tree).find(n => n.type === 'Button').props.onPress(); tree = render(); assert.equal(nodes(tree).filter(n => n.type === 'text').length, 2);
+  tree.props.onLayout({ nativeEvent: { layout: { width: 1176 } } }); tree = render(); assert.equal(nodes(tree).find(n => n.type === 'svg').props.style.height, 360);
+  const ordinary = nodes(render(null)), normalSvg = ordinary.find(n => n.type === 'svg'); assert.equal(normalSvg.props.viewBox, '0 0 1000 500'); assert.equal(normalSvg.props.style.aspectRatio, '2 / 1'); assert.equal(normalSvg.props.style.height, undefined); assert(!ordinary.some(n => n.type === 'Button'));
+});
 test('editing preserves unavailable original index through reorder and never stores place snapshots in draft', () => {
   const r = api.readRouteDetail(detail([place(), null, place(5)]), journeyId).route, draft = api.routeDraft(r, 4);
   assert(!JSON.stringify(draft.original).includes('coordinates')); assert(!JSON.stringify(draft.original).includes('地点'));
