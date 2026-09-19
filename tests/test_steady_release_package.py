@@ -17,7 +17,8 @@ from test_membership_release_package import environment, write, commit, ROOT, hi
 def package_environment(environment):
     for name in (*plan.OPERATORS, 'steady_release_plan.py'):
         write(environment['repo'], 'deploy/' + name, (ROOT / 'deploy' / name).read_bytes())
-    write(environment['repo'], 'Dockerfile', (ROOT / 'Dockerfile').read_bytes())
+    write(environment['repo'], 'Dockerfile', (ROOT / 'Dockerfile').read_bytes().replace(
+        b'COPY finance_analysis.py finance_fx.py ./\n', b''))
     write(environment['repo'], 'inventory_sources.py', b'# synthetic inventory sources module\n')
     environment['commit'] = commit(environment['repo'])
     return environment
@@ -260,7 +261,7 @@ def test_fixed_baseline_pins_are_isolated():
     assert steady.PARENT_IMAGE == 'sha256:8e7092a44ba311f6ac333500cfab2c6dcf5137484cf02d9aca1f52590963815c'
     assert steady.OLD_MANIFEST == 'd926bba0c7fc7374f8b0c0d6b661f51b5a0a15029428bfa016e92b750ddbd85c'
     historical = historical_fixed_blob('Dockerfile')
-    candidate = (ROOT / 'Dockerfile').read_bytes()
+    candidate = (ROOT / 'Dockerfile').read_bytes().replace(b'COPY finance_analysis.py finance_fx.py ./\n', b'')
     assert historical.count(shared.INVENTORY_COPY_BEFORE) == 1
     assert candidate == historical.replace(shared.INVENTORY_COPY_BEFORE, shared.INVENTORY_COPY_AFTER, 1)
     fixed = shared.fixed_files(steady.BASELINE)

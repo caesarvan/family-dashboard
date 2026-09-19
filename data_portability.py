@@ -12,6 +12,7 @@ from zipfile import ZipFile, ZIP_DEFLATED
 
 from flask import g, jsonify, send_file
 from finance_accounts import export_owned_accounts
+from finance_analysis import export_owned_analysis
 from finance_baseline import shared_baselines
 from shopping_settlement import export_owned_settlements
 from household_routines import export_shared_routines
@@ -23,6 +24,22 @@ from inventory_core import export_inventory, InventoryError
 
 EXPORT_SLOT = BoundedSemaphore(1)
 MAX_EXPORT_BYTES = 64 * 1024 * 1024
+MAX_REFERENCE_FX_ROWS = 10000
+ANALYSIS_TABLES = frozenset({'finance_account_profiles', 'finance_account_cashflows',
+                           'finance_account_reviews', 'finance_analysis_operations'})
+
+
+def exported_reference_fx(con):
+    """Bounded public reference observations, separate from all personal records."""
+    total = con.execute('SELECT count(*) FROM finance_fx_rates').fetchone()[0]
+    rows = [dict(row) for row in con.execute(
+        'SELECT version,rate_date AS rateDate,currency,units_per_eur AS unitsPerEur,'
+        'source_url AS sourceUrl,body_sha256 AS bodySha256,fetched_at AS fetchedAt,'
+        'last_checked_at AS lastCheckedAt FROM finance_fx_rates '
+        'ORDER BY rate_date DESC,currency,version LIMIT ?', (MAX_REFERENCE_FX_ROWS,))]
+    return rows, {'scope': 'public_ecb_reference_cache', 'totalRows': total, 'includedRows': len(rows),
+                  'rowLimit': MAX_REFERENCE_FX_ROWS, 'complete': total == len(rows),
+                  'selection': 'rate_date_desc_currency_version', 'historicalReportReconstruction': False}
 ENTITY_FIELDS = {'title','owner','done','due','tripId','journeyId','quantity','budget','actual','note',
                  'photoIds','start','end','allDay','location','source','imported','destination','saved','paid',
                  'travelTiming','startDate','endDateExclusive','workflowKey'}
@@ -164,6 +181,10 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
             shared['inventoryItems'] = con.execute("SELECT count(*) FROM inventory_items WHERE owner!=? AND visibility='shared' AND deleted_at IS NULL",(uid,)).fetchone()[0]
         if 'finance_accounts' in tables(con):
             counts['financeAccounts'] = con.execute('SELECT count(*) FROM finance_accounts WHERE owner=?', (uid,)).fetchone()[0]
+        if ANALYSIS_TABLES <= tables(con):
+            counts['financeAnalysis'] = {name: con.execute('SELECT count(*) FROM ' + table + ' WHERE owner=?', (uid,)).fetchone()[0]
+                for name, table in [('profiles', 'finance_account_profiles'), ('cashflows', 'finance_account_cashflows'),
+                                    ('reviews', 'finance_account_reviews'), ('operations', 'finance_analysis_operations')]}
         con.commit()
         return jsonify(personal=counts, shared=shared, format='zip',
                        note='导出的是当前保存的记录，并非已覆盖全部金融账户。家庭相册、采购图片和旅行资料仅含说明与元数据，不包含图片或文件；照片原图仍在来源平台，旅行文件可在资料夹逐份下载。账号连接需要重新授权。')
@@ -212,6 +233,13 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
             if {'finance_accounts', 'finance_account_valuations', 'finance_account_operations'} <= available:
                 personal['financeAccounts'] = export_owned_accounts(con, uid)
                 snapshot['coverage']['financeAccounts'] = 'manual_accounts_and_dated_valuations'
+            if ANALYSIS_TABLES <= available:
+                personal['financeAnalysis'] = export_owned_analysis(con, uid)
+                snapshot['coverage']['financeAnalysis'] = 'owner_profiles_cashflows_reviews_and_minimal_operations'
+            if 'finance_fx_rates' in available:
+                rates, coverage = exported_reference_fx(con)
+                snapshot['referenceData'] = {'financeFxRates': rates}
+                snapshot['coverage']['financeFxRates'] = coverage
             personal['investments'] = decoded_rows(con, 'hub_investments')
             personal['investmentOperations'] = []
             if 'hub_investment_operations' in available:

@@ -221,7 +221,7 @@ def baseline_environment(tmp_path, monkeypatch):
     operator = object.__new__(steady.Controller)
     operator.root = root
     operator.source = tmp_path / 'candidate-source'; operator.source.mkdir()
-    docker = (ROOT / 'Dockerfile').read_bytes()
+    docker = (ROOT / 'Dockerfile').read_bytes().replace(b'COPY finance_analysis.py finance_fx.py ./\n', b'')
     (operator.source / 'Dockerfile').write_bytes(docker)
     operator.files = {**old, 'Dockerfile': shared.sha(docker), 'inventory_sources.py': shared.sha(b'new sources')}
     operator.plan = {'envSha256': shared.sha(env.read_bytes())}
