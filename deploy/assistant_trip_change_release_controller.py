@@ -46,6 +46,7 @@ class ReleaseSpec:
     operators: tuple
     release_prefix: str
     env_sha256: str
+    schema_pair: tuple = (66, 9)
 
 
 OPERATORS = ('assistant_trip_change_release_controller.py', 'assistant_trip_change_release_package.py', 'assistant_trip_change_release_data.py', 'assistant_trip_change_release_plan.py',
@@ -174,7 +175,7 @@ class Controller(shared.Controller):
         self.marker_preflight()
         self.call(['docker', 'compose', 'config', '--quiet'])
         value = {'planSha256': self.plan_sha, 'services': services, 'oldFiles': old, 'tests': counts,
-                 'imageId': self.plan['imageId'], 'schemaBefore': [66, 9], 'schemaAfter': [66, 9],
+                 'imageId': self.plan['imageId'], 'schemaBefore': list(self.spec.schema_pair), 'schemaAfter': list(self.spec.schema_pair),
                  'membershipMarkerSha256': data.MEMBERSHIP_MARKER_SHA256, 'productionWrites': False}
         put(self.candidate / 'stage.json', value)
         return value
@@ -317,7 +318,7 @@ class Controller(shared.Controller):
         self.call(['systemctl', 'start', 'family-dashboard-backup.timer'])
         need(self.call(['systemctl', 'is-active', 'family-dashboard-backup.timer']).strip() == b'active', 'backup_timer_not_restarted')
         report.update(completed=True, completedAt=datetime.now(timezone.utc).isoformat(), services=current,
-                      preservation=after, stoppedBackup=before, householdTables=66, platformTables=9)
+                      preservation=after, stoppedBackup=before, householdTables=self.spec.schema_pair[0], platformTables=self.spec.schema_pair[1])
         record('new_services_verified_and_backup_timer_started')
         return report
 

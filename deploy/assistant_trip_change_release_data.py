@@ -5,6 +5,7 @@ membership adapter with an explicit current66 profile. Frozen old adapters are
 not patched or reinterpreted as 66 tables. Recovery uses the analysis reader.
 """
 from contextlib import closing
+from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 import re
 import shutil
@@ -44,10 +45,21 @@ def _profile(value):
              'snapshot_version_profile')
 
 
-def _backup(data_root, before, manifest_path, *, phase='current'):
+@dataclass(frozen=True)
+class DataSpec:
+    """Reviewed source-only callables; never derived from plan, payload or CLI."""
+    profile: object
+    snapshot: object
+    attempt_kind: str
+
+
+SPEC = DataSpec(_profile, snapshot, 'assistant-trip-change-release-attempt')
+
+
+def _backup(data_root, before, manifest_path, *, phase='current', spec=SPEC):
     need(phase == 'current', 'backup_profile')
     root = _directory(data_root)
-    _profile(before)
+    spec.profile(before)
     need(before['rootSha256'] == _digest(str(root)), 'snapshot_root_binding')
     manifest = migration.checked_path(manifest_path)
     manifest_hash = migration.file_digest(manifest)
@@ -91,12 +103,12 @@ def _backup(data_root, before, manifest_path, *, phase='current'):
     return proof, paths
 
 
-def validate_backup(data_root, before, manifest_path, *, phase='current'):
+def validate_backup(data_root, before, manifest_path, *, phase='current', spec=SPEC):
     """Validate original deploy/backup.py manifest (also copied intact under proof/backup-group)."""
-    return _backup(data_root, before, manifest_path, phase=phase)[0]
+    return _backup(data_root, before, manifest_path, phase=phase, spec=spec)[0]
 
 
-def finish_stopped_backup(data_root, before, manifest_path, *, phase='current'):
+def finish_stopped_backup(data_root, before, manifest_path, *, phase='current', spec=SPEC):
     """Close only empty WAL pairs created since the stopped, sidecar-free before.
 
     All writers must remain stopped. Never use this for a general WAL recovery:
@@ -104,7 +116,7 @@ def finish_stopped_backup(data_root, before, manifest_path, *, phase='current'):
     SQLite owns checkpoint/sidecar removal; the migration reader stays strict.
     """
     root = _directory(data_root)
-    backup = validate_backup(root, before, manifest_path, phase=phase)
+    backup = validate_backup(root, before, manifest_path, phase=phase, spec=spec)
     sources, pending = {}, []
     # Preflight the entire group before opening any source in read/write mode.
     for relative, fingerprint in before['databases'].items():
@@ -139,29 +151,30 @@ def finish_stopped_backup(data_root, before, manifest_path, *, phase='current'):
         except sqlite3.Error:
             raise ReleaseDataError('backup_checkpoint_failed') from None
         migration.no_sidecars(path)
-    need(snapshot(root) == before, 'backup_finished_snapshot_drift')
-    need(validate_backup(root, before, manifest_path, phase=phase) == backup, 'backup_changed_during_finish')
+    need(spec.snapshot(root) == before, 'backup_finished_snapshot_drift')
+    need(validate_backup(root, before, manifest_path, phase=phase, spec=spec) == backup, 'backup_changed_during_finish')
     return {'verified': True, 'databases': len(sources), 'emptyWalPairsClosed': len(pending),
             'beforeSha256': _digest(before), 'backup': backup}
 
 
-def begin(root, proof, *, source_identity, plan_sha256, marker_sha256=MEMBERSHIP_MARKER_SHA256):
+def begin(root, proof, *, source_identity, plan_sha256, marker_sha256=MEMBERSHIP_MARKER_SHA256, spec=SPEC):
     """Stop all writers before calling; backup all registry DBs and retain copies."""
     root, proof = shared._directory(root), shared._directory(proof)
     shared.need(not root.is_relative_to(proof) and not proof.is_relative_to(root), 'proof_must_be_external')
     identity = shared._source_identity(source_identity)
     shared.need(isinstance(plan_sha256, str) and re.fullmatch('[0-9a-f]{64}', plan_sha256), 'assistant_plan_identity')
     shared.need(marker_digest(root) == marker_sha256, 'successful_membership_marker_changed')
-    before = snapshot(root)
+    before = spec.snapshot(root)
+    spec.profile(before)
     # Exclusive first write prevents a repeated backup/startup after any failure.
-    attempt = {'kind': 'assistant-trip-change-release-attempt', 'planSha256': plan_sha256,
+    attempt = {'kind': spec.attempt_kind, 'planSha256': plan_sha256,
                'beforeSha256': shared._digest(before), 'sourceIdentity': identity,
                'sourceIdentitySha256': shared._digest(identity), 'markerSha256': marker_sha256}
     shared._write_new(proof / 'attempt.json', attempt)
     shared._write_new(proof / 'before.json', before)
     receipt = backup_all(root)
     manifest = root / 'backups' / receipt['manifest']
-    finished = finish_stopped_backup(root, before, manifest, phase='current')
+    finished = finish_stopped_backup(root, before, manifest, phase='current', spec=spec)
     saved = proof / 'backup-group'
     saved.mkdir(mode=0o700)
     record = shared._read_json(manifest)
@@ -173,31 +186,31 @@ def begin(root, proof, *, source_identity, plan_sha256, marker_sha256=MEMBERSHIP
     retained_manifest = saved / 'backups' / receipt['manifest']
     retained_manifest.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(manifest, retained_manifest); retained_manifest.chmod(0o600)
-    backup = validate_backup(root, before, retained_manifest, phase='current')
-    shared.need(snapshot(root) == before and marker_digest(root) == marker_sha256, 'backup_state_changed')
+    backup = validate_backup(root, before, retained_manifest, phase='current', spec=spec)
+    shared.need(spec.snapshot(root) == before and marker_digest(root) == marker_sha256, 'backup_state_changed')
     for name, value in [('backup.json', receipt), ('backup-finish.json', finished), ('backup-verified.json', backup)]:
         shared._write_new(proof / name, value)
     return {'verified': True, 'databases': backup['databases'], 'households': backup['households'],
             'logicalSha256': backup['logicalSha256'], 'markerSha256': marker_sha256}
 
 
-def check_stopped(root, proof, *, source_identity, plan_sha256, marker_sha256=MEMBERSHIP_MARKER_SHA256):
+def check_stopped(root, proof, *, source_identity, plan_sha256, marker_sha256=MEMBERSHIP_MARKER_SHA256, spec=SPEC):
     """After real app initialization and clean stop, compare complete current group."""
     root, proof = shared._directory(root), shared._directory(proof)
     attempt = shared._read_json(shared.migration.checked_path(proof / 'attempt.json'))
     before = shared._read_json(shared.migration.checked_path(proof / 'before.json'))
     identity = shared._source_identity(source_identity)
-    shared.need(attempt == {'kind': 'assistant-trip-change-release-attempt', 'planSha256': plan_sha256,
+    shared.need(attempt == {'kind': spec.attempt_kind, 'planSha256': plan_sha256,
         'beforeSha256': shared._digest(before), 'sourceIdentity': identity,
         'sourceIdentitySha256': shared._digest(identity), 'markerSha256': marker_sha256}, 'assistant_attempt_binding')
-    _profile(before)
+    spec.profile(before)
     shared.need(marker_digest(root) == marker_sha256, 'successful_membership_marker_changed')
     receipt = shared._read_json(shared.migration.checked_path(proof / 'backup.json'))
     manifest = shared._relative(proof / 'backup-group/backups', receipt['manifest'])
-    backup = validate_backup(root, before, manifest, phase='current')
+    backup = validate_backup(root, before, manifest, phase='current', spec=spec)
     expected = shared._read_json(shared.migration.checked_path(proof / 'backup-verified.json'))
     shared.need(backup == expected, 'retained_backup_changed')
-    after = snapshot(root)
+    after = spec.snapshot(root)
     shared.need(after['rootSha256'] == before['rootSha256'] and
                 shared._logical(after) == shared._logical(before), 'assistant_database_drift')
     shared.need(marker_digest(root) == marker_sha256, 'successful_membership_marker_changed')
