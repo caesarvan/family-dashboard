@@ -11,6 +11,7 @@ COPY shopping_media.py shopping_settlement.py finance_baseline.py spending_obser
 COPY finance_source_bridge.py finance_accounts.py journey_time.py journey_reschedule.py ./
 COPY finance_analysis.py finance_fx.py ./
 COPY household_spaces.py journey_workflows.py finance_hub.py home_assistant.py ./
+COPY assistant_trip_intent.py assistant_trip_change_api.py ./
 COPY journey_documents.py journey_places.py ./
 COPY inventory_core.py inventory_api.py inventory_sources.py ./
 COPY calendar_publish.py financial_files.py investment_import.py investment_operations.py ./

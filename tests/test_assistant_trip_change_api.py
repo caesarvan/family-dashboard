@@ -1,8 +1,4 @@
-"""Real sessions/SQLite and existing reschedule routes; only provider I/O faked.
-
-The author base predates app wiring. The fixture registers the real new module
-through the existing register_assistant call, including newly created homes.
-"""
+"""Real app registration, sessions, SQLite and reschedule; only provider I/O faked."""
 from contextlib import closing, contextmanager
 from copy import deepcopy
 import json
@@ -31,20 +27,7 @@ PROMPT = '把东京旅行推迟三天'
 
 
 @pytest.fixture(autouse=True)
-def registration_and_no_network(monkeypatch):
-    original = server.register_assistant
-
-    def register_once(app, *args, **kwargs):
-        if 'assistant_trip_change' not in app.view_functions:
-            api.register_assistant_trip_change(app, *args, **kwargs)
-
-    def register(app, db, Problem, body, require_member, audit, limited, validate, now):
-        original(app, db, Problem, body, require_member, audit, limited, validate, now)
-        register_once(app, db, Problem, body, require_member, limited)
-
-    monkeypatch.setattr(server, 'register_assistant', register)
-    monkeypatch.setattr(server, 'register_assistant_trip_change', register_once, raising=False)
-
+def no_network(monkeypatch):
     def deny(*_args, **_kwargs):
         raise AssertionError('Only synthetic provider functions are allowed')
     monkeypatch.setattr(socket.socket, 'connect', deny)
@@ -53,13 +36,19 @@ def registration_and_no_network(monkeypatch):
 
 @pytest.fixture
 def app(tmp_path):
-    return server.create_app({'TESTING': True, 'DATA_DIR': str(tmp_path / 'data'),
+    application = server.create_app({'TESTING': True, 'DATA_DIR': str(tmp_path / 'data'),
         'SECRET_KEY': 'synthetic-trip-intent-key', 'SESSION_COOKIE_SECURE': False,
         'PUBLIC_ORIGIN': 'http://localhost', 'MEMBER1_PASSWORD': 'testing-password-one',
         'MEMBER2_PASSWORD': 'testing-password-two', 'ASSISTANT_PROVIDER': 'openai',
         'OPENAI_API_KEY': '', 'OPENAI_MODEL': '', 'NVIDIA_API_KEY': '', 'NVIDIA_MODEL': '',
         'MICROSOFT_CLIENT_ID': '', 'MICROSOFT_CLIENT_SECRET': '',
         'GOOGLE_CLIENT_ID': '', 'GOOGLE_CLIENT_SECRET': ''})
+    routes = [rule for rule in application.url_map.iter_rules() if rule.rule == URL]
+    assert len(routes) == 1
+    assert routes[0].endpoint == 'assistant_trip_change'
+    assert routes[0].methods == {'POST', 'OPTIONS'}
+    assert application.view_functions[routes[0].endpoint].__module__ == 'assistant_trip_change_api'
+    return application
 
 
 @contextmanager
