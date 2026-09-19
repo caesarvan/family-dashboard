@@ -169,8 +169,6 @@ def _change(prompt):
     if len(list(MODIFY.finditer(prompt))) > 1:
         issues.append('multiple_date_instructions')
     for match in SHIFT.finditer(prompt):
-        if re.match(r'\s*(?:半|[零又]?\s*[0-9一二两三四五六七八九十]+\s*(?:小时|钟头|分钟))', prompt[match.end():]):
-            issues.append('partial_day_shift')
         if re.match(r'\s*(?:到|至|~|～|-)\s*[0-9一二两三四五六七八九十百]+\s*天', prompt[match.end():]):
             issues.append('ambiguous_shift_range')
         value = _number(match[2])
@@ -223,6 +221,48 @@ def _matches(target, candidates):
         return candidates
     terms = [term for term in re.split(r'[\s,，、]+', target.casefold()) if term]
     return [c for c in candidates if all(term in c['title'].casefold() for term in terms)]
+
+
+def _request_constraints(prompt, candidates):
+    """Original-text blockers apply before any model target assistance.
+
+    This is a bounded Chinese date-intent adapter, not a general language parser.
+    Unsupported modality, time units and plural scope require clarification.
+    """
+    issues = []
+    names = {candidate['title'] for candidate in candidates}
+    names.update(re.sub(r'(?:的)?(?:旅行|行程|旅游)$', '', name).strip() for name in list(names))
+    modality = prompt
+    # Names are data, not modality: 不来梅 must not be treated as a negation.
+    for name in sorted((name for name in names if len(name) >= 2), key=len, reverse=True):
+        modality = modality.replace(name, ' ' * len(name))
+    negation = (r'不|勿|莫|禁止|取消|撤回|撤销|作废|放弃|停止|终止|无需|无须|拒绝|'
+                r'没(?:有)?(?:打算|想|准备)|别(?=.{0,12}(?:' + MODIFY.pattern + '))')
+    if re.search(negation, modality):
+        issues.append('negated_request')
+    action = MODIFY.search(prompt)
+    tail = prompt[action.start():] if action else ''
+    if re.search(r'半|小时|钟头|分钟|秒钟|秒|刻钟|[0-9一二两三四五六七八九十]+\s*时', tail):
+        issues.append('partial_day_shift')
+    target = _target(prompt)
+    # Look for distinct, non-overlapping authorized names/stems. A connector is
+    # irrelevant: 跟, 和, /, 以及 etc. cannot let the model narrow two trips to one.
+    mentions = []
+    for title in {candidate['title'] for candidate in candidates}:
+        stem = re.sub(r'(?:的)?(?:旅行|行程|旅游)$', '', title).strip()
+        for name in {title, stem}:
+            if len(name) < 2:
+                continue
+            mentions.extend((match.start(), match.end(), title) for match in re.finditer(re.escape(name), prompt))
+    mentions.sort(key=lambda item: (item[0], -(item[1] - item[0])))
+    distinct, end = set(), -1
+    for start, stop, title in mentions:
+        if start >= end:
+            distinct.add(title)
+            end = stop
+    if len(distinct) > 1 or re.search(r'(?:都|分别)$|^(?:这些|这几|这两)', target):
+        issues.append('multiple_trip_targets')
+    return issues
 
 
 def decode_model_intent(raw, prompt, candidates):
@@ -290,9 +330,7 @@ def plan_existing_trip(prompt, candidates, *, selected_ref=None, model_output=No
         return output
     output['intent'] = 'reschedule_existing'
     change, issues = _change(prompt)
-    if (re.search(r'不要|别(?:再)?(?:把|将|改|推|提)|不想|取消|不需要|不可以|不能|不可|不允许', prompt)
-            or re.search(r'(?:不|无需|不用|不必)(?:再|要|能|会|打算)?\s*(?:' + MODIFY.pattern + ')', prompt)):
-        issues.append('negated_request')
+    issues.extend(_request_constraints(prompt, catalog))
     if re.search(r'新建|新增|创建|计划一[趟次]|安排一[趟次]', prompt):
         issues.append('mixed_create_and_modify')
     if re.search(r'或|还是|要么|二选一', prompt):
@@ -303,14 +341,6 @@ def plan_existing_trip(prompt, candidates, *, selected_ref=None, model_output=No
         issues.append('time_or_timezone_requires_manual_review')
     target = _target(prompt)
     matches = _matches(target, catalog)
-    # Model target assistance may not reduce a multi-trip request to one named
-    # trip. This adapter supports a single trip per original preview/apply flow.
-    parts = [re.sub(r'(?:的)?(?:旅行|行程|旅游)?(?:都|分别)?$', '', part).strip()
-             for part in re.split(r'和|与|以及|及|还有|、|，|,', target)]
-    named_sets = [_matches(part, catalog) for part in parts if part]
-    if (re.search(r'(?:旅行|行程|旅游)\s*(?:和|与|以及|及|还有|、|，|,)|(?:都|分别)$|^(?:这些|这几|这两)', target)
-            or len(named_sets) > 1 and all(named_sets) and len({c['ref'] for group in named_sets for c in group}) > 1):
-        issues.append('multiple_trip_targets')
     if model_output is not None:
         model = decode_model_intent(model_output, prompt, catalog)
         if model['intent'] != output['intent']:

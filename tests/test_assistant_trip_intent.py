@@ -311,6 +311,50 @@ def test_model_target_assistance_cannot_narrow_multiple_named_trips(prompt):
     assert result['draft'] is None and 'multiple_trip_targets' in result['issues']
 
 
+@pytest.mark.parametrize('prefix', ['请勿把', '不要把', '禁止把', '取消把', '撤回把', '撤销把',
+    '放弃把', '停止把', '不应该把', '不应当把', '不可以把', '不允许把', '别把', '莫把', '不太想把', '没打算把', '无需把'])
+def test_modality_class_blocks_date_suggestions_before_model_assistance(prefix):
+    candidates = catalog(detail(title='冰岛旅行'))
+    prompt = prefix + '冰岛旅行推迟三天'
+    for model in (None, model_output(candidates)):
+        result = plan_existing_trip(prompt, candidates, model_output=model)
+        assert result['status'] == 'needs_input' and result['draft'] is None
+        assert 'negated_request' in result['issues']
+
+
+@pytest.mark.parametrize('suffix', ['半', '和六小时', '又六小时', '零30分钟', '加上一小时', '以及两分钟', '，另加半天', '6小时', '多半天'])
+def test_all_sub_day_fragments_block_integer_truncation(suffix):
+    candidates = catalog(detail(title='冰岛旅行'))
+    for model in (None, model_output(candidates)):
+        result = plan_existing_trip('把冰岛旅行推迟三天' + suffix, candidates, model_output=model)
+        assert result['status'] == 'needs_input' and result['draft'] is None
+        assert 'partial_day_shift' in result['issues']
+
+
+@pytest.mark.parametrize('connector', ['和', '跟', '与', '以及', '、', '/', '还有', '同时也把', ' '])
+def test_distinct_authorized_names_block_model_narrowing_regardless_of_connector(connector):
+    candidates = catalog(detail(title='冰岛旅行'), detail(2, title='巴黎旅行'))
+    result = plan_existing_trip('把冰岛旅行' + connector + '巴黎旅行推迟三天', candidates,
+        model_output=model_output(candidates, candidateRefs=[candidates[0]['ref']]))
+    assert result['status'] == 'needs_input' and result['draft'] is None
+    assert 'multiple_trip_targets' in result['issues']
+
+
+def test_positive_complex_model_target_and_single_overlapping_name_still_work():
+    candidates = catalog(detail(title='不来梅旅行'), detail(2, title='不来梅旅行二'))
+    result = plan_existing_trip('把我们上次的不来梅旅行二推迟三天', candidates,
+        model_output=model_output(candidates, target='不来梅旅行二', candidateRefs=[candidates[1]['ref']]))
+    assert result['status'] == 'ready' and result['draft']['journeyId'] == candidates[1]['journeyId']
+
+
+def test_second_named_trip_after_the_date_action_cannot_be_ignored():
+    candidates = catalog(detail(title='冰岛旅行'), detail(2, title='巴黎旅行'))
+    result = plan_existing_trip('把冰岛旅行推迟三天，巴黎旅行也一样', candidates,
+        model_output=model_output(candidates, candidateRefs=[candidates[0]['ref']]))
+    assert result['status'] == 'needs_input' and result['draft'] is None
+    assert 'multiple_trip_targets' in result['issues']
+
+
 @pytest.mark.parametrize('patch', [
     {'journeyId': 'f' * 24}, {'actions': [{'kind': 'write'}]}, {'previewToken': 'fake'},
     {'targetText': '不存在的请求文字'}, {'candidateRefs': [None]}, {'candidateRefs': ['invalid']},
