@@ -1,6 +1,8 @@
-# 售后关联家庭待办：候选验收
+# 售后关联家庭待办：发布验收
 
-本记录对应采购批次的售后协作增量。**当前为候选，尚未部署**；上线须补实际候选镜像、Linux 验证、数据保全演练及发布后审计。已上线基线仍见 [采购关联库存验收](SHOPPING-INVENTORY-ACCEPTANCE.md#shopping-inventory-release)。
+<a id="inventory-followup-release"></a>
+
+本记录对应采购批次的售后协作增量，**已于 2026-09-19 12:34:35（北京时间）激活，12:35:42 独立只读审计通过**。R2 实际镜像验证、合成数据保全演练及最终发布组合审查已通过，生产一户两库保持 61/9。此前线上基线见 [采购关联库存验收](SHOPPING-INVENTORY-ACCEPTANCE.md#shopping-inventory-release)；本次发布不代表本人真实库存、外部任务平台或实体电视已验收。
 
 ## 用户行为与边界
 
@@ -25,6 +27,8 @@
 | 新前端测试文件打包 | 3/3 | 实际临时 Git/archive；新测试允许，未知前端文件仍拒绝 |
 | 真实浏览器 R1 | 四条流程通过 | 创建并完成后重启保留、已提交响应丢失、伙伴冲突与删除历史、私有库存撤销共享 |
 | 真实浏览器 R2 | 三次独立单流程各通过 | 对前三条流程补充稳定截图；未重复 R1 的第四条权限流程 |
+| 候选 Linux R2 | 164/164，零失败、错误、跳过 | 冻结四模块；真实镜像内测试，退出 0，不访问生产 |
+| 候选保全演练 R2 | 两户三库通过 | 61/61/9，实际 app 启动前后 schema／行／序列保持；合成 marker，不是生产发布演练 |
 
 R2 截图等待字体、目标可见和至少 600ms 稳定几何，确认输入框标签没有稳定重叠。2026-09-19 补充 DOM、计算样式、平台字体和独立 HTML 对照：按钮只有一个文字节点，无阴影或伪元素文字；相同原 bundle、样式和字体在真正 DPR 2 的 Edge 浏览器上下文中显示清晰。证据支持 Windows 低像素密度的字体栅格化观感，未发现产品重复渲染，不修改产品或重新构建。
 
@@ -49,10 +53,56 @@ R2 截图等待字体、目标可见和至少 600ms 稳定几何，确认输入�
 
 R1 实际 Expo 导出来自 `adbb1d87c58fff11fd5b06ce3ee84b53d35251d5`，108 个输入、23 个导出。两次 TypeScript 检查及 Expo 子进程均退出 0；外层脚本因不识别中文字串的 JS Unicode 转义退出 1。该失败和原始工具回执保留，独立审查后的恢复记录为 `worktrees/integration/test-results/inventory-followup-build-r1/build-evidence.json`，SHA256 `36a0258a72b46fb85465d24981d9442b8ad14531658435cfa3e6ca7843bc035b`。如产品前端发生修复，须重新构建，不沿用旧 bundle 冒充修复结果。
 
-## 未完成事项
+## 候选发布准备与失败保留
 
-- 最终候选包与发布组合审查；本地视觉诊断已完成，原构建复用。
-- 候选 Linux 镜像测试、两家庭三库 61/9 保全演练、生产发布与独立只读审计。
+Linux 候选 R1 已实际完成镜像构建；随后两个阶段在准入时停止，未开始镜像内测试或保全演练，也未进入生产 stage／activate。测试选择器因超长自动 nodeid 返回 `invalid node ID`；演练输出位于候选输入目录内，返回 `output overlaps input`。原命令、退出码、stdout／stderr 和构建记录保留在私有目录 `steady-followup-linux-originals-r1/`，不能把镜像构建成功写成 Linux 验证通过。
+
+测试修订 `37d8ed602928ff6184bd522c9c870ebe7fca9e66` 只为 JSON 拒绝测试增加五个短名称；输入参数、函数及断言均未变，发布选择器的 2000 字符限制未放宽。实际重新收集四个模块仍为 164 项，最长 nodeid 为 159 字符；仅重跑受影响函数，5/5 通过，无失败、错误或跳过。原件 `worktrees/followup-test-case-names/test-results/case-names-r1/result.json` 的 SHA256 为 `7cf122d83f3d7e3e49305d9e5ca95da61be0886c4853d89ac657ce4e61f98d45`。演练 R2 使用候选输入之外的独立输出目录；R1 失败原件保持。
+
+R2 源码为 `db7babc1de573614593620832b7f9a817af73623`，tree `08db7e96847fdb3e757797886218fb616eac882f`，复用上方 `adbb1d87` 实际 Expo 导出。实际镜像为 `sha256:8e7092a44ba311f6ac333500cfab2c6dcf5137484cf02d9aca1f52590963815c`；运行文件未改，因此与 R1 镜像 ID 相同，R2 的包与测试选择仍各自绑定新源码。私有 `steady-followup-package-r2/` 是本次实际安装包，固定身份如下：
+
+| 记录 | SHA256 |
+|---|---|
+| `package.json` | `eb0e69e3474fbc0dcc9829d51b8e074e9b36be282c7a4e8f49de35e667f52217` |
+| `release.tar.gz` | `3f831a6ee030c88525c0e4c29b97cf38e9ffd97a5de53aad8662c4ac7927d72a` |
+| `release-manifest.json` | `d926bba0c7fc7374f8b0c0d6b661f51b5a0a15029428bfa016e92b750ddbd85c` |
+
+R2 Linux 验证于 **2026-09-19 12:09:32（北京时间）**完成，164 项全通过，容器与验证命令均退出 0，无跳过、错误或失败。独立输出目录的保全演练于 12:04:33 完成：从固定父镜像建立合成两户三库，停写完整备份后以候选实际 app 初始化，再核对 61/61/9 的 schema、行及序列保持。演练显式替换合成 marker，`exactProductionControllerProgram: false`，未访问生产；不能代替实际生产 stage／activate 的保全证据。
+
+R2 原件保留在私有目录 `steady-followup-linux-originals-r2/`，包括实际命令、日志、JUnit 与报告；未下载数据库或环境密钥。关键原件：
+
+| 记录 | SHA256 |
+|---|---|
+| `build/build.json` | `591a0bc82a2ebcb6aa705a19ce6a98b7d1fef07e976c22297a19028af265263c` |
+| `validation/validation.json` | `57946a8544d1e328689dc3973525cb1aff4ebaa862f25ccb33a95d6956dd70ca` |
+| `rehearsal/result.json` | `45035d3c681e6a58b3d307ee9f8c7e4de900d6c3414929c729a485dcd7d525aa` |
+
+## 实际发布身份
+
+最终源码、包与 Linux／演练组合审查通过后，代码合入 main `0d2f4133d45597bca6f28ce3140a8f5aaf7657fe`，与受验 source `db7babc1de573614593620832b7f9a817af73623` 同树 `08db7e96847fdb3e757797886218fb616eac882f`。随后 stage 与 activate 均实际退出 0，激活于 2026-09-19 04:34:35.229875 UTC 完成。后续纯文档提交不改变已安装包或前端构建来源。
+
+| 项目 | 固定身份 |
+|---|---|
+| 发布候选 | `/opt/family-dashboard-candidates/steady-followup-61-20260919-r1` |
+| 实际发布目录 | `/opt/family-dashboard-releases/steady-61-20260919T043302337638Z` |
+| Plan SHA256 | `4f852dbe99a588bed5032f84427251680c8edac65caa34f21632f3b8599bf138` |
+| Stage SHA256 | `276f629bb50ee978342ef2860dbb0b8ae60c275f9e3b0c188dc104a4cb8f987f` |
+| Activation SHA256 | `4adbb020b1f21882b81a8daecf601191159a1ab4a00723d49355b1b94143bb90` |
+| 最终组合审查 `steady-followup-linux-release-review-r1.json` | `27c5cc193c5a5f36383d1880b1221df78fb9333a8aa401df8429ed5cfd455e7f` |
+| 固定计划审查 `steady-followup-plan-review-r1.json` | `c28e082718959cb7c9e49efe9f5efb79d7183dbbc229e38d79da0d63dc77dfbb` |
+
+阶段命令与退出码保留在私有 `followup-final-stage-transport.stdout`、`followup-final-activate-transport.stdout`；完整阶段回执保存在上述候选目录，并已从服务器取回允许清单中的 13 份 JSON 原件，位于 `steady-followup-production-audit-r1/originals/`。本轮与此前失败原件均保留。
+
+## 独立只读发布后审计
+
+审计观测时间为 **2026-09-19 04:35:42.126693 UTC（北京时间 12:35:42）**，实际命令退出 0、stderr 为空。854 份安装源码匹配；app／sync／media 各 120 份运行文件匹配，四个服务运行且重启数为 0，app 健康。正常 TLS 读回 75 项静态资源散列匹配，14 个匿名接口返回 401；备份定时器为 active。
+
+实际生产是**一户两库**，本轮停写备份及 app 启动证据确认 61/9 的 schema、行、序列和成功成员迁移 marker 保持。原 `.env` 及服务环境键值映射不变，映射顺序可以变化。审计核对既有证据与备份散列，未查询运行数据库或改动服务；**不代表重新比较活跃数据库的最新数据**。
+
+审查原件 `steady-followup-production-readonly-review-r1.json` 的 SHA256 为 `1649b5cf0d444184d196e061f0d4a57d0374500df3c617e69ab9f228cae821b2`；原 stdout 为 `steady-followup-production-audit-r1/audit.stdout`，SHA256 `c7bec22fa2256b30c41901b447821a62876c9b105c325e11eba5ba62d98cfeda`。审计没有返回数据库内容或环境密钥，也没有触发账户初始化接口或真实云写入。
+
+## 仍未验收的范围
+
 - 本人实际库存流程、外部任务同步以及实体电视未在本批验收。用户暂时无法使用电视，保留待验，不阻止其他开发。
 
 本增量只补售后与家庭任务的关联，不代表完整采购链、全部家庭中枢功能或目标场景 A–D 已验收。
@@ -118,4 +168,4 @@ R1 原件保留在作者 worktree 的 `test-results/expo-inventory-followup-2026
 
 失败修正后可以把 `--case all` 换成上表唯一精确 case，仅重跑受影响流程。报告必须保留首轮失败、修订后的 harness/source/build 身份和各轮覆盖；单 case 报告明确 `fullSuite: false`。
 
-脚本静态检查使用指定 Python `-B -X utf8` 读取文件，执行 `ast.parse` 和 `compile(..., 'exec')`，不导入 app、不起服务、不写 pyc；提交前执行 `git diff --check`。R2 已取得运行与稳定截图证据，补充按钮诊断见上方；尚无性能、部署或真实家庭验收结论。
+脚本静态检查使用指定 Python `-B -X utf8` 读取文件，执行 `ast.parse` 和 `compile(..., 'exec')`，不导入 app、不起服务、不写 pyc；提交前执行 `git diff --check`。R2 已取得运行与稳定截图证据，补充按钮诊断及后续发布证据见上方；浏览器脚本本身不提供性能、生产部署或真实家庭验收结论。
