@@ -83,6 +83,6 @@
 | 生产独立审计 | `worktrees/task-dependencies-browser-r4/test-results/production-audit-r1/task-dependencies-production-readonly-r1.result.json`，`ea6f6cebea08105f7d809d0220c28c8e8de02ae35b599fcf6cd371d690ca17df` |
 | 审计执行终态 | 同目录 `task-dependencies-production-readonly-r1.execution.json`，`7e8c755ff2b2e05b197fad086eefb73cd877aa3b6f0a07a57de7b7a14813e14f` |
 
-本人完整 A–D 验收仍为 **0/4**；真实云写入需要明确目的地与本人确认，实体电视暂无设备，真实家庭连续使用和生产恢复另验。当前站内提醒候选 source `a382c9b1a8c4c92a93d9872b27a4ee3da0c916d4` 已有 82 后端／31 Node／两组 TypeScript／23 导出的独立证据审查，仍未上线；提醒的两表、已读、暂缓、恢复和迁移不能计入本次任务依赖版本。
+本人完整 A–D 验收仍为 **0/4**；真实云写入需要明确目的地与本人确认，实体电视暂无法验证，真实家庭连续使用和生产恢复另验。当前站内提醒候选 source `a382c9b1a8c4c92a93d9872b27a4ee3da0c916d4` 已有 82 后端／31 Node／两组 TypeScript／23 导出的独立证据审查，仍未上线；提醒的两表、已读、暂缓、恢复和迁移不能计入本次任务依赖版本。
 
 后续协作从当前已审主线创建独立分支与 worktree，核对真实安装身份；不要把候选覆盖到发布目录。详细合同：[本地任务依赖](TASK-DEPENDENCIES.md) · [Expo 使用与交互](EXPO-TASK-DEPENDENCIES.md) · [发布适配](TASK-DEPENDENCIES-RELEASE.md) · [完整验收场景](ACCEPTANCE-SCENARIOS.md) · [Git 协作](GIT-WORKFLOW.md)。模块文档的作者阶段细节保留原范围，当前上线事实以本页为准。
