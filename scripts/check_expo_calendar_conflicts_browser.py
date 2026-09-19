@@ -36,6 +36,39 @@ NOW = datetime(2027, 10, 13, 4, tzinfo=timezone.utc)  # Wednesday, Beijing noon.
 DAY = '2027-10-13'
 ITEMS = '/api/items/events'
 
+LAYOUT_SCRIPT = '''() => {
+  const clipped=[], scrollableClipped=[];
+  function reachableByHorizontalScroll(node, rect) {
+    for (let parent=node;parent&&parent!==document.body;parent=parent.parentElement) {
+      const style=getComputedStyle(parent);
+      if(style.position==='fixed'||style.position==='sticky') return false;
+      if(parent===node) continue;
+      const box=parent.getBoundingClientRect(), left=box.left+parent.clientLeft;
+      const right=left+parent.clientWidth;
+      if((style.overflowX==='hidden'||style.overflowX==='clip')&&(rect.left<left-2||rect.right>right+2)) return false;
+      if((style.overflowX==='auto'||style.overflowX==='scroll')&&parent.scrollWidth>parent.clientWidth+2) {
+        const contentLeft=rect.left-left+parent.scrollLeft,contentRight=rect.right-left+parent.scrollLeft;
+        return parent.clientWidth>0&&left>=-2&&right<=innerWidth+2&&rect.width<=parent.clientWidth+2
+          &&contentLeft>=-2&&contentRight<=parent.scrollWidth+2;
+      }
+    }
+    return false;
+  }
+  for(const node of document.querySelectorAll('input,textarea,button,[role="button"],[role="checkbox"]')) {
+    const rect=node.getBoundingClientRect();
+    if(rect.width>0&&rect.height>0&&rect.bottom>0&&rect.top<innerHeight&&getComputedStyle(node).visibility!=='hidden'
+        &&(rect.left< -2||rect.right>innerWidth+2)) {
+      const item={label:node.getAttribute('aria-label')||node.textContent,box:rect.toJSON()};
+      (reachableByHorizontalScroll(node,rect)?scrollableClipped:clipped).push(item);
+    }
+  }
+  return {viewport:innerWidth,bodyScroll:document.body.scrollWidth,rootScroll:document.documentElement.scrollWidth,clipped,scrollableClipped};
+}'''
+
+
+def layout_metrics(page):
+    return page.evaluate(LAYOUT_SCRIPT)
+
 
 def selected_cases(values):
     if values is None:
@@ -70,7 +103,6 @@ def range_button(page, label):
 class Run(BaseRun):
     record = previous.Run.record
     proof = previous.Run.proof
-    capture = previous.Run.capture
     exchange = previous.Run.exchange
 
     def __init__(self, root, bundle, folder, report, out, lifecycle):
@@ -110,6 +142,26 @@ class Run(BaseRun):
             assert not con.execute('PRAGMA foreign_key_check').fetchall()
             return {table: sorted(con.execute('SELECT * FROM "' + table + '"').fetchall(), key=repr)
                     for table in ('entities', 'settings', 'audit')}
+
+    def capture(self, page, label, focus, *, full_text=None):
+        expect(focus).to_be_visible()
+        focus.scroll_into_view_if_needed()
+        page.evaluate('() => document.fonts.ready')
+        page.evaluate('() => new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))')
+        metrics = layout_metrics(page)
+        assert metrics['viewport'] in (390, 1280)
+        assert metrics['bodyScroll'] <= metrics['viewport'] + 2 and metrics['rootScroll'] <= metrics['viewport'] + 2 and not metrics['clipped'], metrics
+        if full_text is not None:
+            text_metrics = full_text.evaluate('''node => {const range=document.createRange();range.selectNodeContents(node);
+              return {content:node.textContent,clientHeight:node.clientHeight,scrollHeight:node.scrollHeight,
+              box:node.getBoundingClientRect().toJSON(),text:range.getBoundingClientRect().toJSON()};}''')
+            assert text_metrics['scrollHeight'] <= text_metrics['clientHeight'] + 1, text_metrics
+            assert text_metrics['text']['bottom'] <= text_metrics['box']['bottom'] + 1, text_metrics
+            assert text_metrics['text']['top'] >= text_metrics['box']['top'] - 1, text_metrics
+            metrics['fullText'] = text_metrics
+        path = self.out / (label + '.png')
+        page.screenshot(path=str(path), full_page=True)
+        self.report['screenshots'].append({'path': path.relative_to(self.out.parent).as_posix(), 'sha256': sha(path), 'metrics': metrics})
 
     def events(self, ctx):
         return self.get(ctx, '/api/state')['events']
