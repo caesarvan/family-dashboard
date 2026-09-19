@@ -9,6 +9,7 @@ from bisect import bisect_right
 from datetime import date, datetime, timedelta, timezone
 from fractions import Fraction
 from functools import wraps
+from zoneinfo import ZoneInfo
 import hashlib
 import json
 import re
@@ -633,10 +634,19 @@ def register_finance_analysis(app, db, Problem, body, require_member, audit, *, 
                 capacity(con, current.owner)
         if old is not None:
             return jsonify(**old, replayed=True)
+        # The UI selects calendar dates in Shanghai; between local midnight and
+        # 08:00 that date is still tomorrow in UTC. Keep the original payload for
+        # idempotency and request only observations that can already exist.
+        instant = datetime.now(timezone.utc)
+        if date.fromisoformat(end) > instant.astimezone(ZoneInfo('Asia/Shanghai')).date():
+            fail('汇率刷新截止日不可晚于北京时间今天，请调整日期后重试')
+        observed_end = min(date.fromisoformat(end), instant.date()).isoformat()
         # current.read has released every SQLite transaction before network I/O.
         try:
-            batch = fx.fetch_ecb_rates(lookback(start), end)
+            batch = fx.fetch_ecb_rates(lookback(start), observed_end)
         except fx.FxError as error:
+            if error.code == 'fx_invalid_range':
+                fail('公开汇率日期范围不可用，请检查起止日期后重试')
             fail('公共参考汇率暂不可用，已有缓存保持', 'rates_unavailable', getattr(error, 'status', 502))
         return write(current, 'rates_refresh', None, value,
                      lambda con, _owner, _now: fx.save_fx_batch(con, batch))

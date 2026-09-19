@@ -1,6 +1,7 @@
 """Real temporary households/sessions/SQLite; synthetic amounts, no public I/O."""
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing, contextmanager
+from datetime import datetime, timezone
 from fractions import Fraction
 from pathlib import Path
 import json
@@ -662,3 +663,81 @@ def test_refresh_key_conflict_never_calls_public_fetch_and_cache_error_is_safe(a
     before=snapshot(app)
     denied(client.post(URL+'/rates/refresh',json={'requestId':key(2),'start':START,'end':END},headers=headers),503)
     assert snapshot(app) == before and not operation(client,2)['found']
+
+
+def freeze_utc(monkeypatch, instant):
+    clock = [datetime.fromisoformat(instant)]
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return clock[0].astimezone(tz) if tz is not None else clock[0].replace(tzinfo=None)
+    monkeypatch.setattr(analysis, 'datetime', FrozenDateTime)
+    return clock
+
+
+@pytest.mark.parametrize('instant,selected_end,observed_end', [
+    ('2026-09-18T15:59:59+00:00', '2026-09-18', '2026-09-18'),
+    ('2026-09-18T16:00:00+00:00', '2026-09-19', '2026-09-18'),
+    ('2026-09-18T23:59:59+00:00', '2026-09-19', '2026-09-18'),
+    ('2026-09-19T00:00:00+00:00', '2026-09-19', '2026-09-19'),
+])
+def test_refresh_shanghai_midnight_clips_only_network_date_and_preserves_replay(app, monkeypatch, instant, selected_end, observed_end):
+    client, headers = member(app)
+    create(client, headers, currency='USD')
+    clock = freeze_utc(monkeypatch, instant)
+    calls = []
+    def fetch(start, end):
+        assert not g.db.in_transaction
+        assert end <= clock[0].date().isoformat()
+        calls.append((start, end))
+        return batch(start, end)
+    monkeypatch.setattr(fx, 'fetch_ecb_rates', fetch)
+    payload = {'requestId': key(1), 'start': START, 'end': selected_end}
+    first = client.post(URL+'/rates/refresh', json=payload, headers=headers)
+    assert first.status_code == 200, first.json
+    assert calls == [('2026-08-25', observed_end)]
+    view = report(client, end=selected_end)
+    assert view['end'] == view['series'][-1]['date'] == selected_end
+    closing = view['accounts'][0]['closing']
+    assert closing['date'] == selected_end and closing['valuation']['asOf'] == END
+    assert closing['fx']['rateDate'] == END
+    assert all(o['date'] <= observed_end for o in closing['fx']['observations'])
+    # A clock rollback must not prevent historical success recovery or modify
+    # the original payload identity, even if a new request would now be future.
+    clock[0] = datetime(2026, 9, 17, tzinfo=timezone.utc)
+    replay = client.post(URL+'/rates/refresh', json=payload, headers=headers)
+    assert replay.json == {**first.json, 'replayed': True}
+    assert operation(client, 1)['receipt'] == replay.json and len(calls) == 1
+    denied(client.post(URL+'/rates/refresh', json={**payload, 'requestId': key(2)}, headers=headers), 400)
+    assert len(calls) == 1 and not operation(client, 2)['found']
+
+
+@pytest.mark.parametrize('instant,future_end', [
+    ('2026-09-18T15:59:59+00:00', '2026-09-19'),
+    ('2026-09-18T16:00:00+00:00', '2026-09-20'),
+    ('2026-09-19T00:00:00+00:00', '2026-09-20'),
+])
+def test_refresh_rejects_dates_after_shanghai_today_without_network(app, monkeypatch, instant, future_end):
+    client, headers = member(app)
+    freeze_utc(monkeypatch, instant)
+    def no_fetch(*_):
+        raise AssertionError('Future dates must be rejected before network access')
+    monkeypatch.setattr(fx, 'fetch_ecb_rates', no_fetch)
+    before = snapshot(app)
+    response = client.post(URL+'/rates/refresh', json={'requestId':key(1),'start':START,'end':future_end}, headers=headers)
+    denied(response, 400)
+    assert response.json['code'] == 'invalid_request' and '北京时间今天' in response.json['error']
+    assert snapshot(app) == before and not operation(client, 1)['found']
+
+
+def test_refresh_public_date_parameter_error_is_400_not_network_failure(app, monkeypatch):
+    client, headers = member(app)
+    freeze_utc(monkeypatch, '2026-09-19T00:00:00+00:00')
+    def invalid_range(*_):
+        raise fx.FxError('Synthetic date range rejection', 'fx_invalid_range')
+    monkeypatch.setattr(fx, 'fetch_ecb_rates', invalid_range)
+    before = snapshot(app)
+    response = client.post(URL+'/rates/refresh', json={'requestId':key(1),'start':START,'end':END}, headers=headers)
+    denied(response, 400)
+    assert response.json['code'] == 'invalid_request' and '日期' in response.json['error']
+    assert snapshot(app) == before and not operation(client, 1)['found']
