@@ -19,7 +19,7 @@ function loader(mocks = {}, globals = {}) {
   return load;
 }
 const source = '合成原文：2027-10-01 出发，核对护照并买插头。';
-const wire = () => ({ mode: 'model', notice: '请核对草案', warnings: ['采购截止要求只保留备注。'], brief: { title: '合成旅行', start: '2027-10-01', end: '2027-10-07', budgetCents: 2000000, international: true,
+const wire = () => ({ mode: 'model', notice: '请核对草案', warnings: ['采购截止日期可不设。'], brief: { title: '合成旅行', start: '2027-10-01', end: '2027-10-07', budgetCents: 2000000, international: true,
   destinations: [{ country: '冰岛', city: '雷克雅未克', arrival: '2027-10-01', departure: '2027-10-07' }],
   checklist: [{ key: 'brief-task-1', title: '核对护照', assigneeText: '我', owner: 'alice', note: '', sourceText: '核对护照', due: '', dueOffsetDays: -3 }],
   shopping: [{ key: 'brief-purchase-1', title: '转换插头', assigneeText: '同行', owner: 'bob', note: '截止：出发前3天', sourceText: '买插头', quantity: '两只', budgetCents: null }] } });
@@ -49,9 +49,13 @@ function harness(options = {}) {
     assert.equal(path, '/journeys/preview');
     if (f.previewGate) await f.previewGate;
     const plan = clone(body.plan);
-    // Fixed synthetic server response for the original fixture; deadline edits
-    // are independently asserted on outbound payloads, not inferred from this.
-    plan.checklist = (plan.checklist || []).map(row => ({ ...row, due: row.due || '2027-09-28', dueOffsetDays: row.dueOffsetDays ?? -3, category: 'preparation' }));
+    // Synthetic normalized response, not proof of server execution. Outbound
+    // dates/offsets are asserted separately; keep the handoff internally coherent.
+    const startMillis = Date.parse(plan.start + 'T00:00:00Z');
+    plan.checklist = (plan.checklist || []).map(row => ({ ...row,
+      due: row.due || new Date(startMillis + row.dueOffsetDays * 86400000).toISOString().slice(0, 10),
+      dueOffsetDays: row.dueOffsetDays ?? (Date.parse(row.due + 'T00:00:00Z') - startMillis) / 86400000,
+      category: 'preparation' }));
     plan.segments = [{ key: 'stay', title: '停留', start: plan.start, end: plan.end, location: '冰岛', note: '' }];
     return { canApply: true, previewToken: 'not-an-apply-grant', plan };
   };
@@ -92,11 +96,12 @@ function harness(options = {}) {
 test('nonempty item cards open, null budget remains empty, preview hands editable items onward without saving', async () => {
   const h = harness(); await h.flush();
   assert(h.byId('journey-brief-task-1')); assert(h.byId('journey-brief-purchase-1'));
-  assert.equal(h.value('采购预算（元）1'), ''); assert(h.text().includes('采购截止要求只保留备注'));
+  assert.equal(h.value('采购预算（元）1'), ''); assert(h.text().includes('采购截止日期可不设'));
   await h.click('出行成员：合成本人（我）'); await h.input('采购预算（元）1', '0'); await h.click('核对并继续编辑');
   const payload = h.f.calls.find(c => c.path === '/journeys/preview').body.plan;
   assert.equal(payload.shopping[0].budget, 0); assert.equal(payload.checklist[0].dueOffsetDays, -3);
-  assert.equal(payload.shopping[0].note, '截止：出发前3天'); assert.equal(payload.shopping[0].due, undefined);
+  assert.equal(payload.shopping[0].note, '截止：出发前3天'); assert.equal(payload.shopping[0].due, '');
+  assert.equal(payload.shopping[0].priority, 'normal');
   assert.equal(h.f.prepared.length, 1); assert.equal(h.f.prepared[0].plan.shopping[0].budget, 0);
   assert.equal(h.f.prepared[0].previewToken, undefined); assert(!h.f.calls.some(c => /apply/.test(c.path)));
 });
@@ -116,6 +121,42 @@ test('date editing updates relative deadline and add/remove never resurrects del
   await h.input('准备事项标题 1', '新的准备'); await h.click('准备负责人 1'); await h.click('一起'); await h.click('随出发日期调整 1'); await h.input('距出发天数 1', '-2');
   assert(h.text().includes('截止：2027-09-30')); await h.click('移除采购 1'); await h.click('添加采购');
   assert.equal(h.value('采购预算（元）1'), ''); assert.equal(h.value('采购数量 1'), '');
+});
+test('purchase relative draft resolves once to an absolute date and preserves explicit priority', async () => {
+  const data = wire(); Object.assign(data.brief.shopping[0], { due: '', dueOffsetDays: -3, priority: 'high' });
+  const h = harness({ wire: data }); await h.flush();
+  assert.equal(h.value('采购距出发天数 1'), '-3'); assert(h.text().includes('截止：2027-09-28'));
+  await h.input('出发日期', '2027-10-02'); await h.input('抵达日期 1', '2027-10-02');
+  assert(h.text().includes('截止：2027-09-29'));
+  await h.click('出行成员：合成本人（我）'); await h.click('核对并继续编辑');
+  const purchase = h.f.calls.find(c => c.path === '/journeys/preview').body.plan.shopping[0];
+  assert.equal(purchase.due, '2027-09-29'); assert.equal(purchase.dueOffsetDays, undefined); assert.equal(purchase.priority, 'high');
+  assert.equal(h.f.prepared[0].plan.shopping[0].due, purchase.due); assert.equal(h.f.prepared[0].plan.shopping[0].priority, 'high');
+});
+test('purchase fixed date can remain after return and explicit unset does not infer departure', async () => {
+  const data = wire(); Object.assign(data.brief.shopping[0], { due: '2027-10-09', dueOffsetDays: null, priority: 'low' });
+  const h = harness({ wire: data }); await h.flush(); assert(h.text().includes('返程后，请核对'));
+  await h.input('出发日期', '2027-10-02'); await h.input('抵达日期 1', '2027-10-02');
+  assert.equal(h.value('采购截止日期 1'), '2027-10-09'); await h.click('采购不设截止 1'); await h.click('采购优先级普通 1');
+  await h.click('出行成员：合成本人（我）'); await h.click('核对并继续编辑');
+  const purchase = h.f.calls.find(c => c.path === '/journeys/preview').body.plan.shopping[0];
+  assert.equal(purchase.due, ''); assert.equal(purchase.priority, 'normal'); assert.equal(h.f.prepared[0].plan.shopping[0].due, '');
+});
+test('purchase invalid date is kept for correction and never sent to preview', async () => {
+  const h = harness(); await h.flush(); await h.click('出行成员：合成本人（我）'); await h.click('采购固定日期 1');
+  await h.input('采购截止日期 1', '2027-02-29'); await h.click('核对并继续编辑');
+  assert.equal(h.value('采购截止日期 1'), '2027-02-29'); assert(!h.f.calls.some(c => c.path === '/journeys/preview'));
+  await h.input('采购截止日期 1', '2027-09-28'); await h.click('采购优先级高 1'); await h.click('核对并继续编辑');
+  assert.equal(h.f.prepared[0].plan.shopping[0].priority, 'high');
+});
+test('untrusted schedule fields are rejected while legacy missing fields remain compatible', () => {
+  const lib = loader()(resolve(root, 'lib/journeyBrief.ts'));
+  for (const mutation of [{ due: '2027-02-29' }, { priority: 'urgent' }, { priority: null }, { dueOffsetDays: true }, { due: '2027-09-28', dueOffsetDays: -3 }]) {
+    const data = wire(); Object.assign(data.brief.shopping[0], mutation);
+    assert.throws(() => lib.readJourneyBrief(data, source, [], [{ id: 'alice', name: '本人' }, { id: 'bob', name: '同行' }]));
+  }
+  const form = lib.readJourneyBrief(wire(), source, [], [{ id: 'alice', name: '本人' }, { id: 'bob', name: '同行' }]).form;
+  assert.equal(form.shopping[0].dueMode, 'none'); assert.equal(form.shopping[0].priority, 'normal');
 });
 
 test('remove a middle row then add another keeps unique stable keys in the preview request', async () => {
