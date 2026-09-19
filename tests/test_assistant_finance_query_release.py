@@ -193,7 +193,7 @@ def baseline(tmp_path, monkeypatch):
     root, source = tmp_path / 'installed', tmp_path / 'candidate'
     root.mkdir(); source.mkdir()
     old = {}
-    for name in ('app.py', 'finance_hub.py', 'finance_accounts.py', 'compose.yaml', 'requirements.txt', 'Dockerfile', 'deploy/nginx.conf'):
+    for name in ('app.py', 'finance_hub.py', 'finance_source_bridge.py', 'finance_accounts.py', 'compose.yaml', 'requirements.txt', 'Dockerfile', 'deploy/nginx.conf'):
         raw = trip_tests.trip_docker() if name == 'Dockerfile' else (ROOT / name).read_bytes()
         write(root, name, raw); old[name] = shared.digest(raw)
     manifest = root / 'RELEASE-MANIFEST.json'; manifest.write_bytes(shared.encoded({'files': old}))
@@ -209,7 +209,8 @@ def baseline(tmp_path, monkeypatch):
     return operator, calls
 
 
-@pytest.mark.parametrize('path,allowed', [('app.py', True), ('finance_hub.py', True), ('assistant_finance_query.py', True),
+@pytest.mark.parametrize('path,allowed', [('app.py', True), ('finance_hub.py', True), ('finance_source_bridge.py', True),
+    ('assistant_finance_query.py', True), ('membership_storage.py', False),
     ('assistant_trip_change_api.py', False), ('finance_accounts.py', False), ('finance_analysis.py', False),
     ('home_assistant.py', False), ('unreviewed.py', False)])
 def test_new_root_scope_before_service_inspection(baseline, path, allowed):
