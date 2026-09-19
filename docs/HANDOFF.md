@@ -397,7 +397,7 @@ root 独立执行最终适配 168 项回归和真实服务的隔离应用 18 项
 | 本人数据副本 | `data_portability.py`、`static/data-portability.js` | [导出契约](PORTABILITY.md)；仅本人私密与显式勾选的共同记录。排除令牌、会话/设备认证表和暂存预览；不是数据库恢复包 |
 | 部署与备份 | `Dockerfile`、`compose.yaml`、`deploy/` | [部署指导](DEPLOYMENT.md)、[运维说明](OPERATIONS.md)；源码白名单、现有配置、全部家庭、停止写入、成组备份及相配恢复 |
 
-[PLATFORM-ROUTES](PLATFORM-ROUTES.md) 与[机器索引](contract-inventory.json)保留手动账户历史版本在隔离新库生成的 162 个方法／路径模板、58 张户内表与 2 张平台表，不能作为当前总数或全部线上路由已执行的证明。当前为 69 张户内表与 9 张平台表；原账户六个操作见[账户 API](FINANCE-ACCOUNTS-API.md)，此前九个分析操作见[分析 API](FINANCE-ANALYSIS-API.md)，实际最新发布证据见[集中验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
+[PLATFORM-ROUTES](PLATFORM-ROUTES.md) 与[机器索引](contract-inventory.json)用于定位本地源码。现有机器索引记录生成时间为 `2026-09-19T13:53:01.122354+00:00`，范围为隔离新库中的本地结构：197 个 Flask 方法／路径模板，另列 1 个 WSGI 路由，69 张户内表与 9 张平台表；不证明全部线上路由已经执行。162 个模板、58 张户内表与 2 张平台表属于此前手动账户版本的历史记录，不是这两个当前索引的计数。当前为 69 张户内表与 9 张平台表；原账户六个操作见[账户 API](FINANCE-ACCOUNTS-API.md)，此前九个分析操作见[分析 API](FINANCE-ANALYSIS-API.md)，实际最新发布证据见[集中验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。例行管理的字段、鉴权和签名见 [ROUTINES](ROUTINES.md)，采购接口继续按 [采购核对契约](SHOPPING-SETTLEMENT.md#5-接口与数据模型)；不能仅按 UI 文案猜测 API。
 
 ## 例行计划公共接缝
 
