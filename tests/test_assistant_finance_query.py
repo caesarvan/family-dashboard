@@ -315,6 +315,11 @@ def test_model_payload_has_only_question_clock_enums_and_evidence_choices_reads_
         assert set(context) == {'question', 'today', 'timezone', 'scopes', 'metrics', 'currencies', 'categories', 'constraints'}
         assert context['question'] == MODEL_PROMPT
         assert context['constraints'] == {'scope': ['我', '本人'], 'month': ['本月'], 'currency': [None], 'category': [None]}
+        assert '第一部分：query 是规范化查询' in payload['instructions']
+        assert '第二部分：evidence 是原文 token' in payload['instructions']
+        assert 'query.scope 只能是英文枚举' in payload['instructions']
+        assert 'query.month 必须根据 input.today' in payload['instructions']
+        assert '2032-01-20' in payload['instructions'] and '2031-12' in payload['instructions']
         assert 'SECRET_PRIVATE' not in json.dumps(payload) and '7654321' not in json.dumps(payload)
         seed(app, 'arrived-during-network', amount=200)
         return advisory(payload)
@@ -405,6 +410,23 @@ def test_live_advisory_long_scope_stays_rejected_but_explicit_choice_can_succeed
         assert response.json['totals'][0]['netSpendCents'] == 8000
     else:
         assert response.status_code == 502 and response.json['code'] == 'invalid_model_output', response.json
+
+
+def test_second_live_advisory_cannot_copy_chinese_evidence_into_query(app, monkeypatch):
+    # Exact second synthetic live advisory; valid evidence cannot relax query enums/date normalization.
+    original = {'status': 'ready', 'query': {'scope': '我', 'month': '上个月',
+        'metric': 'spending', 'currency': None, 'category': '餐饮'},
+        'evidence': {'scope': '我', 'month': '上个月', 'metric': '用了多少钱',
+                     'currency': None, 'category': '餐饮'}}
+    client, headers = member(app)
+    calls = model(app, monkeypatch, lambda _config, _payload: deepcopy(original))
+    sql = []
+    install_connection(app, URL, 'POST', before=sql.append)
+    before = domain_snapshot(app)
+    response = submit(client, headers, '帮我瞧瞧上个月餐饮方面用了多少钱', useModel=True)
+    assert response.status_code == 502 and response.json['code'] == 'invalid_model_output', response.json
+    assert len(calls) == 1 and not any('FROM hub_' in query for query in sql)
+    assert domain_snapshot(app) == before
 
 
 @pytest.mark.parametrize('fails', [False, True])

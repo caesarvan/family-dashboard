@@ -25,7 +25,7 @@ register_assistant_finance_query(app, db, Problem, body, require_member, limited
 
 模型只收到本次用户问题、捕获的北京时间日期／时区、固定可用枚举，以及从本次文字提取的 `constraints` 证据允许值；不附加账本、汇总、余额、真实分类目录、账户、成员目录或凭据。用户自己写在问题中的文字属于所选发送内容。`constraints` 只含 scope/month/currency/category 的原文 token 数组，缺省为 `[null]`；evidence 对应键须逐字复制其中一个值，不能扩展为长句。它不包含计算好的 query 或指标答案，模型仍须理解整段口语、判断只读性和未理解条件。上述口语的约束为 `{"scope":["我"],"month":["上个月"],"currency":[null],"category":["餐饮"]}`。
 
-首次实际合成模型尝试正确解析 query，但把 scope 证据返回为“帮我瞧瞧上个月”，因不在允许 token 中被拒绝。原失败原件保留；窄修仅明确发送上述 token 约束，不放宽证据校验或权限。模拟回归同时保留该长句失败和合法“我”成功，不能把模拟成功替代随后实际模型验收。模型格式如下，供真实 provider 验证；不是客户端可提交字段：
+首次实际模型调用（合成账本）正确解析 query，但把 scope 证据返回为“帮我瞧瞧上个月”，因不在允许 token 中被拒绝。第二次证据正确，却将中文“我／上个月”复制到 query.scope／month，同样被拒绝。两次失败原件均保留。窄修仅明确发送 token 约束，并将指令分为规范化 query 和原文 evidence 两部分：query.scope 使用英文枚举，query.month 根据 today 计算 YYYY-MM，不能复制中文证据。另给不同问题、不同月份的跨年格式示例，不提供本次完整查询答案。证据校验或权限不放宽；模拟回归保留两种失败与合规成功，不能代替随后实际模型验收。模型格式如下，供真实 provider 验证；不是客户端可提交字段：
 
 ```json
 {
