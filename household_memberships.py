@@ -475,6 +475,8 @@ def _stop(con, household_id, member_id, expected_auth_version, expected_revision
     _bumpable(relation['revision']); _bumpable(user['auth_version'])
     _revoke_sessions(con, member_id, stamp)
     _pause_cloud(con, member_id, stamp)
+    from task_reminders import clear_member as clear_task_reminders
+    clear_task_reminders(con, member_id)
     con.execute('UPDATE users SET auth_version=auth_version+1 WHERE id=?', (member_id,))
     con.execute('UPDATE household_memberships SET state=?,revision=revision+1,updated_at=? WHERE id=?', (state, stamp, relation['id']))
     return snapshot(con, household_id, member_id)
