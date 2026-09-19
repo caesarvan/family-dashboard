@@ -101,6 +101,22 @@ def coordinate_projection(row, disclosure):
     return {'latitude': row['latitude_e6'] / 1000000, 'longitude': row['longitude_e6'] / 1000000}, 'exact', None
 
 
+def project_place(row, owner, journey_value, *, shared=False):
+    own = row['owner'] == owner and not shared
+    point, precision, grid = coordinate_projection(row, 'exact' if own else row['coordinate_disclosure'])
+    result = {'id': row['id'], 'owner': row['owner'], 'name': row['name'], 'country': row['country'], 'city': row['city'],
+              'coordinates': point, 'coordinatePrecision': precision, 'coordinateGridDegrees': grid,
+              'coordinateDisclosure': row['coordinate_disclosure'], 'status': row['status'], 'journeyId': row['journey_id'],
+              'journey': journey_value, 'startDate': row['start_date'], 'endDate': row['end_date'],
+              'visibility': row['visibility'], 'visitedConfirmedAt': row['visited_confirmed_at'],
+              'visitedConfirmedBy': row['visited_confirmed_by'], 'revision': row['revision'],
+              'createdAt': row['created_at'], 'updatedAt': row['updated_at'], 'canManage': own}
+    if own:
+        shared, shared_precision, shared_grid = coordinate_projection(row, row['coordinate_disclosure'])
+        result.update(sharedCoordinates=shared, sharedCoordinatePrecision=shared_precision, sharedCoordinateGridDegrees=shared_grid)
+    return result
+
+
 def register_journey_places(app, db, Problem, body, require_member, audit):
     with app.app_context():
         initialize_journey_places(db())
@@ -252,19 +268,7 @@ def register_journey_places(app, db, Problem, body, require_member, audit):
         return row
 
     def serialize(con, row, owner):
-        own = row['owner'] == owner
-        point, precision, grid = coordinate_projection(row, 'exact' if own else row['coordinate_disclosure'])
-        result = {'id': row['id'], 'owner': row['owner'], 'name': row['name'], 'country': row['country'], 'city': row['city'],
-                  'coordinates': point, 'coordinatePrecision': precision, 'coordinateGridDegrees': grid,
-                  'coordinateDisclosure': row['coordinate_disclosure'], 'status': row['status'], 'journeyId': row['journey_id'],
-                  'journey': journey(con, row['journey_id']), 'startDate': row['start_date'], 'endDate': row['end_date'],
-                  'visibility': row['visibility'], 'visitedConfirmedAt': row['visited_confirmed_at'],
-                  'visitedConfirmedBy': row['visited_confirmed_by'], 'revision': row['revision'],
-                  'createdAt': row['created_at'], 'updatedAt': row['updated_at'], 'canManage': own}
-        if own:
-            shared, shared_precision, shared_grid = coordinate_projection(row, row['coordinate_disclosure'])
-            result.update(sharedCoordinates=shared, sharedCoordinatePrecision=shared_precision, sharedCoordinateGridDegrees=shared_grid)
-        return result
+        return project_place(row, owner, journey(con, row['journey_id']))
 
     @app.get('/api/journey-places')
     def list_journey_places():
