@@ -22,6 +22,28 @@ PURCHASE = '采购：转换插头 | 负责人：小林 | 数量：两只 | 预�
 PROSE = '2027-10-01至2027-10-07去冰岛境外，总预算20000元；我在出发前三天核对护照；小林买两只转换插头，预算200元'
 
 
+@pytest.fixture
+def observed_model_r1():
+    # Exact synthetic prompt/raw JSON from the failed real-model R1, replayed
+    # offline. No provider, credentials or original report file is needed.
+    prompt = ('请整理一趟境外旅行，旅行名称：合成冰岛准备；出发日期：2027-10-01；返程日期：2027-10-07；'
+              '家庭总预算（人民币）：20000.25元；冰岛/雷克雅未克 2027-10-01 至 2027-10-07。'
+              '我在出发前3天核对护照；小林买2只转换插头，采购预算人民币200.25元；'
+              '一起买1个行李牌，预算尚未确定。只整理这些明确事项。')
+    raw = {'title': '合成冰岛准备', 'start': '2027-10-01', 'end': '2027-10-07',
+           'budgetCents': 2000025, 'international': True,
+           'destinations': [{'country': '冰岛', 'city': '雷克雅未克', 'arrival': '2027-10-01', 'departure': '2027-10-07'}],
+           'note': '我在出发前3天核对护照；一起买1个行李牌，预算尚未确定。',
+           'checklist': [{'title': '核对护照', 'assigneeText': '', 'note': '我在出发前3天核对护照；',
+                          'due': '', 'dueOffsetDays': -3, 'sourceText': '我在出发前3天核对护照；'}],
+           'shopping': [
+               {'title': '购买转换插头', 'assigneeText': '小林', 'note': '', 'quantity': '2只',
+                'budgetCents': 20025, 'sourceText': '小林买2只转换插头，采购预算人民币200.25元；'},
+               {'title': '购买行李牌', 'assigneeText': '', 'note': '预算尚未确定。', 'quantity': '1个',
+                'budgetCents': None, 'sourceText': '一起买1个行李牌，预算尚未确定。'}]}
+    return prompt, raw
+
+
 @pytest.fixture(autouse=True)
 def no_network(monkeypatch):
     def deny(*_args, **_kwargs):
@@ -101,6 +123,121 @@ def to_plan(brief):
         plan['shopping'] = [{**{k: row[k] for k in ('key', 'title', 'owner', 'note', 'quantity')},
                              'budget': row['budgetCents']} for row in brief['shopping']]
     return plan
+
+
+def test_observed_model_raw_normalizes_and_grounds_offline(observed_model_r1):
+    prompt, raw = observed_model_r1
+    brief = assistant.ground_journey_brief(assistant.normalize_journey_brief(raw), prompt)
+    warnings = assistant.ground_journey_items(brief, prompt,
+        [{'id': 'member1', 'name': '合成本人'}, {'id': 'member2', 'name': '小林'}], 'member1')
+    assert warnings == [] and brief['budgetCents'] == 2000025
+    task = brief['checklist'][0]
+    assert (task['assigneeText'], task['owner'], task['due'], task['dueOffsetDays']) == ('我', 'member1', '', -3)
+    assert task['sourceText'] == task['note'] == '我在出发前3天核对护照'
+    assert [(x['owner'], x['quantity'], x['budgetCents']) for x in brief['shopping']] == [
+        ('member2', '2只', 20025), ('shared', '1个', None)]
+    assert brief['shopping'][1]['assigneeText'] == '一起'
+    assert all(x['sourceText'] == x['note'] and x['sourceText'] in prompt for x in brief['shopping'])
+
+
+def test_observed_model_raw_uses_current_authorized_http_context(app, monkeypatch, observed_model_r1):
+    client, headers, _, _ = named_members(app)
+    prompt, raw = observed_model_r1
+    calls = model(app, monkeypatch, raw)
+    before = business(app)
+    response = submit(client, headers, prompt, useModel=True)
+    assert response.status_code == 200, response.json
+    brief = response.json['brief']
+    assert brief['checklist'][0]['owner'] == 'member1' and brief['checklist'][0]['dueOffsetDays'] == -3
+    assert [(x['owner'], x['quantity'], x['budgetCents']) for x in brief['shopping']] == [
+        ('member2', '2只', 20025), ('shared', '1个', None)]
+    assert brief['budgetCents'] == 2000025 and response.json['warnings'] == []
+    assert len(calls) == 1 and json.loads(calls[0]['input']) == {'request': prompt}
+    assert business(app) == before
+
+
+@pytest.mark.parametrize('quote,valid', [
+    (' \t；我在出发前三天核对护照。\n', True),
+    ('我在出发前三天核对护照;', True),
+    ('我在出发前三天核对护照；小林买两只转换插头，预算200元。', False),
+    ('我在出发前三天核对护照小林买两只转换插头，预算200元', False),
+    ('；。\n', False),
+])
+def test_item_quote_trims_edges_but_never_combines_clauses(quote, valid):
+    raw = advisory(); raw['checklist'][0].update(sourceText=quote, assigneeText='')
+    brief = assistant.normalize_journey_brief(raw)
+    assistant.ground_journey_items(brief, PROSE, [], 'member1')
+    row = brief['checklist'][0]
+    assert row['owner'] == ('member1' if valid else None)
+    assert row['dueOffsetDays'] == (-3 if valid else None)
+    assert row['sourceText'] == ('我在出发前三天核对护照' if valid else '')
+
+
+@pytest.mark.parametrize('source,owner,quantity', [
+    ('不要小林买两只转换插头，预算200元', None, ''),
+    ('小林买两只转换插头，预算约200元', 'member2', '两只'),
+    ('小林买两只转换插头，预算不超过200元', 'member2', '两只'),
+])
+def test_item_quote_edge_trimming_keeps_whole_source_qualifiers(source, owner, quantity):
+    raw = advisory()
+    raw['shopping'][0].update(sourceText=source[source.index('转换插头'):] + '；', assigneeText='')
+    brief = assistant.normalize_journey_brief(raw)
+    assistant.ground_journey_items(brief, source + '。', [{'id': 'member2', 'name': '小林'}], 'member1')
+    row = brief['shopping'][0]
+    assert row['owner'] == owner and row['quantity'] == quantity and row['budgetCents'] is None
+    assert row['sourceText'] == row['note'] == source
+
+
+@pytest.mark.parametrize('source,owner', [
+    ('我在出发前三天核对护照', 'member1'), ('共同核对护照，出发前三天', 'shared'),
+    ('一起核对护照，出发前三天', 'shared'), ('我们核对护照，出发前三天', 'shared'),
+    ('小林核对护照，出发前三天', 'member2'), ('陌生人核对护照，出发前三天', None),
+    ('准备：核对护照 | 负责人：陌生人 | 出发前：3天', None),
+    ('我核对护照，小林负责检查，出发前三天', None),
+    ('不要我在出发前三天核对护照', None),
+    ('准备：核对护照 | 出发前：3天', 'shared'),
+])
+def test_missing_model_assignee_recovers_only_unambiguous_original_subject(source, owner):
+    raw = advisory(); raw['checklist'][0].update(sourceText=source + '；', assigneeText='')
+    brief = assistant.normalize_journey_brief(raw)
+    assistant.ground_journey_items(brief, source,
+        [{'id': 'member1', 'name': '合成本人'}, {'id': 'member2', 'name': '小林'}], 'member1')
+    row = brief['checklist'][0]
+    assert row['owner'] == owner and row['sourceText'] == row['note'] == source
+    if source.startswith('不要'):
+        assert row['dueOffsetDays'] is None
+
+
+@pytest.mark.parametrize('source,members,owner', [
+    ('由我负责核对护照，出发前三天', [], 'member1'),
+    ('林来负责核对护照，出发前三天', [{'id': 'member1', 'name': '林'}, {'id': 'member2', 'name': '林来'}], None),
+    ('陌' * 81 + '负责核对护照，出发前三天', [], None),
+])
+def test_missing_assignee_subject_boundaries_do_not_select_name_prefix(source, members, owner):
+    raw = advisory(); raw['checklist'][0].update(sourceText=source, assigneeText='')
+    brief = assistant.normalize_journey_brief(raw)
+    assistant.ground_journey_items(brief, source, members, 'member1')
+    assert brief['checklist'][0]['owner'] == owner
+
+
+@pytest.mark.parametrize('mutation', ['duplicate_name', 'member_left', 'member_renamed'])
+def test_recovered_assignee_still_uses_fresh_members_after_model(app, monkeypatch, mutation):
+    client, headers, _, _ = named_members(app)
+    raw = advisory(); raw['shopping'][0].update(assigneeText='', sourceText=raw['shopping'][0]['sourceText'] + '；')
+    def change_members():
+        with database(app) as con:
+            if mutation == 'duplicate_name':
+                con.execute("UPDATE users SET name='小林' WHERE id='member1'")
+            elif mutation == 'member_left':
+                con.execute("UPDATE household_memberships SET state='left',revision=revision+1 WHERE member_id='member2'")
+            else:
+                con.execute("UPDATE users SET name='合成新名字' WHERE id='member2'")
+    calls = model(app, monkeypatch, raw, change_members)
+    response = submit(client, headers, PROSE, useModel=True)
+    assert response.status_code == 200, response.json
+    row = response.json['brief']['shopping'][0]
+    assert row['owner'] is None and row['assigneeText'] == '小林'
+    assert row['quantity'] == '两只' and row['budgetCents'] == 20000 and len(calls) == 1
 
 
 @pytest.mark.parametrize('use_model', [False, True])

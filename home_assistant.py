@@ -499,6 +499,27 @@ def local_journey_items(prompt):
     return result
 
 
+_JOURNEY_ITEM_ACTION = r'(?:在|来|负责|买|采购|购买|核对|准备|确认|打印|整理|检查|联系|预订|订|带)'
+
+
+def _journey_item_assignee_supported(source, assignee):
+    return bool(assignee and (
+        re.search(r'负责人\s*[：:]\s*' + re.escape(assignee) + r'\s*(?:[|，,]|$)', source)
+        or re.search(r'(?:^|[，,：:]\s*|由)' + re.escape(assignee) + r'\s*' + _JOURNEY_ITEM_ACTION, source)))
+
+
+def _journey_item_source_assignee(source, members):
+    # Recover literal subjects, not household IDs. Unknown or competing subjects
+    # remain unresolved by the same current-member check below.
+    names = {value.strip() for value in re.findall(r'负责人\s*[：:]\s*([^|，,]*)', source) if value.strip()}
+    names.update(re.findall(r'(?:^|[，,]\s*|由)(?:由\s*)?([^\s|，,：:]+?)\s*' + _JOURNEY_ITEM_ACTION, source))
+    candidates = {'我', '共同', '一起', '我们'} | {p['name'] for p in members if p['name']}
+    names.update(name for name in candidates if _journey_item_assignee_supported(source, name))
+    if len(names) == 1 and len(next(iter(names))) <= 80:
+        return next(iter(names)), True
+    return '', bool(names)
+
+
 def ground_journey_items(brief, prompt, members, actor):
     """Resolve item facts against their whole source clause, then fresh members.
 
@@ -510,7 +531,8 @@ def ground_journey_items(brief, prompt, members, actor):
     for collection in ('checklist', 'shopping'):
         for index, row in enumerate(brief[collection], 1):
             label = f"{'准备' if collection == 'checklist' else '采购'}第 {index} 项"
-            contexts = {c for c in clauses if row['sourceText'] and row['sourceText'] in c}
+            quote = re.sub(r'^[\s；;。]+|[\s；;。]+$', '', row['sourceText'])
+            contexts = {c for c in clauses if quote and quote in c}
             source = next(iter(contexts)) if len(contexts) == 1 else ''
             # A bare amount/date or another item's quote is not this item's source.
             title = re.sub(r'^(?:购买|采购|准备购买|买)\s*', '', row['title'])
@@ -518,11 +540,13 @@ def ground_journey_items(brief, prompt, members, actor):
                 source = ''
             row['sourceText'] = row['note'] = source
             assignee = row['assigneeText']
-            supported = bool(source and assignee and not _journey_item_uncertain(_journey_item_fact_source(source, 'owner')) and (
-                re.search(r'负责人\s*[：:]\s*' + re.escape(assignee) + r'\s*(?:\||$)', source)
-                or re.search(r'(?:^|[，,：:]\s*|由)' + re.escape(assignee)
-                             + r'\s*(?:在|来|负责|买|采购|购买|核对|准备|确认|打印|整理|检查|联系|预订|订|带)', source)))
-            row['owner'] = 'shared' if not assignee else None
+            explicit_assignment = bool(assignee)
+            if not assignee and source:
+                assignee, explicit_assignment = _journey_item_source_assignee(source, members)
+                row['assigneeText'] = assignee
+            certain_owner = bool(source and not _journey_item_uncertain(_journey_item_fact_source(source, 'owner')))
+            supported = certain_owner and _journey_item_assignee_supported(source, assignee)
+            row['owner'] = 'shared' if certain_owner and not explicit_assignment else None
             if assignee and not supported:
                 if assignee not in source:
                     row['assigneeText'] = ''
