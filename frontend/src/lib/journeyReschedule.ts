@@ -5,7 +5,7 @@ export type Clocks = { start?: Clock; end?: Clock };
 export type Impact = { key: string; kind: ImpactKind; title: string; before: Span; eligible: boolean; reason: string | null; endExclusive: boolean; timeBefore?: Clocks };
 export type Warning = { code: string; key: string | null; message: string };
 export type Issue = Warning & { field?: 'start' | 'end'; local?: string; timeZone?: string; choices?: { offsetMinutes: number; instant: string }[] };
-export type Snapshot = { journeyId: string; revision: number; start: string; end: string; snapshotToken: string; expiresIn: number; items: Impact[]; warnings: Warning[]; capabilities: { shoppingDue: false } };
+export type Snapshot = { journeyId: string; revision: number; start: string; end: string; snapshotToken: string; expiresIn: number; items: Impact[]; warnings: Warning[]; capabilities: { shoppingDue: boolean } };
 export type LocalOverride = { local: string; offsetMinutes?: number };
 export type TimeOverrides = Record<string, { start?: LocalOverride; end?: LocalOverride }>;
 export type RescheduleDraft = { start: string; end: string; selectedKeys: string[]; timeOverrides: TimeOverrides };
@@ -36,10 +36,12 @@ function impact(raw: unknown): Impact {
 function impacts(raw: unknown) { const rows = list(raw).map(impact); if (new Set(rows.map(row => row.key)).size !== rows.length || rows.filter(row => row.key === 'trip').length !== 1 || rows.find(row => row.key === 'trip')!.eligible) throw error(); return rows; }
 const warning = (raw: unknown): Warning => { const value = object(raw); return { code: text(value.code, 100), key: value.key === null ? null : key(value.key), message: text(value.message, 2000) }; };
 export function readRescheduleSnapshot(raw: unknown, journeyId: string): Snapshot {
-  const value = object(raw); if (id(value.journeyId) !== journeyId || object(value.capabilities).shoppingDue !== false) throw error();
-  return { journeyId, revision: integer(value.revision), ...dates(value.start, value.end), snapshotToken: text(value.snapshotToken, 2000000), expiresIn: integer(value.expiresIn, 1, 86400), items: impacts(value.items), warnings: list(value.warnings, 6742).map(warning), capabilities: { shoppingDue: false } };
+  const value = object(raw); if (id(value.journeyId) !== journeyId) throw error();
+  const shoppingDue = boolean(object(value.capabilities).shoppingDue), items = impacts(value.items);
+  if (items.some(row => row.kind === 'shopping' && row.eligible && (!shoppingDue || row.reason !== null || !row.before.start || row.before.end !== row.before.start))) throw error();
+  return { journeyId, revision: integer(value.revision), ...dates(value.start, value.end), snapshotToken: text(value.snapshotToken, 2000000), expiresIn: integer(value.expiresIn, 1, 86400), items, warnings: list(value.warnings, 6742).map(warning), capabilities: { shoppingDue } };
 }
-export const snapshotVersion = (source: Snapshot) => JSON.stringify([source.journeyId, source.revision, source.start, source.end, source.items]);
+export const snapshotVersion = (source: Snapshot) => JSON.stringify([source.journeyId, source.revision, source.start, source.end, source.items, source.capabilities]);
 export const initialRescheduleDraft = (source: Snapshot): RescheduleDraft => ({ start: source.start, end: source.end, selectedKeys: [], timeOverrides: {} });
 export function rebaseRescheduleDraft(draft: RescheduleDraft, source: Snapshot): { draft: RescheduleDraft; removed: string[] } {
   const allowed = new Set(source.items.filter(row => row.eligible).map(row => row.key)), selectedKeys = draft.selectedKeys.filter(item => allowed.has(item));
@@ -61,7 +63,7 @@ export function offsetText(minutes: number) { return `UTC${minutes >= 0 ? '+' : 
 export function clockText(clock?: Clock) { return clock ? `${clock.local.replace('T', ' ')} · ${clock.timeZone}${clock.offsetMinutes === undefined ? '' : ' · ' + offsetText(clock.offsetMinutes)}` : '未设时刻'; }
 export function reschedulePayload(source: Snapshot, draft: RescheduleDraft) {
   const value = dates(draft.start.trim(), draft.end.trim()), available = new Map(source.items.map(row => [row.key, row]));
-  if (new Set(draft.selectedKeys).size !== draft.selectedKeys.length || draft.selectedKeys.some(item => !available.get(item)?.eligible)) throw new Error('选择的项目已变化，请读取最新内容并重新核对。');
+  if (new Set(draft.selectedKeys).size !== draft.selectedKeys.length || draft.selectedKeys.some(item => !available.get(item)?.eligible || available.get(item)?.kind === 'shopping' && !source.capabilities.shoppingDue)) throw new Error('选择的项目已变化，请读取最新内容并重新核对。');
   const timeOverrides: TimeOverrides = {};
   for (const [item, raw] of Object.entries(draft.timeOverrides)) {
     if (!draft.selectedKeys.includes(item) || available.get(item)?.kind !== 'segment') throw new Error('只能纠正本次选择的行程时间。');
@@ -124,7 +126,6 @@ export const failedRescheduleIntent = (intent: Intent, failure: unknown): Intent
 export const mayExitReschedule = (pending: Intent | null, working: boolean) => !pending && !working;
 export function impactReason(item: Impact) {
   if (item.kind === 'overview') return '旅行总日期会更新';
-  if (item.kind === 'shopping') return '采购没有截止日期，保持原记录';
   if (item.eligible) return '未选择时保持原日期';
   const reasons: Record<string, string> = { completed: '已完成', no_date: '未设日期', cloud_managed: '由云端来源管理', fixed: '固定安排', booked: '已预订', cancelled: '已取消', not_planned: '不是计划地点', missing_event: '关联日程已不存在', timing_changed: '日程时间类型或时区已变化' };
   return '保持原日期 · ' + (reasons[item.reason || ''] || '当前不可调整');

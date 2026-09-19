@@ -293,7 +293,7 @@ def test_natural_language_model_sample_is_grounded_without_sending_household(app
     assert b['checklist'][0]['key'] == 'brief-task-1' and b['shopping'][0]['key'] == 'brief-purchase-1'
     common = {'key', 'title', 'assigneeText', 'owner', 'note', 'sourceText'}
     assert set(b['checklist'][0]) == common | {'due', 'dueOffsetDays'}
-    assert set(b['shopping'][0]) == common | {'quantity', 'budgetCents'}
+    assert set(b['shopping'][0]) == common | {'quantity', 'budgetCents', 'due', 'dueOffsetDays', 'priority'}
     assert '酒店已订妥' not in json.dumps(b, ensure_ascii=False)
     assert len(calls) == 1 and json.loads(calls[0]['input']) == {'request': PROSE}
     assert not any(x in json.dumps(calls, ensure_ascii=False) for x in ('member1', 'member2', 'HOUSEHOLD_CONTEXT_MUST_NOT_LEAVE', headers['X-CSRF-Token']))
@@ -514,8 +514,108 @@ def test_absolute_date_purchase_deadline_and_unrecognized_text_survive(app):
     assert result['brief']['checklist'][0]['due'] == '2027-09-30'
     assert result['brief']['checklist'][1]['due'] == '' and result['brief']['checklist'][1]['dueOffsetDays'] is None
     purchase = result['brief']['shopping'][0]
-    assert '出发前3天' in purchase['note'] and 'due' not in purchase and 'dueOffsetDays' not in purchase
-    assert any('采购尚无截止日期字段' in x for x in result['warnings'])
+    assert '出发前3天' in purchase['note'] and purchase['due'] == '' and purchase['dueOffsetDays'] == -3
+    assert purchase['priority'] == 'normal'
+    assert not any('采购尚无截止日期字段' in x for x in result['warnings'])
+
+
+@pytest.mark.parametrize('use_model', [False, True])
+@pytest.mark.parametrize('date_text,due,offset', [
+    ('截止：2027-09-28', '2027-09-28', None),
+    ('截止：出发前3天', '', -3), ('', '', None),
+])
+def test_purchase_schedule_endpoint_is_readonly_and_keeps_exact_source(app, monkeypatch, use_model, date_text, due, offset):
+    client, headers = member(app)
+    source = '采购：转换插头 | 负责人：我 | 数量：2件 | 预算：100元 | 优先级：高'
+    if date_text:
+        source += ' | ' + date_text
+    raw = {'shopping': [{'title': '转换插头', 'assigneeText': '我', 'quantity': '2件', 'budgetCents': 10000,
+                         'sourceText': source, 'due': due, 'dueOffsetDays': offset, 'priority': 'high'}]}
+    calls = model(app, monkeypatch, raw)
+    before = business(app)
+    result = submit(client, headers, source, useModel=use_model)
+    assert result.status_code == 200, result.json
+    row = result.json['brief']['shopping'][0]
+    assert (row['due'], row['dueOffsetDays'], row['priority']) == (due, offset, 'high')
+    assert (row['owner'], row['quantity'], row['budgetCents'], row['sourceText']) == ('member1', '2件', 10000, source)
+    assert business(app) == before
+    if use_model:
+        assert len(calls) == 1 and json.loads(calls[0]['input']) == {'request': source}
+        assert '成员ID' in calls[0]['instructions']
+
+
+@pytest.mark.parametrize('source,priority', [
+    ('采购：转换插头 | 优先级：高', 'high'), ('采购：转换插头 | 优先级：低', 'low'),
+    ('采购：转换插头 | 普通优先级', 'normal'), ('采购：转换插头 | 优先级：high', 'high'),
+    ('采购：转换插头 | 不要设高优先级', 'normal'),
+    ('采购：转换插头 | 优先级：高或低', 'normal'),
+    ('采购：转换插头 | 优先级：高 | 优先级：低', 'normal'),
+    ('采购：转换插头 | 优先级：高 | 改成普通', 'normal'),
+    ('采购：转换插头 | 可能高优先级', 'normal'),
+    ('采购：转换插头 | 很急', 'normal'),
+])
+def test_purchase_priority_is_explicit_and_grounded_in_own_source(source, priority):
+    proposed = 'low' if '优先级：低' in source and '优先级：高' not in source else 'high'
+    brief = assistant.normalize_journey_brief({'shopping': [{'title': '转换插头', 'sourceText': source, 'priority': proposed}]})
+    warnings = assistant.ground_journey_items(brief, source, [{'id': 'member1', 'name': '本人'}], 'member1')
+    assert brief['shopping'][0]['priority'] == priority
+    if priority == 'normal' and proposed != 'normal':
+        assert any('优先级' in warning for warning in warnings)
+
+
+@pytest.mark.parametrize('source,due,offset', [
+    ('采购：转换插头 | 不要在2027-09-28截止', '2027-09-28', None),
+    ('采购：转换插头 | 截止：大约出发前3天', '', -3),
+    ('采购：转换插头 | 截止：2027-09-28 或 2027-09-29', '2027-09-28', None),
+    ('采购：转换插头 | 截止：出发前3天或出发前4天', '', -3),
+    ('采购：转换插头', '2027-09-28', None),
+    ('采购：转换插头 | 付款日期：2027-09-28', '2027-09-28', None),
+    ('采购：转换插头 | 收货：2027-09-28', '2027-09-28', None),
+    ('采购：转换插头 | 出发前3天到货', '', -3),
+    ('采购：转换插头 | 下单日期：2027-09-28', '2027-09-28', None),
+    ('采购：转换插头 | 付款截止：2027-09-28', '2027-09-28', None),
+    ('采购：转换插头，2027-09-28是我的生日', '2027-09-28', None),
+    ('采购：转换插头 | 截止付款时间：2027-09-28', '2027-09-28', None),
+])
+def test_purchase_uncertain_or_invented_dates_stay_unset(source, due, offset):
+    brief = assistant.normalize_journey_brief({'shopping': [{'title': '转换插头', 'sourceText': source, 'due': due, 'dueOffsetDays': offset}]})
+    warnings = assistant.ground_journey_items(brief, source, [], 'member1')
+    row = brief['shopping'][0]
+    assert row['due'] == '' and row['dueOffsetDays'] is None and row['sourceText'] == source
+    assert any('截止信息尚未核对' in warning for warning in warnings)
+
+
+def test_purchase_does_not_borrow_schedule_from_another_item_in_same_clause():
+    source = '采购：转换插头和行李牌，行李牌截止2027-09-28，高优先级'
+    brief = assistant.normalize_journey_brief({'shopping': [
+        {'title': title, 'sourceText': source, 'due': '2027-09-28', 'priority': 'high'}
+        for title in ('转换插头', '行李牌')]})
+    assistant.ground_journey_items(brief, source, [], 'member1')
+    assert all(row['due'] == '' and row['dueOffsetDays'] is None and row['priority'] == 'normal' for row in brief['shopping'])
+
+
+@pytest.mark.parametrize('source', [
+    '采购：转换插头和行李牌，行李牌截止2027-09-28，高优先级',
+    '小林买转换插头和行李牌，截止2027-09-28，高优先级',
+    '采购：转换插头 | 行李牌截止2027-09-28 | 行李牌优先级：高',
+])
+def test_purchase_omitted_other_item_cannot_lend_dates_or_priority(source):
+    brief = assistant.normalize_journey_brief({'shopping': [
+        {'title': '转换插头', 'sourceText': source, 'due': '2027-09-28', 'priority': 'high'}]})
+    warnings = assistant.ground_journey_items(brief, source, [], 'member1')
+    row = brief['shopping'][0]
+    assert row['due'] == '' and row['dueOffsetDays'] is None and row['priority'] == 'normal'
+    assert any('截止信息尚未核对' in warning for warning in warnings)
+
+
+def test_purchase_schedule_cannot_use_another_clause_or_truncated_negation():
+    source = '不要采购转换插头，截止2027-09-28，高优先级'
+    prompt = '采购：行李牌 | 截止：2027-09-28 | 优先级：高；' + source
+    for quote in ('采购：行李牌 | 截止：2027-09-28 | 优先级：高', '转换插头，截止2027-09-28，高优先级'):
+        brief = assistant.normalize_journey_brief({'shopping': [{'title': '转换插头', 'sourceText': quote,
+                                                                'due': '2027-09-28', 'priority': 'high'}]})
+        assistant.ground_journey_items(brief, prompt, [], 'member1')
+        assert brief['shopping'][0]['due'] == '' and brief['shopping'][0]['priority'] == 'normal'
 
 
 @pytest.mark.parametrize('collection,change', [
@@ -528,6 +628,10 @@ def test_absolute_date_purchase_deadline_and_unrecognized_text_survive(app):
     ('shopping', {'quantity': 'x' * 31}), ('shopping', {'budgetCents': True}),
     ('shopping', {'budgetCents': 0.5}), ('shopping', {'budgetCents': -1}),
     ('shopping', {'budgetCents': 100000000001}),
+    ('shopping', {'due': '2027-02-29'}), ('shopping', {'due': '1999-01-01'}),
+    ('shopping', {'dueOffsetDays': True}), ('shopping', {'dueOffsetDays': -731}),
+    ('shopping', {'due': '2027-09-30', 'dueOffsetDays': -3}),
+    ('shopping', {'priority': True}), ('shopping', {'priority': None}), ('shopping', {'priority': 'urgent'}),
 ])
 def test_item_type_and_boundary_validation(collection, change):
     with pytest.raises(ValueError):
