@@ -1,5 +1,21 @@
 # 联合开发接手说明
 
+## 当前开发：助理预算与支出查询（候选，未上线）
+
+三条独立分支从 `0458c4daf00cbbc3a13719bab3b5ef79346b13a2` 开始；真实订单验收工具随后单独审查合入 main `f0dfeb7ea1f3a1bc9b0305357031d25b84ddb45b`，不改变运行代码。线上版本仍以下方发布记录为准。
+
+| 负责人／分支 | 独占路径 | 状态 |
+|---|---|---|
+| asset_release / `codex/assistant-finance-query-api` | `assistant_finance_query.py`、`finance_hub.py`、`app.py`、API 专项及 `ASSISTANT-FINANCE-QUERY.md` | 实现只读自然语言查询，金额由现有精确账本规则计算；不向模型发送账本或金额 |
+| asset_ui / `codex/assistant-finance-query-ui` | `AssistantFinanceQueryPanel.tsx`、`assistantFinanceQuery.ts`、`types.ts`、`AssistantScreen.tsx`、`FinanceScreen.tsx` 及前端专项 | 结果卡、身份保护、指定月份账本／预算往返；不修改财务保存规则 |
+| root / `codex/assistant-finance-query-wiring` | `Dockerfile`、`browser_expo_assistant_finance_query_check.py`、本交接 | 新模块镜像 COPY、三个真实临时浏览器场景的验收脚本；组合浏览器尚未执行 |
+
+统一入口为 `POST /api/assistant/finance-query`，输入 `prompt` 与 `useModel`，返回 `ready`、`clarify` 或 `unsupported`。不同币种分列，未知与零区分；共同消费汇总与手工公共资金快照分开。后端声明与前端解码必须一致后才能合入；测试脚本存在不代表验收通过。
+
+本候选没有数据库迁移、依赖或环境变量变更。Docker COPY 不是发布凭据：旧发布 profile 固定旧基线，不能拿它重放生产更新；新的完整运行包及其发布基线仍须审查。各分支先独立审查，组合测试与复审后才合主分支，生产部署另记。
+
+## 已发布版本
+
 **最新上线：AI 已有旅行改期（2026-09-19 17:39:23，北京时间），17:40:24 独立只读审计通过。** 从一句改期需求进入已有旅行、核对日期与联动事项，再预览确认保存。[使用与集中验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。A–D 本人真实完整验收仍为 0/4，真实云和实体电视另验。
 
 此前本人账户分析于 2026-09-19 16:20:25（北京时间）上线，16:20:57 独立只读审计通过；其固定运行身份与历史证据见[资产分析验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。
