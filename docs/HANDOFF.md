@@ -1,6 +1,12 @@
 # 联合开发接手说明
 
-## 最新发布：采购截止日与优先级
+## 最新发布：助理资料与照片搜索
+
+[PR #9](https://github.com/caesarvan/family-dashboard/pull/9) 已合入 main `7ff58c446f3396d13e69ad4668e8df6fb01b5daa`，与正式 source `fd3ef3692528a18e3e6afc779fb15efe8463d559` 同树。R1 四条资料／照片浏览器及一条采购提示、R2 新构建和唯一照片分页增量、实际 Linux 175 项均已取得独立分段证据。**2026-09-20 05:15:29（北京时间）实际激活成功，05:16:46 独立生产只读审计通过。** 一户两库保持 69/9；992 安装文件、三个服务各 127 运行文件及 75 项 TLS 静态资源匹配，27+3 匿名 GET 均 401。计划已消费，不可重放；这些结果不替代本人操作或 POST 授权验收。使用、固定包／计划与证据集中在[本批验收](ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release)。
+
+保留本人未关联资料权限、原旅行失效拒绝跨范围打开、原 ID 和分页返回；搜索不自动下载或扩大共享。本批包含完整 HelperText 修正，保持家庭 69／平台 9 表，无 DDL。任务依赖 PR #10 为另一候选，提醒只有只读调查方案；A–D 本人完整验收仍为 0/4，实体电视缺设备。后续纯文档提交不改变已构建包身份。
+
+## 此前发布：采购截止日与优先级
 
 [PR #7](https://github.com/caesarvan/family-dashboard/pull/7) 已合入 main `efa6e41c786215b4ea3dde509e01ab6c8af9c5cf`，正式 source `67e5b0d5cafd28b50abce7e42fd64f64c8059997`。2026-09-20 03:54:39（北京时间）实际激活，03:55:48 独立生产只读审计通过；一户两库保持 69/9，停机备份及启动保全已核验。计划已消费，不可重放。操作、固定包／计划和全部本轮证据集中在[采购验收](SHOPPING-SCHEDULE-ACCEPTANCE.md#shopping-schedule-release)，勿把下方父版本或作者历史状态当作当前结论。
 
