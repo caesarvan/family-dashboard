@@ -15,6 +15,7 @@ import re
 import secrets
 
 from flask import jsonify, request
+from werkzeug.exceptions import RequestEntityTooLarge
 
 from finance_accounts import account, valuation
 from finance_source_bridge import ImportSession
@@ -162,9 +163,26 @@ def period_data(con, owner, row, start, end):
 def period_review(con, owner, row, start, end, points, flows):
     # The account revision is conservative: corrections, archive/restore and
     # metadata edits cannot silently reuse a previously accepted account state.
+    # Receipt history prevents add/delete or move-out/move-back from resurrecting
+    # an old accepted digest. Include both the former and new date for a moved
+    # event, while keeping unrelated periods independent.
+    event_dates, mutations = {}, []
+    for operation in con.execute('SELECT operation,payload_hash,result FROM finance_analysis_operations '
+                                 "WHERE owner=? AND account_id=? AND operation IN ('cashflow_create','cashflow_update','cashflow_delete') ORDER BY rowid",
+                                 (owner, row['id'])):
+        event = json.loads(operation['result'])['result']
+        old_date = event_dates.get(event['id'])
+        new_date = event.get('date')
+        if any(at is not None and start < at <= end for at in (old_date, new_date)):
+            mutations.append(operation['payload_hash'])
+        if new_date is None:
+            event_dates.pop(event['id'], None)
+        else:
+            event_dates[event['id']] = new_date
     context = digest({'version': 1, 'owner': owner, 'accountId': row['id'], 'accountRevision': row['revision'],
                       'currency': row['currency'], 'kind': row['kind'], 'start': start, 'end': end,
-                      'points': [valuation(point) for point in points], 'cashflows': [cashflow(f) for f in flows]})
+                      'points': [valuation(point) for point in points], 'cashflows': [cashflow(f) for f in flows],
+                      'flowMutationDigest': digest(mutations)})
     old = con.execute('SELECT * FROM finance_account_reviews WHERE owner=? AND account_id=? '
                       'AND start_date=? AND end_date=?', (owner, row['id'], start, end)).fetchone()
     confirmable = all(p is not None and p['as_of'] == at and p['amount_cents'] is not None
@@ -262,11 +280,14 @@ def build_report(con, owner, start, end, base, step, selected):
     dates = report_dates(start, end, step)
     rates = fx.load_fx_rates(con, lookback(start), end)
     quotes = {}
+    currency_rates = {}
 
     def quote_for(currency, at):
         key = currency, at
         if key not in quotes:
-            quotes[key] = fx.resolve_fx_quote(rates, at, currency, base)
+            if currency not in currency_rates:
+                currency_rates[currency] = [rate for rate in rates if rate['currency'] in {currency, base}]
+            quotes[key] = fx.resolve_fx_quote(currency_rates[currency], at, currency, base)
         return quotes[key]
 
     by_date = {at: [] for at in dates}
@@ -347,12 +368,16 @@ def register_finance_analysis(app, db, Problem, body, require_member, audit, *, 
                 response = view(current, *args, **kwargs)
                 current.fresh()
                 return response
-            except (AnalysisError, Problem) as error:
+            except (AnalysisError, Problem, fx.FxError, RequestEntityTooLarge) as error:
                 if current is not None:
                     try:
                         current.fresh()
                     except Problem as expired:
                         error = expired
+                if isinstance(error, fx.FxError):
+                    return jsonify(error='公共参考汇率暂不可用，已有缓存保持', code=error.code), 409 if error.code == 'fx_capacity' else 503
+                if isinstance(error, RequestEntityTooLarge):
+                    return jsonify(error='分析请求过大', code='invalid_request'), 413
                 return jsonify(error=str(error) if isinstance(error, AnalysisError) else error.message,
                                code=getattr(error, 'code', 'access_denied' if error.status in (401, 403) else 'invalid_request')), error.status
         return run
