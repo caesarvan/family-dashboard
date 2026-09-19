@@ -321,6 +321,7 @@ class Run(BaseRun):
                     expect(page.get_by_role('heading', name='一项操作待核对', exact=True)).to_be_visible()
                     envelope = stored_recovery(page); intent = envelope['recovery']['intent']
                     assert intent['requestId'] == committed['payload']['requestId']
+                    self.settle(page, lambda: bool(faults))
                     assert faults and all(row['backendStatus'] == 200 and row['deliveredStatus'] == status for row in faults)
                     expect(page.get_by_text('这次操作未保存', exact=False)).not_to_be_visible()
                     stable = self.snapshot(); count = len(faults)
