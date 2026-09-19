@@ -50,6 +50,9 @@ def baseline_values(baseline=None):
     # Explicit audited callers only; defaults keep the original migration contract.
     if baseline is None:
         return 'membership-release-package', PARENT_IMAGE, OLD_MANIFEST
+    if baseline == 'finance-analysis-r1-assistant-trip-change':
+        from deploy import assistant_trip_change_release_profile as assistant
+        return assistant.KIND, assistant.PARENT_IMAGE, assistant.OLD_MANIFEST
     if baseline == 'order-inventory-r1-finance-analysis':
         from deploy import finance_analysis_release_profile as analysis
         return analysis.KIND, analysis.PARENT_IMAGE, analysis.OLD_MANIFEST
@@ -69,6 +72,9 @@ def baseline_values(baseline=None):
 
 def fixed_files(baseline=None):
     baseline_values(baseline)
+    if baseline == 'finance-analysis-r1-assistant-trip-change':
+        from deploy import assistant_trip_change_release_profile as assistant
+        return {**FIXED, 'Dockerfile': assistant.DOCKER_AFTER}
     if baseline == 'order-inventory-r1-finance-analysis':
         from deploy import finance_analysis_release_profile as analysis
         return {**FIXED, 'Dockerfile': analysis.DOCKER_AFTER}
@@ -206,6 +212,9 @@ def selected_sources(tracked, policy, *, baseline=None):
     required = set(constants['FILES']) | {SELF} | {'frontend/' + n for n in
         ('package.json', 'package-lock.json', 'app.json', 'tsconfig.json', 'README.md', 'LICENSE',
          'tests/journeySegments.test.ts', 'tsconfig.tests.json', 'typecheck.mjs')}
+    if baseline == 'finance-analysis-r1-assistant-trip-change':
+        from deploy import assistant_trip_change_release_profile as assistant
+        required |= assistant.RUNTIME_ADDITIONS | {'deploy/assistant_trip_change_release_profile.py'}
     if baseline == 'order-inventory-r1-finance-analysis':
         from deploy import finance_analysis_release_profile as analysis
         required |= analysis.RUNTIME_ADDITIONS | {'deploy/finance_analysis_release_profile.py'}
@@ -220,6 +229,8 @@ def selected_sources(tracked, policy, *, baseline=None):
         selected |= tracked & {'frontend/tests/inventorySources.test.mjs'}
     if baseline == 'order-inventory-r1-finance-analysis':
         selected |= tracked & analysis.FRONTEND_TESTS
+    if baseline == 'finance-analysis-r1-assistant-trip-change':
+        selected |= tracked & assistant.FRONTEND_TESTS
     need(required_build_inputs(tracked) <= selected, 'new frontend input needs an explicit packaging policy')
     return selected
 
@@ -242,7 +253,7 @@ def validate_export_names(names, *, baseline=None):
     names_unique(list(names))
     need(all(n in ('index.html', 'metadata.json') or PurePosixPath(n).suffix.lower() in EXPORT_TYPES for n in names),
          'unexpected export extension')
-    if baseline == 'order-inventory-r1-finance-analysis':
+    if baseline in ('order-inventory-r1-finance-analysis', 'finance-analysis-r1-assistant-trip-change'):
         from deploy import finance_analysis_release_profile as analysis
         need(3 <= len(names) <= MAX_FILES and 'index.html' in names and 'metadata.json' in names,
              'complete bounded export required')
