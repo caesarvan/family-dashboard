@@ -303,7 +303,7 @@ def test_public_snapshot_requires_confirmation_and_never_sums_savings(app):
     assert_no_finance(submit(client, headers, '上月公共荷包').json, 'clarify')
 
 
-def test_model_payload_has_only_question_clock_and_fixed_enums_reads_latest_after_network(app, monkeypatch):
+def test_model_payload_has_only_question_clock_enums_and_evidence_choices_reads_latest_after_network(app, monkeypatch):
     client, headers = member(app)
     seed(app, amount=100)
     budget(app, 7654321, category='SECRET_PRIVATE_CATEGORY')
@@ -312,8 +312,9 @@ def test_model_payload_has_only_question_clock_and_fixed_enums_reads_latest_afte
     def remote(_config, payload):
         assert not any('FROM hub_' in query for query in sql)
         context = json.loads(payload['input'])
-        assert set(context) == {'question', 'today', 'timezone', 'scopes', 'metrics', 'currencies', 'categories'}
+        assert set(context) == {'question', 'today', 'timezone', 'scopes', 'metrics', 'currencies', 'categories', 'constraints'}
         assert context['question'] == MODEL_PROMPT
+        assert context['constraints'] == {'scope': ['我', '本人'], 'month': ['本月'], 'currency': [None], 'category': [None]}
         assert 'SECRET_PRIVATE' not in json.dumps(payload) and '7654321' not in json.dumps(payload)
         seed(app, 'arrived-during-network', amount=200)
         return advisory(payload)
@@ -371,6 +372,39 @@ def test_model_evidence_cannot_invent_or_drop_explicit_constraints(app, monkeypa
     response = submit(client, headers, '帮我瞧瞧上个月美元餐饮方面用了多少钱', useModel=True)
     assert response.status_code == 502 and response.json['code'] == 'invalid_model_output'
     assert 'MODEL_INVENTED' not in response.get_data(as_text=True)
+
+
+@pytest.mark.parametrize('use_allowed_token', [False, True])
+def test_live_advisory_long_scope_stays_rejected_but_explicit_choice_can_succeed(app, monkeypatch, use_allowed_token):
+    # Exact synthetic advisory shape from the first live provider attempt. Keep
+    # its invalid long scope rejected; improve instructions, not authorization.
+    original = {'status': 'ready', 'query': {'scope': 'personal', 'month': '2026-08',
+        'metric': 'spending', 'currency': None, 'category': '餐饮'},
+        'evidence': {'scope': '帮我瞧瞧上个月', 'month': '上个月', 'metric': '用了多少钱',
+                     'currency': None, 'category': '餐饮'}}
+    client, headers = member(app)
+    seed(app, 'aug-food', month='2026-08', amount=10000)
+    seed(app, 'aug-refund', month='2026-08', amount=2000, flow='refund', category='其他')
+    link(app, 'refund_payment', 'aug-refund', 'aug-food', 2000)
+    def remote(_config, payload):
+        context = json.loads(payload['input'])
+        assert context['constraints'] == {'scope': ['我'], 'month': ['上个月'], 'currency': [None], 'category': ['餐饮']}
+        assert 'query' not in context and 'metric' not in context['constraints']
+        assert '逐字复制' in payload['instructions'] and '不能因为存在允许值就返回ready' in payload['instructions']
+        value = deepcopy(original)
+        if use_allowed_token:
+            value['evidence']['scope'] = context['constraints']['scope'][0]
+        return value
+    calls = model(app, monkeypatch, remote)
+    before = domain_snapshot(app)
+    response = submit(client, headers, '帮我瞧瞧上个月餐饮方面用了多少钱', useModel=True)
+    assert len(calls) == 1 and domain_snapshot(app) == before
+    if use_allowed_token:
+        assert response.status_code == 200 and response.json['mode'] == 'model', response.json
+        assert response.json['query'] == original['query']
+        assert response.json['totals'][0]['netSpendCents'] == 8000
+    else:
+        assert response.status_code == 502 and response.json['code'] == 'invalid_model_output', response.json
 
 
 @pytest.mark.parametrize('fails', [False, True])
