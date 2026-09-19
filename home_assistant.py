@@ -481,6 +481,44 @@ def _journey_item_priorities(source):
     return {values[(left or right).lower()] for left, right in matches}
 
 
+def _journey_purchase_single_subject(source, title):
+    """Conservative single-item scope, independent of model row completeness."""
+    first = re.split(r'[|，,]', source, maxsplit=1)[0].strip()
+    if re.fullmatch(r'(?:采购|购买|买)\s*[：:]\s*' + re.escape(title), first):
+        return True
+    if not first.endswith(title) or first.count(title) != 1:
+        return False
+    prefix = first[:-len(title)].strip()
+    # A single natural purchase action with an optional quantity. Lists or
+    # additional purchase actions require the user to separate the items.
+    if re.search(r'和|以及|、|另外|还要|再买|并', prefix):
+        return False
+    return bool(len(re.findall(r'购买|采购|买', prefix)) == 1 and re.fullmatch(
+        r'.*?(?:购买|采购|买)\s*(?:[0-9零〇一二两三四五六七八九十百]+\s*[只件个套份本张条台双对把])?', prefix))
+
+
+def _journey_purchase_deadline_source(source, title):
+    # Only explicitly named purchase deadline fields. Payment/delivery dates,
+    # birthdays and arbitrary other dates are not a purchase deadline.
+    parts = []
+    relative = r'(?:出发\s*(?:前|后)\s*[：:]?\s*[0-9零〇一二两三四五六七八九十百]+\s*天|出发(?:当天|当日))'
+    absolute = r'(?:\d{4}-\d{2}-\d{2}|\d{4}年\s*\d{1,2}月\s*\d{1,2}日)'
+    label = r'(?:(?:' + re.escape(title) + r'|采购)(?:的)?\s*)?截止(?:日期)?\s*[：:]?\s*'
+    for part in re.split(r'[|，,]', source):
+        part = part.strip()
+        if re.fullmatch(label + '(?:' + absolute + '|' + relative + ')', part):
+            parts.append(part)
+        elif re.fullmatch(relative, part):
+            parts.append(part)
+    return ' | '.join(parts)
+
+
+def _journey_purchase_priority_source(source, title):
+    return ' | '.join(part.strip() for part in re.split(r'[|，,]', source)
+                      if re.fullmatch(r'\s*(?:' + re.escape(title) + r'(?:的)?\s*)?(?:优先级\s*[：:]?\s*'
+                                      r'(?:高|普通|中|低|high|normal|low)|(?:高|普通|中|低)优先级)\s*', part, re.I))
+
+
 def local_journey_items(prompt):
     """One labelled item per clause, pipe-separated fields; keep unknown prose."""
     result = {'checklist': [], 'shopping': []}
@@ -583,13 +621,12 @@ def ground_journey_items(brief, prompt, members, actor):
                 and other_title != title and other_title in source
                 for other in brief['checklist'] + brief['shopping'])
             due_source = _journey_item_fact_source(source, 'due')
-            certain = bool(source and not competing_item and not _journey_item_uncertain(due_source))
-            if collection == 'shopping' and re.search(r'付款|支付|收货|到货|下单|订单日期', due_source) and '截止' not in due_source:
-                # A purchase/payment/delivery milestone is not an explicit deadline.
-                certain = False
+            purchase_subject = collection != 'shopping' or _journey_purchase_single_subject(source, title)
+            certain = bool(source and purchase_subject and not competing_item and not _journey_item_uncertain(due_source))
             requested_due = bool(row['due'] or row['dueOffsetDays'] is not None
                                  or re.search(r'截止|出发\s*(?:前|后|当天|当日)', due_source))
-            dates, offsets = _journey_item_dates(due_source), _journey_item_offsets(due_source)
+            date_facts = _journey_purchase_deadline_source(due_source, title) if collection == 'shopping' else due_source
+            dates, offsets = _journey_item_dates(date_facts), _journey_item_offsets(date_facts)
             if not certain or len(dates) != 1 or row['due'] not in dates or offsets:
                 row['due'] = ''
             if not certain or len(offsets) != 1 or row['dueOffsetDays'] not in offsets or dates:
@@ -604,8 +641,8 @@ def ground_journey_items(brief, prompt, members, actor):
                         or _journey_item_uncertain(quantity_source)):
                     row['quantity'] = ''
                 priority_source = _journey_item_fact_source(source, 'priority')
-                priorities = _journey_item_priorities(priority_source)
-                if (not source or competing_item or _journey_item_uncertain(priority_source)
+                priorities = _journey_item_priorities(_journey_purchase_priority_source(priority_source, title))
+                if (not source or not purchase_subject or competing_item or _journey_item_uncertain(priority_source)
                         or len(priorities) != 1 or row['priority'] not in priorities):
                     if row['priority'] != 'normal' or '优先级' in priority_source:
                         warnings.append(f'{label}：优先级未能核对，暂按普通处理，请确认。')
