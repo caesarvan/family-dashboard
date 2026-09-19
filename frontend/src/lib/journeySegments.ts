@@ -1,4 +1,6 @@
 import { sessionIdentity } from './sessionIdentity.ts';
+import { shoppingSchedule } from './trips.ts';
+import type { ShoppingPriority } from './types';
 /** Existing-journey v2 editing. UTC/DST normalization belongs to the server. */
 export type TimePoint = { local: string; timeZone: string; offsetMinutes?: number; instant?: string };
 export type Destination = { key: string; country: string; city: string; arrival: string; departure: string; timeZone: string };
@@ -11,7 +13,7 @@ export type LegacyDay = SegmentBase & { kind: 'legacy_day'; start: string; end: 
 export type Segment = Flight | Stay | TimedActivity | DayActivity | LegacyDay;
 export type LegacySegment = { key: string; title: string; location: string; note: string; start: string; end: string };
 export type Preparation = { key: string; title: string; owner: string; due: string; dueOffsetDays: number; note: string; category: string };
-export type Purchase = { key: string; title: string; owner: string; quantity: string; budget: number | null; note: string };
+export type Purchase = { key: string; title: string; owner: string; quantity: string; budget: number | null; note: string; due?: string; priority?: ShoppingPriority };
 type PlanBase = { title: string; start: string; end: string; international: boolean; memberIds: string[]; budget: number; saved: number; paid: number; note: string; checklist: Preparation[]; shopping: Purchase[] };
 export type JourneyPlanV1 = PlanBase & { schemaVersion?: 1; destinations: Omit<Destination, 'timeZone'>[]; segments: LegacySegment[] };
 export type JourneyPlanV2 = PlanBase & { schemaVersion: 2; referenceTimezone: string; destinations: Destination[]; segments: Segment[] };
@@ -34,6 +36,7 @@ export class SegmentDiscarded extends Error {}
 export class SegmentRejected extends SegmentError {}
 class SegmentResponseError extends SegmentError {}
 function bad(): never { throw new SegmentError('行程数据无法核对，请保留草稿并重新读取。'); }
+function purchaseSchedule(value: Record<string, unknown>) { try { return shoppingSchedule({due:value.due,priority:value.priority}); } catch { return bad(); } }
 const object = (v: unknown): Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : bad();
 const text = (v: unknown, max = 100, empty = false): string => typeof v === 'string' && Array.from(v).length <= max && (empty || !!v.trim()) && !/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(v) ? v : bad();
 const integer = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): number => typeof v === 'number' && Number.isSafeInteger(v) && v >= min && v <= max ? v : bad();
@@ -90,7 +93,7 @@ export function readPlan(v: unknown, normalized = false): JourneyPlan {
   const start = day(r.start), end = day(r.end); if (end < start || (Date.parse(end) - Date.parse(start)) / 86400000 > 366) bad();
   const common: PlanBase = { title: text(r.title), start, end, international: bool(r.international), memberIds: unique(array(r.memberIds, 100).map(x => text(x, 100)), x => x), budget: money(r.budget), saved: money(r.saved), paid: money(r.paid), note: text(r.note, 2000, true),
     checklist: unique(array(r.checklist).map(v => { const x = object(v); fields(x, ['key', 'title', 'owner', 'due', 'dueOffsetDays', 'note', 'category']); return { key: key(x.key), title: text(x.title), owner: text(x.owner, 100), due: day(x.due), dueOffsetDays: integer(x.dueOffsetDays, -36889, 36889), note: text(x.note, 500, true), category: text(x.category, 40) }; }), x => x.key),
-    shopping: unique(array(r.shopping).map(v => { const x = object(v); fields(x, ['key', 'title', 'owner', 'quantity', 'budget', 'note']); return { key: key(x.key), title: text(x.title), owner: text(x.owner, 100), quantity: text(x.quantity, 30), budget: x.budget === null ? null : money(x.budget), note: text(x.note, 500, true) }; }), x => x.key) };
+    shopping: unique(array(r.shopping).map(v => { const x = object(v); fields(x, ['key', 'title', 'owner', 'quantity', 'budget', 'note', 'due', 'priority']); return { key: key(x.key), title: text(x.title), owner: text(x.owner, 100), quantity: text(x.quantity, 30), budget: x.budget === null ? null : money(x.budget), note: text(x.note, 500, true), ...purchaseSchedule(x) }; }), x => x.key) };
   if (!common.memberIds.length) bad();
   const destinations = unique(array(r.destinations, 20).map(v => { const x = object(v); fields(x, ['key', 'country', 'city', 'arrival', 'departure', ...(version === 2 ? ['timeZone'] : [])]); const d = { key: key(x.key), country: text(x.country, 60, true), city: text(x.city, 80), arrival: day(x.arrival), departure: day(x.departure) }; if (d.departure < d.arrival) bad(); return version === 2 ? { ...d, timeZone: timezone(x.timeZone) } : d; }), x => x.key);
   if (!destinations.length) bad();
@@ -103,7 +106,7 @@ export function readCapabilities(raw: unknown): Capabilities { const r = object(
 function linked(v: unknown): LinkedRecord { const r = jsonObject(v); return { ...r, id: id(r.id), revision: integer(r.revision, 1), workflowKey: text(r.workflowKey, 100) }; }
 export function readJourneyDetail(raw: unknown, expectedId?: string): JourneyDetail {
   const r = object(raw), uid = id(r.id); if (expectedId !== undefined && uid !== id(expectedId)) bad();
-  const d: JourneyDetail = { id: uid, tripId: id(r.tripId), revision: integer(r.revision, 1), plan: readPlan(r.plan, true), trip: r.trip === null ? null : linked(r.trip), tasks: array(r.tasks).map(linked), shopping: array(r.shopping).map(linked), events: array(r.events, 101).map(linked), policyNotice: text(r.policyNotice, 4000) };
+  const d: JourneyDetail = { id: uid, tripId: id(r.tripId), revision: integer(r.revision, 1), plan: readPlan(r.plan, true), trip: r.trip === null ? null : linked(r.trip), tasks: array(r.tasks).map(linked), shopping: array(r.shopping).map(value => { const row = linked(value); return { ...row, ...purchaseSchedule(row) }; }), events: array(r.events, 101).map(linked), policyNotice: text(r.policyNotice, 4000) };
   const all = [...(d.trip ? [d.trip] : []), ...d.tasks, ...d.shopping, ...d.events]; unique(all, x => x.id); unique(all, x => x.workflowKey);
   if (d.trip && (d.trip.id !== d.tripId || d.trip.workflowKey !== 'trip') || d.tasks.some(x => !/^task:[A-Za-z0-9_-]{1,64}$/.test(x.workflowKey)) || d.shopping.some(x => !/^shopping:[A-Za-z0-9_-]{1,64}$/.test(x.workflowKey))) bad(); d.events.forEach(x => eventKey(x.workflowKey));
   return d;
@@ -118,7 +121,7 @@ export function editSegmentDraft(detail: JourneyDetail): SegmentDraft {
   if (d.tasks.some(record => !record.due)) throw new SegmentError('关联准备事项已被单独清空截止日期，请先核对旅行清单，再编辑详细行程。');
   Object.assign(plan, { title: text(t.title), start: day(t.start), end: day(t.end), budget: money(t.budget), saved: money(t.saved), paid: money(t.paid), note: text(t.note ?? '', 2000, true) });
   plan.checklist = plan.checklist.map(row => { const live = d.tasks.find(x => x.workflowKey === 'task:' + row.key); return live ? { ...row, title: text(live.title), owner: text(live.owner, 100), due: day(live.due), note: text(live.note ?? '', 500, true) } : row; });
-  plan.shopping = plan.shopping.map(row => { const live = d.shopping.find(x => x.workflowKey === 'shopping:' + row.key); return live ? { ...row, title: text(live.title), owner: text(live.owner, 100), quantity: text(live.quantity ?? row.quantity, 30), budget: live.budget === null || live.budget === undefined ? null : money(live.budget), note: text(live.note ?? '', 500, true) } : row; });
+  plan.shopping = plan.shopping.map(row => { const live = d.shopping.find(x => x.workflowKey === 'shopping:' + row.key); return live ? { ...row, title: text(live.title), owner: text(live.owner, 100), quantity: text(live.quantity ?? row.quantity, 30), budget: live.budget === null || live.budget === undefined ? null : money(live.budget), note: text(live.note ?? '', 500, true), ...purchaseSchedule(live) } : row; });
   return { journeyId: d.id, tripId: d.tripId, revision: d.revision, sourceVersion: d.plan.schemaVersion === 2 ? 2 : 1, observed: detailFingerprint(d), expectedEntities: Object.fromEntries([t, ...d.tasks, ...d.shopping, ...d.events].map(x => [x.id, x.revision])), plan };
 }
 export function upgradeToV2(draft: SegmentDraft, referenceTimezone: string, destinationTimeZones: Record<string, string>, capabilities: Capabilities): SegmentDraft {
