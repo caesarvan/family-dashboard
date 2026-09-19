@@ -13,9 +13,9 @@ export function ShoppingScheduleFields({due,priority='normal',onDueChange,onPrio
   const dateLabel='采购截止日期'+suffix+'（可选）';
   return <View style={styles.schedule}>
     <View style={styles.scheduleField}><TextInput mode="outlined" dense outlineStyle={{borderRadius:8}} label={dateLabel} accessibilityLabel={dateLabel} placeholder="YYYY-MM-DD" value={due} onChangeText={value=>{if(!disabled)onDueChange(value);}} disabled={disabled} maxLength={10} autoCapitalize="none" autoCorrect={false}/>{!due&&<Text variant="bodySmall">未设截止日</Text>}</View>
-    <View style={[styles.scheduleField,{flexBasis:282}]}><Text variant="labelMedium">优先级</Text>
+    <View style={[styles.scheduleField,{flexBasis:300}]}><Text variant="labelMedium">优先级</Text>
       <View accessibilityRole="radiogroup" accessibilityLabel={'采购优先级'+suffix} style={{flexDirection:'row',flexWrap:'wrap'}}>
-        {([{value:'low',label:'低'},{value:'normal',label:'普通'},{value:'high',label:'高'}] as const).map(option=><View key={option.value} style={{flexGrow:1,flexBasis:94,minWidth:94}}>
+        {([{value:'low',label:'低'},{value:'normal',label:'普通'},{value:'high',label:'高'}] as const).map(option=><View key={option.value} style={{flexGrow:1,flexBasis:100,minWidth:100}}>
           <SelectionRow kind="radio" label={option.label} accessibilityLabel={'采购优先级'+suffix+'：'+option.label}
             checked={priority===option.value} disabled={disabled} onPress={()=>{if(!disabled)onPriorityChange(option.value);}}/>
         </View>)}
