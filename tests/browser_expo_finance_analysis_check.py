@@ -4,13 +4,14 @@ Successful business responses are never substituted. Fault injection drops a
 real committed response; all servers, sessions and data are disposable.
 """
 import argparse
-from contextlib import ExitStack
+from contextlib import ExitStack, closing
 from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import tempfile
@@ -162,7 +163,7 @@ class Run(accounts.Run):
     def coverage_and_responsive_summary(self, browser):
         with self.flow(browser) as (ctx, page):
             self.seed(ctx)
-            self.seed(ctx, name='合成缺少参考汇率', currency='USD')
+            dollar = self.seed(ctx, name='合成缺少参考汇率', currency='USD')
             self.seed(ctx, name='合成明确未知估值', closing=None)
             self.seed(ctx, name='合成已知负债', kind='liability', opening=20000, closing=30000)
             self.open_analysis(page)
@@ -174,11 +175,31 @@ class Run(accounts.Run):
             expect(page.get_by_test_id('analysis-trend')).to_be_visible(timeout=15000)
             self.capture(page, 'analysis-summary-phone', 390, page.get_by_test_id('analysis-summary'))
             self.capture(page, 'analysis-trend-desktop', 1280, page.get_by_test_id('analysis-trend'))
+            # Explicit synthetic public-cache fixture, not a successful external
+            # download substitution. The report and browser response remain real.
+            fx = sys.modules['finance_fx']
+            with closing(sqlite3.connect(self.database)) as con:
+                con.execute('BEGIN')
+                fx.save_fx_batch(con, {'provider': 'ECB', 'sourceUrl': fx.ecb_url(START, END),
+                    'bodySha256': 'a'*64, 'retrievedAt': '2026-09-19T01:00:00+00:00',
+                    'requestedStart': START, 'requestedEnd': END,
+                    'rates': [{'date': day, 'currency': currency, 'unitsPerEur': value}
+                        for day in (START, END) for currency, value in [('USD', '1.25'), ('CNY', '8')]]})
+                con.commit()
+            self.report['syntheticPublicCacheFixture'] = True
+            button(page, '重新读取当前分析').click()
+            expect(button(page, '核对 合成缺少参考汇率')).to_be_enabled(timeout=15000)
+            self.select_analysis(page, '合成缺少参考汇率')
+            assert self.report_for(ctx, dollar)['accounts'][0]['closing']['convertedCents'] == '768000'
+            button(page, '查看汇率来源与日期').click()
+            expect(page.get_by_test_id('analysis-detail')).to_contain_text('https://data-api.ecb.europa.eu/service/data/EXR/')
+            button(page, '返回分析总览').click()
+            expect(button(page, '核对 合成明确未知估值')).to_be_enabled(timeout=15000)
             self.select_analysis(page, '合成明确未知估值')
             button(page, '核对区间完整性').click()
             expect(button(page, '确认此区间完整')).to_be_disabled()
             expect(page.get_by_test_id('analysis-editor')).to_contain_text('补齐已知估值')
-            self.passed('Mixed known debt, unknown valuation and missing FX remain explicit gaps; responsive summary/trend render and incomplete endpoints cannot be confirmed')
+            self.passed('Unknown values and missing FX stay explicit; actual-format seeded public quotes render with provenance, responsive trend renders and incomplete endpoints cannot be confirmed')
 
 
 def main():
