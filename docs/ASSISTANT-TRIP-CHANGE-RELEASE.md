@@ -1,6 +1,6 @@
 # AI 已有旅行改期：66/9 → 66/9 发布合同
 
-本批是待组合验证的源码更新工具，尚未发布。真实界面、模型、正式构建、Linux 镜像与演练的结果由集成人分别记录，本文件不预先认定通过。业务合同见[改期 API](ASSISTANT-TRIP-CHANGE-API.md)、[意图识别](ASSISTANT-TRIP-INTENT.md)。
+本批已于 2026-09-19 17:39:23（北京时间）激活，17:40:24 独立只读审计通过。固定身份、分轮证据及实际发布记录见[集中验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。本文件保留发布／恢复合同及作者验证范围；固定起点和计划已经消费，不得重放。业务合同见[改期 API](ASSISTANT-TRIP-CHANGE-API.md)、[意图识别](ASSISTANT-TRIP-INTENT.md)。
 
 ## 固定生产起点与允许变化
 

@@ -1,6 +1,8 @@
 # 联合开发接手说明
 
-**最新上线：本人账户分析（2026-09-19 16:20:25，北京时间），16:20:57 独立只读审计通过。** 本人账户的趋势、分类／流动性、原币资金进出、区间核对与 ECB 公共参考汇率已发布；生产实际一户两库完成 61→66／平台 9→9，旧数据与配置保全。Windows 258、全新构建 Node 23、真实浏览器三场景及独立趋势补充、Linux 244 和两户三库演练分别通过。A–D 本人真实完整验收仍为 0/4；并行 AI 改期不在本批发布包中。 main `d135e124b67c43364bea813da843f50823d4a54c` 与 source `f25357f935d64774922efa68d42a2ba41bb18037` 同树 `1efb6a439fd8fdd95a1af5c4958296452ccfcb71`；固定 plan `9c83d3a22e41a9d573ab68fea1031ed159027bcd3e459835e9555e6346c2d8e9`。身份、失败原件与未验范围见[集中验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。
+**最新上线：AI 已有旅行改期（2026-09-19 17:39:23，北京时间），17:40:24 独立只读审计通过。** 从一句改期需求进入已有旅行、核对日期与联动事项，再预览确认保存。[使用与集中验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。A–D 本人真实完整验收仍为 0/4，真实云和实体电视另验。
+
+此前本人账户分析于 2026-09-19 16:20:25（北京时间）上线，16:20:57 独立只读审计通过；其固定运行身份与历史证据见[资产分析验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。
 
 **此前上线：本人订单关联库存（2026-09-19 13:57:12，北京时间）。** 已安装 main `e863febba02a6a90bc4a656292152d40187240a3` 与受验 source `fe0c56ba5537e70207ae5b98213e3daa1daef95a` 同树 `aefe80a65e1f41ad5c05b146d9513b529e762acc`。本地 API 227、发布工具 102、组合 Node 26、实际浏览器 3 条流程／4 图与 Linux 227 分别通过；原 Expo wrapper 失败及已审恢复证据保留。stage／activate 实际退出 0，生产一户两库保持 61/9，13:59:04 独立只读审计通过。使用、来源隐私和原回执恢复见[操作说明](EXPO-INVENTORY-SOURCES.md)，固定发布身份与原件见[本批验收](INVENTORY-SOURCES-ACCEPTANCE.md#inventory-sources-release)。本次 `followup-r1-steady` 基线已消费，不可重放；后续纯文档不改变运行包，本人真实订单与云写入未验收，实体电视仍不可用。
 
