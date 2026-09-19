@@ -1,6 +1,12 @@
 # 联合开发接手说明
 
-## 最新发布：Expo 旅行准备同步到主清单
+## 最新发布：采购截止日与优先级
+
+[PR #7](https://github.com/caesarvan/family-dashboard/pull/7) 已合入 main `efa6e41c786215b4ea3dde509e01ab6c8af9c5cf`，正式 source `67e5b0d5cafd28b50abce7e42fd64f64c8059997`。2026-09-20 03:54:39（北京时间）实际激活，03:55:48 独立生产只读审计通过；一户两库保持 69/9，停机备份及启动保全已核验。计划已消费，不可重放。操作、固定包／计划和全部本轮证据集中在[采购验收](SHOPPING-SCHEDULE-ACCEPTANCE.md#shopping-schedule-release)，勿把下方父版本或作者历史状态当作当前结论。
+
+本轮将采购日期／优先级接到普通清单、旅行编辑、助理草案和明确改期，保持 live 实体清空优先、旧字段兼容及原实体身份。正式新构建 106 Node／两组 TypeScript、4 浏览器流程／8 图、一次真实模型的 29 条检查和实际 Linux 298 项分别通过，保持 69/9，无自动回填或云写入。390px 离线 HelperText 裁切留作下一独立 UI 修复；资料搜索尚未随本包发布。A–D 本人完整验收仍为 0/4，实体电视缺设备。
+
+## 此前发布：Expo 旅行准备同步到主清单
 
 **2026-09-20 02:33:11（北京时间）激活成功，02:35:58 独立只读审计通过。** 入口为「已保存旅行 → 准备 → 同步到主清单」；选原事项和授权目标，预览后明确确认。等待受理与云端最新内容确认分别显示；未知提交先核对原状态，冲突及重连均保留原任务和原目标约束。[操作说明](EXPO-JOURNEY-TASKS.md) · [固定身份与集中验收](EXPO-JOURNEY-TASKS-ACCEPTANCE.md#expo-trip-task-publish-release) · [发布适配](EXPO-JOURNEY-TASKS-RELEASE.md)。
 

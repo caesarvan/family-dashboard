@@ -2,7 +2,9 @@
 
 源码仓库：[caesarvan/family-dashboard](https://github.com/caesarvan/family-dashboard)（私有，访问与 clone 需要获授权的 GitHub 账号）。`main` 为稳定源码，`codex/integration` 为集成候选；各任务在独立分支／worktree 开发，经 PR 独立审查后合入。`git push` 或 PR 合并不代表上线，生产仍按[既有发布流程](docs/DEPLOYMENT.md)执行。
 
-**最新上线：Expo 旅行准备同步到主清单（2026-09-20 02:33:11，北京时间），02:35:58 独立只读审计通过。** 打开「已保存旅行 → 准备 → 同步到主清单」，选择原事项及目标清单，预览后明确确认；支持进度核对、冲突选择与原目标重连。[操作说明](docs/EXPO-JOURNEY-TASKS.md) · [使用与集中验收](docs/EXPO-JOURNEY-TASKS-ACCEPTANCE.md#expo-trip-task-publish-release)。本批只接通前端，复用既有同步后端，保持 69/9；真实 Microsoft／Google 云写入、实体电视及 A–D 本人完整验收（0/4）仍待验证。
+**最新上线：采购截止日与优先级（2026-09-20 03:54:39，北京时间），03:55:48 独立只读审计通过。** 「采购」可填写截止和低／普通／高优先级；旅行草案携带这些字段，旅行改期只移动本人明确选中的采购。后端、正式新构建、4 条真实临时浏览器流程、一次真实模型及 Linux 298 项分别通过。[最短使用路径与集中验收](docs/SHOPPING-SCHEDULE-ACCEPTANCE.md#shopping-schedule-release)。390px 离线提示仍有裁切，真实云／实体电视及 A–D 本人完整验收（0/4）另验。
+
+**此前上线：Expo 旅行准备同步到主清单（2026-09-20 02:33:11，北京时间），02:35:58 独立只读审计通过。** 打开「已保存旅行 → 准备 → 同步到主清单」，选择原事项及目标清单，预览后明确确认；支持进度核对、冲突选择与原目标重连。[操作说明](docs/EXPO-JOURNEY-TASKS.md) · [使用与集中验收](docs/EXPO-JOURNEY-TASKS-ACCEPTANCE.md#expo-trip-task-publish-release)。本批只接通前端，复用既有同步后端，保持 69/9；真实 Microsoft／Google 云写入、实体电视及 A–D 本人完整验收（0/4）仍待验证。
 
 **此前上线：旅行准备、采购与成员分工（2026-09-20 01:13:38，北京时间），激活成功，01:23:44 独立只读审计通过。** 从「更多 → 家庭助理」整理旅行需求，核对可编辑的准备事项、采购预算和负责人，再预览并明确保存。[使用与集中验收](docs/ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。保持 69/9 表结构，无本批迁移；A–D 本人完整验收仍为 0/4，真实云与实体电视另验。
 
