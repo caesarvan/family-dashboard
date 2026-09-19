@@ -39,20 +39,26 @@ ITEMS = '/api/items/events'
 LAYOUT_SCRIPT = '''() => {
   const clipped=[], scrollableClipped=[];
   function reachableByHorizontalScroll(node, rect) {
+    let scrollport=null;
     for (let parent=node;parent&&parent!==document.body;parent=parent.parentElement) {
       const style=getComputedStyle(parent);
       if(style.position==='fixed'||style.position==='sticky') return false;
       if(parent===node) continue;
       const box=parent.getBoundingClientRect(), left=box.left+parent.clientLeft;
       const right=left+parent.clientWidth;
-      if((style.overflowX==='hidden'||style.overflowX==='clip')&&(rect.left<left-2||rect.right>right+2)) return false;
+      const visible=scrollport||rect;
+      if((style.overflowX==='hidden'||style.overflowX==='clip'||scrollport&&(style.overflowX==='auto'||style.overflowX==='scroll'))
+          &&(visible.left<left-2||visible.right>right+2)) return false;
       if((style.overflowX==='auto'||style.overflowX==='scroll')&&parent.scrollWidth>parent.clientWidth+2) {
-        const contentLeft=rect.left-left+parent.scrollLeft,contentRight=rect.right-left+parent.scrollLeft;
-        return parent.clientWidth>0&&left>=-2&&right<=innerWidth+2&&rect.width<=parent.clientWidth+2
-          &&contentLeft>=-2&&contentRight<=parent.scrollWidth+2;
+        if(!scrollport) {
+          const contentLeft=rect.left-left+parent.scrollLeft,contentRight=rect.right-left+parent.scrollLeft;
+          if(!(parent.clientWidth>0&&left>=-2&&right<=innerWidth+2&&rect.width<=parent.clientWidth+2
+              &&contentLeft>=-2&&contentRight<=parent.scrollWidth+2)) return false;
+          scrollport={left,right};
+        }
       }
     }
-    return false;
+    return scrollport!==null;
   }
   for(const node of document.querySelectorAll('input,textarea,button,[role="button"],[role="checkbox"]')) {
     const rect=node.getBoundingClientRect();

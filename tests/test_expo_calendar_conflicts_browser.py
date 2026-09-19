@@ -121,3 +121,13 @@ def test_real_clipping_is_not_exempted_by_missing_fixed_or_hidden_scroll(static_
     result = harness.layout_metrics(static_page)
     assert any(item['label'] == 'bad' for item in result['clipped'])
     assert not result['scrollableClipped']
+
+
+@pytest.mark.parametrize('outer_style', ['width:100px;overflow-x:hidden', 'position:fixed;width:358px'])
+def test_outer_ancestor_clipping_or_fixed_position_cannot_be_exempted(static_page, outer_style):
+    static_page.set_content('<style>body{margin:0}button{height:44px}</style>'
+        + '<div style="' + outer_style + '"><div id="strip" style="width:358px;overflow-x:auto">'
+        + '<div style="width:700px"><button style="position:relative;left:380px;width:90px">bad</button></div></div></div>')
+    result = harness.layout_metrics(static_page)
+    assert any(item['label'] == 'bad' for item in result['clipped'])
+    assert not result['scrollableClipped']
