@@ -29,6 +29,19 @@ HARNESS = 'tests/browser_expo_assistant_trip_change_check.py'
 CASES = ('reschedule_and_recover', 'choose_clarify_and_stale', 'identity_and_search')
 CHANGE = '/api/assistant/trip-change'
 TITLE = '合成冰岛旅行'
+BUILD_REUSE_PATHS = frozenset({HARNESS, 'tests/test_trip_change_browser_lifecycle.py',
+    'docs/EXPO-ASSISTANT-TRIP-CHANGE.md'})
+
+
+def build_source_delta(git, head, evidence, build_head):
+    """Accept the exact build or an explicit ancestor with only harness changes."""
+    assert re.fullmatch('[a-f0-9]{40}', build_head)
+    assert evidence['sourceHead'] == build_head
+    assert evidence['sourceTree'] == git('rev-parse', build_head + '^{tree}')
+    assert git('merge-base', build_head, head) == build_head, 'Build source must be an ancestor'
+    changed = git('diff', '--name-only', build_head, head).splitlines()
+    assert set(changed) <= BUILD_REUSE_PATHS, 'Build reuse permits only the reviewed harness, its tests and documentation'
+    return changed
 
 
 class Run(BaseRun):
@@ -81,7 +94,7 @@ class Run(BaseRun):
             assert route.request.method == 'POST'
             response = route.fetch(max_redirects=0)
             raw = response.body(); saved.write_bytes(raw)
-            calls.append(dict(payload=route.request.post_data_json, status=response.status, result=json.loads(raw), responseSha256=sha(saved)))
+            call = dict(payload=route.request.post_data_json, status=response.status, result=json.loads(raw), responseSha256=sha(saved))
             if after_response:
                 assert 'set-cookie' not in response.headers
                 after_response()
@@ -89,6 +102,9 @@ class Run(BaseRun):
                 route.abort('failed')
             else:
                 route.fulfill(status=response.status, headers=response.headers, body=raw)
+            # fetch() is not completion: after_response can yield during login.
+            # Unroute only after the callback and terminal route action finish.
+            calls.append(call)
         page.route(url, intercept)
         try:
             action(); self.settle(page, lambda: len(calls) >= 1)
@@ -230,6 +246,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--source-root', required=True, type=Path); parser.add_argument('--expected-head', required=True)
     parser.add_argument('--bundle', required=True, type=Path); parser.add_argument('--expected-build-evidence', required=True)
+    parser.add_argument('--build-source-head', help='Explicit ancestor for reusing a build across only reviewed harness changes')
     args = parser.parse_args(); root, bundle = args.source_root.resolve(), args.bundle.resolve()
     assert sys.dont_write_bytecode and not sys.flags.optimize
     assert re.fullmatch('[a-f0-9]{40}', args.expected_head) and re.fullmatch('[a-f0-9]{64}', args.expected_build_evidence)
@@ -238,7 +255,7 @@ def main():
     assert head == args.expected_head and not git('status', '--porcelain=v1')
     evidence_path = bundle.parent / 'build-evidence.json'; assert sha(evidence_path) == args.expected_build_evidence
     evidence = json.loads(evidence_path.read_text(encoding='utf-8'))
-    assert evidence['sourceHead'] == head and evidence['sourceTree'] == tree
+    build_delta = build_source_delta(git, head, evidence, args.build_source_head or head)
     names = subprocess.check_output(['git', '--no-replace-objects', 'ls-files', '-z'], cwd=root).decode('utf-8').rstrip('\0').split('\0')
     def hashes(): return {name: sha(root / name) for name in names}
     def exports(): return {p.relative_to(bundle).as_posix(): sha(p) for p in bundle.rglob('*') if p.is_file()}
@@ -248,6 +265,7 @@ def main():
     out.mkdir(parents=True); shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], providerAttempts=[], screenshots=[], scenarioResults=[], scenarioFailures=[],
         requestedChecks=len(CASES), head=head, tree=tree, buildSourceHead=evidence['sourceHead'], buildSourceTree=evidence['sourceTree'],
+        buildSourceDelta=build_delta, buildReusePaths=sorted(BUILD_REUSE_PATHS),
         buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(out / 'executed-harness.py'), sourceRoot=str(root), bundleRoot=str(bundle),
         sourceHashesBefore=hashes(), bundleHashesBefore=exports(), productionWrites=0, realModel=False, realCloud=False, physicalTelevision=False,
         scope='Three independent temporary Flask/SQLite/HTTPS/Edge local-intent trip-change scenarios; real business HTTP, no model/provider call or production data.')
