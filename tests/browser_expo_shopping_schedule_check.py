@@ -117,7 +117,7 @@ class Run(BaseRun):
             page.unroute(url, intercept)
             self.record(stem, calls)
 
-    def capture(self, page, label, focus):
+    def capture(self, page, label, focus, full_text=None):
         for width in WIDTHS:
             page.set_viewport_size({'width': width, 'height': 844 if width == 390 else 1000})
             expect(focus).to_be_visible()
@@ -130,6 +130,18 @@ class Run(BaseRun):
               .filter(n=>{const r=n.getBoundingClientRect();return r.width>0&&r.height>0&&r.bottom>0&&r.top<innerHeight&&getComputedStyle(n).visibility!=='hidden'&&(r.left< -2||r.right>innerWidth+2)})
               .map(n=>({label:n.getAttribute('aria-label')||n.textContent,box:n.getBoundingClientRect().toJSON()}))})''')
             assert metrics['bodyScroll'] <= width + 2 and metrics['rootScroll'] <= width + 2 and not metrics['clipped'], metrics
+            if full_text is not None:
+                expect(full_text).to_be_visible()
+                text_metrics = full_text.evaluate('''node => {
+                  const range=document.createRange();range.selectNodeContents(node);
+                  const box=node.getBoundingClientRect(),text=range.getBoundingClientRect();
+                  return {content:node.textContent,clientHeight:node.clientHeight,scrollHeight:node.scrollHeight,
+                    box:box.toJSON(),text:text.toJSON()};
+                }''')
+                assert text_metrics['scrollHeight'] <= text_metrics['clientHeight'] + 1, text_metrics
+                assert text_metrics['text']['bottom'] <= text_metrics['box']['bottom'] + 1, text_metrics
+                assert text_metrics['text']['top'] >= text_metrics['box']['top'] - 1, text_metrics
+                metrics['fullText'] = text_metrics
             path = self.out / f'{label}-{width}.png'
             page.screenshot(path=str(path), full_page=True)
             self.report['screenshots'].append({'path': path.relative_to(self.out.parent).as_posix(), 'sha256': sha(path), 'metrics': metrics})
@@ -305,7 +317,9 @@ class Run(BaseRun):
                 expect(page.get_by_label('采购优先级：高', exact=True)).to_be_disabled()
                 expect(page.get_by_text('已保存采购', exact=True)).not_to_be_visible()
                 assert self.snapshot() == before
-                self.capture(page, 'offline-draft', textfield(page, '采购截止日期（可选）'))
+                error_text = page.get_by_role('alert').filter(has_text='暂时无法确认保存结果')
+                expect(error_text).to_have_text('暂时无法确认保存结果。请先关闭并刷新清单，核对后再操作，避免重复添加。')
+                self.capture(page, 'offline-draft', error_text, full_text=error_text)
             finally:
                 ctx.set_offline(False)
             assert self.shopping(ctx) == [] and self.count_requests('POST', ITEMS) == posts

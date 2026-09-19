@@ -100,7 +100,7 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
       <List.Accordion title="更多选项" left={props=><List.Icon {...props} icon="tune"/>}>
         <View style={styles.fields}>{kind==='tasks'&&<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="截止日期（YYYY-MM-DD，可选）" label="截止日期（YYYY-MM-DD，可选）" value={due} onChangeText={setDue}/>}<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="备注（可选）" label="备注（可选）" value={note} onChangeText={setNote} multiline maxLength={500}/>{kind!=='events'&&!taskCloud&&<Checkbox.Item label={kind==='shopping'?'已买到':'已完成'} status={done?'checked':'unchecked'} disabled={locked} onPress={()=>{if(!locked)setDone(!done);}}/>} {kind==='shopping'&&<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="实际总价（元，可选）" label="实际总价（元，可选）" value={actual} onChangeText={setActual} keyboardType="decimal-pad"/>}</View>
       </List.Accordion>
-      {!!error&&<HelperText type="error" accessibilityRole="alert">{error}</HelperText>}
+      {!!error&&<HelperText type="error" accessibilityRole="alert" style={{flexShrink:0,lineHeight:18}}>{error}</HelperText>}
     </ScrollView></Dialog.ScrollArea>
     <Dialog.Actions><Button disabled={busy||uploading} onPress={onDismiss}>{uncertain?'关闭并核对':'取消'}</Button><Button mode="contained" disabled={busy||uploading||uncertain||!title.trim()} loading={busy} onPress={save}>保存</Button></Dialog.Actions>
   </Dialog></Portal>;

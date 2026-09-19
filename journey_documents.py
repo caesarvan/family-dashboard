@@ -78,6 +78,45 @@ def metadata(row, segments=None):
     return result
 
 
+def can_view_metadata(row, owner):
+    """Domain ACL for an active metadata row; an unlinked document stays private."""
+    return row is not None and (row['owner'] == owner or
+                               row['journey_id'] is not None and row['visibility'] == 'shared')
+
+
+def search_metadata(con, owner, query):
+    """Small local search projection inside the caller's authorized transaction.
+
+    No BLOB, download URL, request identity, file hash, or segment content is
+    selected. Resolve live journey linkage before applying the same domain ACL.
+    """
+    if not con.in_transaction:
+        raise ValueError('document_search_requires_authorized_transaction')
+    columns = ','.join('d.' + name for name in META_COLUMNS.split(','))
+    rows = con.execute(
+        f'SELECT {columns},j.id AS linked_journey_id,e.id AS linked_trip_id,'
+        "json_extract(e.data,'$.title') AS journey_title FROM journey_documents d "
+        'LEFT JOIN journey_workflows j ON j.id=d.journey_id '
+        "LEFT JOIN entities e ON e.id=j.trip_id AND e.kind='trips' "
+        "WHERE d.deleted_at IS NULL AND (d.owner=? OR (d.visibility='shared' "
+        'AND j.id IS NOT NULL AND e.id IS NOT NULL)) ORDER BY d.id', (owner,))
+    term, result = query.casefold(), []
+    for row in rows:
+        linked = row['linked_journey_id'] is not None and row['linked_trip_id'] is not None
+        visible = dict(row)
+        if not linked:
+            visible['journey_id'] = None
+        if not can_view_metadata(visible, owner):
+            continue
+        projected = metadata(visible)
+        journey = {'id': row['linked_journey_id'], 'tripId': row['linked_trip_id'],
+                   'title': row['journey_title']} if linked else None
+        if term in ' '.join((projected['title'], projected['filename'], journey['title'] if journey else '')).casefold():
+            result.append({'kind': 'documents', **{key: projected[key] for key in
+                ('id', 'title', 'filename', 'mimeType', 'revision', 'visibility')}, 'journey': journey})
+    return result
+
+
 def exported_documents(con, owner, include_shared=False):
     """No initialization, BLOB, download URL, request key or authentication data."""
     result = {'personal': [], 'shared': []}
@@ -187,7 +226,7 @@ def register_journey_documents(app, db, Problem, body, require_member, limited, 
 
     def visible_row(con, uid, owner, manage=False):
         row = con.execute(f'SELECT {META_COLUMNS} FROM journey_documents WHERE id=? AND deleted_at IS NULL', (uid,)).fetchone()
-        if not row or not (row['owner'] == owner or row['journey_id'] is not None and row['visibility'] == 'shared'):
+        if not can_view_metadata(row, owner):
             raise Problem('资料不存在或不可见', 404)
         if manage and row['owner'] != owner:
             raise Problem('只有上传者可以修改或删除资料', 403)

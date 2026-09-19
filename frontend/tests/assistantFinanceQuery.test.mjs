@@ -131,7 +131,7 @@ function harness(kind = 'panel', options = {}) {
     '../lib/api': { ApiError, request }, '../lib/household': { useHousehold: () => household }, '../lib/assistant': { AssistantFlow, memberKey: identity.memberIdentity },
     '../ui/components': { EmptyState: 'EmptyState', PageHeader: 'PageHeader', SectionCard: 'SectionCard' }, '../ui/SelectionRow': { SelectionRow: 'SelectionRow' } };
   // The query and finance page stay real; unrelated sub-editors are out of scope.
-  for (const name of ['./FinanceImportPanel', '../components/FinanceBaselinePanel', '../components/FinanceSourceImportPanel', '../components/FinanceAccountsPanel', '../components/ShoppingSettlementPanel', './InventoryScreen', './JourneyBriefPanel', './TripsScreen', '../components/ExistingTripChangePanel']) mocks[name] = { __esModule: true, default: name.split('/').at(-1) };
+  for (const name of ['./FinanceImportPanel', '../components/FinanceBaselinePanel', '../components/FinanceSourceImportPanel', '../components/FinanceAccountsPanel', '../components/ShoppingSettlementPanel', './InventoryScreen', './JourneyBriefPanel', './TripsScreen', './JourneyDocumentsPanel', './PhotosScreen', '../components/ExistingTripChangePanel']) mocks[name] = { __esModule: true, default: name.split('/').at(-1) };
   const uiLoad = loader(mocks, { document, window, navigator, setInterval: fn => { const id = timers.size + 1; timers.set(id, fn); return id; }, clearInterval: id => timers.delete(id) });
   const screenProps = { user: f.session.user, state: { people: [], shopping: [] }, onNavigate() {}, onInventory() {} };
   const component = uiLoad(resolve(root, kind === 'assistant' ? 'screens/AssistantScreen.tsx' : kind === 'finance' ? 'screens/FinanceScreen.tsx' : 'components/AssistantFinanceQueryPanel.tsx'));
