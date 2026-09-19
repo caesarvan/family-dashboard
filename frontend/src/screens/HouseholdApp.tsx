@@ -117,7 +117,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
     pendingNavigation.current={actor,locked,message:locked?'请先完成或取消采购实付核对；保存结果不明时，先读取当前资料再离开。':'',source:'shopping-settlement'};
   },[actor,route]);
   const onInventoryPending=useCallback((message:string|null)=>{
-    if(activeActor.current!==actor||activeRoute.current!==route||!['inventory','shopping'].includes(route)
+    if(activeActor.current!==actor||activeRoute.current!==route||!['inventory','shopping','finance'].includes(route)
       ||!message&&pendingNavigation.current.source!=='inventory')return;
     pendingNavigation.current={actor,locked:!!message,message:message||'',source:'inventory'};
   },[actor,route]);

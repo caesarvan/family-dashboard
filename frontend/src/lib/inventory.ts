@@ -15,7 +15,7 @@ export type Acquisition = {
   id: string; itemId: string; kind: 'purchase' | 'opening'; shoppingId: string | null;
   orderedQty: number; orderState: keyof typeof orderLabels; orderedOn: string | null; expectedOn: string | null;
   warrantyUntil: string | null; afterSalesState: keyof typeof afterSalesLabels; note: string;
-  revision: number; itemRevision: number; canMutate: boolean; canEditAllFields: boolean; editableFields: string[];
+  revision: number; itemRevision: number; canMutate: boolean; canManageSources: boolean; canEditAllFields: boolean; editableFields: string[];
   onHandQty: number; receivedQty: number; returnedQty: number; remainingExpectedQty: number;
   fulfillmentState: 'unreceived' | 'partial' | 'received'; createdAt: string; updatedAt: string;
 };
@@ -45,7 +45,7 @@ export function validateAcquisition(value: Acquisition): Acquisition {
     || !['purchase', 'opening'].includes(value.kind) || !Object.hasOwn(orderLabels, value.orderState) || !Object.hasOwn(afterSalesLabels, value.afterSalesState)
     || ![value.orderedQty, value.onHandQty, value.receivedQty, value.returnedQty, value.remainingExpectedQty].every(natural)
     || !Array.isArray(value.editableFields) || value.editableFields.some(field => typeof field !== 'string')
-    || typeof value.canMutate !== 'boolean' || typeof value.canEditAllFields !== 'boolean' || typeof value.note !== 'string') throw invalid();
+    || typeof value.canMutate !== 'boolean' || typeof value.canManageSources !== 'boolean' || typeof value.canEditAllFields !== 'boolean' || typeof value.note !== 'string') throw invalid();
   return value;
 }
 export function validateMovement(value: Movement): Movement {
