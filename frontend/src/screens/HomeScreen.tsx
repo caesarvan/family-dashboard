@@ -8,6 +8,7 @@ import { EmptyState, SectionCard } from '../ui/components';
 import { useDisplayDensity } from '../ui/theme';
 import { EventRow, RangeControls, WorkloadStrip } from './CalendarScreen';
 import HomeLayoutPanel from './HomeLayoutPanel';
+import TaskRemindersPanel from '../ui/TaskRemindersPanel';
 
 const cardKeys = ['calendar', 'finance', 'tasks', 'shopping', 'trips'];
 const money = (value: number) => Number.isSafeInteger(value) ? '¥' + new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value / 100) : '待核对';
@@ -28,13 +29,15 @@ export default function HomeScreen(props: ScreenProps) {
   const density = useDisplayDensity();
   const [busy, setBusy] = useState(''), [error, setError] = useState('');
   const [layoutOpen, setLayoutOpen] = useState(false);
+  const [remindersOpen, setRemindersOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<string | undefined>();
   const identity = `${props.user.householdId}:${props.user.id}:${props.user.auth_version}`;
   const current = useRef(identity); current.current = identity;
   const pending = useRef(false);
-  useEffect(() => { pending.current = false; setBusy(''); setError(''); setLayoutOpen(false); }, [identity]);
+  useEffect(() => { pending.current = false; setBusy(''); setError(''); setLayoutOpen(false); setRemindersOpen(false); }, [identity]);
   useEffect(() => { setSelectedDay(undefined); }, [identity, props.mode]);
   if (props.user.role !== 'member') return <EmptyState title="请使用成员账户打开首页" />;
+  if (remindersOpen) return <TaskRemindersPanel onBack={() => setRemindersOpen(false)} onOpenTask={task => props.onEdit('tasks', task)} />;
   if (layoutOpen) return <HomeLayoutPanel onClose={() => setLayoutOpen(false)} onPendingChange={props.onHomeLayoutPending} />;
   const { state } = props, today = dayKey(), now = Date.now(), days = rangeDays(props.mode);
   const summary = rangeSummary(state.events, days, props.focus);
@@ -111,6 +114,7 @@ export default function HomeScreen(props: ScreenProps) {
         {wide && <Text variant="bodyMedium" style={muted}>今天的安排、共同的计划，一起照顾好。</Text>}
       </View>
       <View style={styles.heroActions}>
+        <Button contentStyle={styles.primaryContent} icon="bell-outline" disabled={!!busy || !!props.pendingId} onPress={() => setRemindersOpen(true)}>我的提醒</Button>
         <Button contentStyle={styles.primaryContent} mode="outlined" accessibilityLabel="安排首页" disabled={!!busy || !!props.pendingId} onPress={() => setLayoutOpen(true)}>安排首页</Button>
         <Button contentStyle={styles.primaryContent} icon="plus" accessibilityLabel="添加待办" mode="contained" style={styles.pill} onPress={() => props.onEdit('tasks')}>添加待办</Button>
       </View>
