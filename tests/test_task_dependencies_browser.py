@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from scripts.check_expo_task_dependencies_browser import BUILD_REUSE_PATHS, build_source_delta, completed_periodic_refresh, deliver
+from scripts.check_expo_task_dependencies_browser import ADD_TASK_NAME, BUILD_REUSE_PATHS, build_source_delta, completed_periodic_refresh, deliver
 
 
 @pytest.fixture
@@ -113,3 +113,12 @@ def test_periodic_refresh_requires_state_eof_then_later_identity_eof():
     assert evidence['stateRequestIndex'] == 1 and evidence['identityRequestIndex'] == 2
     assert evidence['stateStatus'] == evidence['identityStatus'] == 200
     assert evidence['responseBodiesFinished'] and not listeners and not events
+
+
+def test_add_task_name_accepts_paper_icon_without_matching_other_actions():
+    # Exact names observed in the R1 aria snapshot and the plain-text variant.
+    assert ADD_TASK_NAME.fullmatch('\U000f0415 添加待办')
+    assert ADD_TASK_NAME.fullmatch('添加待办')
+    for name in ('批量添加待办', '添加待办事项', '查看 添加待办', '新建记录',
+                 '\U000f0415 添加采购', '\U000f0415添加待办'):
+        assert ADD_TASK_NAME.fullmatch(name) is None
