@@ -2,6 +2,23 @@
 
 当前部署身份见 [HANDOFF](HANDOFF.md)。个人账户与多家庭成员协作此前完成 58/2→61/9 迁移；本人账户分析现已完成 61/9→66/9，当前为 **66 张户内表与 9 张平台表**，见[分析发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；此前家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
 
+## 旅行路线（本地候选，未上线）
+
+路线只保存当前旅行关联地点的明确顺序，默认私人；显式共享后由同户其他成员只读，只有作者可编辑／删除。当前生产仍为 66/9 表，本地候选新增三张路线表后为 69/9。完整 DTO、限制和错误见 [路线 API](JOURNEY-ROUTES.md)，界面与恢复见 [Expo 路线](EXPO-JOURNEY-ROUTES.md)，迁移和发布边界见 [路线发布](JOURNEY-ROUTES-RELEASE.md)。
+
+| 方法 | 路径 | 用途与返回 |
+|---|---|---|
+| GET | `/api/journey-routes` | `scope=mine\|shared\|visible`，可选 journeyId、limit、offset；返回 `{items,total,limit,offset,hasMore}`，只统计当前可见路线 |
+| GET | `/api/journey-routes/<id>` | 当前授权详情 `{route,segments}`；站位保留顺序与匿名缺口，连线只连接有授权坐标的原相邻站 |
+| POST | `/api/journey-routes` | requestId、title、journeyId、expectedJourneyRevision、stops；visibility 缺省 private，首次 201 |
+| PUT | `/api/journey-routes/<id>` | 完整内容及 revision／sourceVersion；站点绑定 expectedRevision，可按原索引保留仍不可用的槽，200 |
+| DELETE | `/api/journey-routes/<id>` | JSON 仅含 requestId、revision、sourceVersion；软删除并保留操作回执，200 |
+| GET | `/api/journey-routes/operations/<requestId>` | 本人当前家庭原操作回执，未知 404；回执及写入返回 `{operation,replayed,current}`，current 为当前授权详情或 null |
+
+全部接口要求当前成员：匿名 401、电视 403，不可见路线与未知路线均 404。写入需同源 JSON／CSRF；`ImportSession` 在读取、事务与返回边界重验身份。站位 1..100 个，允许往返重复；同一 `BEGIN IMMEDIATE` 原子保存路线、顺序和成功回执。同键同内容先恢复成功、重放 200，不重复写入；同键不同内容 409。未知结果先读原回执，再明确重发原编号和完整内容，404 不能证明在途请求不会提交。
+
+共享路线对作者也一律使用地点当前共享投影，不能借路线扩大名称或坐标的共享范围；地点撤共享、删除或移出该旅行后只留 `{index,state:"unavailable"}`，无隐藏地点事实、不跨缺口连线。路线不会修改地点关联或到访状态，也不调用地图或云服务。个人 ZIP 的路线扩展沿同一当前投影，只在明确 includeShared 时附带他人共享路线，排除原站点外键、回执与源版本；发送前重验投影，详见 [路线数据副本](JOURNEY-ROUTES-PORTABILITY.md)。
+
 ## 助理预算与支出只读查询（已发布）
 
 2026-09-19 19:42:01（北京时间）已发布，19:42:33独立只读审计通过。`POST /api/assistant/finance-query` 接受 `{prompt, useModel?}`；需当前成员、同源 JSON 和 CSRF，匿名401、电视403。返回 ready／clarify／unsupported；澄清或不支持时无财务内容。默认本地，允许模型不代表一定调用；模型只解释问题，金额在真实授权读取事务中按完整本人账本和原币计算。
@@ -700,5 +717,5 @@ GET `/auth/<provider>/callback` 接收供应商的 `state`、`code`，或 `error
 - 先区分成员、电视、当前成员私有数据和家庭共享数据，新增字段不能因为“前端没显示”就从共享 API 泄露。
 - 新增实体字段同步修改 validator、默认值兼容、表单、渲染和冲突测试；数据为 JSON 不意味着可以跳过迁移设计。
 - 新增写接口明确 JSON、CSRF、Origin、revision 和云端副作用。不要绕过 `task_write` 直接修改镜像 JSON，也不要将“排队成功”显示为“同步成功”。
-- 当前没有开放第三方机器客户端认证、公共注册、家庭多租户、数据导出 API、批量 API、完整账本、照片独立删除、OAuth 管理后台或后台任务查询 API。若实现这些能力，先补权限与返回契约。
+- 当前已提供独立家庭数据边界、个人账户与多家庭成员关系，以及成员数据副本 API；分别见 [个人账户](PERSONAL-ACCOUNTS.md)、[成员协作](EXPO-MEMBERSHIPS.md) 和 [个人导出](PORTABILITY.md)。本人账单与导入、媒体管理及同步状态各有独立模块合同，不以本页基础接口清单判断它们尚未实现；也不将这些受控接口视为通用第三方机器认证或不受限公共访问。
 - 修改接口后同步更新本文、[数据模型](DATA-MODEL.md)、相关测试及 [验证记录](VALIDATION.md)。本文是人工维护的实现文档，不替代可执行的回归测试。

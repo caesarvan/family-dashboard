@@ -19,6 +19,7 @@ from household_routines import export_shared_routines
 from spending_observations import export_owned_spending_observations
 from journey_documents import exported_documents
 from journey_places import coordinate_projection
+from journey_routes import route_context
 from household_media import ITEM_VIEW, MediaError
 from inventory_core import export_inventory, InventoryError
 
@@ -91,6 +92,34 @@ def exported_places(con, owner, include_shared=False):
         item = {public: row[stored] for public, stored in fields.items()}
         item.update(coordinates=point, coordinatePrecision=precision, coordinateGridDegrees=grid)
         result['personal' if own else 'shared'].append(item)
+    return result
+
+
+def exported_routes(con, owner, household, secret, include_shared=False):
+    """Current API projection only; never export raw stops or historical receipts."""
+    result = {'personal': [], 'shared': []}
+    if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='journey_routes'").fetchone():
+        return result
+    secret = secret.encode('utf-8') if isinstance(secret, str) else secret
+    route_fields = {'id', 'title', 'journeyId', 'visibility', 'revision'}
+    place_fields = {'id', 'owner', 'name', 'country', 'city', 'status', 'journeyId',
+        'startDate', 'endDate', 'visibility', 'coordinateDisclosure', 'visitedConfirmedAt',
+        'visitedConfirmedBy', 'revision', 'createdAt', 'updatedAt', 'coordinates',
+        'coordinatePrecision', 'coordinateGridDegrees'}
+    rows = con.execute("SELECT * FROM journey_routes WHERE deleted_at IS NULL "
+        "AND (owner=? OR (? AND visibility='shared')) ORDER BY id", (owner, bool(include_shared)))
+    for row in rows:
+        detail, _ = route_context(con, row, owner, household, secret)
+        item = {key: value for key, value in detail['route'].items() if key in route_fields}
+        item['stops'] = []
+        for stop in detail['route']['stops']:
+            slot = {'index': stop['index'], 'state': stop['state']}
+            if stop['state'] == 'available':
+                slot['place'] = {key: value for key, value in stop['place'].items() if key in place_fields}
+            item['stops'].append(slot)
+        item['segments'] = [{'fromIndex': segment['fromIndex'], 'toIndex': segment['toIndex']}
+                            for segment in detail['segments']]
+        result['personal' if row['owner'] == owner else 'shared'].append(item)
     return result
 
 
@@ -172,6 +201,10 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
         places = exported_places(con, uid, include_shared=True)
         counts['journeyPlaces'] = len(places['personal'])
         shared['journeyPlaces'] = len(places['shared'])
+        counts['journeyRoutes'] = shared['journeyRoutes'] = 0
+        if 'journey_routes' in tables(con):
+            counts['journeyRoutes'] = con.execute('SELECT count(*) FROM journey_routes WHERE owner=? AND deleted_at IS NULL', (uid,)).fetchone()[0]
+            shared['journeyRoutes'] = con.execute("SELECT count(*) FROM journey_routes WHERE owner!=? AND visibility='shared' AND deleted_at IS NULL", (uid,)).fetchone()[0]
         media = exported_household_media(con,app.extensions.get('household_media'),uid,include_shared=True)
         counts['householdMedia'] = len(media['personal'])
         shared['householdMedia'] = len(media['shared'])
@@ -220,6 +253,10 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
             personal['journeyDocuments'] = documents['personal']
             places = exported_places(con, uid, include_shared=value.get('includeShared', False))
             personal['journeyPlaces'] = places['personal']
+            routes = exported_routes(con, uid, current_household := app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default'),
+                                     app.config['SECRET_KEY'], include_shared=value.get('includeShared', False))
+            personal['journeyRoutes'] = routes['personal']
+            snapshot['coverage']['journeyRoutes'] = 'current_visible_ordered_stops_without_receipts'
             media_engine = app.extensions.get('household_media')
             media = exported_household_media(con,media_engine,uid,include_shared=value.get('includeShared',False))
             personal['householdMedia'] = media['personal']
@@ -322,6 +359,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     shared['routines'] = export_shared_routines(con)
                 snapshot['shared'] = shared
                 shared['journeyPlaces'] = places['shared']
+                shared['journeyRoutes'] = routes['shared']
                 shared['householdMedia'] = media['shared']
                 shared['inventory'] = {'items':inventory['shared']}
             personal['photoMetadata'] = [dict(r) for r in con.execute('SELECT id,size,width,height FROM photos WHERE created_by=? ORDER BY id',(uid,))]
@@ -368,6 +406,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     '勾选共同记录时含双方已共享的日程、待办、采购、旅行和资金汇总；不含伴侣私人账本。采购图片与旅行资料仅含元数据，不含文件。旅行资料夹可逐份下载文件。\n',
                     '本人旅行资料只在 personal.journeyDocuments 出现一次，含旅行已删除后保留的本人资料；shared.journeyDocuments 仅含仍关联有效旅行的伙伴共享资料，不含内容、文件网址、请求标识或内容散列。\n',
                     'personal.journeyPlaces 含本人未删除地点及精确坐标；shared.journeyPlaces 仅含伙伴明确共享地点，坐标按其隐藏、粗化或精确设置导出。地点创建回执与已删除记录不在本副本内，整库备份另行保留。\n',
+                    'personal.journeyRoutes 含本人未删除路线；勾选共同记录才含 shared.journeyRoutes 中伙伴明确共享路线。站点按当前授权及原顺序投影，共享路线的作者也只看到共享坐标。不可用站点仅保留位置，不跨缺口连线；不含隐藏地点编号、历史回执或请求摘要。路线顺序不代表导航或实际到访。\n',
                     'personal.householdMedia 仅含本人已确认保存照片的说明、尺寸、来源文件名与旅行关联；shared.householdMedia 仅含仍获授权的伙伴共享照片说明，不包含原始文件名。没有照片文件、下载网址、选片清单、令牌、TV许可或后台任务。加密预览和后台记录仅在服务器整库备份中保留。\n',
                     'personal.inventory 包含本人物品及批次、实物流水；sources 和 operations 只含本人且在本次可见范围内的最小来源关联与操作摘要。shared.inventory 仅含伙伴当前共享物品及其批次、实物流水，不含伙伴的金融来源或操作回执。归档记录、请求标识、载荷散列、原回执内容不在此副本内；整库备份另行保留。数量不代表付款、退款或估值。\n',
                     '不含登录密码、令牌、应用密钥；迁移后须重新绑定第三方。此文件不是可直接覆盖 SQLite 的灾难恢复备份，当前没有一键还原此文件的接口。\n',
@@ -377,6 +416,13 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
             latest = app.extensions['member_sessions'].current(con)
             if (latest['owner'],latest['auth_version']) != (uid,current['auth_version']):
                 raise Problem('登录状态已变化，请重新登录后导出',401)
+            if (app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default') != current_household
+                    or g.actor.get('householdId') != current_household):
+                raise Problem('家庭已变化，请重新打开后导出',401)
+            if (exported_routes(con, uid, current_household, app.config['SECRET_KEY'],
+                                include_shared=value.get('includeShared', False)) != routes
+                    or exported_places(con, uid, include_shared=value.get('includeShared', False)) != places):
+                raise Problem('路线、地点或共享范围已变化，请重新导出以获取最新内容',409)
             try:
                 validate_media_snapshot(con,media_engine,uid,media)
             except MediaError:

@@ -4,6 +4,20 @@
 
 先读 [项目规则](../AGENTS.md) 和 [Git 指导](GIT-WORKFLOW.md)。每个任务使用集成人指定的独立分支、worktree、base 和允许路径；非作者审查后合入 integration，组合验收及再次审查通过后再进入 main。不要在主仓、集成目录或其他作者目录直接开发。
 
+## 旅行路线开发入口（本地候选）
+
+路线 API、应用注册、导出和 Expo 入口已包含在本地候选源码；当前生产仍为 66/9，路线候选初始化为 69/9，源码接入不等于完成浏览器验收或上线。接口与权限见 [路线合同](JOURNEY-ROUTES.md)，导出接缝见 [路线数据副本](JOURNEY-ROUTES-PORTABILITY.md)，使用和未知结果恢复见 [Expo 路线](EXPO-JOURNEY-ROUTES.md)，迁移与固定发布流程见 [路线发布](JOURNEY-ROUTES-RELEASE.md)。
+
+后端由 `app.py` 先注册 `journey_workflows`、`journey_documents`、`journey_places`，再调用 `register_journey_routes(app, db, Problem, body, require_member)`，随后才注册个人导出。各户子应用复用同一工厂与独立库。新模块的 `initialize_journey_routes(con)` 不开始或提交事务；应用注册与显式迁移各自负责原子初始化。`Dockerfile` 须复制 `journey_routes.py`，发布 profile、迁移 DDL 和所有户库备份须同步绑定；不能只发布前端或重放旧表数的算子。
+
+前端经 `TripsScreen → JourneyRoutesPanel` 进入，使用 `lib/journeyRoutes.ts` 的严格 DTO／原请求恢复与现有 `PlaceFence`，`WorldMap` 只画当前授权且原相邻站位的连线。照片入口复用 `TripRecapPanel` 的 photos 页，返回后重新读取同一路线；无地点时进入原地点页并返回路线列表。后台／失焦／断网清除显示投影，换身份清除草稿与未知请求；不把坐标、原请求或令牌存入浏览器持久缓存。共享路线作者同样使用公共投影，不以本人的精确坐标代替。
+
+`data_portability.py` 在已授权事务内复用 `route_context(con,row,owner,household,secret)` 的 detail 白名单，不能导出它返回的第二项原站位行。该 helper 不独立检查会话或 commit；调用者筛选当前可见路线，保留既有会话 fence，并在 ZIP 生成后重新比较路线／地点投影。
+
+聚焦入口为 [路线 API 测试](../tests/test_journey_routes.py)、[路线导出测试](../tests/test_journey_routes_portability.py)、[原地点测试](../tests/test_journey_places.py)、[地点源版本测试](../tests/test_journey_place_source_revision.py) 和 [前端路线测试](../frontend/tests/journeyRoutes.test.mjs)。前端测试涉及现有类型转换运行方式和后端辅助 fixture，须使用本轮固定构建 runner 的明确解释器／源码路径；不要复制另一工作树源码或注入任意 fixture。实际浏览器、隔离 Linux 迁移、生产发布和本人真实使用分别取得证据，不累计成一套通过数量。
+
+重生结构索引使用当前项目解释器执行 `python -B -X utf8 tests/inspect_contract.py`：它只在临时新数据库实例化 `create_app`，写入 [路由表](PLATFORM-ROUTES.md) 与 [机器索引](contract-inventory.json)，不读取 `.env` 或调用第三方服务。运行时清除外部配置，保留真实命令、stdout／stderr、固定 source head、源码前后散列和临时库清理证据；69/9 是本地工厂结构观察，不能据此声称生产迁移完成。
+
 ## 43→43 源码发布工具开发入口
 
 [release_core.py](../deploy/release_core.py) 保存共同升级事务；[source_release.py](../deploy/source_release.py) 固定选择源码模式，原静态入口固定选择静态模式。不要复制事务代码，也不要从 READY 的内容动态提升权限。变更部署工具时，继续保留旧静态测试，并运行 [SOURCE-RELEASE](SOURCE-RELEASE.md) 列出的当前后端、工具、浏览器与真实 Docker 验证。
@@ -145,6 +159,7 @@ python tests/browser_tv_onboarding_check.py
 | 采购实付核对 | 本人 CNY 付款选择、共享字段预览确认、修订／解绑、私有回执和导出 | `shopping_settlement.py`、`static/shopping-settlement.js/.css` | 后端核对与 UI 独立负责；集成人维护入口／导出／清单；旅行迁期保留与隐私由跨模块专项覆盖，详见 [专文](SHOPPING-SETTLEMENT.md) |
 | 图片存储 | 认证读取、草稿权限、JPEG 重编码、去除元数据、大小/像素/总量限制、孤立照片清理 | `shopping_media.py` | 路由和引用事务需与 `app.py` 契约联动 |
 | 旅行工作流 | 多城市段、准备/采购/本地日程一体生成；签名预览、版本核对、幂等回执 | `journey_workflows.py`、`static/journey-ui.js/.css` | 保留关联实体 ID、已完成状态、采购实付和图片；和云发布负责人约定事件关系 |
+| 旅行路线（候选） | 私人顺序、明确共享、只读伙伴、匿名缺口及原操作恢复 | `journey_routes.py`、`frontend/src/components/JourneyRoutesPanel.tsx`、`frontend/src/lib/journeyRoutes.ts` | 作者权限与公共地点投影不可分离；集成人维护注册／导出／Docker，发布负责人维护 66→69 全户迁移 |
 | 旅行时间（02:33 发布） | 航班、住宿、活动的当地时间／IANA 时区、日期区间、夏令时与迁期核对 | `journey_time.py`、`journey_workflows.py`、`static/journey-ui.js` | 时间语义与云日历发布共同审查；固定 tzdata 版本，不能以 UTC 日期替代当地日期 |
 | 家庭财务 | 公共荷包、日常预算、旅行储备、长期储蓄、待付款、出资比例、核对日期 | `app.py`、`static/app.js` | 手动快照，不能假定为自动账本 |
 | 个人月度财务 | 本人收入、支出、预算和月份，服务端按当前成员隔离 | `app.py`、`static/app.js` | 不加入共享状态 |
@@ -169,9 +184,9 @@ python tests/browser_tv_onboarding_check.py
 
 账号接入细节见 [ACCOUNT-SYNC](ACCOUNT-SYNC.md) 和 [SYNC-DESIGN](SYNC-DESIGN.md)。采购、日程和资产基线的口径见 [本轮功能说明](FEATURES-20260914.md)。
 
-## 3. 前端不是打包框架项目
+## 3. Expo 前端与经典页加载边界
 
-前端是同源静态 HTML、CSS 和原生 JavaScript，没有 React/Vue、Node 构建流程或 npm 运行依赖。Node 用于 JavaScript 语法和纯函数测试。新增模块需要同时检查 HTML 引用、全局依赖、Docker 复制范围和发布白名单。
+当前成员界面在 `frontend/` 使用 Expo／React Native／React Native Paper，经 Node 与锁文件构建 Web export，由 Flask 同源提供 `/app`；旅行路线使用这一入口。构建必须在固定源码与独立依赖目录执行并绑定输入／输出散列，详见 [前端说明](../frontend/README.md)。经典页仍是同源静态 HTML、CSS 与原生 JavaScript；下方 `defer` 顺序仅描述经典入口，不能将新增 Expo 模块当作全局脚本插入。新增模块仍须核对入口、Docker 复制范围和发布白名单。
 
 `static/index.html` 当前通过 `defer` 按以下顺序加载脚本：
 

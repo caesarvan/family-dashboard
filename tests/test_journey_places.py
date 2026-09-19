@@ -473,7 +473,7 @@ def test_schema_initialization_is_explicit_repeatable_and_preserves_receipts(app
 
 
 def test_module_is_registered_and_initialized_by_production_factory(tmp_path):
-    from deploy.check_finance_accounts_migration import BASE_TABLES, NEW_TABLES
+    from deploy.check_finance_analysis_migration import BASE_TABLES, NEW_TABLES
     application = app_module.create_app({'TESTING': True, 'DATA_DIR': str(tmp_path / 'unwired'),
         'SECRET_KEY': 'synthetic-unwired-place-secret', 'SESSION_COOKIE_SECURE': False,
         'MEMBER1_PASSWORD': PASSWORD, 'MEMBER2_PASSWORD': PASSWORD})
@@ -481,8 +481,10 @@ def test_module_is_registered_and_initialized_by_production_factory(tmp_path):
     with connection(application) as con:
         assert con.execute("SELECT 1 FROM sqlite_master WHERE name='journey_places'").fetchone() is not None
         tables = {row[0] for row in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")}
-        assert len(BASE_TABLES | NEW_TABLES) == 58
-        assert tables == BASE_TABLES | NEW_TABLES
+        assert len(BASE_TABLES | NEW_TABLES) == 66
+        expected = BASE_TABLES | NEW_TABLES | {'journey_routes', 'journey_route_stops', 'journey_route_operations'}
+        assert len(expected) == 69
+        assert tables == expected
 
 
 def test_initializer_requires_foreign_keys_and_existing_parent_schema():
