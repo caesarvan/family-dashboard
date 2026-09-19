@@ -4,8 +4,9 @@ import subprocess
 from types import SimpleNamespace
 
 import pytest
+from playwright.sync_api import sync_playwright
 
-from scripts.check_expo_task_dependencies_browser import ADD_TASK_NAME, BUILD_REUSE_PATHS, build_source_delta, completed_periodic_refresh, deliver
+from scripts.check_expo_task_dependencies_browser import BUILD_REUSE_PATHS, add_task_button, build_source_delta, completed_periodic_refresh, deliver
 
 
 @pytest.fixture
@@ -115,10 +116,28 @@ def test_periodic_refresh_requires_state_eof_then_later_identity_eof():
     assert evidence['responseBodiesFinished'] and not listeners and not events
 
 
-def test_add_task_name_accepts_paper_icon_without_matching_other_actions():
-    # Exact names observed in the R1 aria snapshot and the plain-text variant.
-    assert ADD_TASK_NAME.fullmatch('\U000f0415 添加待办')
-    assert ADD_TASK_NAME.fullmatch('添加待办')
-    for name in ('批量添加待办', '添加待办事项', '查看 添加待办', '新建记录',
-                 '\U000f0415 添加采购', '\U000f0415添加待办'):
-        assert ADD_TASK_NAME.fullmatch(name) is None
+def test_add_task_locator_handles_real_browser_names_and_rejects_ambiguity():
+    # Static HTML only: actual Playwright Python-to-JS locator serialization,
+    # without loading the application, contacting a server, or writing data.
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(channel='msedge', headless=True)
+        try:
+            context = browser.new_context()
+            requests = []
+            context.on('request', lambda request: requests.append(request.url))
+            context.route('**/*', lambda route: route.abort())
+            page = context.new_page()
+            for name in ('添加待办', '\U000f0415 添加待办'):
+                page.set_content('<span>添加待办</span><button>添加待办事项</button>'
+                                 '<button id="add">' + name + '</button>')
+                page.locator('#add').evaluate("node => node.onclick = () => node.dataset.clicked = 'yes'")
+                control = add_task_button(page)
+                assert control.get_attribute('id') == 'add'
+                control.click()
+                assert page.locator('#add').get_attribute('data-clicked') == 'yes'
+            page.set_content('<button>添加待办</button><button>批量添加待办</button>')
+            with pytest.raises(AssertionError, match='expected to have count'):
+                add_task_button(page)
+            assert not requests
+        finally:
+            browser.close()
