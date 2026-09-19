@@ -1,5 +1,7 @@
 # 家庭中枢 · Family Dashboard
 
+源码仓库：[caesarvan/family-dashboard](https://github.com/caesarvan/family-dashboard)（私有，访问与 clone 需要获授权的 GitHub 账号）。`main` 为稳定源码，`codex/integration` 为集成候选；各任务在独立分支／worktree 开发，经 PR 独立审查后合入。`git push` 或 PR 合并不代表上线，生产仍按[既有发布流程](docs/DEPLOYMENT.md)执行。
+
 **最新上线：助理预算与支出只读查询（2026-09-19 19:42:01，北京时间），19:42:33 独立只读审计通过。** 从「更多 → 家庭助理」点「查询支出」或输入问题，默认本地解释，可选模型理解口语；各币种净支出与预算分别核对，公共资金仅显示已确认手工快照。[使用步骤](docs/EXPO-FINANCE-QUERY.md) · [分段验收与发布身份](docs/ASSISTANT-FINANCE-QUERY-ACCEPTANCE.md#assistant-finance-query-release)。A–D 本人完整验收仍为 0/4。
 
 **此前上线：AI 已有旅行改期（2026-09-19 17:39:23，北京时间），17:40:24 独立只读审计通过。** 从一句改期需求进入已有旅行、核对日期与联动事项，再预览确认保存。[使用与集中验收](docs/ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。A–D 本人真实完整验收仍为 0/4，真实云和实体电视另验。
@@ -406,9 +408,9 @@ node --test tests/test_calendar_views.js
 
 ## 多 agent 联合开发
 
-项目已建立**独立本地 Git 仓库**，基线提交 `ad667bf2b744d707db080964c662249c7cd8b056`，标签 `baseline/2026-09-15-handoff`。父 `AI` 仓库通过本机 exclude 忽略本目录，原索引保持；当前没有远端，不使用 `git pull` 部署。
+项目使用独立 Git 仓库，`origin` 已指向上述私有 GitHub 仓库。最初交接基线 `ad667bf2b744d707db080964c662249c7cd8b056` 与标签 `baseline/2026-09-15-handoff` 保留历史含义；父 `AI` 仓库通过本机 exclude 忽略本目录。不使用 `git pull` 部署，也不把 GitHub 托管视为分支保护或 CI 已配置的证明。
 
-**每个 agent 使用独立 `codex/<agent>-<task>` 分支与 worktree。** 提交后由另一位 agent 审查，集成人按依赖顺序合入 `codex/integration`；组合测试和再次审查通过后才合入 `main`。代码合入与生产部署是两个步骤。禁止不同 agent 共用工作目录；文件分工继续用于约定模块边界，不能替代分支隔离。命令和合并要求见 [Git 协作指导](docs/GIT-WORKFLOW.md)，自动读取的项目约定见 [AGENTS.md](AGENTS.md)。
+**每个 agent 使用独立 `codex/<agent>-<task>` 分支与 worktree。** PR 绑定固定 base/head，由另一位 agent 审查，集成人按依赖顺序合入 `codex/integration`；组合测试和再次审查通过后才合入 `main`。代码合入与生产部署是两个步骤。禁止不同 agent 共用工作目录；文件分工继续用于约定模块边界，不能替代分支隔离。命令和合并要求见 [Git 协作指导](docs/GIT-WORKFLOW.md)，自动读取的项目约定见 [AGENTS.md](AGENTS.md)。
 
 | 建议分工 | 独立文件与集成边界 |
 |---|---|
