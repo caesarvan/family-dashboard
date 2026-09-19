@@ -174,6 +174,8 @@ class Run(MediaRun):
         detail = page.get_by_test_id('photo-editor')
         expect(detail).to_be_visible(timeout=15000)
         expect(detail.get_by_role('textbox', name='照片说明', exact=True)).to_have_value(photo['caption'])
+        expect(detail.get_by_text('已读取当前版本，保留你的未保存修改；请比较后再保存。', exact=True)).to_have_count(0)
+        expect(detail.get_by_text('照片已更新。你的草稿仍保留，请读取当前版本后核对。', exact=True)).to_have_count(0)
         assert self.count_requests('GET', '/api/media/items/' + photo['id']) > reads
         self.record('opened-photo-' + photo['id'], {'id': photo['id'], 'readsAfter': self.count_requests('GET', '/api/media/items/' + photo['id'])})
         return detail
@@ -336,8 +338,8 @@ class Run(MediaRun):
             self.passed('Real member-cookie replacement discards delayed document list and photo detail; fresh second-member search cannot reveal private first-member content')
 
     @classmethod
-    def run_scenarios(cls, root, bundle, report, out, browser):
-        for name in CASES:
+    def run_scenarios(cls, root, bundle, report, out, browser, cases=CASES):
+        for name in cases:
             case_out = out / name
             case_out.mkdir()
             folder, before, case = None, len(report['checks']), {'name': name, 'passed': False}
@@ -367,7 +369,10 @@ def main():
     parser.add_argument('--build-source-head')
     parser.add_argument('--bundle', required=True, type=Path)
     parser.add_argument('--expected-build-evidence', required=True)
+    parser.add_argument('--scenario', choices=('content_pagination',), help='Run only the initial photo-entry regression; default runs all four cases')
     args = parser.parse_args()
+    cases = (args.scenario,) if args.scenario else CASES
+    expected_screenshots = 6 if args.scenario else 8
     root, bundle = args.source_root.resolve(), args.bundle.absolute()
     assert sys.dont_write_bytecode and not sys.flags.optimize
     assert re.fullmatch('[a-f0-9]{40}', args.expected_head) and re.fullmatch('[a-f0-9]{64}', args.expected_build_evidence)
@@ -391,12 +396,12 @@ def main():
     shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], unexpectedProviderAttempts=[],
                   screenshots=[], scenarioResults=[], scenarioFailures=[], httpEvidence=[], databaseEvidence=[],
-                  requestedChecks=len(CASES), head=head, tree=tree, buildEvidenceSha256=sha(evidence_path),
+                  requestedChecks=len(cases), selectedScenarios=list(cases), head=head, tree=tree, buildEvidenceSha256=sha(evidence_path),
                   harnessSha256=sha(out / 'executed-harness.py'), buildSourceHead=build_head, buildSourceTree=evidence['sourceTree'],
                   buildSourceDelta=build_delta, buildReusePaths=sorted(BUILD_REUSE_PATHS),
                   sourceRoot=str(root), bundleRoot=str(bundle), sourceHashesBefore=hashes(), bundleHashesBefore=export_hashes(bundle),
                   productionWrites=0, realModel=False, realCloud=False, physicalTelevision=False,
-                  scope='Four isolated local Flask/SQLite/HTTPS/Edge flows; synthetic document uploads and media job inputs, original business HTTP and delayed real responses. No real cloud, model or production acceptance.')
+                  scope=f'{len(cases)} isolated local Flask/SQLite/HTTPS/Edge flow(s); synthetic document uploads and media job inputs, original business HTTP. No real cloud, model or production acceptance.')
     original_connect = socket.socket.connect
     def local_connect(sock, address):
         if isinstance(address, tuple) and address[0] not in ('127.0.0.1', '::1', 'localhost'):
@@ -407,8 +412,8 @@ def main():
         with patch.object(socket.socket, 'connect', local_connect), sync_playwright() as pw:
             browser = pw.chromium.launch(channel='msedge', headless=True)
             try:
-                Run.run_scenarios(root, bundle, report, out, browser)
-                assert len(report['checks']) == len(CASES) and len(report['screenshots']) == 8
+                Run.run_scenarios(root, bundle, report, out, browser, cases)
+                assert len(report['checks']) == len(cases) and len(report['screenshots']) == expected_screenshots
                 assert not any(report[key] for key in ('scenarioFailures', 'pageErrors', 'externalRequests', 'unexpectedProviderAttempts'))
                 report['passed'] = True
             finally:
@@ -424,7 +429,7 @@ def main():
             report['fixtureHashesAfter'] = {name: sha(Path(path)) for name, path in report.get('fixtureActualPaths', {}).items()}
             report['fixturesUnchanged'] = bool(report.get('fixtureHashes')) and report['fixtureHashesAfter'] == report['fixtureHashes']
             report['sourceStillFrozen'] = git('rev-parse', 'HEAD') == head and git('rev-parse', 'HEAD^{tree}') == tree and not git('status', '--porcelain=v1')
-            report['temporaryFixtureRemoved'] = len(report['scenarioResults']) == len(CASES) and all(c['temporaryFixtureRemoved'] for c in report['scenarioResults'])
+            report['temporaryFixtureRemoved'] = len(report['scenarioResults']) == len(cases) and all(c['temporaryFixtureRemoved'] for c in report['scenarioResults'])
             report['passed'] = report['passed'] and all(report[key] for key in ('sourceUnchanged', 'bundleUnchanged', 'fixturesUnchanged', 'sourceStillFrozen', 'temporaryFixtureRemoved'))
         except Exception:
             report['passed'] = False

@@ -23,6 +23,8 @@
 
 默认必须使用同一提交构建。只有明确传 `--build-source-head` 时，才允许后续仅修改本脚本、对应 wrapper 或本说明的已审后代提交复用原导出；任何业务源码或 fixture 依赖差异都会拒绝。每次创建新 `test-results/expo-assistant-document-search-<UTC>/`，保留失败原件，不覆盖以前结果。
 
+照片首次打开提示的小修采用 `cc688863f090bb300c7e6fe3412ef011b7498958` 新 R2 导出。增量验证在审查通过的工具后代提交运行，额外传 `--build-source-head cc688863f090bb300c7e6fe3412ef011b7498958 --scenario content_pagination`：只运行原分页往返这一完整流程，生成六图，明确检查首次照片详情不存在两句草稿恢复提示；原 HTTP／DB、身份、无写入、原编号、往返分页及布局断言保持。省略 `--scenario` 仍运行原四条／八图；不会将该单项结果记为四条再次通过，旧 R1 原件保留。
+
 工具自检（仅临时 Git 输入身份校验，不启动产品或浏览器）：
 
 ```powershell
