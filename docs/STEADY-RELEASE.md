@@ -1,19 +1,23 @@
 # 61/9 普通源码更新
 
-本版工具已用于 **2026-09-19 12:34:35（北京时间）的售后关联家庭待办发布**；164 项 Linux 验证与两户三库合成保全演练分别通过，stage／activate 实际退出 0，12:35:42 独立只读审计通过，生产一户两库保持 61/9。实际安装身份、R1 准入失败及 R2 验证集中在[本批验收](INVENTORY-FOLLOWUP-ACCEPTANCE.md#inventory-followup-release)。用于已完成成员迁移后的普通源码更新，家庭库保持 61 张业务表，平台库保持 9 张业务表。它不执行 `warm_once`，不退休、覆盖或重建成功迁移的 `membership-release-attempt.json`。
+此前工具已用于 **2026-09-19 12:34:35（北京时间）的售后关联家庭待办发布**；164 项 Linux 验证与两户三库合成保全演练分别通过，stage／activate 实际退出 0，12:35:42 独立只读审计通过，生产一户两库保持 61/9。实际安装身份、R1 准入失败及 R2 验证集中在[该批验收](INVENTORY-FOLLOWUP-ACCEPTANCE.md#inventory-followup-release)。当前源码适配下一批订单来源库存功能，**适配提交本身不代表该功能已打包、演练或上线**。工具用于已完成成员迁移后的普通源码更新，家庭库保持 61 张业务表，平台库保持 9 张业务表。它不执行 `warm_once`，不退休、覆盖或重建成功迁移的 `membership-release-attempt.json`。
 
-工具代码仍固定接受采购关联库存 R1 基线（`shopping-r1-steady`），不能通过环境变量或任意 CLI 参数切换。**下表是本次已执行发布的历史基线，已安装源码已变更；本计划及旧 R3 计划均不可重放。** 后续更新须先绑定新的实际安装基线、审查工具适配，再分别验证候选包、镜像、计划与发布，不可把下方历史输入直接用于下一次上线：
+工具代码固定接受售后待办已安装基线（`followup-r1-steady`），不能通过环境变量或任意 CLI 参数切换。绑定依据是独立只读审计原件 `steady-followup-production-readonly-review-r1.json`，SHA256 `1649b5cf0d444184d196e061f0d4a57d0374500df3c617e69ab9f228cae821b2`。**旧 shopping 和 R3 计划均不可重放；本适配仍须分别审查冻结源码、候选包、实际镜像与最终计划。** 下表只约束本次适配所接受的已安装身份：
 
 | 身份 | 固定值 |
 |---|---|
-| 父镜像 | `sha256:3ebb0a10eaf3aac44c5646478f25d49b85a66d9130007286ac869274e99b6c68` |
-| 已安装 manifest | `910b4ab67459d47dd77ec32fbb986fe298e71c24baf75c39c334ebc4db89fb1e` |
+| 已安装 source | `db7babc1de573614593620832b7f9a817af73623` |
+| 已安装 tree | `08db7e96847fdb3e757797886218fb616eac882f` |
+| 父镜像 | `sha256:8e7092a44ba311f6ac333500cfab2c6dcf5137484cf02d9aca1f52590963815c` |
+| 已安装 manifest | `d926bba0c7fc7374f8b0c0d6b661f51b5a0a15029428bfa016e92b750ddbd85c` |
 | 成功迁移标记 | `d223842c531e115b21430e860ffa8e742b1fbf0616942a228d04009e66dedb93` |
 | 原 `.env` SHA256 | `a72d456815cf113b1ac0c1e032ac8c45b300ccf2cb499520c14b7f54d5314e07` |
 
 标记摘要由成功 R3 `proof/attempt/attempt.json` 重建，并已与当时只读审计绑定。它只证明迁移身份；**本次数据保全使用本次停写快照**，不会把上次迁移后的旧数据当作当前数据，允许中间发生正常业务写入。
 
-当前源码变更范围只接受 `app.py`、`inventory_api.py`、Expo 导出、`frontend/`、文档、测试及发布工具。售后待办在 `app.py` 的候选改动只用于注入已有任务校验器；具体产品差异仍须独立审查冻结。Compose、Dockerfile、依赖与其他应用模块必须保持原字节。后续扩大产品变更或改变基线应修改代码、独立审查，不能改 manifest 绕过守卫。
+当前应用源码变更范围只接受 `inventory_api.py`、新增 `inventory_sources.py`、Expo 导出、`frontend/`、文档、测试及发布工具。`app.py`、`inventory_core.py`、Compose、依赖和其他应用模块必须保持原字节。Dockerfile 仅允许将 `COPY inventory_core.py inventory_api.py ./` 改为 `COPY inventory_core.py inventory_api.py inventory_sources.py ./`，旧／新完整文件 SHA256 分别固定为 `c20a41d40bc99fac5910e109a56d4e6c431b8d92c7ea3fc5b30363417de86798`／`6ed4fa73f1bdc7f0c1b0c2d660610434648dadb44890abb4d493fe46b6e904ff`；控制器还逐字节验证仅这一处替换。额外 COPY、RUN、依赖或配置变更均拒绝。
+
+历史 `deploy/prepare_release.py` 与 `FIXED` 摘要保持不变；新基线在严格包选择器中明确要求 `inventory_sources.py`，将它同时纳入源码、运行时、镜像构建上下文和运行时读回。前端额外测试输入仅精确接受既有 `frontend/tests/inventoryFollowup.test.mjs` 与本批 `frontend/tests/inventorySources.test.mjs`；其他新增构建输入仍拒绝。具体产品差异须独立审查冻结，不能改 manifest 绕过守卫。
 
 ## 文件与兼容性
 
@@ -21,7 +25,7 @@
 - [steady_release_plan.py](../deploy/steady_release_plan.py)：离线装配独立候选目录和可审查 plan，绑定源码、工具字节、构建、实际测试原件和审查文件。
 - [steady_release_controller.py](../deploy/steady_release_controller.py)：受审 plan 的 `stage / activate`，复用原控制器的 Docker 身份、环境传递、证据读取、互斥锁和失败停止逻辑。
 - [steady_release_data.py](../deploy/steady_release_data.py)：完整 registry 组备份保留及新 app 初始化后 schema、全部行、序列、版本、registry 和标记保全。
-- 原 `membership_release_package/build/data.py` 默认仍为原 58/2 → 61/9 合同。新入口仅显式选择代码固定的 `shopping-r1-steady`；包校验器保留此前 `memberships-r3-steady` 的显式验证合同并拒绝跨基线包；备份助手显式使用 `phase='after'`，原默认不变。
+- 原 `membership_release_package/build/data.py` 默认仍为原 58/2 → 61/9 合同。新入口仅显式选择代码固定的 `followup-r1-steady`；包校验器保留此前 `memberships-r3-steady` 和 `shopping-r1-steady` 的固定父镜像、manifest 与旧 Docker 合同并拒绝跨基线包；备份助手显式使用 `phase='after'`，原默认不变。历史失败目录、回执和恢复助手保持不变。
 
 ## 准备和审查
 
@@ -95,6 +99,6 @@ Compose 可能重新排列 `Config.Env`。停机前的 stage 与绑定要求原�
 新测试在 `tests/test_steady_release_data.py`、`tests/test_steady_release_controller.py`、`tests/test_steady_release_package.py`。
 
 - data 测试实际运行合成 SQLite、多家庭备份及冻结源码的正常 Flask 初始化。`historical/materialize` 依赖本地固定 Git 对象，不应选入没有 `.git` 的服务器隔离测试包。
-- package 测试创建真实临时 Git 仓库和 archive，验证基线隔离、输入重读、装配与证据篡改拒绝；镜像构建使用记录型替身，不能写成实际 Docker 构建。
+- package 测试创建真实临时 Git 仓库和 archive，验证四种基线隔离、新模块必需、精确 Docker 摘要、前端测试输入、输入重读、装配与证据篡改拒绝；镜像构建使用记录型替身，并检查新模块实际复制到临时构建上下文，不能写成实际 Docker 构建。历史 fixture 仅反向重建已审 COPY 增量并核旧固定摘要，不依赖服务器存在 `.git`。
 - controller 测试使用记录型 Docker/systemd/TLS 替身，验证顺序、环境、失败保留与停止错误；在 Windows 仅替身模拟 POSIX `0600`。实际 Linux 权限、镜像启动与 HTTPS 仍需上述演练和发布审计。
 - 回归原 membership package/build/data 测试，证明原默认合同与拒绝条件保留。每轮 JUnit 原件保存在忽略的 `test-results/` 下，失败轮保留。

@@ -32,6 +32,16 @@ def commit(repo):
     return git(repo, 'rev-parse', 'HEAD')
 
 
+def historical_fixed_blob(name):
+    raw = (ROOT / name).read_bytes()
+    if name == 'Dockerfile':
+        # Reconstruct only the audited COPY addition, then assert the original
+        # immutable digest. Keep this fixture runnable without repository Git.
+        raw = raw.replace(package.INVENTORY_COPY_AFTER, package.INVENTORY_COPY_BEFORE)
+    assert package.digest(raw) == package.FIXED[name]
+    return raw
+
+
 @pytest.fixture
 def environment(tmp_path):
     repo, export = tmp_path / 'repo', tmp_path / 'export'
@@ -48,10 +58,11 @@ def environment(tmp_path):
     names += ['frontend/' + n for n in ('package.json', 'package-lock.json', 'app.json', 'tsconfig.json',
               'README.md', 'LICENSE', 'tests/journeySegments.test.ts', 'tsconfig.tests.json', 'typecheck.mjs')]
     for name in names:
-        raw = (ROOT / name).read_bytes() if name in package.FIXED or name == package.SELF else b'synthetic fixture\n'
+        raw = historical_fixed_blob(name) if name in package.FIXED else (
+            (ROOT / name).read_bytes() if name == package.SELF else b'synthetic fixture\n')
         write(repo, name, raw)
     for name, digest in package.FIXED.items():
-        write(repo, name, (ROOT / name).read_bytes())
+        write(repo, name, historical_fixed_blob(name))
         assert package.digest((repo / name).read_bytes()) == digest
     head = commit(repo)
     exports = {'index.html': b'<script src="/_expo/static/js/web/entry-synthetic.js"></script>',

@@ -36,6 +36,9 @@ FIXED = {
     'frontend/package.json': '0245a08c3b009150fa48b38c0b842162a7c541a3f1f6e60c2c46c9648b999c7f',
     'frontend/package-lock.json': 'bf87db5dbbbe14d227ff0098b0b629fa6842206345b83da5f3f218405920d91b',
 }
+FOLLOWUP_DOCKER_SHA256 = '6ed4fa73f1bdc7f0c1b0c2d660610434648dadb44890abb4d493fe46b6e904ff'
+INVENTORY_COPY_BEFORE = b'COPY inventory_core.py inventory_api.py ./\n'
+INVENTORY_COPY_AFTER = b'COPY inventory_core.py inventory_api.py inventory_sources.py ./\n'
 
 
 def need(ok, message):
@@ -51,10 +54,19 @@ def baseline_values(baseline=None):
         return ('steady-release-package',
                 'sha256:c8e3da47800e3d11f609677bd6aca5f69aef6e7d7a49827c04fb6bea29946771',
                 'c89f045dbf6456b7dcd50c8c340dea09d60a020765735ba7f27ad6e80e383e54')
-    need(baseline == 'shopping-r1-steady', 'unsupported release baseline')
+    if baseline == 'shopping-r1-steady':
+        return ('steady-release-package',
+                'sha256:3ebb0a10eaf3aac44c5646478f25d49b85a66d9130007286ac869274e99b6c68',
+                '910b4ab67459d47dd77ec32fbb986fe298e71c24baf75c39c334ebc4db89fb1e')
+    need(baseline == 'followup-r1-steady', 'unsupported release baseline')
     return ('steady-release-package',
-            'sha256:3ebb0a10eaf3aac44c5646478f25d49b85a66d9130007286ac869274e99b6c68',
-            '910b4ab67459d47dd77ec32fbb986fe298e71c24baf75c39c334ebc4db89fb1e')
+            'sha256:8e7092a44ba311f6ac333500cfab2c6dcf5137484cf02d9aca1f52590963815c',
+            'd926bba0c7fc7374f8b0c0d6b661f51b5a0a15029428bfa016e92b750ddbd85c')
+
+
+def fixed_files(baseline=None):
+    baseline_values(baseline)
+    return {**FIXED, **({'Dockerfile': FOLLOWUP_DOCKER_SHA256} if baseline == 'followup-r1-steady' else {})}
 
 
 def baseline_kwargs(baseline):
@@ -173,7 +185,8 @@ def required_build_inputs(tracked_paths):
             and n not in {'frontend/README.md', 'frontend/LICENSE', 'frontend/.gitignore'}}
 
 
-def selected_sources(tracked, policy):
+def selected_sources(tracked, policy, *, baseline=None):
+    baseline_values(baseline)
     constants = {}
     for node in ast.parse(policy).body:
         if isinstance(node, ast.Assign):
@@ -187,11 +200,15 @@ def selected_sources(tracked, policy):
     required = set(constants['FILES']) | {SELF} | {'frontend/' + n for n in
         ('package.json', 'package-lock.json', 'app.json', 'tsconfig.json', 'README.md', 'LICENSE',
          'tests/journeySegments.test.ts', 'tsconfig.tests.json', 'typecheck.mjs')}
+    if baseline == 'followup-r1-steady':
+        required.add('inventory_sources.py')
     need(required <= tracked, 'allowlisted file missing from Git')
     need(not any(n.startswith(PREFIX) for n in tracked), 'generated exports must not be tracked')
     selected = required | {n for n in tracked if n.startswith(tuple(f + '/' for f in constants['FOLDERS'])
                                                              + ('frontend/src/', 'frontend/public/'))}
     selected |= tracked & {'frontend/tests/inventoryFollowup.test.mjs'}
+    if baseline == 'followup-r1-steady':
+        selected |= tracked & {'frontend/tests/inventorySources.test.mjs'}
     need(required_build_inputs(tracked) <= selected, 'new frontend input needs an explicit packaging policy')
     return selected
 
@@ -227,6 +244,7 @@ def runtime_files(files):
 
 def validate_maps(metadata, manifest, evidence, *, baseline=None):
     kind, parent, old_manifest = baseline_values(baseline)
+    fixed = fixed_files(baseline)
     files = hash_map(manifest['files'], True)
     source = hash_map(metadata['sourceFiles'])
     exports = hash_map(metadata['exportFiles'], True)
@@ -234,7 +252,7 @@ def validate_maps(metadata, manifest, evidence, *, baseline=None):
     need(not any(n.startswith(PREFIX) for n in source), 'source/export overlap')
     need(files == {**source, **{PREFIX + n: h for n, h in exports.items()}}, 'manifest partition differs')
     need(metadata['runtimeFiles'] == runtime_files(files), 'runtime partition differs')
-    need(metadata['fixedFiles'] == FIXED and all(source.get(n) == h for n, h in FIXED.items()), 'dependency/config pin differs')
+    need(metadata['fixedFiles'] == fixed and all(source.get(n) == h for n, h in fixed.items()), 'dependency/config pin differs')
     need(metadata['kind'] == kind and metadata['parentImage'] == parent
          and metadata['oldManifestSha256'] == old_manifest, 'installed parent differs')
     need(evidence.get('schemaVersion') == 1 and evidence.get('kind') == 'membership-expo-build'
@@ -262,7 +280,7 @@ def inspect_inputs(repo, commit, export_dir, build_evidence, evidence_sha256, *,
          'packaging policy/reader changed')
     namespace = {'__name__': 'fixed_package_blob_reader'}
     exec(compile(reader, 'fixed_git_blobs.py', 'exec'), namespace)
-    selected = selected_sources(tracked, policy)
+    selected = selected_sources(tracked, policy, **baseline_kwargs(baseline))
     blobs = namespace['read_git_blobs'](repo, commit, sorted(selected))
     need(all(len(raw) <= MAX_FILE and plain(repo / name) == raw for name, raw in blobs.items()), 'working source differs from Git')
     need(blobs[SELF] == plain(Path(__file__).absolute()), 'executed packager differs from candidate')
@@ -282,7 +300,7 @@ def inspect_inputs(repo, commit, export_dir, build_evidence, evidence_sha256, *,
     need(len(blobs) <= MAX_FILES and sum(map(len, blobs.values())) <= MAX_TOTAL, 'package limits exceeded')
     files = {n: digest(v) for n, v in blobs.items()}
     metadata = dict(schemaVersion=1, kind=kind, sourceHead=commit, tree=tree,
-        sourceFiles=source_hashes, exportFiles=export_hashes, runtimeFiles=runtime_files(files), fixedFiles=FIXED,
+        sourceFiles=source_hashes, exportFiles=export_hashes, runtimeFiles=runtime_files(files), fixedFiles=fixed_files(baseline),
         inputFiles=evidence['inputFiles'], buildSourceHead=build_head, buildSourceTree=evidence['tree'],
         buildEvidenceSha256=evidence_sha256, packagerSha256=digest(blobs[SELF]), parentImage=parent,
         oldManifestSha256=old_manifest, productionOperations=False)
@@ -351,7 +369,8 @@ def verify_package(output_dir, package_sha256, *, baseline=None):
     need(blobs.pop('RELEASE-MANIFEST.json', None) == manifest_raw, 'embedded manifest differs')
     need({n: digest(v) for n, v in blobs.items()} == manifest['files'], 'archive contents differ from whitelist')
     need(digest(blobs[SELF]) == metadata['packagerSha256'] == digest(plain(Path(__file__).absolute())), 'packager identity differs')
-    need(selected_sources(set(metadata['sourceFiles']), blobs['deploy/prepare_release.py']) == set(metadata['sourceFiles']), 'source outside original allowlist')
+    need(selected_sources(set(metadata['sourceFiles']), blobs['deploy/prepare_release.py'], **baseline_kwargs(baseline))
+         == set(metadata['sourceFiles']), 'source outside original allowlist')
     return {'metadata': metadata, 'manifest': manifest, 'blobs': blobs}
 
 

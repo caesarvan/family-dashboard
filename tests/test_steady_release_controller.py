@@ -7,6 +7,7 @@ import pytest
 from deploy import steady_release_controller as steady
 from deploy import membership_release_controller as shared
 from test_membership_release_controller import simulation as old_simulation
+from test_membership_release_package import ROOT, historical_fixed_blob
 
 
 @pytest.fixture
@@ -199,8 +200,8 @@ def test_marker_preflight_refuses_before_service_stop(simulation, fault):
     assert not any(isinstance(c, list) and c[:2] == ['systemctl', 'stop'] for c in calls)
 
 
-@pytest.mark.parametrize('changed,allowed', [('app.py', True), ('inventory_api.py', True), ('finance_hub.py', False)])
-def test_followup_baseline_only_expands_to_registered_app_adapter(tmp_path, monkeypatch, changed, allowed):
+@pytest.fixture
+def baseline_environment(tmp_path, monkeypatch):
     """Real files and admission checks; service inspection alone is recorded."""
     root = tmp_path / 'installed'; root.mkdir()
     names = ('app.py', 'inventory_api.py', 'finance_hub.py', 'compose.yaml',
@@ -208,7 +209,8 @@ def test_followup_baseline_only_expands_to_registered_app_adapter(tmp_path, monk
     old = {}
     for name in names:
         path = root / name; path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_bytes(('synthetic original ' + name).encode())
+        path.write_bytes(historical_fixed_blob(name) if name == 'Dockerfile'
+                         else ('synthetic original ' + name).encode())
         old[name] = shared.sha(path.read_bytes())
     manifest = root / 'RELEASE-MANIFEST.json'
     manifest.write_text(json.dumps({'files': old}), encoding='utf-8')
@@ -218,10 +220,21 @@ def test_followup_baseline_only_expands_to_registered_app_adapter(tmp_path, monk
         monkeypatch.setattr(steady.stat, 'S_IMODE', lambda mode: 0o600)
     operator = object.__new__(steady.Controller)
     operator.root = root
-    operator.files = {**old, changed: shared.sha(b'candidate adapter')}
+    operator.source = tmp_path / 'candidate-source'; operator.source.mkdir()
+    docker = (ROOT / 'Dockerfile').read_bytes()
+    (operator.source / 'Dockerfile').write_bytes(docker)
+    operator.files = {**old, 'Dockerfile': shared.sha(docker), 'inventory_sources.py': shared.sha(b'new sources')}
     operator.plan = {'envSha256': shared.sha(env.read_bytes())}
     inspected = []
     operator.current_services = lambda image: inspected.append(image) or {'recorded': True}
+    return operator, old, inspected
+
+
+@pytest.mark.parametrize('changed,allowed', [('app.py', False), ('inventory_api.py', True),
+    ('inventory_sources.py', True), ('finance_hub.py', False), ('inventory_core.py', False), ('unreviewed.py', False)])
+def test_sources_baseline_admits_only_inventory_adapter_and_dedicated_module(baseline_environment, changed, allowed):
+    operator, old, inspected = baseline_environment
+    operator.files[changed] = shared.sha(b'candidate adapter')
     if allowed:
         assert operator.baseline() == (old, {'recorded': True})
         assert inspected == [steady.PARENT_IMAGE]
@@ -229,3 +242,45 @@ def test_followup_baseline_only_expands_to_registered_app_adapter(tmp_path, monk
         with pytest.raises(shared.ReleaseError, match='unsupported_source_change'):
             operator.baseline()
         assert inspected == []
+
+
+@pytest.mark.parametrize('fault', ['unchanged', 'extra-command', 'extra-module', 'different-hash', 'installed-copy-drift'])
+def test_baseline_refuses_every_unreviewed_docker_delta_before_service_inspection(baseline_environment, monkeypatch, fault):
+    operator, old, inspected = baseline_environment
+    path = operator.source / 'Dockerfile'
+    raw = path.read_bytes()
+    if fault == 'unchanged':
+        raw = historical_fixed_blob('Dockerfile')
+    elif fault == 'extra-command':
+        raw += b'RUN echo unreviewed\n'
+    elif fault == 'extra-module':
+        raw = raw.replace(b'inventory_sources.py ./', b'inventory_sources.py unreviewed.py ./')
+    elif fault == 'installed-copy-drift':
+        installed = operator.root / 'Dockerfile'
+        installed.write_bytes(installed.read_bytes() + b'# unreviewed installed copy\n')
+        old['Dockerfile'] = shared.sha(installed.read_bytes())
+        manifest = operator.root / 'RELEASE-MANIFEST.json'
+        manifest.write_text(json.dumps({'files': old}), encoding='utf-8')
+        monkeypatch.setattr(steady, 'OLD_MANIFEST', shared.sha(manifest.read_bytes()))
+    path.write_bytes(raw)
+    operator.files['Dockerfile'] = '0' * 64 if fault == 'different-hash' else shared.sha(raw)
+    with pytest.raises(shared.ReleaseError, match='unsupported_docker_change'):
+        operator.baseline()
+    assert inspected == []
+
+
+@pytest.mark.parametrize('name', ['compose.yaml', 'requirements.txt', 'deploy/nginx.conf'])
+def test_baseline_still_rejects_config_and_dependency_changes(baseline_environment, name):
+    operator, _, inspected = baseline_environment
+    operator.files[name] = shared.sha(b'unreviewed configuration')
+    with pytest.raises(shared.ReleaseError, match='deployment_or_dependency_change'):
+        operator.baseline()
+    assert inspected == []
+
+
+def test_baseline_still_rejects_runtime_removal(baseline_environment):
+    operator, _, inspected = baseline_environment
+    del operator.files['inventory_api.py']
+    with pytest.raises(shared.ReleaseError, match='unsupported_runtime_removal'):
+        operator.baseline()
+    assert inspected == []
