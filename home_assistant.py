@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 from decimal import Decimal
 from http.client import HTTPException
 import json
+import task_dependencies as dependencies
 import math
 import re
 import secrets
@@ -757,6 +758,8 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
         today = current.date().isoformat()
         soon = (current + timedelta(days=7)).date().isoformat()
         items = records()
+        graph = {item['id']: item for item in items if item['kind'] == 'tasks'}
+        items = [dependencies.project(item, graph) if item['kind'] == 'tasks' else item for item in items]
         due = [e for e in items if e['kind'] == 'tasks' and not e.get('done') and e.get('due') and e['due'] <= soon]
         due.sort(key=lambda e: e['due'])
         events = [e for e in items if e['kind'] == 'events' and e.get('start', '')[:10] <= soon and e.get('end', '')[:10] >= today]
@@ -934,6 +937,8 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
                     raise Problem('记录数量已达上限，请先整理旧记录', 409)
                 clean = validate(kind, action['data'], db)
                 item_id = secrets.token_hex(12)
+                if kind == 'tasks':
+                    dependencies.check_write(con, item_id, clean)
                 con.execute('INSERT INTO entities(id,kind,data,updated_at) VALUES(?,?,?,?)', (item_id, kind, json.dumps(clean), now()))
                 created.append({'id': item_id, 'kind': kind, 'title': clean['title']})
             result = {'ok': True, 'created': created, 'destination': 'household'}

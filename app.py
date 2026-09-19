@@ -44,6 +44,7 @@ from household_media import register_media_library
 from media_playback import register_media_playback
 from inventory_api import register_inventory
 from frontend_runtime import register_frontend_runtime
+import task_dependencies as dependencies
 from membership_storage import connect_household
 from membership_http import register_membership_routes
 
@@ -296,6 +297,10 @@ def create_app(config=None):
                     if not token or not secrets.compare_digest(token, session.get("csrf", "")):
                         raise Problem("会话已更新，请刷新页面再试", 403)
 
+    @app.errorhandler(dependencies.DependencyError)
+    def dependency_problem(error):
+        return jsonify(error=error.message, code=error.code), error.status
+
     @app.errorhandler(Problem)
     def problem(error):
         return jsonify(error=error.message), error.status
@@ -406,6 +411,8 @@ def create_app(config=None):
         entities = {kind: [] for kind in KINDS}
         for row in db().execute("SELECT * FROM entities ORDER BY updated_at DESC"):
             entities[row["kind"]].append({**json.loads(row["data"]), "id": row["id"], "revision": row["revision"]})
+        graph = dependencies.task_graph(con)
+        entities['tasks'] = [dependencies.project(item, graph) for item in entities['tasks']]
         row = db().execute("SELECT * FROM settings WHERE id='finance'").fetchone()
         finance = {**json.loads(row["data"]), "revision": row["revision"]}
         people = [dict(row) for row in db().execute("SELECT u.id,u.name FROM users u JOIN household_memberships m ON m.member_id=u.id WHERE m.state='active' ORDER BY u.id")]
@@ -436,6 +443,11 @@ def create_app(config=None):
         if count >= 2500:
             raise Problem("记录数量已达上限，请先整理旧记录")
         uid = secrets.token_hex(12)
+        if kind == 'tasks':
+            db().execute('BEGIN IMMEDIATE')
+            dependencies.check_write(db(), uid, payload)
+            if db().execute("SELECT count(*) FROM entities WHERE kind='tasks'").fetchone()[0] >= 2500:
+                raise Problem("记录数量已达上限，请先整理旧记录")
         db().execute("INSERT INTO entities(id,kind,data,updated_at) VALUES(?,?,?,?)", (uid, kind, json.dumps(payload), now()))
         if kind == 'shopping':
             sync_photo_refs(db(), uid, payload['photoIds'], g.actor['id'], Problem)
@@ -455,6 +467,11 @@ def create_app(config=None):
             if kind != 'tasks':
                 raise Problem('日程为只读同步，请在原日历中修改', 403)
             return jsonify(app.extensions['cloud_accounts'].task_write(data, existing=row))
+        if kind == 'tasks':
+            db().execute('BEGIN IMMEDIATE')
+            row = db().execute("SELECT * FROM entities WHERE id=? AND kind='tasks'", (uid,)).fetchone()
+            if not row or data.get('revision') != row['revision']:
+                raise Problem('记录已更新，请刷新后再试', 409)
         original = json.loads(row['data'])
         protected_travel = (kind == 'events' and isinstance(original.get('travelTiming'), dict)
                             and db().execute("SELECT 1 FROM journey_links WHERE entity_id=? AND kind='events'", (uid,)).fetchone())
@@ -471,6 +488,8 @@ def create_app(config=None):
             elif any(key in data for key in ('travelTiming', 'startDate', 'endDateExclusive')):
                 raise Problem('旅行时间字段只能由旅行计划生成')
         payload = validate(kind, {**original, **data}, db)
+        if kind == 'tasks':
+            dependencies.check_write(db(), uid, payload, original)
         if protected_travel:
             for key in ('travelTiming', 'startDate', 'endDateExclusive', 'journeyId', 'tripId', 'workflowKey', 'start', 'end', 'allDay'):
                 if key in original:
@@ -488,6 +507,9 @@ def create_app(config=None):
     @app.delete("/api/items/<kind>/<uid>")
     def delete_item(kind, uid):
         data = body()
+        if kind == 'tasks':
+            db().execute('BEGIN IMMEDIATE')
+            dependencies.check_delete(db(), uid)
         row=db().execute('SELECT data FROM entities WHERE id=? AND kind=?',(uid,kind)).fetchone()
         if row and json.loads(row['data']).get('sync'):
             raise Problem('请在原日历或清单中删除，同步后看板会自动更新',403)
@@ -836,6 +858,8 @@ def validate(kind, value, db):
             result['photoIds'] = validate_photo_ids(value.get('photoIds', []), Problem)
         else:
             result["due"] = date_field(value.get("due", ""), "截止日期", True)
+            if "dependsOn" in value:
+                result["dependsOn"] = dependencies.ids(value["dependsOn"])
             trip_id = value.get("tripId", "")
             if not isinstance(trip_id, str) or (trip_id and not db().execute("SELECT 1 FROM entities WHERE id=? AND kind='trips'", (trip_id,)).fetchone()):
                 raise Problem("关联旅行不存在")
