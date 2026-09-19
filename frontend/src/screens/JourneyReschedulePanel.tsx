@@ -9,8 +9,9 @@ import { newKey } from '../lib/trips';
 import { checkedRescheduleWrite, clockText, failedRescheduleIntent, impactLabels, impactReason, initialRescheduleDraft, mayExitReschedule, offsetText, pageItems, readRescheduleOperation, readReschedulePreview, readRescheduleReceipt, readRescheduleSnapshot, rebaseRescheduleDraft, reschedulePayload, RescheduleRejected, RescheduleUnverified, snapshotVersion, spanText, type Clocks, type ImpactKind, type Intent, type Issue, type RescheduleDraft, type ReschedulePreview, type RescheduleReceipt, type Snapshot } from '../lib/journeyReschedule';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
+import { checkedTripSuggestion, type TripSuggestion } from '../lib/assistantTripChange';
 
-type Props = { journeyId: string; onBack: () => void; onSaved: (result: { journeyId: string; revision: number }) => void; onPendingChange?: (pending: boolean) => void };
+type Props = { journeyId: string; initialSuggestion?: TripSuggestion; onBack: () => void; onSaved: (result: { journeyId: string; revision: number }) => void; onPendingChange?: (pending: boolean) => void };
 const connected = () => typeof navigator === 'undefined' || navigator.onLine !== false;
 const description = (failure: unknown) => failure instanceof Error ? failure.message : '暂时无法核对改期。';
 const groups: ImpactKind[] = ['overview', 'destination', 'segment', 'task', 'place', 'shopping'];
@@ -66,7 +67,12 @@ function Workspace(props: Props & { identityKey: string }) {
     if (live.current.receipt) { setSource(value); setTerminal(false); return; }
     if (live.current.source && live.current.draft && (forceReview || snapshotVersion(live.current.source) !== snapshotVersion(value))) {
       setReview(value); setConflict(true); setPreview(null);
-    } else { setSource(value); if (!live.current.draft) setDraft(initialRescheduleDraft(value)); }
+    } else {
+      // An assistant suggestion is unsigned and is adopted only once after this
+      // real source read. Later refreshes never reapply its relative date shift.
+      const initial = !live.current.draft ? props.initialSuggestion ? checkedTripSuggestion(value, props.initialSuggestion) : initialRescheduleDraft(value) : null;
+      setSource(value); if (initial) setDraft(initial);
+    }
     setTerminal(false);
   }
   async function job(action: (ticket: number) => Promise<void>) {
