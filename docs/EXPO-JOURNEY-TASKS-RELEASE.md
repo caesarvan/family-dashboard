@@ -1,10 +1,10 @@
 # 旅行待办同步：UI 发布适配
 
-本文说明候选发布工具，**不表示本批已打包、在 Linux 验证或上线**。产品操作见[旅行待办同步](EXPO-JOURNEY-TASKS.md)，浏览器验收见[浏览器检查](EXPO-JOURNEY-TASKS-BROWSER.md)。Git 提交、构建、模拟提供方与真实云端验收分别记录。
+本文工具已用于 **2026-09-20 02:33:11（北京时间）的实际发布，02:35:58 独立只读审计通过**。固定包、镜像、计划、回执及分段验证集中在[本批验收](EXPO-JOURNEY-TASKS-ACCEPTANCE.md#expo-trip-task-publish-release)。该计划已经消费，不可重放。产品操作见[旅行待办同步](EXPO-JOURNEY-TASKS.md)，浏览器方法见[浏览器检查](EXPO-JOURNEY-TASKS-BROWSER.md)；真实云端及本人完整场景仍未验收。
 
 ## 固定基线与变化范围
 
-本入口只接受已安装的旅行准备/采购版本作为父版本：source `882dce5d0bc7bba182d4fe4ba1175c040123e6fd`、image `sha256:dc5ecb91f25017a19a7e59a992e94d8d281a7e68f1e97e0ca0b5dfeaf2872bd6`、manifest `47dec854a77262458bc74573f0b36083c856b772c940587d8d1644d44e032b70`；基线独立生产只读审计 SHA 为 `4ad1226c392ab0d371df7f1ca36331c03da52e00815c2bd06aacb992a49580d7`。
+本入口只接受本轮发布前已安装的旅行准备/采购版本作为父版本：source `882dce5d0bc7bba182d4fe4ba1175c040123e6fd`、image `sha256:dc5ecb91f25017a19a7e59a992e94d8d281a7e68f1e97e0ca0b5dfeaf2872bd6`、manifest `47dec854a77262458bc74573f0b36083c856b772c940587d8d1644d44e032b70`；基线独立生产只读审计 SHA 为 `4ad1226c392ab0d371df7f1ca36331c03da52e00815c2bd06aacb992a49580d7`。当前已经安装本批新包，不能把上述父基线当作下一次生产更新的当前状态。
 
 家庭库保持 69 表、平台库保持 9 表。固定的 104 个非 Expo 运行文件包括 50 个根目录 Python、53 个旧静态资源和 requirements.txt。它们的名称与 hash 映射经 `membership_release_package.encoded` 序列化后，必须匹配 `70b5a4fd7ad2fe27237d27013b32912c4bd2d58408ec210539b0bcc9713afc02`；任何修改、增删或改名都不能作为本批 UI 包通过。Dockerfile、Compose、Nginx、依赖、env 和 membership marker 保持固定。
 
@@ -27,6 +27,6 @@ Linux image 仍由当前固定父镜像增加现有 cleanup + COPY 两层，核�
 
 ## 验证边界
 
-本机定向测试证明打包边界和记录式调用顺序；测试内的临时 plan 不属于生产计划，记录式控制器不证明真实 Docker 或真实库保全。候选还需要本批 Expo/browser 结果、实际 Linux image/validation、发布回执和独立只读读回。模拟提供方不证明真实 Microsoft To Do / Google Tasks 写入，实体电视及本人完整场景另验。
+本机定向测试证明打包边界和记录式调用顺序；测试内的临时 plan 不属于生产计划，记录式控制器不证明真实 Docker 或真实库保全。本批另已取得正式 R2 Expo（2 组 TypeScript／53 Node／23 产物）、R3 浏览器（8 条流程／6 图）、实际 Linux image 与 61 项验证、实际 stage／activate 回执及独立生产只读审计。生产一户两库保持 69/9、完整 schema／列／行／序号逻辑指纹相同；本批未执行生产恢复。模拟提供方不证明真实 Microsoft To Do / Google Tasks 写入，实体电视及本人完整场景另验。
 
 本次本机检查覆盖新入口及既有 trip-items 发布测试，共 48 个唯一用例。首轮 40 项通过、8 项因 Windows 临时路径过长（WinError 206）失败；保持代码不变，改用短临时目录后只重跑失败的 8 项，全部通过。首轮失败与重跑原件均保留，不将两轮重复用例累加为新覆盖。打包/策略测试需要本机 Git；Linux 验收可使用已冻结的待办 API 用例，不为本批额外安装 Git 或修改镜像依赖。
