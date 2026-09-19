@@ -1,6 +1,8 @@
 # 采购日期与优先级：本地浏览器验收
 
-`tests/browser_expo_shopping_schedule_check.py` 是下一批采购功能的独立验收脚本。目前仅准备脚本与静态检查，没有运行浏览器，也没有接入当前 task-publish 发布构建。作者基线是已审 UI `bc4c292a91c59a42329a6d967ce19beb88334b33`；运行前需要审查通过的采购 API、UI、AI 组合提交和对应的新 Expo export。准备脚本时核对的 API 合同为 `7fca1ff886e385d3d6e3a07ed9e786b41b52a3a8`，AI 候选为 `8b12dac9370cbe86464f8c27955c6d4aa3b76834`（实际 AI head 以整合人提供的冻结组合为准）。
+`tests/browser_expo_shopping_schedule_check.py` 是采购功能的独立验收脚本，未接入 task-publish 发布构建。作者基线是已审 UI `bc4c292a91c59a42329a6d967ce19beb88334b33`；运行需要审查通过的采购 API、UI、AI 组合提交和对应的新 Expo export。准备脚本时核对的 API 合同为 `7fca1ff886e385d3d6e3a07ed9e786b41b52a3a8`，AI 候选为 `8b12dac9370cbe86464f8c27955c6d4aa3b76834`（实际 AI head 以整合人提供的冻结组合为准）。
+
+首次浏览器执行使用冻结组合 `8a633673d3c5334475b8184136e52600312c60c7` 的新构建：改期流程通过，其余三条停在脚本控件定位，整体为 1/4 通过。真实 Paper 按钮名称含装饰图标，本人成员名称含「（我）」尾缀；脚本已改用现有 icon_button 和 trip-items 的成员选择 helper，不改产品或构建。首轮失败报告 `expo-shopping-schedule-20260919T182821491376Z/result.json` SHA256 为 `6a061e7c91a00ef29721602184148c30791003a4901dfff7d154972cb39e8262`，保留完整失败与两张改期截图。修订脚本仍需独立审查及重新执行，不把定位修复当成流程通过。
 
 ## 四条流程
 

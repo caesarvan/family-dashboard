@@ -40,7 +40,7 @@ PROMPT = ('旅行名称：合成采购日期旅行\n出发日期：2027-10-01\n�
 class Run(BaseRun):
     record = item_fixture.Run.record
     open_assistant = brief_fixture.Run.open_assistant
-    choose_members = brief_fixture.Run.choose_members
+    choose_members = item_fixture.Run.choose_members
     show_saved = brief_fixture.Run.show_saved
 
     def __init__(self, root, bundle, folder, report, out, lifecycle):
@@ -151,7 +151,7 @@ class Run(BaseRun):
     def ordinary_schedule(self, browser):
         with self.flow(browser) as (ctx, page):
             self.open_shopping(page)
-            button(page, '添加采购').click()
+            icon_button(page, '添加采购').click()
             self.fill_purchase(page, '合成普通采购', '2027-09-28')
             textfield(page, '预计总价（元，可选）').fill('123.45')
             self.capture(page, 'create-form', textfield(page, '采购截止日期（可选）'))
@@ -288,7 +288,7 @@ class Run(BaseRun):
     def offline_draft(self, browser):
         with self.flow(browser) as (ctx, page):
             self.open_shopping(page)
-            button(page, '添加采购').click()
+            icon_button(page, '添加采购').click()
             self.fill_purchase(page, '合成离线采购', '2027-09-30', '低')
             expect(page.get_by_label('采购优先级：低', exact=True)).to_have_attribute('aria-checked', 'true')
             before = self.proof('before-offline')
@@ -317,7 +317,7 @@ class Run(BaseRun):
             button(page, '关闭并核对').click()
             self.open_shopping(page)
             expect(page.get_by_text('合成离线采购', exact=True)).not_to_be_visible()
-            button(page, '添加采购').click()
+            icon_button(page, '添加采购').click()
             self.fill_purchase(page, '合成离线采购', '2027-09-30', '低')
             saved = self.exchange(page, ITEMS, lambda: button(page, '保存').click(), status=201)['result']
             self.saved_item(page, saved['id'])
