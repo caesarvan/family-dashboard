@@ -13,6 +13,8 @@ import type { ScreenProps } from '../lib/types';
 import { PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
 import ExistingTripChangePanel from '../components/ExistingTripChangePanel';
+import AssistantFinanceQueryPanel from '../components/AssistantFinanceQueryPanel';
+import { isAssistantFinanceQuery } from '../lib/assistantFinanceQuery';
 
 function inventorySummary(item: Match) {
   const quantities = [item.onHandQty, item.inTransitQty, item.plannedQty];
@@ -21,6 +23,7 @@ function inventorySummary(item: Match) {
 }
 
 type JourneyPanel = { kind: 'brief'; key: number; prompt: string; useModel: boolean; prepare: boolean }
+  | { kind: 'finance_query'; key: number; prompt: string; useModel: boolean; modelConfigured: boolean }
   | { kind: 'trip_change'; key: number; prompt: string; useModel: boolean; modelConfigured: boolean }
   | { kind: 'planning'; key: number; draft: Draft }
   | { kind: 'existing'; key: number; id: string };
@@ -68,10 +71,10 @@ function AssistantEntry(props: ScreenProps) {
   }
   useFocusEffect(useCallback(() => {
     focused.current = true;
-    return () => { focused.current = false; conceal(); if (!reschedulePending.current && !documentsPending.current && !segmentsPending.current && !tripImportPending.current) { setPanel(null); setSourcePrompt(''); setSourceSearch(undefined); } };
+    return () => { focused.current = false; conceal(); if (panelRef.current?.kind !== 'finance_query' && !reschedulePending.current && !documentsPending.current && !segmentsPending.current && !tripImportPending.current) { setPanel(null); setSourcePrompt(''); setSourceSearch(undefined); } };
   }, [actor]));
   useEffect(() => {
-    if (!panel) return;
+    if (!panel || panel.kind === 'finance_query') return;
     void verify();
     const subscription = AppState.addEventListener('change', state => { if (state === 'active') void verify(); else conceal(); });
     const visibility = () => { if (document.hidden) conceal(); else void verify(); };
@@ -95,6 +98,12 @@ function AssistantEntry(props: ScreenProps) {
     const next: JourneyPanel = { kind: 'trip_change', key: ++sequence.current, prompt, useModel, modelConfigured };
     panelRef.current = next; setPanel(next);
   };
+  const beginFinanceQuery = (prompt: string, useModel: boolean, modelConfigured: boolean) => {
+    if (!available() || panelRef.current) return;
+    setSourcePrompt(prompt); setSourceSearch(undefined);
+    const next: JourneyPanel = { kind: 'finance_query', key: ++sequence.current, prompt, useModel, modelConfigured };
+    panelRef.current = next; setPanel(next);
+  };
   const openExisting = (match: Match, prompt: string, search: SearchReturn) => {
     if (!available() || panelRef.current) return;
     const target = assistantTripRequest(match, sequence.current + 1);
@@ -105,7 +114,9 @@ function AssistantEntry(props: ScreenProps) {
     panelRef.current = next; setPanel(next);
   };
   if (!panel) return <AssistantWorkspace {...props} initialPrompt={sourcePrompt} initialSearch={sourceSearch}
-    onJourney={begin} onTripChange={beginTripChange} onExistingTrip={openExisting} />;
+    onJourney={begin} onTripChange={beginTripChange} onFinanceQuery={beginFinanceQuery} onExistingTrip={openExisting} />;
+  if (panel.kind === 'finance_query') return <AssistantFinanceQueryPanel key={panel.key} initialPrompt={panel.prompt} initialUseModel={panel.useModel} modelConfigured={panel.modelConfigured} screenProps={props}
+    onBack={prompt => { if (available()) { setSourcePrompt(prompt); panelRef.current = null; setPanel(null); } }} />;
   const allowed = visible && household.online;
   return <View>
     {!allowed && <SectionCard title="旅行草稿暂时隐藏">
@@ -140,6 +151,7 @@ function AssistantEntry(props: ScreenProps) {
 function AssistantWorkspace(props: ScreenProps & {
   initialPrompt?: string; initialSearch?: SearchReturn; onJourney: (prompt: string, useModel: boolean, prepare: boolean) => void;
   onTripChange: (prompt: string, useModel: boolean, modelConfigured: boolean) => void;
+  onFinanceQuery: (prompt: string, useModel: boolean, modelConfigured: boolean) => void;
   onExistingTrip: (match: Match, prompt: string, search: SearchReturn) => void;
 }) {
   const household = useHousehold(), theme = useTheme();
@@ -187,35 +199,37 @@ function AssistantWorkspace(props: ScreenProps & {
   const locked = !view?.ready || view.busy || view.expired || !foreground || !household.online;
   const editingLocked = locked || !!view?.pending;
   const localSearch = isAssistantSearchRequest(prompt);
+  const financeQuery = isAssistantFinanceQuery(prompt);
   const tripChange = isExistingTripChangeRequest(prompt);
   const selected = view?.selected || [], draft = view?.plan, receipt = view?.receipt;
   const changedPrompt = !!draft && prompt.trim() !== view?.planPrompt;
   const people = props.state.people;
   return <View style={styles.page}>
-    <PageHeader title="家庭助理" description="整理清单或规划旅行，核对后再保存。" />
+    <PageHeader title="家庭助理" description="查询预算支出、整理清单或规划旅行。" />
     <SectionCard title="今天想处理什么？">
       <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} multiline label="告诉助理你的需求" accessibilityLabel="告诉助理你的需求" value={prompt}
         onChangeText={setPrompt} disabled={editingLocked} maxLength={2000} style={styles.input}
         placeholder="待办：明天预约保洁；确认酒店" />
-      <View style={styles.choices}>{['待办：明天预约保洁；确认酒店', '采购：收纳袋；转换插头', '搜索：电池', '看看这周安排'].map(text =>
-        <Chip key={text} disabled={editingLocked} onPress={() => { if (!editingLocked) setPrompt(text); }}>{text.startsWith('待办') ? '整理待办' : text.startsWith('采购') ? '准备采购' : text.startsWith('搜索') ? '查找家里物品' : '本周概览'}</Chip>)}</View>
+      <View style={styles.choices}>{['待办：明天预约保洁；确认酒店', '采购：收纳袋；转换插头', '搜索：电池', '本月花了多少', '看看这周安排'].map(text =>
+        <Chip key={text} disabled={editingLocked} onPress={() => { if (!editingLocked) setPrompt(text); }}>{text.startsWith('待办') ? '整理待办' : text.startsWith('采购') ? '准备采购' : text.startsWith('搜索') ? '查找家里物品' : text === '本月花了多少' ? '查询支出' : '本周概览'}</Chip>)}</View>
       <SelectionRow label="使用已配置的 AI 整理" checked={useModel} disabled={editingLocked || !view?.modelConfigured}
         onPress={() => { if (!editingLocked && view?.modelConfigured) { setUseModel(!useModel); setIncludeContext(false); } }} />
       {localSearch && <Text variant="bodySmall">本次只查找已有记录，不会发送给 AI。</Text>}
-      {useModel && !localSearch && <><Text variant="bodySmall">{tripChange ? '本次文字及必要候选的旅行标题、日期、时区会发送给已配置的 AI。结果是建议，尚未改期。' : '本次文字会发送给已配置的 AI 服务。结果是建议，尚未执行。'}</Text>
-        {!tripChange && <SelectionRow label="附带近期日程和待办标题" checked={includeContext} disabled={editingLocked}
+      {useModel && !localSearch && <><Text variant="bodySmall">{financeQuery ? '仅本次问题文字发送给 AI；不会附带账本、预算金额或家庭资料。' : tripChange ? '本次文字及必要候选的旅行标题、日期、时区会发送给已配置的 AI。结果是建议，尚未改期。' : '本次文字会发送给已配置的 AI 服务。结果是建议，尚未执行。'}</Text>
+        {!tripChange && !financeQuery && <SelectionRow label="附带近期日程和待办标题" checked={includeContext} disabled={editingLocked}
           onPress={() => { if (!editingLocked) setIncludeContext(!includeContext); }} />}</>}
-      {!view?.modelConfigured && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>可直接整理本地待办、采购或搜索已有记录。</Text>}
+      {!view?.modelConfigured && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>可直接查询预算支出、整理本地待办采购或搜索已有记录。</Text>}
       <Button mode="contained" loading={!!view?.busy && !view?.pending} disabled={editingLocked || !prompt.trim()}
         onPress={() => {
           if (editingLocked || !prompt.trim()) return;
-          if (isExistingTripChangeRequest(prompt)) props.onTripChange(prompt, useModel, !!view?.modelConfigured);
+          if (isAssistantFinanceQuery(prompt)) props.onFinanceQuery(prompt, useModel, !!view?.modelConfigured);
+          else if (isExistingTripChangeRequest(prompt)) props.onTripChange(prompt, useModel, !!view?.modelConfigured);
           else if (isJourneyRequest(prompt)) props.onJourney(prompt, useModel, true);
           else {
             const options = assistantPlanOptions(prompt, useModel, includeContext);
             void flow?.plan(prompt, options.useModel, options.includeHouseholdContext);
           }
-        }}>整理并预览</Button>
+        }}>{financeQuery ? '查询' : '整理并预览'}</Button>
       <Text variant="bodySmall">输入“搜索 关键词”“查找关键词”或“找一下关键词”可查找当前可见的记录；搜索始终只在本地进行。</Text>
     </SectionCard>
     {!!view?.error && <HelperText type="error" accessibilityRole="alert">{view.error}</HelperText>}
