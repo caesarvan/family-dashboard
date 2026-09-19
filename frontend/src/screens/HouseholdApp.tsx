@@ -4,6 +4,7 @@ import { View } from 'react-native';
 import { ActivityIndicator, Button, Snackbar, Text } from 'react-native-paper';
 import { useLocalSearchParams, useNavigation, useNavigationContainerRef, useRouter } from 'expo-router';
 import { useHousehold } from '../lib/household';
+import { forgetReminderIdentity } from '../lib/taskReminders';
 import { Entity, ItemKind, RouteName, ScreenProps } from '../lib/types';
 import AppShell from '../ui/AppShell';
 import ItemEditor from '../ui/ItemEditor';
@@ -53,6 +54,13 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
   const inventoryRequest=route==='inventory'&&Number.isSafeInteger(requestKey)&&requestKey>0
     ?{key:requestKey,id:typeof params.item==='string'&&/^[a-f0-9]{24}$/.test(params.item)?params.item:undefined}:undefined;
   const actor=household.identityKey;
+  const reminderActor=useRef<string|null>(null);
+  useEffect(()=>{
+    if(loading)return; // The initial unresolved session must not erase recovery.
+    const confirmed=user?.role==='member'?actor:null,previous=reminderActor.current;
+    reminderActor.current=confirmed;
+    if(previous&&previous!==confirmed)void forgetReminderIdentity(previous).catch(()=>{});
+  },[actor,loading,user?.role]);
   const pendingNavigation=useRef({actor,locked:false,message:'',source:''});
   const activeActor=useRef(actor);activeActor.current=actor;
   const activeRoute=useRef(route);activeRoute.current=route;
