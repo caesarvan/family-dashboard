@@ -1,8 +1,8 @@
 # 61/9 普通源码更新
 
-此前工具已用于 **2026-09-19 12:34:35（北京时间）的售后关联家庭待办发布**；164 项 Linux 验证与两户三库合成保全演练分别通过，stage／activate 实际退出 0，12:35:42 独立只读审计通过，生产一户两库保持 61/9。实际安装身份、R1 准入失败及 R2 验证集中在[该批验收](INVENTORY-FOLLOWUP-ACCEPTANCE.md#inventory-followup-release)。当前源码适配下一批订单来源库存功能，**适配提交本身不代表该功能已打包、演练或上线**。工具用于已完成成员迁移后的普通源码更新，家庭库保持 61 张业务表，平台库保持 9 张业务表。它不执行 `warm_once`，不退休、覆盖或重建成功迁移的 `membership-release-attempt.json`。
+本次工具已用于 **2026-09-19 13:57:12（北京时间）的本人订单关联库存发布**；实际 Linux 227 项与两户三库合成保全演练分别通过，stage／activate 实际退出 0，生产一户两库保持 61/9，13:59:04 独立只读审计通过。固定发布身份、Expo wrapper 失败与证据恢复及审计范围见[本批验收](INVENTORY-SOURCES-ACCEPTANCE.md#inventory-sources-release)；此前售后待办版本见[该批记录](INVENTORY-FOLLOWUP-ACCEPTANCE.md#inventory-followup-release)。工具用于已完成成员迁移后的普通源码更新，家庭库保持 61 张业务表，平台库保持 9 张业务表。它不执行 `warm_once`，不退休、覆盖或重建成功迁移的 `membership-release-attempt.json`。
 
-工具代码固定接受售后待办已安装基线（`followup-r1-steady`），不能通过环境变量或任意 CLI 参数切换。绑定依据是独立只读审计原件 `steady-followup-production-readonly-review-r1.json`，SHA256 `1649b5cf0d444184d196e061f0d4a57d0374500df3c617e69ab9f228cae821b2`。**旧 shopping 和 R3 计划均不可重放；本适配仍须分别审查冻结源码、候选包、实际镜像与最终计划。** 下表只约束本次适配所接受的已安装身份：
+工具代码固定接受售后待办已安装基线（`followup-r1-steady`），不能通过环境变量或任意 CLI 参数切换。绑定依据是独立只读审计原件 `steady-followup-production-readonly-review-r1.json`，SHA256 `1649b5cf0d444184d196e061f0d4a57d0374500df3c617e69ab9f228cae821b2`。**本次固定基线与计划已经消费，连同旧 shopping 和 R3 计划均不可重放；下次更新必须重新绑定当前实际身份并独立审查。** 下表保留本次适配所接受的发布前基线，不代表当前安装版本：
 
 | 身份 | 固定值 |
 |---|---|
