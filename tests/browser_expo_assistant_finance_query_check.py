@@ -101,7 +101,7 @@ class Run(BaseRun):
 
     def initial(self, page, prompt, **kwargs):
         page.get_by_role('textbox', name='告诉助理你的需求', exact=True).fill(prompt)
-        return self.actual_post(page, QUERY, lambda: button(page, '整理并预览').click(), **kwargs)
+        return self.actual_post(page, QUERY, lambda: button(page, '查询').click(), **kwargs)
 
     def query(self, page, prompt):
         page.get_by_role('textbox', name='财务问题', exact=True).fill(prompt)
