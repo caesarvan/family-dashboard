@@ -1,4 +1,4 @@
-"""Reviewed fixed shopping R1 baseline source update with full 61/9 group preservation.
+"""Reviewed fixed followup R1 baseline source update with full 61/9 group preservation.
 
 The migration marker is immutable. Only the normal new app initializes; no warm
 or migration callback. Shared admission, environment, and failure-stop helpers
@@ -19,6 +19,7 @@ if __package__ in (None, ''):
 from deploy import membership_release_controller as shared
 from deploy import steady_release_package as package
 from deploy import steady_release_data as data
+from deploy import membership_release_package as package_policy
 from deploy.membership_release_controller import (
     ROOT, RELEASES, VOLUME, SERVICES, WEB_IMAGE, PUBLIC_ORIGIN, RUNTIME_PROGRAM,
     ReleaseError, need, read, put, regular, relative, sha, source_hashes, run, runtime_environment,
@@ -82,11 +83,19 @@ class Controller(shared.Controller):
         env = regular(self.root / '.env')
         need(sha(env.read_bytes()) == self.plan['envSha256'] and stat.S_IMODE(env.stat().st_mode) == 0o600, 'environment_changed')
         need(old['compose.yaml'] == self.files['compose.yaml'] and old['deploy/nginx.conf'] == self.files['deploy/nginx.conf']
-             and old['requirements.txt'] == self.files['requirements.txt'] and old['Dockerfile'] == self.files['Dockerfile'], 'deployment_or_dependency_change')
+             and old['requirements.txt'] == self.files['requirements.txt'], 'deployment_or_dependency_change')
+        before_docker = regular(self.root / 'Dockerfile').read_bytes()
+        after_docker = regular(self.source / 'Dockerfile').read_bytes()
+        need(old['Dockerfile'] == package_policy.FIXED['Dockerfile']
+             and self.files['Dockerfile'] == package_policy.FOLLOWUP_DOCKER_SHA256
+             and sha(after_docker) == self.files['Dockerfile']
+             and before_docker.count(package_policy.INVENTORY_COPY_BEFORE) == 1
+             and after_docker == before_docker.replace(package_policy.INVENTORY_COPY_BEFORE,
+                                                       package_policy.INVENTORY_COPY_AFTER, 1), 'unsupported_docker_change')
         need(all(n.startswith('static/experience/') or not (n.endswith('.py') or n.startswith('static/'))
                  for n in set(old) - set(self.files)), 'unsupported_runtime_removal')
         changed = {n for n in set(old) | set(self.files) if old.get(n) != self.files.get(n)}
-        need(all(n in ('app.py', 'inventory_api.py', 'README.md') or n.startswith(
+        need(all(n in ('inventory_api.py', 'inventory_sources.py', 'Dockerfile', 'README.md') or n.startswith(
             ('frontend/', 'static/experience/', 'docs/', 'tests/', 'deploy/')) for n in changed), 'unsupported_source_change')
         return old, self.current_services(PARENT_IMAGE)
 
