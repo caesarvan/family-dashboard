@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-17T16:32:32.333193+00:00",
+  "generatedAt": "2026-09-19T13:53:01.122354+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -58,6 +58,12 @@
     },
     {
       "method": "POST",
+      "path": "/api/assistant/finance-query",
+      "source": "assistant_finance_query.py",
+      "endpoint": "assistant_finance_query"
+    },
+    {
+      "method": "POST",
       "path": "/api/assistant/journey-brief",
       "source": "home_assistant.py",
       "endpoint": "journey_brief"
@@ -79,6 +85,12 @@
       "path": "/api/assistant/search",
       "source": "home_assistant.py",
       "endpoint": "search"
+    },
+    {
+      "method": "POST",
+      "path": "/api/assistant/trip-change",
+      "source": "assistant_trip_change_api.py",
+      "endpoint": "assistant_trip_change"
     },
     {
       "method": "GET",
@@ -229,6 +241,60 @@
       "path": "/api/finance-accounts/operations/<request_id>",
       "source": "finance_accounts.py",
       "endpoint": "finance_account_operation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-analysis/accounts/<rid>/cashflows",
+      "source": "finance_analysis.py",
+      "endpoint": "finance_analysis_cashflows"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-analysis/accounts/<rid>/cashflows",
+      "source": "finance_analysis.py",
+      "endpoint": "finance_analysis_cashflow_create"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/finance-analysis/accounts/<rid>/cashflows/<fid>",
+      "source": "finance_analysis.py",
+      "endpoint": "finance_analysis_cashflow_delete"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/finance-analysis/accounts/<rid>/cashflows/<fid>",
+      "source": "finance_analysis.py",
+      "endpoint": "finance_analysis_cashflow_update"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance-analysis/accounts/<rid>/profile",
+      "source": "finance_analysis.py",
+      "endpoint": "finance_analysis_profile"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/finance-analysis/accounts/<rid>/reviews/<start>/<end>",
+      "source": "finance_analysis.py",
+      "endpoint": "finance_analysis_review"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-analysis/operations/<request_id>",
+      "source": "finance_analysis.py",
+      "endpoint": "finance_analysis_operation"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-analysis/rates/refresh",
+      "source": "finance_analysis.py",
+      "endpoint": "finance_analysis_refresh"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-analysis/report",
+      "source": "finance_analysis.py",
+      "endpoint": "finance_analysis_report"
     },
     {
       "method": "POST",
@@ -424,6 +490,18 @@
     },
     {
       "method": "GET",
+      "path": "/api/inventory/acquisitions/<uid>/followup",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_followup"
+    },
+    {
+      "method": "POST",
+      "path": "/api/inventory/acquisitions/<uid>/followup",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_followup"
+    },
+    {
+      "method": "GET",
       "path": "/api/inventory/acquisitions/<uid>/movements",
       "source": "inventory_api.py",
       "endpoint": "inventory_movements"
@@ -439,6 +517,12 @@
       "path": "/api/inventory/acquisitions/<uid>/movements/<movement_id>/reverse",
       "source": "inventory_api.py",
       "endpoint": "inventory_reverse"
+    },
+    {
+      "method": "GET",
+      "path": "/api/inventory/acquisitions/<uid>/source",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_acquisition_source"
     },
     {
       "method": "GET",
@@ -487,6 +571,30 @@
       "path": "/api/inventory/operations/<request_id>",
       "source": "inventory_api.py",
       "endpoint": "inventory_operation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/inventory/orders/<order_id>",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_order_source"
+    },
+    {
+      "method": "GET",
+      "path": "/api/inventory/shopping/<shopping_id>/acquisitions",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_shopping_acquisitions"
+    },
+    {
+      "method": "POST",
+      "path": "/api/inventory/sources/confirm",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_source_confirm"
+    },
+    {
+      "method": "POST",
+      "path": "/api/inventory/sources/preview",
+      "source": "inventory_api.py",
+      "endpoint": "inventory_source_preview"
     },
     {
       "method": "POST",
@@ -565,6 +673,42 @@
       "path": "/api/journey-places/<uid>",
       "source": "journey_places.py",
       "endpoint": "update_journey_place"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journey-routes",
+      "source": "journey_routes.py",
+      "endpoint": "list_journey_routes"
+    },
+    {
+      "method": "POST",
+      "path": "/api/journey-routes",
+      "source": "journey_routes.py",
+      "endpoint": "create_journey_route"
+    },
+    {
+      "method": "DELETE",
+      "path": "/api/journey-routes/<uid>",
+      "source": "journey_routes.py",
+      "endpoint": "delete_journey_route"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journey-routes/<uid>",
+      "source": "journey_routes.py",
+      "endpoint": "journey_route_detail"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/journey-routes/<uid>",
+      "source": "journey_routes.py",
+      "endpoint": "update_journey_route"
+    },
+    {
+      "method": "GET",
+      "path": "/api/journey-routes/operations/<request_id>",
+      "source": "journey_routes.py",
+      "endpoint": "journey_route_operation"
     },
     {
       "method": "GET",
@@ -751,6 +895,72 @@
       "path": "/api/media/items/<uid>/tv-grants",
       "source": "household_media.py",
       "endpoint": "media_tv_grants"
+    },
+    {
+      "method": "GET",
+      "path": "/api/member-invitations",
+      "source": "membership_http.py",
+      "endpoint": "invitation_list"
+    },
+    {
+      "method": "POST",
+      "path": "/api/member-invitations",
+      "source": "membership_http.py",
+      "endpoint": "invitation_create"
+    },
+    {
+      "method": "POST",
+      "path": "/api/member-invitations/<invitation_id>/revoke",
+      "source": "membership_http.py",
+      "endpoint": "invitation_revoke"
+    },
+    {
+      "method": "GET",
+      "path": "/api/members",
+      "source": "household_members.py",
+      "endpoint": "household_members_list"
+    },
+    {
+      "method": "POST",
+      "path": "/api/members/<member_id>/revoke-sessions",
+      "source": "household_members.py",
+      "endpoint": "household_member_revoke"
+    },
+    {
+      "method": "PATCH",
+      "path": "/api/members/<member_id>/role",
+      "source": "household_members.py",
+      "endpoint": "household_member_role"
+    },
+    {
+      "method": "POST",
+      "path": "/api/membership-links",
+      "source": "membership_http.py",
+      "endpoint": "membership_bind"
+    },
+    {
+      "method": "GET",
+      "path": "/api/membership-operations/<request_id>",
+      "source": "membership_http.py",
+      "endpoint": "membership_operation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/memberships",
+      "source": "membership_http.py",
+      "endpoint": "membership_list"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memberships/<member_id>/remove",
+      "source": "membership_http.py",
+      "endpoint": "membership_remove"
+    },
+    {
+      "method": "POST",
+      "path": "/api/memberships/self/leave",
+      "source": "membership_http.py",
+      "endpoint": "membership_leave"
     },
     {
       "method": "POST",
@@ -1539,6 +1749,68 @@
         "primaryKey": false
       }
     ],
+    "finance_account_cashflows": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "as_of",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "direction",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "amount_cents",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "note",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
     "finance_account_operations": [
       {
         "name": "owner",
@@ -1578,6 +1850,88 @@
       },
       {
         "name": "completed_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "finance_account_profiles": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "asset_class",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "liquidity",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "finance_account_reviews": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "start_date",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "end_date",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "context_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "confirmed_at",
         "type": "TEXT",
         "notNull": true,
         "primaryKey": false
@@ -1683,6 +2037,50 @@
         "primaryKey": false
       }
     ],
+    "finance_analysis_operations": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "payload_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "operation",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "completed_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
     "finance_baselines": [
       {
         "name": "owner",
@@ -1722,6 +2120,56 @@
       },
       {
         "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "finance_fx_rates": [
+      {
+        "name": "version",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "rate_date",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "currency",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "units_per_eur",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_url",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "body_sha256",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "fetched_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "last_checked_at",
         "type": "TEXT",
         "notNull": true,
         "primaryKey": false
@@ -1873,6 +2321,50 @@
       {
         "name": "accepted_at",
         "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "household_memberships": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "member_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "state",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "REAL",
         "notNull": true,
         "primaryKey": false
       }
@@ -3177,6 +3669,126 @@
         "primaryKey": false
       }
     ],
+    "journey_route_operations": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "payload_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "operation",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "route_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "completed_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "journey_route_stops": [
+      {
+        "name": "route_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "position",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "place_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
+    "journey_routes": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "title",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "journey_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "visibility",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "deleted_at",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
     "journey_workflows": [
       {
         "name": "id",
@@ -3567,6 +4179,74 @@
         "primaryKey": false
       }
     ],
+    "member_invitations": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "token_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "creator_member_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "creator_auth_version",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "state",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revoked_at",
+        "type": "REAL",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "used_at",
+        "type": "REAL",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "used_by_account_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
     "member_preferences": [
       {
         "name": "owner",
@@ -3676,6 +4356,56 @@
       },
       {
         "name": "retain_until",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "personal_identity",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
+    "membership_operations": [
+      {
+        "name": "subject",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "intent_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "member_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "result_json",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
         "type": "REAL",
         "notNull": true,
         "primaryKey": false
@@ -4037,10 +4767,184 @@
         "type": "INTEGER",
         "notNull": true,
         "primaryKey": false
+      },
+      {
+        "name": "household_role",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
       }
     ]
   },
   "platformTables": {
+    "account_memberships": [
+      {
+        "name": "membership_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "household_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "member_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "account_operations": [
+      {
+        "name": "subject",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "browser_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "browser_generation",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "browser_csrf_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "household_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "intent_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "details",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "state",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "account_qualifications": [
+      {
+        "name": "token_hash",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "browser_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "generation",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "proof",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "used_request",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "used_account",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      }
+    ],
     "household_invitations": [
       {
         "name": "hash",
@@ -4090,6 +4994,152 @@
         "name": "created_at",
         "type": "TEXT",
         "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "personal_accounts": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "login",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "password",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "auth_version",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "personal_browsers": [
+      {
+        "name": "browser_hash",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "generation",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "csrf_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "personal_limits": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "window",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "attempts",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "personal_sessions": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "account_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "credential_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "csrf_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "browser_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "generation",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "auth_version",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "expires_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "verified_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revoked_at",
+        "type": "REAL",
+        "notNull": false,
         "primaryKey": false
       }
     ]
