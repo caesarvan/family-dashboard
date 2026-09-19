@@ -34,8 +34,6 @@ BUILD_REUSE_PATHS = frozenset({HARNESS, 'tests/test_task_dependencies_browser.py
 CASES = ('selection_completion', 'invalid_conflict_clear', 'committed_response_lost')
 WIDTHS = (390, 1280)
 ITEMS = '/api/items/tasks'
-# Paper includes its private-use icon glyph in this button's accessible name.
-ADD_TASK_NAME = re.compile(r'^(?:[\uE000-\uF8FF\U000F0000-\U000FFFFD]\s+)?添加待办$')
 UNKNOWN = '暂时无法确认保存结果。请先关闭并刷新清单，核对后再操作，避免重复添加。'
 
 
@@ -69,6 +67,13 @@ def textbox(page, label='名称'):
 
 def checkbox(page, label):
     return page.get_by_role('checkbox', name=label, exact=True)
+
+
+def add_task_button(page):
+    # Paper may prefix its icon; use a JS-compatible suffix and reject ambiguity.
+    control = page.get_by_role('button', name=re.compile(r'添加待办$'))
+    expect(control).to_have_count(1)
+    return control
 
 
 def completed_periodic_refresh(page, base, settle):
@@ -349,7 +354,7 @@ class Run(BaseRun):
             for width, fault in zip(WIDTHS, ('abort', 'gateway503')):
                 page.set_viewport_size({'width': width, 'height': 844 if width == 390 else 1000})
                 title = '合成已提交待核对' + str(width)
-                self.open_list(page); page.get_by_role('button', name=ADD_TASK_NAME).click(); textbox(page).fill(title)
+                self.open_list(page); add_task_button(page).click(); textbox(page).fill(title)
                 self.expand_dependencies(page)
                 checkbox(page, '选择前置事项：' + prerequisite['title']).click()
                 before = self.count_requests('POST', ITEMS)
