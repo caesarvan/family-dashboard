@@ -1,0 +1,59 @@
+# 助理调整已有旅行
+
+本分支为前端接线候选，尚未部署。输入“把冰岛旅行延后三天”后，点击原有“整理并预览”，进入已有旅行改期页面。明确的搜索前缀仍优先走本地搜索；已有旅行修改不会落入新旅行简报。
+
+## 使用流程
+
+1. 在同一页保留“改期需求”和原有可选 AI 设置，读取改期建议。使用 AI 时明确说明发送本次文字及必要候选的旅行标题、日期、时区，不附带近期清单或其他家庭内容。
+2. 多候选显示名称和原日期，每页最多八条，用户选择一趟后继续。选择只回传原短期选票和当前候选引用，不再次调用模型，也不展示技术选票。
+3. 缺年份、矛盾、否定／取消、非整日单位和多目标请求保留原文，显示需要补充的内容。请求未找到目标也不会自动创建新旅行。
+4. 可用建议显示原标题、原日期和建议日期。点击“核对改期影响”后才打开原 `JourneyReschedulePanel`，实际重新获取旅行改期快照。
+5. 新快照的 journeyId、workflow revision、原标题、原起止日和 `key=trip` 原日期均必须吻合，才一次性带入建议日期。关联项目和时刻覆盖初始为空；用户选择联动事项后使用原“预览改期”→“确认改期”。
+6. 保存成功后返回原旅行详情。保存响应丢失时保持原预览及操作编号，通过原只读操作回执恢复；不重新生成改期来掩盖未知结果。
+
+普通候选选择与日期建议不增加确认复选框，实际业务保存仍由原改期预览后的“确认改期”完成。固定／已订／已完成事项、DST 时间问题、采购无截止日与云日历结果沿用原页面。
+
+## 接线与身份边界
+
+- `AssistantScreen.tsx` 在新简报之前分流已有旅行改期；沿用原助手的家庭身份 key、成员验证及导航保护。
+- `ExistingTripChangePanel.tsx` 负责原文、候选和缺参页；内部直接打开原改期面板，成功后复用 `TripsScreen.tripRequest` 打开原实体详情，无 `TripsScreen` 接口变更。
+- `assistantTripChange.ts` 解码 [实际 API 合同](ASSISTANT-TRIP-CHANGE-API.md)，验证候选／source／draft 的身份、版本、日期意图和持续天数一致。只 `ready` 可带入日期，只 `choose_trip` 接收选票。
+- `POST /api/assistant/trip-change` 初次仅 `{prompt,useModel}`，选择仅 `{selectionToken,selectedRef}`。模型传输、授权候选查询和签票由 API／适配器分支提供，前端不接收或提交任意模型指令。
+- 规划 POST 不保存旅行，但仍使用真实 CSRF 和前后 `/me` 的 `PlaceFence`。401／403 或身份变化清除输入、建议和选票；请求末尾身份无法核对则隐藏内容。409 清除过期候选并保留原文，要求重新整理。
+- 离线、后台和失焦使旧异步响应失效；返回只核对会话，不自动再次调用模型。同一身份的原文只留在当前页面内存，不写浏览器持久存储或日志。
+- 当前原改期快照没有 tripId／tripRevision／sourceVersion；前端不声称比较了这些字段。API 已在建议前后和回选时验证 live trip revision；后续预览／保存由重新取得的原签名快照保护。
+- 建议只初始化一次；之后用户修改日期、回到前台或读取新快照不会再次应用原相对天数。待确认保存由原面板向父层传播 pending，保持现有导航及原操作恢复。
+
+## 稳定操作名称与检查点
+
+入口为“整理并预览”，页面输入为“改期需求”；主按钮为“整理改期建议”或“重新整理需求”，进入原页面为“核对改期影响”。候选按钮可访问名称为 `选择旅行 <标题> <原出发日>`。
+
+页面检查点为 `assistant-trip-change-panel`、`assistant-trip-change-clarification`、`assistant-trip-change-suggestion`；之后仍使用 `journey-reschedule-panel`、`journey-reschedule-selection`、`journey-reschedule-preview` 和 `journey-reschedule-unknown`。
+
+## 本分支验证
+
+`frontend/tests/assistantTripChange.test.mjs` 的 24 项 Node 行为测试通过，涵盖真实助手提交分流、搜索优先、选票请求形状、缺年、来源冲突、迟到响应、身份切换、电视拒绝、离线恢复、提供方失败不降级、快照核对、默认不联动、原预览／确认／丢失响应恢复以及用户日期输入不被重新带入的建议覆盖。
+
+测试执行生产 TSX 和原改期逻辑，React hooks／Paper 与 HTTP 使用合成替身；不等同浏览器布局或真实 Flask 完整交互。首次测试 12/15，通过修正测试替身的跨 VM Error 类型、安全随机数接口与共享对象夹具得到 15/15；随后补合同及生命周期覆盖，最终 24/24。未以测试替身失败推断线上行为。TypeScript 检查通过，工具依赖为本 worktree 指向 integration 既有 `node_modules` 的 junction 复用，不是独立安装或正式受验构建。
+
+其中五种响应夹具来自真实临时 Flask 登录／CSRF／SQLite API：固定组合 `a5432e6e6977ba9f1e7f7edb0b3a9ff0b3593197`，原件 SHA256 `89170501c5a3b52257a056a4e826c2b4bade23038c409e64b7d95c8e78f802b5`。它们为全合成资料、0 次提供方调用，包含 ready、缺年、未找到、多候选及选择后 ready；分别解码，并直接用于生产面板的候选选择和日期带入测试。此证据覆盖真实 DTO 兼容性，不声称浏览器已连接该 Flask 服务。
+
+另单独运行既有助理入口、原改期和完整会话 identity 三组 Node 测试，32/32 通过；其中入口测试实际调用临时 Flask／SQLite 搜索，确认显式搜索仍只在本地进行。该轮没有调用新改期 API 的模型路径，不与新 24 项合计成一次全套验证。
+
+尚需由集成人组合已审 API／适配器和 app／发布清单接线，完成真实浏览器、完整来源合同、会话切换及正式构建验收。没有调用真实模型、使用私人旅行、写云服务或部署生产。
+
+## 独立浏览器脚本候选
+
+后续单独提交的 `tests/browser_expo_assistant_trip_change_check.py` 复用既有临时 Flask／SQLite／HTTPS／Edge fixture，准备三条最短真实路径：改期与丢失回执恢复、候选／缺年／源变更、搜索优先与响应期间真实成员切换。它要求已冻结的组合源码、精确 head 和 Expo 构建证据散列；所有成功业务响应来自实际接口。故障注入只丢弃一次真实已提交响应，身份场景先取得真实响应再切换会话，没有替换业务 JSON。
+
+脚本在本作者 worktree 仅通过 Python AST 与 diff 检查，尚未运行浏览器。手机 390px／桌面 1280px 的两张截图、三条路径结果、临时数据清理、源码／产物运行前后散列和禁止外网／真实模型计数须由组合运行实际生成，不能把本次脚本准备记为通过。
+
+### 浏览器 R1 后的测试器修订
+
+固定组合 `b75f4dda95c39065eb37bb9b94cf650c6befd34d` 的 R1 实际完成前两条场景，第三条在测试器 `Route.fulfill` 处报 `Route is already handled!`。原记录 `assistant-trip-change-build-r1/test-results/expo-trip-change-20260919T083940417646Z/result.json` 保留，第三条不能算通过。
+
+`actual_post` 原先在取得响应时就计为完成，但身份切换回调仍可能让出事件循环，外层会提前注销路由。完成记录现移至回调与 `fulfill`／`abort` 成功之后；不屏蔽路由异常、不改变产品响应。真实 Edge 与 loopback HTTP 的局部回归在旧 helper 下两项均复现提前注销，在修订后交付与丢弃两条分支均通过。此局部回归只验证测试器生命周期，第三条产品场景仍须组合复验。
+
+仅测试器修订可显式传 `--build-source-head b75f4dda95c39065eb37bb9b94cf650c6befd34d` 复用原构建。默认仍要求运行源码与构建相同；显式复用时校验该提交为当前 head 的祖先、构建证据精确绑定该 head/tree，且差异只允许本脚本、`tests/test_trip_change_browser_lifecycle.py` 和本文。所有前端 inputFiles 字节、完整构建产物散列、固定运行 head/clean 状态及运行前后检查继续生效。结果分别记录运行 head/tree、构建 head/tree 和允许的源码差异；不将测试器增量标作重新构建。
+
+聚焦命令 `python -B -X utf8 -m pytest -q tests/test_trip_change_browser_lifecycle.py` 结果为 9 项通过（19.58 秒）：两项真实路由生命周期与七项实际临时 Git 仓库的构建适用性检查，包括默认拒绝隐式复用、业务／前端变化、错误 tree 和非祖先。该轮没有重新构建 Expo、运行完整三场景、调用模型或访问生产。
