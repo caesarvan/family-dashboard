@@ -4,6 +4,7 @@ The membership marker is immutable. No DDL migration or warm callback runs;
 normal new app startup is checked against the stopped 66/9 group. Shared admission and failure-stop helpers
 remain in the original controller, whose bytes are included in the plan.
 """
+from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
 import os
@@ -28,6 +29,35 @@ from deploy.membership_release_controller import (
 
 PARENT_IMAGE, OLD_MANIFEST = package.PARENT_IMAGE, package.OLD_MANIFEST
 
+
+@dataclass(frozen=True)
+class ReleaseSpec:
+    """Source-selected identity, never selected or populated by a release plan."""
+    baseline: str
+    plan_kind: str
+    parent_image: str
+    old_manifest: str
+    docker_before: str
+    docker_after: str
+    copy_before: bytes
+    copy_after: bytes
+    changed_root_files: frozenset
+    controller_file: str
+    operators: tuple
+    release_prefix: str
+    env_sha256: str
+
+
+OPERATORS = ('assistant_trip_change_release_controller.py', 'assistant_trip_change_release_package.py', 'assistant_trip_change_release_data.py', 'assistant_trip_change_release_plan.py',
+             'membership_release_controller.py', 'membership_release_package.py',
+             'membership_release_build.py', 'membership_release_data.py',
+             'assistant_trip_change_release_profile.py', 'check_finance_analysis_migration.py', 'steady_release_data.py', 'finance_analysis_release_data.py',
+             'membership_migration.py', 'backup.py')
+SPEC = ReleaseSpec(package.BASELINE, 'assistant-trip-change-release-plan', PARENT_IMAGE, OLD_MANIFEST,
+                   profile.DOCKER_BEFORE, profile.DOCKER_AFTER, profile.COPY_BEFORE, profile.COPY_AFTER,
+                   profile.CHANGED_ROOT_FILES, 'assistant_trip_change_release_controller.py', OPERATORS,
+                   'assistant-trip-change-66-', 'a72d456815cf113b1ac0c1e032ac8c45b300ccf2cb499520c14b7f54d5314e07')
+
 MARKER_PROGRAM = """
 from pathlib import Path
 import hashlib,stat
@@ -40,21 +70,30 @@ print(hashlib.sha256(p.read_bytes()).hexdigest())
 
 
 class Controller(shared.Controller):
+    SPEC = SPEC
+
+    @property
+    def spec(self):
+        return self.SPEC
+
     def __init__(self, candidate, plan_sha256, *, runner=run, root=ROOT, releases=RELEASES):
         self.candidate = regular(candidate, directory=True)
         self.root, self.releases, self.runner = root, releases, runner
         self.plan_sha = plan_sha256
         self.plan = read(self.candidate / 'release-plan.json', plan_sha256)
-        need(self.plan.get('schemaVersion') == 1 and self.plan.get('kind') == 'assistant-trip-change-release-plan', 'plan_kind')
-        need(sha(regular(Path(__file__)).read_bytes()) == self.plan.get('controllerSha256'), 'controller_not_reviewed')
+        need(self.plan.get('schemaVersion') == 1 and self.plan.get('kind') == self.spec.plan_kind, 'plan_kind')
+        entry = regular(Path(__file__).with_name(self.spec.controller_file))
+        need(regular(sys.modules[type(self).__module__].__file__) == entry, 'controller_entry_import_changed')
+        need(sha(entry.read_bytes()) == self.plan.get('controllerSha256'), 'controller_not_reviewed')
         need(re.fullmatch('sha256:[0-9a-f]{64}', self.plan.get('imageId', '')), 'image_id')
-        need(self.plan.get('parentImage') == PARENT_IMAGE and self.plan.get('webImage') == WEB_IMAGE
-             and self.plan.get('oldManifestSha256') == OLD_MANIFEST, 'baseline_changed')
+        need(self.plan.get('parentImage') == self.spec.parent_image and self.plan.get('webImage') == WEB_IMAGE
+             and self.plan.get('oldManifestSha256') == self.spec.old_manifest, 'baseline_changed')
+        need(self.plan.get('envSha256') == self.spec.env_sha256, 'environment_baseline_changed')
         verifier_path = regular(Path(__file__).with_name('membership_release_package.py'))
         need(sha(verifier_path.read_bytes()) == self.plan.get('packageVerifierSha256'), 'package_verifier_not_reviewed')
         from deploy import membership_release_package as verifier
         need(regular(verifier.__file__) == verifier_path, 'package_verifier_import_changed')
-        self.verified = verifier.verify_package(self.candidate / 'package', self.plan['packageSha256'], baseline=package.BASELINE)
+        self.verified = verifier.verify_package(self.candidate / 'package', self.plan['packageSha256'], baseline=self.spec.baseline)
         # verify_package's public return contract is normalized by the package
         # author; this controller binds the same original package metadata.
         self.package = read(self.candidate / 'package/package.json', self.plan['packageSha256'])
@@ -64,23 +103,18 @@ class Controller(shared.Controller):
         self.source = regular(self.candidate / 'source', directory=True)
         need(sha((self.source / 'RELEASE-MANIFEST.json').read_bytes()) == self.package['manifestSha256'], 'extracted_manifest_changed')
         source_hashes(self.source, self.files, exact=True)
-        need(self.package['parentImage'] == PARENT_IMAGE and self.package['oldManifestSha256'] == OLD_MANIFEST, 'package_baseline')
+        need(self.package['parentImage'] == self.spec.parent_image and self.package['oldManifestSha256'] == self.spec.old_manifest, 'package_baseline')
         need(self.plan.get('reviews'), 'reviews_required')
         for name, digest in self.plan['reviews'].items():
             need(sha(regular(self.candidate / relative(name)).read_bytes()) == digest, 'review_changed')
 
         need(self.plan.get('membershipMarkerSha256') == data.MEMBERSHIP_MARKER_SHA256, 'marker_baseline_changed')
-        operator_names = ('assistant_trip_change_release_controller.py', 'assistant_trip_change_release_package.py', 'assistant_trip_change_release_data.py', 'assistant_trip_change_release_plan.py',
-                          'membership_release_controller.py', 'membership_release_package.py',
-                          'membership_release_build.py', 'membership_release_data.py',
-             'assistant_trip_change_release_profile.py', 'check_finance_analysis_migration.py', 'steady_release_data.py', 'finance_analysis_release_data.py',
-             'membership_migration.py', 'backup.py')
-        expected = {'deploy/' + name: sha(regular(Path(__file__).with_name(name)).read_bytes()) for name in operator_names}
+        expected = {'deploy/' + name: sha(regular(Path(__file__).with_name(name)).read_bytes()) for name in self.spec.operators}
         need(self.plan.get('operatorHashes') == expected and
              all(self.files.get(name) == digest for name, digest in expected.items()), 'operator_source_changed')
 
     def baseline(self):
-        need(sha(regular(self.root / 'RELEASE-MANIFEST.json').read_bytes()) == OLD_MANIFEST, 'installed_manifest_changed')
+        need(sha(regular(self.root / 'RELEASE-MANIFEST.json').read_bytes()) == self.spec.old_manifest, 'installed_manifest_changed')
         old = read(self.root / 'RELEASE-MANIFEST.json')['files']
         source_hashes(self.root, old)
         env = regular(self.root / '.env')
@@ -89,18 +123,18 @@ class Controller(shared.Controller):
              and old['requirements.txt'] == self.files['requirements.txt'], 'deployment_or_dependency_change')
         before_docker = regular(self.root / 'Dockerfile').read_bytes()
         after_docker = regular(self.source / 'Dockerfile').read_bytes()
-        need(old['Dockerfile'] == profile.DOCKER_BEFORE
-             and self.files['Dockerfile'] == profile.DOCKER_AFTER
-             and sha(after_docker) == profile.DOCKER_AFTER
-             and before_docker.count(profile.COPY_BEFORE) == 1
-             and after_docker == before_docker.replace(profile.COPY_BEFORE, profile.COPY_AFTER, 1),
+        need(old['Dockerfile'] == self.spec.docker_before
+             and self.files['Dockerfile'] == self.spec.docker_after
+             and sha(after_docker) == self.spec.docker_after
+             and before_docker.count(self.spec.copy_before) == 1
+             and after_docker == before_docker.replace(self.spec.copy_before, self.spec.copy_after, 1),
              'unsupported_docker_change')
         need(all(n.startswith('static/experience/') or not (n.endswith('.py') or n.startswith('static/'))
                  for n in set(old) - set(self.files)), 'unsupported_runtime_removal')
         changed = {n for n in set(old) | set(self.files) if old.get(n) != self.files.get(n)}
-        need(all(n in profile.CHANGED_ROOT_FILES or n.startswith(
+        need(all(n in self.spec.changed_root_files or n.startswith(
             ('frontend/', 'static/experience/', 'docs/', 'tests/', 'deploy/')) for n in changed), 'unsupported_source_change')
-        return old, self.current_services(PARENT_IMAGE)
+        return old, self.current_services(self.spec.parent_image)
 
     def current_services(self, expected_image):
         result = super().current_services(expected_image)
@@ -112,7 +146,7 @@ class Controller(shared.Controller):
 
     def candidate_image(self):
         image = self.plan['imageId']
-        parent, child = self.inspect(PARENT_IMAGE), self.inspect(image)
+        parent, child = self.inspect(self.spec.parent_image), self.inspect(image)
         layers = parent['RootFS']['Layers']
         need(child['RootFS']['Layers'][:len(layers)] == layers and len(child['RootFS']['Layers']) == len(layers) + 2, 'image_parent_changed')
         need({k:v for k,v in parent['Config'].items() if k != 'Image'} ==
@@ -125,7 +159,7 @@ class Controller(shared.Controller):
         counts = super().validate_evidence()
         proof = self.plan['build']
         build = read(self.candidate / relative(proof['path']), proof['sha256'])
-        need(build.get('exitCode') == 0 and build.get('parentImage') == PARENT_IMAGE
+        need(build.get('exitCode') == 0 and build.get('parentImage') == self.spec.parent_image
              and build.get('imageId') == self.plan['imageId'] and build.get('addedLayers') == 2
              and build.get('packageSha256') == self.plan['packageSha256']
              and build.get('sourceHead') == self.package['sourceHead'] and build.get('tree') == self.package['tree']
@@ -200,7 +234,7 @@ class Controller(shared.Controller):
         stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
         report = {'planSha256': self.plan_sha, 'completed': False, 'steps': []}
         put(self.candidate / 'activation.json', report)
-        release = self.releases / ('assistant-trip-change-66-' + stamp)
+        release = self.releases / (self.spec.release_prefix + stamp)
         release.mkdir(mode=0o700)
         report['releaseDirectory'] = str(release)
         def record(step):
@@ -288,7 +322,7 @@ class Controller(shared.Controller):
         return report
 
 
-def main(argv=None):
+def main(argv=None, *, controller_type=Controller):
     import argparse
     import signal
     parser = argparse.ArgumentParser(description=__doc__)
@@ -305,7 +339,7 @@ def main(argv=None):
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, interrupted)
     with shared.release_lock():
-        controller = Controller(args.candidate, args.plan_sha256)
+        controller = controller_type(args.candidate, args.plan_sha256)
         value = getattr(controller, args.action)()
     print(json.dumps({'action': args.action, 'completed': value.get('completed', False),
                       'staged': args.action == 'stage', 'planSha256': args.plan_sha256}))

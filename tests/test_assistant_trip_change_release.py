@@ -1,10 +1,12 @@
 """Immutable 66/9 source package and recorded failure order, no Docker or network."""
+from dataclasses import replace
 import json
 import os
 
 import pytest
 from deploy import assistant_trip_change_release_package as package
 from deploy import assistant_trip_change_release_profile as profile
+from deploy import assistant_finance_query_release_profile as finance_query_profile
 from deploy import assistant_trip_change_release_controller as controller
 from deploy import assistant_trip_change_release_plan as plan
 from deploy import membership_release_package as shared
@@ -16,6 +18,16 @@ from test_membership_release_controller import simulation as old_simulation
 import test_steady_release_package as prior_package_tests
 
 
+def trip_docker():
+    """Accept only either reviewed checkout's Dockerfile, then recover the old pin."""
+    raw = (ROOT / 'Dockerfile').read_bytes()
+    if shared.digest(raw) == finance_query_profile.DOCKER_AFTER:
+        assert raw.count(finance_query_profile.COPY_AFTER) == 1
+        raw = raw.replace(finance_query_profile.COPY_AFTER, finance_query_profile.COPY_BEFORE, 1)
+    assert shared.digest(raw) == profile.DOCKER_AFTER
+    return raw
+
+
 @pytest.fixture
 def environment(tmp_path, monkeypatch):
     # The old fixture reconstructs the old pinned Dockerfile. Its production
@@ -23,6 +35,7 @@ def environment(tmp_path, monkeypatch):
     def historical_fixed_blob(name):
         raw = (ROOT / name).read_bytes()
         if name == 'Dockerfile':
+            raw = trip_docker()
             raw = raw.replace(profile.COPY_AFTER, profile.COPY_BEFORE)
             raw = raw.replace(shared.INVENTORY_COPY_AFTER, shared.INVENTORY_COPY_BEFORE)
             raw = raw.replace(b'COPY finance_analysis.py finance_fx.py ./\n', b'')
@@ -45,7 +58,7 @@ def test_original_package_profile_still_accepts_its_fixed_source(environment):
 def package_environment(environment):
     for name in plan.OPERATORS:
         write(environment['repo'], 'deploy/' + name, (ROOT / 'deploy' / name).read_bytes())
-    write(environment['repo'], 'Dockerfile', (ROOT / 'Dockerfile').read_bytes())
+    write(environment['repo'], 'Dockerfile', trip_docker())
     for name in profile.RUNTIME_ADDITIONS:
         write(environment['repo'], name, ('# synthetic ' + name + '\n').encode())
     for name in profile.FRONTEND_TESTS:
@@ -185,15 +198,16 @@ def baseline(tmp_path, monkeypatch):
     for name in ('app.py', 'finance_accounts.py', 'compose.yaml', 'requirements.txt', 'Dockerfile', 'deploy/nginx.conf'):
         raw = (ROOT / name).read_bytes()
         if name == 'Dockerfile':
+            raw = trip_docker()
             raw = raw.replace(profile.COPY_AFTER, profile.COPY_BEFORE)
         path = root / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(raw)
         old[name] = common.sha(raw)
     manifest = root / 'RELEASE-MANIFEST.json'; manifest.write_text(json.dumps({'files': old}))
-    monkeypatch.setattr(controller, 'OLD_MANIFEST', common.sha(manifest.read_bytes()))
+    monkeypatch.setattr(controller.Controller, 'SPEC', replace(controller.SPEC, old_manifest=common.sha(manifest.read_bytes())))
     env = root / '.env'; env.write_bytes(b'SYNTHETIC=1\n'); env.chmod(0o600)
     if os.name == 'nt':
         monkeypatch.setattr(controller.stat, 'S_IMODE', lambda _: 0o600)
-    (source / 'Dockerfile').write_bytes((ROOT / 'Dockerfile').read_bytes())
+    (source / 'Dockerfile').write_bytes(trip_docker())
     operator = object.__new__(controller.Controller)
     operator.root, operator.source = root, source
     operator.files = {**old, 'Dockerfile': profile.DOCKER_AFTER}
