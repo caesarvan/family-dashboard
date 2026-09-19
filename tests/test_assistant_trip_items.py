@@ -163,6 +163,72 @@ def test_natural_language_model_sample_is_grounded_without_sending_household(app
     assert business(app) == before
 
 
+@pytest.mark.parametrize('use_model', [False, True])
+@pytest.mark.parametrize('source,collection,owner,quantity,offset', [
+    ('准备：预约接送 | 负责人：我 | 出发前：3天', 'checklist', 'member1', None, -3),
+    ('准备：预约接送 | 负责人：我 | 出发前：约3天', 'checklist', 'member1', None, None),
+    ('采购：转换插头 | 负责人：小林 | 数量：两只 | 预算：约200元', 'shopping', 'member2', '两只', None),
+    ('采购：转换插头 | 负责人：小林 | 数量：两只 | 预算：不超过200元', 'shopping', 'member2', '两只', None),
+    ('采购：转换插头 | 负责人：小林 | 数量：两只 | 单价：200元', 'shopping', 'member2', '两只', None),
+    ('采购：转换插头 | 负责人：小林 | 数量：约两只 | 预算：200元', 'shopping', 'member2', '', None),
+])
+def test_item_qualifiers_do_not_erase_independent_labelled_facts(app, monkeypatch, use_model,
+                                                              source, collection, owner, quantity, offset):
+    client, headers, _, _ = named_members(app)
+    prompt = TRIP + '\n' + source
+    raw = assistant.local_journey_brief(prompt)
+    # Simulate a model omitting a qualifier, not just the local parser's nulls.
+    if collection == 'shopping':
+        raw[collection][0].update(budgetCents=20000, quantity='两只')
+    else:
+        raw[collection][0]['dueOffsetDays'] = -3
+    calls = model(app, monkeypatch, raw)
+    before = business(app)
+    response = submit(client, headers, prompt, useModel=use_model)
+    assert response.status_code == 200, response.json
+    brief = response.json['brief']; row = brief[collection][0]
+    assert row['owner'] == owner and row['sourceText'] == row['note'] == source
+    assert brief['budgetCents'] == 2000000
+    if collection == 'shopping':
+        assert row['quantity'] == quantity and row['budgetCents'] is None
+    else:
+        assert row['due'] == '' and row['dueOffsetDays'] == offset
+    assert len(calls) == int(use_model) and business(app) == before
+
+
+def test_natural_booking_and_approximate_budget_keep_separate_facts(app, monkeypatch):
+    client, headers, _, _ = named_members(app)
+    prompt = PROSE.replace('核对护照', '预约接送').replace('预算200元', '预算约200元')
+    raw = advisory(prompt); raw['checklist'][0]['title'] = '预约接送'
+    calls = model(app, monkeypatch, raw)
+    before = business(app)
+    response = submit(client, headers, prompt, useModel=True)
+    assert response.status_code == 200, response.json
+    brief = response.json['brief']; task, purchase = brief['checklist'][0], brief['shopping'][0]
+    assert task['owner'] == 'member1' and task['dueOffsetDays'] == -3 and task['due'] == ''
+    assert purchase['owner'] == 'member2' and purchase['quantity'] == '两只'
+    assert purchase['budgetCents'] is None and brief['budgetCents'] == 2000000
+    assert purchase['sourceText'] == purchase['note'] == '小林买两只转换插头，预算约200元'
+    assert len(calls) == 1 and json.loads(calls[0]['input']) == {'request': prompt}
+    assert business(app) == before
+
+
+@pytest.mark.parametrize('source', [
+    '不要小林买两只转换插头，预算200元',
+    '小林买两只转换插头，预算200元，改由合成本人负责',
+    '采购：转换插头 | 负责人：小林 | 数量：两只 | 预算：200元 | 备注：取消本项采购',
+])
+def test_item_wide_negation_or_reassignment_still_blocks_model_facts(app, monkeypatch, source):
+    client, headers, _, _ = named_members(app)
+    raw = advisory(); raw['shopping'][0]['sourceText'] = source
+    model(app, monkeypatch, raw)
+    response = submit(client, headers, PROSE.rsplit('；', 1)[0] + '；' + source, useModel=True)
+    assert response.status_code == 200, response.json
+    row = response.json['brief']['shopping'][0]
+    assert row['owner'] is None and row['quantity'] == '' and row['budgetCents'] is None
+    assert row['sourceText'] == row['note'] == source
+
+
 @pytest.mark.parametrize('name,owner', [('我', 'member1'), ('共同', 'shared'), ('我们', 'shared'), ('一起', 'shared'),
                                         ('小林', 'member2'), ('不存在', None), ('member2', None), ('', 'shared')])
 def test_exact_active_member_resolution(app, name, owner):

@@ -439,8 +439,24 @@ def _journey_item_dates(source):
     return dates
 
 
+def _journey_item_fact_source(source, field):
+    # Explicit fields have their own qualifiers. Keep the action and unclassified
+    # prose in every scope, so negation or a later correction cannot be removed.
+    labels = (('owner', r'负责人\s*[：:]'), ('quantity', r'数量\s*[：:]'),
+              ('budget', r'(?:总预算|旅行预算|人均预算|单价预算|预算|单价|总价)\s*[：:]?'),
+              ('due', r'(?:截止日期|截止|出发\s*(?:前|后|当天|当日))'))
+    parts = []
+    for part in re.split(r'[|，,]', source):
+        part = part.strip()
+        kind = next((name for name, pattern in labels if re.match(pattern, part)), None)
+        if kind is None or kind == field:
+            parts.append(part)
+    return ' | '.join(parts)
+
+
 def _journey_item_uncertain(source):
-    return bool(re.search(r'不要|不用|无需|取消|不必|不是|并非|不确定|待定|未定|大约|大概|左右|上下|可能|预计|估计|大致|约|至少|至多|不超过|以内|以下|以上|或者|还是|改为|改成|才对', source))
+    # “约” is a numeric/date qualifier, not a substring veto for “预约接送”.
+    return bool(re.search(r'不要|不用|无需|取消|不必|不是|并非|不确定|待定|未定|大约|大概|左右|上下|可能|预计|估计|大致|(?<![预邀])约\s*(?:[0-9零〇一二两三四五六七八九十百]|出发|截止)|至少|至多|不超过|以内|以下|以上|或者|还是|改为|改成|改由|换人|换成|才对', source))
 
 
 def _journey_item_budgets(source, prompt):
@@ -502,7 +518,7 @@ def ground_journey_items(brief, prompt, members, actor):
                 source = ''
             row['sourceText'] = row['note'] = source
             assignee = row['assigneeText']
-            supported = bool(source and assignee and not _journey_item_uncertain(source) and (
+            supported = bool(source and assignee and not _journey_item_uncertain(_journey_item_fact_source(source, 'owner')) and (
                 re.search(r'负责人\s*[：:]\s*' + re.escape(assignee) + r'\s*(?:\||$)', source)
                 or re.search(r'(?:^|[，,：:]\s*|由)' + re.escape(assignee)
                              + r'\s*(?:在|来|负责|买|采购|购买|核对|准备|确认|打印|整理|检查|联系|预订|订|带)', source)))
@@ -522,9 +538,10 @@ def ground_journey_items(brief, prompt, members, actor):
                 warnings.append(f'{label}：负责人未能唯一核对，请从当前成员中选择。')
             if not source:
                 warnings.append(f'{label}：未找到本项完整原文，事项仅为待核对建议。')
-            certain = bool(source and not _journey_item_uncertain(source))
             if collection == 'checklist':
-                dates, offsets = _journey_item_dates(source), _journey_item_offsets(source)
+                due_source = _journey_item_fact_source(source, 'due')
+                certain = bool(source and not _journey_item_uncertain(due_source))
+                dates, offsets = _journey_item_dates(due_source), _journey_item_offsets(due_source)
                 if not certain or len(dates) != 1 or row['due'] not in dates or offsets:
                     row['due'] = ''
                 if not certain or len(offsets) != 1 or row['dueOffsetDays'] not in offsets or dates:
@@ -532,9 +549,11 @@ def ground_journey_items(brief, prompt, members, actor):
                 if not row['due'] and row['dueOffsetDays'] is None:
                     warnings.append(f'{label}：截止信息尚未核对，请填写日期或相对出发天数。')
             else:
-                if not certain or row['budgetCents'] not in _journey_item_budgets(source, prompt):
+                if not source or row['budgetCents'] not in _journey_item_budgets(source, prompt):
                     row['budgetCents'] = None
-                if row['quantity'] not in source or not certain:
+                quantity_source = _journey_item_fact_source(source, 'quantity')
+                if (not source or row['quantity'] not in quantity_source
+                        or _journey_item_uncertain(quantity_source)):
                     row['quantity'] = ''
                 if re.search(r'截止|出发\s*(?:前|后|当天|当日)|\d{4}[-年]\d{1,2}', source):
                     warnings.append(f'{label}：采购尚无截止日期字段，原文截止要求已保留在备注，请手工核对。')
