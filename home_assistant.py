@@ -190,11 +190,12 @@ def model_journey_brief(config, prompt):
           '两类事项都有title(1至100字)、assigneeText(原文负责人称呼，未知为空)、note、sourceText。'
           'sourceText必须逐字引用本项完整原句，以换行、分号或句号分隔，最多500字；不要截掉否定、约数或币种。'
           'title尽量逐字使用原文的事项名，不将另一项的金额、负责人或日期移到本项。'
-          'checklist还含due和dueOffsetDays：明确绝对截止日期用due=YYYY-MM-DD且dueOffsetDays=null；'
+          'checklist和shopping均含due和dueOffsetDays：明确绝对截止日期用due=YYYY-MM-DD且dueOffsetDays=null；'
           '明确出发前N天用due=""且dueOffsetDays=-N，出发后为正，范围-730至366；'
           '未知时due=""且dueOffsetDays=null；不要把相对天数推算成绝对日期。'
           'shopping还含quantity(原文数量字符串，未知为空，最多30字)、budgetCents(本项明确人民币预算整数分，未知null)。'
-          '采购没有截止日期字段，有截止要求必须保留在原句和note，待本人核对；不得丢弃。'
+          'shopping还含priority：仅明确高/普通/低优先级分别用high/normal/low，未知用normal；不得自行判断紧急程度。'
+          '采购可以没有截止日期；截止日不是付款日或收货日，不从旅行出发日期推定。'
           '总budgetCents只使用明确的旅行总预算，不累加采购预算，不用单价、人均、外币或约数。'
           '负责人只能是原文assigneeText，不能输出owner、成员ID或key；服务端另行核对当前成员。'
           '原始城市顺序不变；不能生成ID、预览令牌、已付款、预订状态、签证结论或云发布动作。'
@@ -255,18 +256,20 @@ def normalize_journey_brief(raw):
             item = {'key': f'brief-{prefix}-{index + 1}', 'title': title,
                     'assigneeText': text(row.get('assigneeText'), 80), 'owner': None,
                     'note': text(row.get('note'), 500), 'sourceText': text(row.get('sourceText'), 500)}
-            if collection == 'checklist':
-                due, offset = day(row.get('due')), row.get('dueOffsetDays')
-                if offset is not None and (type(offset) is not int or not -730 <= offset <= 366):
-                    raise ValueError('相对截止天数无效')
-                if due and offset is not None:
-                    raise ValueError('绝对截止日期和相对天数不能同时提供')
-                item.update(due=due, dueOffsetDays=offset)
-            else:
+            due, offset = day(row.get('due')), row.get('dueOffsetDays')
+            if offset is not None and (type(offset) is not int or not -730 <= offset <= 366):
+                raise ValueError('相对截止天数无效')
+            if due and offset is not None:
+                raise ValueError('绝对截止日期和相对天数不能同时提供')
+            item.update(due=due, dueOffsetDays=offset)
+            if collection == 'shopping':
                 amount = row.get('budgetCents')
                 if amount is not None and (type(amount) is not int or not 0 <= amount <= 100_000_000_000):
                     raise ValueError('采购预算须为非负整数分或 null')
-                item.update(quantity=text(row.get('quantity'), 30), budgetCents=amount)
+                priority = row.get('priority', 'normal')
+                if not isinstance(priority, str) or priority not in ('low', 'normal', 'high'):
+                    raise ValueError('采购优先级须为 low、normal 或 high')
+                item.update(quantity=text(row.get('quantity'), 30), budgetCents=amount, priority=priority)
             items[collection].append(item)
     return {'title': text(raw.get('title'), 100), 'start': day(raw.get('start')), 'end': day(raw.get('end')),
             'budgetCents': budget, 'international': international, 'destinations': destinations,
@@ -444,7 +447,8 @@ def _journey_item_fact_source(source, field):
     # prose in every scope, so negation or a later correction cannot be removed.
     labels = (('owner', r'负责人\s*[：:]'), ('quantity', r'数量\s*[：:]'),
               ('budget', r'(?:总预算|旅行预算|人均预算|单价预算|预算|单价|总价)\s*[：:]?'),
-              ('due', r'(?:截止日期|截止|出发\s*(?:前|后|当天|当日))'))
+              ('due', r'(?:截止日期|截止|出发\s*(?:前|后|当天|当日))'),
+              ('priority', r'优先级\s*[：:]'))
     parts = []
     for part in re.split(r'[|，,]', source):
         part = part.strip()
@@ -468,6 +472,15 @@ def _journey_item_budgets(source, prompt):
     return exact_journey_budgets(source)
 
 
+def _journey_item_priorities(source):
+    """Only explicit priority labels; no inference from urgency or item type."""
+    values = {'高': 'high', '普通': 'normal', '中': 'normal', '低': 'low',
+              'high': 'high', 'normal': 'normal', 'low': 'low'}
+    matches = re.findall(r'优先级\s*[：:]?\s*(高|普通|中|低|high|normal|low)(?=$|[\s|，,])'
+                         r'|(高|普通|中|低)优先级(?=$|[\s|，,])', source, re.I)
+    return {values[(left or right).lower()] for left, right in matches}
+
+
 def local_journey_items(prompt):
     """One labelled item per clause, pipe-separated fields; keep unknown prose."""
     result = {'checklist': [], 'shopping': []}
@@ -486,15 +499,17 @@ def local_journey_items(prompt):
                 fields[label] = match[2].strip()
         row = {'title': first[2].strip(), 'assigneeText': fields.get('负责人', ''), 'sourceText': source,
                'note': source}
+        due = fields.get('截止日期', fields.get('截止', ''))
+        offsets = _journey_item_offsets(source)
+        row.update(due=due if re.fullmatch(r'\d{4}-\d{2}-\d{2}', due) else '',
+                   dueOffsetDays=next(iter(offsets)) if len(offsets) == 1 else None)
         if first[1] == '准备':
-            due = fields.get('截止日期', fields.get('截止', ''))
-            offsets = _journey_item_offsets(source)
-            row.update(due=due if re.fullmatch(r'\d{4}-\d{2}-\d{2}', due) else '',
-                       dueOffsetDays=next(iter(offsets)) if len(offsets) == 1 else None)
             result['checklist'].append(row)
         else:
             amounts = _journey_item_budgets(source, prompt)
-            row.update(quantity=fields.get('数量', ''), budgetCents=next(iter(amounts)) if amounts else None)
+            priorities = _journey_item_priorities(source)
+            row.update(quantity=fields.get('数量', ''), budgetCents=next(iter(amounts)) if amounts else None,
+                       priority=next(iter(priorities)) if len(priorities) == 1 else 'normal')
             result['shopping'].append(row)
     return result
 
@@ -562,25 +577,39 @@ def ground_journey_items(brief, prompt, members, actor):
                 warnings.append(f'{label}：负责人未能唯一核对，请从当前成员中选择。')
             if not source:
                 warnings.append(f'{label}：未找到本项完整原文，事项仅为待核对建议。')
-            if collection == 'checklist':
-                due_source = _journey_item_fact_source(source, 'due')
-                certain = bool(source and not _journey_item_uncertain(due_source))
-                dates, offsets = _journey_item_dates(due_source), _journey_item_offsets(due_source)
-                if not certain or len(dates) != 1 or row['due'] not in dates or offsets:
-                    row['due'] = ''
-                if not certain or len(offsets) != 1 or row['dueOffsetDays'] not in offsets or dates:
-                    row['dueOffsetDays'] = None
-                if not row['due'] and row['dueOffsetDays'] is None:
-                    warnings.append(f'{label}：截止信息尚未核对，请填写日期或相对出发天数。')
-            else:
+            # Do not assign another item's schedule from a shared multi-item clause.
+            competing_item = collection == 'shopping' and any(
+                other is not row and (other_title := re.sub(r'^(?:购买|采购|准备购买|买)\s*', '', other['title']))
+                and other_title != title and other_title in source
+                for other in brief['checklist'] + brief['shopping'])
+            due_source = _journey_item_fact_source(source, 'due')
+            certain = bool(source and not competing_item and not _journey_item_uncertain(due_source))
+            if collection == 'shopping' and re.search(r'付款|支付|收货|到货|下单|订单日期', due_source) and '截止' not in due_source:
+                # A purchase/payment/delivery milestone is not an explicit deadline.
+                certain = False
+            requested_due = bool(row['due'] or row['dueOffsetDays'] is not None
+                                 or re.search(r'截止|出发\s*(?:前|后|当天|当日)', due_source))
+            dates, offsets = _journey_item_dates(due_source), _journey_item_offsets(due_source)
+            if not certain or len(dates) != 1 or row['due'] not in dates or offsets:
+                row['due'] = ''
+            if not certain or len(offsets) != 1 or row['dueOffsetDays'] not in offsets or dates:
+                row['dueOffsetDays'] = None
+            if not row['due'] and row['dueOffsetDays'] is None and (collection == 'checklist' or requested_due):
+                warnings.append(f'{label}：截止信息尚未核对，请填写日期或相对出发天数。')
+            if collection == 'shopping':
                 if not source or row['budgetCents'] not in _journey_item_budgets(source, prompt):
                     row['budgetCents'] = None
                 quantity_source = _journey_item_fact_source(source, 'quantity')
                 if (not source or row['quantity'] not in quantity_source
                         or _journey_item_uncertain(quantity_source)):
                     row['quantity'] = ''
-                if re.search(r'截止|出发\s*(?:前|后|当天|当日)|\d{4}[-年]\d{1,2}', source):
-                    warnings.append(f'{label}：采购尚无截止日期字段，原文截止要求已保留在备注，请手工核对。')
+                priority_source = _journey_item_fact_source(source, 'priority')
+                priorities = _journey_item_priorities(priority_source)
+                if (not source or competing_item or _journey_item_uncertain(priority_source)
+                        or len(priorities) != 1 or row['priority'] not in priorities):
+                    if row['priority'] != 'normal' or '优先级' in priority_source:
+                        warnings.append(f'{label}：优先级未能核对，暂按普通处理，请确认。')
+                    row['priority'] = 'normal'
     return warnings
 
 
