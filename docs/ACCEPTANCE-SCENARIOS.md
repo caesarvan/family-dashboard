@@ -1,6 +1,6 @@
 # A–D 家庭使用与验收索引
 
-**2026-09-19 状态补充：A–D 本人真实完整端到端验收仍为 0/4。** AI 已有旅行改期于 17:39:23（北京时间）上线，17:40:24 独立只读审计通过；[使用与本批验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。本人真实旅行、云端完整链和实体电视仍另验。
+**2026-09-20 当前状态：A–D 本人真实完整端到端验收仍为 0/4。** 本地待办前置事项于 06:28:25（北京时间）发布，06:35:47 独立只读审计通过；[使用与分段验收](TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)。资料／照片搜索及采购提示修正此前于 05:15:29 发布，见[对应验收](ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release)。站内提醒仍是独立候选，未上线；真实云写入待明确目的地，实体电视暂无设备。以下历史场景证据不重写，实际当前运行身份以 [README](../README.md) 和[交接](HANDOFF.md)为准。
 
 截至 2026-09-18，本页按原始目标的四个必验场景整理入口、既有证据与剩余步骤。
 已发布基线新增家庭与成员，并包含旅行 JSON 导入、单趟旅行回顾与照片旅行建议；具体运行身份以 [README](../README.md)、[交接](HANDOFF.md)和各发布验收页为准。

@@ -1,8 +1,8 @@
 # 家庭信息中枢：产品目标与验收账本
 
-**最新上线：采购截止日、三级优先级与明确改期（2026-09-20 03:54:39，北京时间），03:55:48 独立只读审计通过。** 普通采购、旅行草案及助理明确字段已接通；相对天数只在草案换算，已保存采购须明确选中才随改期移动。分段验证与已知 390px 离线提示裁切见[集中验收](SHOPPING-SCHEDULE-ACCEPTANCE.md#shopping-schedule-release)。
+**最新上线：本地待办前置事项（2026-09-20 06:28:25，北京时间），06:35:47 独立只读审计通过。** 明确选择本地前置任务、首页／清单阻塞展示及完成门禁已发布；真实浏览器 R1 前两项＋R4 第三项分段验证，实际 Linux 354 项通过，生产一户两库保持 69/9。固定身份与边界见[集中验收](TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)。
 
-此前旅行路线、助理预算查询、旅行准备／采购分工及 Expo 主清单同步均已发布，当前使用入口与证据见 [README](../README.md)。资料搜索及共享 HelperText 改善仍属下一独立批次，未随本包发布。A–D 本人完整验收仍为 **0/4**；继续完成真实家庭、实际云端读写和实体电视流程，不能用分模块 PASS 替代。
+资料与照片搜索及采购提示完整换行已于同日 05:15:29 发布，05:16:46 独立审计通过，见[资料搜索验收](ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release)；03:54 的[采购截止／优先级](SHOPPING-SCHEDULE-ACCEPTANCE.md#shopping-schedule-release)保留其当时验证范围。其他当前入口以 [README](../README.md) 为准。站内提醒已开发为独立候选，尚未上线；A–D 本人完整验收仍 **0/4**，实际云端写入与实体电视另验，不能用分模块 PASS 替代。下方历史段落保留原时点。
 
 **此前上线：AI 已有旅行改期（2026-09-19 17:39:23，北京时间），17:40:24 独立只读审计通过。** 从一句改期需求进入已有旅行、核对日期与联动事项，再预览确认保存。[使用与集中验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。A–D 本人真实完整验收仍为 0/4，真实云和实体电视另验。
 
