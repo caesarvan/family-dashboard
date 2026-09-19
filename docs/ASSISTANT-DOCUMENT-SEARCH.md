@@ -1,6 +1,6 @@
 # 家庭助理：旅行资料搜索
 
-状态：独立后端候选，等待非作者审查和后续组合验证，尚未发布。本批只扩展现有 `/api/assistant/search` 与本地查询计划，不新增接口、数据表、索引、OCR、模型调用或自动下载。资料原有规则见 [JOURNEY-DOCUMENTS.md](JOURNEY-DOCUMENTS.md)。
+状态：已随资料／照片搜索批次发布；实际激活、独立审计与分段证据见[使用与集中验收](ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release)。下文作者验证记录保留其历史边界。本批只扩展现有 `/api/assistant/search` 与本地查询计划，不新增接口、数据表、索引、OCR、模型调用或自动下载。资料原有规则见 [JOURNEY-DOCUMENTS.md](JOURNEY-DOCUMENTS.md)。
 
 ## 查询与返回值
 
