@@ -27,6 +27,17 @@ export function isAssistantFinanceQuery(prompt: string): boolean {
   const p = prompt.trim();
   if (isAssistantSearchRequest(p) || /^(?:待办|采购|任务)\s*[:：]/.test(p)
     || /^(?:请|帮我|请帮我)?(?:创建|新建|添加)(?:(?:一|两|几|\d+)(?:个|项|条))?(?:待办|任务|采购)/.test(p)) return false;
+  const structuredJourney = ['旅行名称', '出发日期', '返程日期'].every(field =>
+    new RegExp('(?:^|[\\r\\n;；。])\\s*' + field + '\\s*[:：]\\s*[^\\s;；。]').test(p));
+  if (structuredJourney) {
+    // Budgets and preparation checks are draft fields, not finance questions.
+    // Keep explicit mixed queries intact for the server to clarify/reject.
+    const topic = '(?:预算|支出|消费|开销|开支|花销|花费|账单|账本|荷包|共同资金|公共资金|长期储蓄|生活费)';
+    const clause = '[^\\r\\n;；。|｜,，]*';
+    const asksFinance = new RegExp('(?:查|看看|瞧瞧|统计|汇总)' + clause + topic + '|' + topic + clause + '(?:多少|还剩|剩余|余额)');
+    const periodSpending = /(?:本月|这个月|这月|上月|上个月|\d{4}年\d{1,2}月|\d{4}-\d{2})[^\r\n;；。|｜,，]*(?:支出|消费|开销|开支|花销|花费|花了?多少|用了?多少钱)/;
+    if (!asksFinance.test(p) && !periodSpending.test(p)) return false;
+  }
   const financeQuestion = /(?:查|看看|瞧瞧|多少|还剩|余额|开销|开支|花销|支出|消费)/.test(p);
   if (!financeQuestion && (isExistingTripChangeRequest(p)
     || /^(?:请|帮我|请帮我|我想|我要)?(?:计划|规划|安排|准备|创建|新建).*(?:旅行|旅游|行程)/.test(p))) return false;
