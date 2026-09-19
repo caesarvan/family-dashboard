@@ -193,7 +193,7 @@ function Workspace(props: Props & { identityKey: string }) {
               {row.eligible && !preview ? <SelectionRow label={row.title} accessibilityLabel={`联动改期：${row.title}`} checked={draft.selectedKeys.includes(row.key)} disabled={locked} onPress={() => select(row.key)} /> : <Text variant="titleSmall">{row.title}</Text>}
               <Text>{spanText(row.before)}{'after' in row ? ' → ' + spanText(row.after as { start: string | null; end: string | null }) : ''}</Text>
               {row.timeBefore && (['start', 'end'] as const).filter(endpoint => row.timeBefore?.[endpoint] || 'timeAfter' in row && (row.timeAfter as Clocks | undefined)?.[endpoint]).map(endpoint => <View key={endpoint} style={styles.item}><Text variant="bodySmall">{endpoint === 'start' ? '开始时刻' : '结束时刻'}</Text><Text>{clockText(row.timeBefore?.[endpoint])}</Text>{'timeAfter' in row && <Text>→ {clockText((row.timeAfter as Clocks | undefined)?.[endpoint])}</Text>}</View>)}
-              <Text variant="bodySmall">{row.endExclusive ? '结束日不包含在停留中 · ' : ''}{'selected' in row ? row.selected || kind === 'overview' ? '本次联动' : '保持原日期' : impactReason(row)}</Text><Divider />
+              <Text variant="bodySmall">{row.endExclusive ? '结束日不包含在停留中 · ' : ''}{'selected' in row && (row.selected || kind === 'overview') ? '本次联动' : impactReason(row)}</Text><Divider />
             </View>)}{pagination(kind, paged.page, paged.pages)}
           </SectionCard>;
         })}
@@ -207,7 +207,7 @@ function Workspace(props: Props & { identityKey: string }) {
       </SectionCard>)}
       {issueRows.pages > 1 && <View style={styles.actions}><Button accessibilityLabel="时间问题上一页" disabled={busy || issueRows.page === 0} onPress={() => setIssuePage(issueRows.page - 1)}>上一页</Button><Text>时间问题 {issueRows.page + 1} / {issueRows.pages}</Text><Button accessibilityLabel="时间问题下一页" disabled={busy || issueRows.page + 1 === issueRows.pages} onPress={() => setIssuePage(issueRows.page + 1)}>下一页</Button></View>}
       <View style={styles.actions}>{preview?.canApply ? <Button mode="contained" disabled={locked} onPress={confirm}>确认改期</Button> : <Button mode="contained" disabled={locked} onPress={makePreview}>预览改期</Button>}{preview && <Button disabled={locked} onPress={() => setPreview(null)}>继续修改</Button>}</View>
-      <Text variant="bodySmall">采购没有截止日期；本次不修改采购、金额、负责人、共享权限或到访状态。</Text>
+      <Text variant="bodySmall">{(review || source).capabilities.shoppingDue ? '采购默认保持原截止日；只移动你明确勾选的未完成、有日期的本地采购。' : '当前服务不支持采购截止联动，采购保持原记录。'}金额、优先级、负责人、图片、共享权限和到访状态保持不变。</Text>
     </>}
     {leavingDialog}
   </View>;
