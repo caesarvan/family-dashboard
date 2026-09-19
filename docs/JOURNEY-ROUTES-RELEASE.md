@@ -51,4 +51,6 @@ python -B deploy/activate_journey_routes_release.py activate <new-candidate> <sa
 
 测试与独立审查原件保存在忽略的 `test-results`，不提交数据库、环境值或原始业务内容。Windows 测试不能替代后续同源 Linux 容器验证及独立生产只读审计。
 
-本机工具首轮 30/30 通过；补充已审 `journey_places.py` 根文件范围后，相关范围、profile 和记录式 build/validate 共 14/14 通过（28 项未选择，不是跳过）。两輪含 42 个不同工具用例，不能与尚待组合执行的真实迁移用例合并报为完整验证。原件位于 `test-results/journey-routes-release-tools-r1`、`test-results/journey-routes-release-tools-r2`；本次无网络、Docker 或生产操作。
+本机工具首轮 30/30 通过；补充已审 `journey_places.py` 根文件范围后，相关范围、profile 和记录式 build/validate 共 14/14 通过（28 项未选择，不是跳过）。两轮含 42 个不同工具用例，按各轮范围保留，不与迁移用例相加。原件位于 `test-results/journey-routes-release-tools-r1`、`test-results/journey-routes-release-tools-r2`；本次无网络、Docker 或生产操作。
+
+独立组合 `c71789d7251277326cbd69f6cfc6babe2f459a5f`（已审 API／接线 `bcfd77793036ed4d33711595d838896b2c7a685e` + 发布工具 `eff8bbc6f339e1c43082d4dd6fbb8cd2eb9014f2`）实际运行迁移专项 **20/20 通过，0 失败／错误／跳过，65.65 秒**。组合源码前后哈希一致且工作区干净；原件位于独立验证 worktree 的 `test-results/journey-routes-migration-r1/{started.json,execution.json,junit.xml,stdout.txt,stderr.txt}`。覆盖真实临时两户三库、五分析表非空、精确三表迁移、实际 app 启动、漂移拒绝、部分失败完整回滚、非空路线及软删除回执重启／恢复。此记录仍不代表 Linux 容器或生产验证。
