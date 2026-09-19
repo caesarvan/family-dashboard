@@ -31,7 +31,7 @@ def sync_household(platform, household, stop=None):
     except Exception as error:
         logging.error('Household load error type=%s', type(error).__name__)
         return
-    for phase in ('task_publish', 'calendar_publish', 'cloud_accounts', 'household_routines'):
+    for phase in ('task_reminders', 'task_publish', 'calendar_publish', 'cloud_accounts', 'household_routines'):
         if stop is not None and stop.requested:
             return
         try:

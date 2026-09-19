@@ -18,7 +18,7 @@ COPY journey_documents.py journey_places.py ./
 COPY inventory_core.py inventory_api.py inventory_sources.py ./
 COPY calendar_publish.py financial_files.py investment_import.py investment_operations.py ./
 COPY dashboard_preferences.py data_portability.py ./
-COPY task_publish.py household_routines.py task_dependencies.py ./
+COPY task_publish.py household_routines.py task_dependencies.py task_reminders.py ./
 COPY static ./static
 USER dashboard
 EXPOSE 8000

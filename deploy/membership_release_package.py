@@ -50,6 +50,9 @@ def baseline_values(baseline=None):
     # Explicit audited callers only; defaults keep the original migration contract.
     if baseline is None:
         return 'membership-release-package', PARENT_IMAGE, OLD_MANIFEST
+    if baseline == 'task-dependencies-r2-task-reminders':
+        from deploy import build_task_reminders_release as reminders
+        return reminders.KIND, reminders.PARENT_IMAGE, reminders.OLD_MANIFEST
     if baseline == 'assistant-document-search-r1-task-dependencies':
         from deploy import build_task_dependencies_release as dependencies
         return dependencies.KIND, dependencies.PARENT_IMAGE, dependencies.OLD_MANIFEST
@@ -93,6 +96,9 @@ def baseline_values(baseline=None):
 
 def fixed_files(baseline=None):
     baseline_values(baseline)
+    if baseline == 'task-dependencies-r2-task-reminders':
+        from deploy import build_task_reminders_release as reminders
+        return {**FIXED, 'Dockerfile': reminders.DOCKER_AFTER}
     if baseline == 'assistant-document-search-r1-task-dependencies':
         from deploy import build_task_dependencies_release as dependencies
         return {**FIXED, 'Dockerfile': dependencies.DOCKER_AFTER}
@@ -254,6 +260,11 @@ def selected_sources(tracked, policy, *, baseline=None):
     required = set(constants['FILES']) | {SELF} | {'frontend/' + n for n in
         ('package.json', 'package-lock.json', 'app.json', 'tsconfig.json', 'README.md', 'LICENSE',
          'tests/journeySegments.test.ts', 'tsconfig.tests.json', 'typecheck.mjs')}
+    if baseline == 'task-dependencies-r2-task-reminders':
+        from deploy import build_task_reminders_release as reminders
+        required |= reminders.RUNTIME_ADDITIONS | reminders.FRONTEND_TESTS | reminders.BROWSER_SCRIPTS | {
+            'deploy/build_task_reminders_release.py', 'deploy/activate_task_reminders_release.py',
+            'deploy/check_task_reminders_migration.py'}
     if baseline == 'assistant-document-search-r1-task-dependencies':
         from deploy import build_task_dependencies_release as dependencies
         required |= dependencies.RUNTIME_ADDITIONS | dependencies.FRONTEND_TESTS | dependencies.BROWSER_SCRIPTS | {
@@ -334,7 +345,7 @@ def validate_export_names(names, *, baseline=None):
                     'assistant-trip-change-r1-finance-query', 'finance-query-r2-journey-routes',
                     'journey-routes-r1-assistant-trip-items', 'assistant-trip-items-r1-expo-task-publish',
                     'expo-trip-tasks-r1-shopping-schedule', 'shopping-schedule-r1-assistant-document-search',
-                    'assistant-document-search-r1-task-dependencies'):
+                    'assistant-document-search-r1-task-dependencies', 'task-dependencies-r2-task-reminders'):
         from deploy import finance_analysis_release_profile as analysis
         need(3 <= len(names) <= MAX_FILES and 'index.html' in names and 'metadata.json' in names,
              'complete bounded export required')
@@ -360,6 +371,15 @@ def validate_maps(metadata, manifest, evidence, *, baseline=None):
     need(not any(n.startswith(PREFIX) for n in source), 'source/export overlap')
     need(files == {**source, **{PREFIX + n: h for n, h in exports.items()}}, 'manifest partition differs')
     need(metadata['runtimeFiles'] == runtime_files(files), 'runtime partition differs')
+    if baseline == 'task-dependencies-r2-task-reminders':
+        from deploy import build_task_reminders_release as reminders
+        non_expo = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
+        preserved = {n: h for n, h in non_expo.items() if n not in reminders.CHANGED_RUNTIME_FILES}
+        need(len(non_expo) == reminders.NON_EXPO_RUNTIME_COUNT
+             and reminders.CHANGED_RUNTIME_FILES <= non_expo.keys()
+             and len(preserved) == reminders.PRESERVED_RUNTIME_COUNT
+             and digest(encoded(preserved)) == reminders.PRESERVED_RUNTIME_SHA256,
+             'reminder non-Expo runtime differs from installed 101-file preservation baseline')
     if baseline == 'assistant-document-search-r1-task-dependencies':
         from deploy import build_task_dependencies_release as dependencies
         non_expo = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
