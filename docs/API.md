@@ -2,6 +2,12 @@
 
 当前部署身份见 [HANDOFF](HANDOFF.md)。个人账户与多家庭成员协作此前完成 58/2→61/9 迁移；本人账户分析现已完成 61/9→66/9，当前为 **66 张户内表与 9 张平台表**，见[分析发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；此前家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
 
+## 助理预算与支出只读查询（已发布）
+
+2026-09-19 19:42:01（北京时间）已发布，19:42:33独立只读审计通过。`POST /api/assistant/finance-query` 接受 `{prompt, useModel?}`；需当前成员、同源 JSON 和 CSRF，匿名401、电视403。返回 ready／clarify／unsupported；澄清或不支持时无财务内容。默认本地，允许模型不代表一定调用；模型只解释问题，金额在真实授权读取事务中按完整本人账本和原币计算。
+
+本人净支出、退款分摊与预算不跨币种相加；明确共享只返回既有允许的汇总，公共荷包只投影已确认手工当前快照。无业务写入、新表或迁移。字段、缺省／未知和身份边界见[查询合同](ASSISTANT-FINANCE-QUERY.md)，使用见[Expo 查询](EXPO-FINANCE-QUERY.md)，实际发布状态见[本批验收](ASSISTANT-FINANCE-QUERY-ACCEPTANCE.md#assistant-finance-query-release)。
+
 ## 本人账户分析（已发布）
 
 2026-09-19 16:20:25（北京时间）已发布九个操作：报告读取、明确更新公共参考汇率、账户分类／流动性设置、资金事件的列表／新增／修改／删除、精确区间核对及原操作回执读取。路径位于 `/api/finance-analysis/`，完整方法、字段、限制和恢复语义见[分析 API](FINANCE-ANALYSIS-API.md)，汇率来源与版本见[FX 合同](FINANCE-FX.md)。
