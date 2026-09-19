@@ -1,22 +1,20 @@
 # 联合开发接手说明
 
-## 当前开发：助理预算与支出查询（候选，未上线）
+## 最新发布：助理预算与支出查询
 
-三条独立分支从 `0458c4daf00cbbc3a13719bab3b5ef79346b13a2` 开始；真实订单验收工具随后单独审查合入 main `f0dfeb7ea1f3a1bc9b0305357031d25b84ddb45b`，不改变运行代码。线上版本仍以下方发布记录为准。
+**2026-09-19 19:42:01（北京时间）激活，19:42:33独立只读审计通过。** main `520781d7c9a9872fd006d929e9b578bbe9c611f8` 与受验source `68631bfe02d822434e8557aa247f0148d4e9d7dd` 同树 `136dec1288fe7fe5ea94b59b0ea2282de32c8ebf`；生产实际一户两库保持66/9，无新表或迁移。完整package／镜像／计划／回执与原件集中在[本批验收](ASSISTANT-FINANCE-QUERY-ACCEPTANCE.md#assistant-finance-query-release)。
 
-| 负责人／分支 | 独占路径 | 状态 |
-|---|---|---|
-| asset_release / `codex/assistant-finance-query-api` | `assistant_finance_query.py`、`finance_hub.py`、`app.py`、API 专项及 `ASSISTANT-FINANCE-QUERY.md` | 实现只读自然语言查询，金额由现有精确账本规则计算；不向模型发送账本或金额 |
-| asset_ui / `codex/assistant-finance-query-ui` | `AssistantFinanceQueryPanel.tsx`、`assistantFinanceQuery.ts`、`types.ts`、`AssistantScreen.tsx`、`FinanceScreen.tsx` 及前端专项 | 结果卡、身份保护、指定月份账本／预算往返；不修改财务保存规则 |
-| root / `codex/assistant-finance-query-wiring` | `Dockerfile`、`browser_expo_assistant_finance_query_check.py`、本交接 | 新模块镜像 COPY、三个真实临时浏览器场景的验收脚本；组合浏览器尚未执行 |
+从「更多 → 家庭助理 → 查询」进入「预算与支出」，支持本人本月／上月／明确年月、分币种净支出与预算、明确共享消费，以及已确认公共手工快照。默认本地，可选模型只解析本次问题，不附加账本或金额。未知不作零，全部与分类预算不相加；成员／家庭变化清除旧内容，返回财务查询按相同范围本地刷新。
 
-统一入口为 `POST /api/assistant/finance-query`，输入 `prompt` 与 `useModel`，返回 `ready`、`clarify` 或 `unsupported`。不同币种分列，未知与零区分；共同消费汇总与手工公共资金快照分开。后端声明与前端解码必须一致后才能合入；测试脚本存在不代表验收通过。
+正式fresh Expo五阶段、64/64 Node和最终R2三场景真实临时浏览器分别通过；真实模型两次格式拒绝及第三次合成账本查询成功保留。Linux R1为294通过／2失败，原503断言不变；已审修复另跑本机70项通过；Linux R2为298/298通过且0跳过，保留所有旧节点。独立生产审计绑定922源文件、126运行文件、75 HTTPS资源及完整停写备份／启动前后保全；四服务运行、app健康、0重启。
 
-本候选没有数据库迁移、依赖或环境变量变更。Docker COPY 不是发布凭据：旧发布 profile 固定旧基线，不能拿它重放生产更新；新的完整运行包及其发布基线仍须审查。各分支先独立审查，组合测试与复审后才合主分支，生产部署另记。
+后端 `assistant_finance_query.py` 复用 `ImportSession` 与现有金额／退款分摊；前端由 `AssistantFinanceQueryPanel.tsx`／`assistantFinanceQuery.ts` 接入原助理和财务页。作者分支、窄修与最终组合分别经过非作者审查；后续修改重新登记负责人，不沿用旧任务永久文件占用。本次发布计划已消费，不可重放。
 
-## 已发布版本
+[操作与恢复](EXPO-FINANCE-QUERY.md) · [API合同](ASSISTANT-FINANCE-QUERY.md) · [发布工具](ASSISTANT-FINANCE-QUERY-RELEASE.md)。本次线上仅执行安装／匿名拒绝审计，不代表本人财务查询或再次实际模型调用。A–D本人真实完整验收仍为0/4，线上本人财务、真实云写与实体电视未验收。此后的纯文档提交不改变运行包身份。
 
-**最新上线：AI 已有旅行改期（2026-09-19 17:39:23，北京时间），17:40:24 独立只读审计通过。** 从一句改期需求进入已有旅行、核对日期与联动事项，再预览确认保存。[使用与集中验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。A–D 本人真实完整验收仍为 0/4，真实云和实体电视另验。
+## 此前已发布版本
+
+**此前上线：AI 已有旅行改期（2026-09-19 17:39:23，北京时间），17:40:24 独立只读审计通过。** 从一句改期需求进入已有旅行、核对日期与联动事项，再预览确认保存。[使用与集中验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。A–D 本人真实完整验收仍为 0/4，真实云和实体电视另验。
 
 此前本人账户分析于 2026-09-19 16:20:25（北京时间）上线，16:20:57 独立只读审计通过；其固定运行身份与历史证据见[资产分析验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。
 

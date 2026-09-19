@@ -1,6 +1,6 @@
-# 助理支出与预算只读查询（候选）
+# 助理支出与预算只读查询
 
-本候选未上线。新增 `POST /api/assistant/finance-query`，只读取当前成员获准查看的账本、预算或已确认手工公共快照；不创建助理计划，不写账本、关联、预算或公共余额，不调用金融机构。Docker、发布白名单和 Expo 接线由集成人分别组合验证。
+已于2026-09-19 19:42:01（北京时间）上线，19:42:33独立只读审计通过。新增 `POST /api/assistant/finance-query`，只读取当前成员获准查看的账本、预算或已确认手工公共快照；不创建助理计划，不写账本、关联、预算或公共余额，不调用金融机构。Docker、发布白名单和 Expo 接线均随冻结组合发布，实际分段验证与发布身份见[集中验收](ASSISTANT-FINANCE-QUERY-ACCEPTANCE.md#assistant-finance-query-release)，用户操作见[Expo 查询](EXPO-FINANCE-QUERY.md)。
 
 ```python
 from assistant_finance_query import register_assistant_finance_query
@@ -25,7 +25,7 @@ register_assistant_finance_query(app, db, Problem, body, require_member, limited
 
 模型只收到本次用户问题、捕获的北京时间日期／时区、固定可用枚举，以及从本次文字提取的 `constraints` 证据允许值；不附加账本、汇总、余额、真实分类目录、账户、成员目录或凭据。用户自己写在问题中的文字属于所选发送内容。`constraints` 只含 scope/month/currency/category 的原文 token 数组，缺省为 `[null]`；evidence 对应键须逐字复制其中一个值，不能扩展为长句。它不包含计算好的 query 或指标答案，模型仍须理解整段口语、判断只读性和未理解条件。上述口语的约束为 `{"scope":["我"],"month":["上个月"],"currency":[null],"category":["餐饮"]}`。
 
-首次实际模型调用（合成账本）正确解析 query，但把 scope 证据返回为“帮我瞧瞧上个月”，因不在允许 token 中被拒绝。第二次证据正确，却将中文“我／上个月”复制到 query.scope／month，同样被拒绝。两次失败原件均保留。窄修仅明确发送 token 约束，并将指令分为规范化 query 和原文 evidence 两部分：query.scope 使用英文枚举，query.month 根据 today 计算 YYYY-MM，不能复制中文证据。另给不同问题、不同月份的跨年格式示例，不提供本次完整查询答案。证据校验或权限不放宽；模拟回归保留两种失败与合规成功，不能代替随后实际模型验收。模型格式如下，供真实 provider 验证；不是客户端可提交字段：
+首次实际模型调用（合成账本）正确解析 query，但把 scope 证据返回为“帮我瞧瞧上个月”，因不在允许 token 中被拒绝。第二次证据正确，却将中文“我／上个月”复制到 query.scope／month，同样被拒绝。两次失败原件均保留。窄修仅明确发送 token 约束，并将指令分为规范化 query 和原文 evidence 两部分：query.scope 使用英文枚举，query.month 根据 today 计算 YYYY-MM，不能复制中文证据。另给不同问题、不同月份的跨年格式示例，不提供本次完整查询答案。证据校验或权限不放宽；模拟回归保留两种失败与合规成功。第三次实际提供方调用已在独立合成账本上返回200 ready，并核对预期金额、业务零写和源码不变；不是本人私人账本或生产模型验收，三轮原件分列于[集中验收](ASSISTANT-FINANCE-QUERY-ACCEPTANCE.md)。模型格式如下，供真实 provider 验证；不是客户端可提交字段：
 
 ```json
 {
@@ -77,4 +77,4 @@ type FinanceQuery = {
 
 专项 [test_assistant_finance_query.py](../tests/test_assistant_finance_query.py) 使用真实 create_app 注册、真实登录／CSRF、临时 SQLite 和合成数据，仅 provider I/O 模拟。覆盖精确支出／退款／确认重复／订单／转账数学、完整大账本、多币种、跨月分类分摊、无记录与未知、共享白名单、公共未确认值、同 ID 跨家庭、电视／成员／撤权、迟到模型、模型最小载荷及实际口语解析增益。另有原导入与预算路由写入合成 fixture 后只读核对，业务表前后保持。
 
-开发测试仅证明合成隔离场景，不是实际模型、私人财务、本人线上界面或生产验收。精确提交、JUnit 与运行结果由交付记录绑定；初轮与后续修订证据分别保留，不相加为独立测试总数。
+开发测试仅证明合成隔离场景，不能代替另行记录的实际模型调用，也不是私人财务、本人线上界面或生产验收。精确提交、JUnit 与运行结果由交付记录绑定；初轮与后续修订证据分别保留，不相加为独立测试总数。
