@@ -1,9 +1,13 @@
-import type { Draft, Plan, Preparation, Segment } from './trips';
+import type { Draft, Plan, Preparation, Purchase, Segment } from './trips';
 import type { Person } from './types';
 
 export type BriefStop = { country: string; city: string; arrival: string; departure: string };
-export type BriefForm = { title: string; start: string; end: string; budget: string; international: boolean | null; destinations: BriefStop[]; memberIds: string[]; note: string };
-export type JourneyBriefResult = { mode: 'local' | 'model'; form: BriefForm; notice: string };
+export type BriefItem = { key: string; title: string; assigneeText: string; owner: string | null; note: string; sourceText: string };
+export type BriefPreparation = BriefItem & { due: string; dueMode: 'date' | 'offset'; dueOffsetDays: string };
+export type BriefPurchase = BriefItem & { quantity: string; budget: string };
+export type BriefForm = { title: string; start: string; end: string; budget: string; international: boolean | null; destinations: BriefStop[]; memberIds: string[]; note: string;
+  checklist: BriefPreparation[]; shopping: BriefPurchase[]; useDefaultChecklist: boolean };
+export type JourneyBriefResult = { mode: 'local' | 'model'; form: BriefForm; notice: string; warnings: string[] };
 const MAX_CENTS = 100_000_000_000;
 function object(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('旅行简报格式无效，请重新核对。');
@@ -36,7 +40,20 @@ export function briefAmount(value: string): number {
   return Number(exact);
 }
 export const blankBriefStop = (): BriefStop => ({ country: '', city: '', arrival: '', departure: '' });
-export const emptyBrief = (prompt = ''): BriefForm => ({ title: '', start: '', end: '', budget: '', international: null, destinations: [blankBriefStop()], memberIds: [], note: prompt });
+export const emptyBrief = (prompt = ''): BriefForm => ({ title: '', start: '', end: '', budget: '', international: null, destinations: [blankBriefStop()], memberIds: [], note: prompt,
+  checklist: [], shopping: [], useDefaultChecklist: true });
+export const blankBriefPreparation = (key: string): BriefPreparation => ({ key, title: '', assigneeText: '', owner: null, note: '', sourceText: '', due: '', dueMode: 'date', dueOffsetDays: '' });
+export const blankBriefPurchase = (key: string): BriefPurchase => ({ key, title: '', assigneeText: '', owner: null, note: '', sourceText: '', quantity: '', budget: '' });
+export function briefPersonLabel(person: Person, people: Person[], actorId: string): string {
+  if (person.id === actorId) return person.name + '（我）';
+  const same = people.filter(p => p.name === person.name);
+  if (same.length < 2) return person.name;
+  return person.name + (same.filter(p => p.id !== actorId).length === 1 ? '（另一位成员）' : '（同名成员，暂无法区分）');
+}
+export function briefOwnerOptions(people: Person[], actorId: string) {
+  return [{ id: 'shared', label: '一起', disabled: false }, ...people.map(person => ({ id: person.id, label: briefPersonLabel(person, people, actorId),
+    disabled: person.id !== actorId && people.filter(p => p.id !== actorId && p.name === person.name).length > 1 }))];
+}
 export function journeyBriefRequest(prompt: string, useModel: boolean) {
   const raw = text(prompt, '原始需求', 2000);
   if (typeof useModel !== 'boolean' || useModel && !raw) throw new Error('使用 AI 前请先填写旅行需求。');
@@ -50,23 +67,55 @@ function stops(value: unknown, optionalDates: boolean): BriefStop[] {
     arrival: briefDay(row.arrival, optionalDates), departure: briefDay(row.departure, optionalDates),
   }; });
 }
-export function readJourneyBrief(value: unknown, prompt: string, memberIds: string[] = []): JourneyBriefResult {
+function briefItem(row: Record<string, unknown>, prompt: string, people: Person[]): BriefItem {
+  if (row.owner !== null && typeof row.owner !== 'string') throw new Error('事项负责人格式无效。');
+  const sourceText = text(row.sourceText, '事项原文', 500);
+  if (sourceText && !prompt.includes(sourceText)) throw new Error('事项原文无法核对，请重新整理。');
+  return { key: key(row.key), title: text(row.title, '事项标题', 100, false), assigneeText: text(row.assigneeText, '原文分工', 80),
+    owner: row.owner === 'shared' || people.some(p => p.id === row.owner) ? row.owner as string : null,
+    note: text(row.note, '事项备注', 500), sourceText };
+}
+export function readJourneyBrief(value: unknown, prompt: string, memberIds: string[] = [], people: Person[] = []): JourneyBriefResult {
   const result = object(value), brief = object(result.brief);
   if (result.mode !== 'local' && result.mode !== 'model') throw new Error('旅行简报来源无法确认。');
   if (brief.international !== null && typeof brief.international !== 'boolean') throw new Error('请选择国内或境外旅行。');
   const destinations = stops(brief.destinations, true);
-  return { mode: result.mode, notice: text(result.notice, '整理说明', 2000), form: {
+  const checklist = rows(brief.checklist === undefined ? [] : brief.checklist, '准备清单').map(row => {
+    const due = briefDay(row.due, true), offset = row.dueOffsetDays;
+    if (offset !== null && (!Number.isSafeInteger(offset) || Number(offset) < -730 || Number(offset) > 366) || due && offset !== null) throw new Error('准备截止日期与相对天数需要分别核对。');
+    return { ...briefItem(row, prompt, people), due, dueMode: offset === null ? 'date' as const : 'offset' as const, dueOffsetDays: offset === null ? '' : String(offset) };
+  });
+  const shopping = rows(brief.shopping === undefined ? [] : brief.shopping, '采购清单').map(row => ({ ...briefItem(row, prompt, people),
+    quantity: text(row.quantity, '采购数量', 30), budget: row.budgetCents === null ? '' : briefAmountText(cents(row.budgetCents)) }));
+  const warnings = result.warnings === undefined ? [] : result.warnings;
+  if (!Array.isArray(warnings) || warnings.length > 500) throw new Error('整理说明格式无效。');
+  return { mode: result.mode, notice: text(result.notice, '整理说明', 2000), warnings: warnings.map(v => text(v, '整理说明', 2000)), form: {
     title: text(brief.title, '旅行名称', 100), start: briefDay(brief.start, true), end: briefDay(brief.end, true),
     budget: brief.budgetCents === null ? '' : briefAmountText(cents(brief.budgetCents)), international: brief.international,
     destinations: destinations.length ? destinations : [blankBriefStop()], memberIds: [...memberIds],
     // Never adopt model-provided note, identities, actions, bookings, or payment state.
-    note: journeyBriefRequest(prompt, false).prompt,
+    note: journeyBriefRequest(prompt, false).prompt, checklist, shopping, useDefaultChecklist: checklist.length === 0,
   } };
 }
 function members(value: unknown, people: Person[]): string[] {
   if (!Array.isArray(value) || !value.length || value.length > people.length || new Set(value).size !== value.length
     || value.some(id => typeof id !== 'string' || !people.some(person => person.id === id))) throw new Error('请勾选当前家庭的出行成员。');
   return [...value] as string[];
+}
+function itemOwner(value: unknown, people: Person[]): string {
+  if (typeof value !== 'string' || value !== 'shared' && !people.some(person => person.id === value)) throw new Error('请为每项准备与采购明确选择当前家庭负责人。');
+  return value;
+}
+export function briefPreparationDate(row: BriefPreparation, start: string): string {
+  if (row.dueMode === 'date') {
+    if (row.dueOffsetDays !== '') throw new Error('请只选择一种截止方式。');
+    if (!row.due) throw new Error('准备事项截止日期待核对，请填写日期或距出发天数。');
+    return briefDay(row.due);
+  }
+  if (row.dueMode !== 'offset' || row.due || !/^-?\d{1,3}$/.test(row.dueOffsetDays)) throw new Error('请填写完整的距出发天数，负数表示出发前。');
+  const offset = Number(row.dueOffsetDays);
+  if (offset < -730 || offset > 366) throw new Error('准备日期最多提前 730 天或延后 366 天。');
+  return briefDay(new Date(Date.parse(briefDay(start) + 'T00:00:00Z') + offset * 86400000).toISOString().slice(0, 10));
 }
 export function journeyBriefPlan(form: BriefForm, people: Person[]): { plan: Plan } {
   const start = briefDay(form.start), end = briefDay(form.end);
@@ -76,9 +125,20 @@ export function journeyBriefPlan(form: BriefForm, people: Person[]): { plan: Pla
   const destinations = stops(form.destinations, false);
   if (!destinations.length) throw new Error('请至少填写一个目的地。');
   if (destinations.some(row => row.arrival < start || row.departure > end || row.arrival > row.departure)) throw new Error('每个目的地的停留日期须落在旅行日期内。');
+  rows(form.checklist, '准备清单'); rows(form.shopping, '采购清单');
+  if (typeof form.useDefaultChecklist !== 'boolean' || form.useDefaultChecklist && form.checklist.length) throw new Error('请核对准备清单选择。');
+  const checklist = form.checklist.map(row => {
+    const due = briefPreparationDate(row, start);
+    if (due > end || (Date.parse(due) - Date.parse(start)) / 86400000 < -730) throw new Error('准备截止须在返程前，最多提前 730 天。');
+    return { key: key(row.key), title: text(row.title, '准备事项', 100, false), owner: itemOwner(row.owner, people), note: text(row.note, '准备事项备注', 500),
+      ...(row.dueMode === 'date' ? { due } : { dueOffsetDays: Number(row.dueOffsetDays) }) } satisfies Preparation;
+  });
+  const shopping = form.shopping.map(row => ({ key: key(row.key), title: text(row.title, '采购名称', 100, false), owner: itemOwner(row.owner, people),
+    quantity: text(row.quantity, '采购数量', 30, false), budget: row.budget.trim() === '' ? null : briefAmount(row.budget), note: text(row.note, '采购备注', 500) } satisfies Purchase));
   return { plan: { schemaVersion: 1, title: text(form.title, '旅行名称', 100, false), start, end, international: form.international,
     memberIds: members(form.memberIds, people), budget: briefAmount(form.budget), saved: 0, paid: 0, note: text(form.note, '旅行备注', 2000),
-    destinations: destinations.map((row, i) => ({ key: `brief-stop-${i + 1}`, ...row })), shopping: [],
+    destinations: destinations.map((row, i) => ({ key: `brief-stop-${i + 1}`, ...row })), shopping,
+    ...(!form.useDefaultChecklist ? { checklist } : {}),
   } };
 }
 function key(value: unknown): string {
@@ -96,19 +156,23 @@ export function preparedJourneyDraft(value: unknown, people: Person[]): Draft {
   const result = object(value), raw = object(result.plan);
   if (typeof result.canApply !== 'boolean' || raw.schemaVersion !== undefined && raw.schemaVersion !== 1) throw new Error('旅行校验结果无效。');
   const form: BriefForm = {
+    ...emptyBrief(),
     title: text(raw.title, '旅行名称', 100, false), start: briefDay(raw.start), end: briefDay(raw.end),
     budget: briefAmountText(cents(raw.budget)), international: raw.international as boolean,
     destinations: stops(raw.destinations, false), memberIds: members(raw.memberIds, people), note: text(raw.note, '旅行备注', 2000),
   };
-  if (raw.saved !== 0 || raw.paid !== 0 || !Array.isArray(raw.shopping) || raw.shopping.length) throw new Error('新旅行不应包含已付款或未核对的采购。');
+  if (raw.saved !== 0 || raw.paid !== 0) throw new Error('新旅行不应包含已付款或预留金额。');
   const plan = journeyBriefPlan(form, people).plan;
   plan.checklist = rows(raw.checklist, '准备清单').map(row => {
     if (typeof row.owner !== 'string' || row.owner !== 'shared' && !people.some(person => person.id === row.owner)) throw new Error('准备事项负责人不属于当前家庭。');
     const due = briefDay(row.due);
-    if (due > plan.end || !Number.isInteger(row.dueOffsetDays) || Number(row.dueOffsetDays) < -730 || Number(row.dueOffsetDays) > 366) throw new Error('准备事项截止日期无效。');
+    if (due > plan.end || !Number.isInteger(row.dueOffsetDays) || Number(row.dueOffsetDays) < -730 || Number(row.dueOffsetDays) > 366
+      || Number(row.dueOffsetDays) !== (Date.parse(due) - Date.parse(plan.start)) / 86400000) throw new Error('准备事项截止日期无效。');
     return { key: key(row.key), title: text(row.title, '准备事项', 100, false), owner: row.owner, due,
       dueOffsetDays: Number(row.dueOffsetDays), note: text(row.note, '准备事项备注', 500), category: text(row.category, '事项分类', 40, false) } satisfies Preparation;
   });
+  plan.shopping = rows(raw.shopping, '采购清单').map(row => ({ key: key(row.key), title: text(row.title, '采购名称', 100, false), owner: itemOwner(row.owner, people),
+    quantity: text(row.quantity, '采购数量', 30, false), budget: row.budget === null ? null : cents(row.budget), note: text(row.note, '采购备注', 500) } satisfies Purchase));
   plan.segments = rows(raw.segments, '分段行程').map(row => {
     const start = briefDay(row.start), end = briefDay(row.end);
     if (start < plan.start || end > plan.end || start > end) throw new Error('停留安排超出旅行日期。');

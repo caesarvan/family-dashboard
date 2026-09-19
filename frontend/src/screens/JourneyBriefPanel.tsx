@@ -7,7 +7,8 @@ import { useHousehold } from '../lib/household';
 import { PhotoReadDiscarded, PhotoReadFence, type PhotoSession } from '../lib/photos';
 import { memberKey, type Draft } from '../lib/trips';
 import type { Member, Person } from '../lib/types';
-import { blankBriefStop, emptyBrief, journeyBriefPlan, journeyBriefRequest, journeyCheckedRead, preparedJourneyDraft, readJourneyBrief, type BriefForm, type BriefStop } from '../lib/journeyBrief';
+import { blankBriefPreparation, blankBriefPurchase, blankBriefStop, briefOwnerOptions, briefPersonLabel, emptyBrief, journeyBriefPlan, journeyBriefRequest, journeyCheckedRead, preparedJourneyDraft, readJourneyBrief, type BriefForm, type BriefStop } from '../lib/journeyBrief';
+import JourneyBriefItems from '../components/JourneyBriefItems';
 import { PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
 
@@ -18,6 +19,7 @@ export type JourneyBriefPanelProps = {
 const front = () => typeof document === 'undefined' || !document.hidden;
 const connected = () => typeof navigator === 'undefined' || navigator.onLine !== false;
 const errorText = (value: unknown) => value instanceof Error ? value.message : '暂时无法整理，请保留输入后重试。';
+const peopleSignature = (people: Person[]) => JSON.stringify(people.map(person => [person.id, person.name]).sort((a, b) => a[0].localeCompare(b[0])));
 
 export default function JourneyBriefPanel(props: JourneyBriefPanelProps) {
   return props.user.role === 'member' ? <BriefWorkspace {...props} /> : <Text>请使用家庭成员账号整理旅行。</Text>;
@@ -37,6 +39,7 @@ function BriefWorkspace(props: JourneyBriefPanelProps) {
   const [form, setForm] = useState<BriefForm>(() => emptyBrief(props.initialPrompt || '')), formRef = useRef(form);
   const [hasBrief, setHasBrief] = useState(false), [mode, setMode] = useState<'local' | 'model' | null>(null), [notice, setNotice] = useState('');
   const [stopsOpen, setStopsOpen] = useState(true);
+  const [warnings, setWarnings] = useState<string[]>([]), [extractEpoch, setExtractEpoch] = useState(0), itemSequence = useRef(0);
   const sameIdentity = () => latest.current.household.identityKey === identity && memberKey(latest.current.props.user) === actor
     && memberKey(latest.current.household.user) === actor && latest.current.household.user?.role === 'member';
   const current = () => mounted.current && focused.current && active.current && !denied.current && appActive.current
@@ -47,7 +50,7 @@ function BriefWorkspace(props: JourneyBriefPanelProps) {
     active.current = false; ++generation.current; fence.current.invalidate(); setVisible(false); resuming.current = null;
     if (clear) {
       ++editing.current; promptRef.current = ''; modelRef.current = false; setPrompt(''); setUseModel(false);
-      installForm(emptyBrief()); setMode(null); setHasBrief(false); setNotice('');
+      installForm(emptyBrief()); setMode(null); setHasBrief(false); setNotice(''); setWarnings([]);
     }
   }
   function failed(failure: unknown, ticket: number, edit?: number) {
@@ -103,29 +106,35 @@ function BriefWorkspace(props: JourneyBriefPanelProps) {
   }
   async function extract() {
     if (!current() || writing.current) return;
-    const ticket = generation.current, edit = editing.current, source = promptRef.current;
+    const ticket = generation.current, edit = editing.current, source = promptRef.current, people = latest.current.props.people, peopleKey = peopleSignature(people);
     let payload: ReturnType<typeof journeyBriefRequest>;
     try { payload = journeyBriefRequest(source, modelRef.current); } catch (failure) { failed(failure, ticket, edit); return; }
     writing.current = true; setBusy('extract'); setError('');
     try {
       const raw = await guarded(() => latest.current.household.mutate<unknown>('/assistant/journey-brief', 'POST', payload), ticket, edit);
-      const result = readJourneyBrief(raw, source, formRef.current.memberIds);
+      const result = readJourneyBrief(raw, source, formRef.current.memberIds, people);
       if (!current() || ticket !== generation.current || edit !== editing.current) return;
-      installForm(result.form); setHasBrief(true); setMode(result.mode); setNotice(result.notice); setStopsOpen(true);
+      if (peopleKey !== peopleSignature(latest.current.props.people)) { setError('家庭成员列表已变化，请核对分工后重新整理。'); return; }
+      installForm(result.form); setHasBrief(true); setMode(result.mode); setNotice(result.notice); setWarnings(result.warnings); setStopsOpen(true); setExtractEpoch(value => value + 1);
     } catch (failure) { failed(failure, ticket, edit); }
     finally { writing.current = false; if (mounted.current) setBusy(''); }
   }
   async function prepare() {
     if (!current() || writing.current) return;
     const ticket = generation.current, edit = editing.current, people = latest.current.props.people;
-    const peopleKey = JSON.stringify(people.map(person => person.id).sort());
+    const peopleKey = peopleSignature(people);
     let payload: ReturnType<typeof journeyBriefPlan>;
-    try { payload = journeyBriefPlan(formRef.current, people); } catch (failure) { failed(failure, ticket, edit); return; }
+    try {
+      const ambiguous = briefOwnerOptions(people, latest.current.props.user.id).filter(option => option.disabled).map(option => option.id);
+      if ([...formRef.current.checklist, ...formRef.current.shopping].some(row => row.owner !== null && ambiguous.includes(row.owner))) throw new Error('同名成员暂无法区分，请先明确选择一起或本人；也可删除此行后稍后分工。');
+      payload = journeyBriefPlan(formRef.current, people);
+    } catch (failure) { failed(failure, ticket, edit); return; }
     writing.current = true; setBusy('prepare'); setError('');
     try {
       const raw = await guarded(() => latest.current.household.mutate<unknown>('/journeys/preview', 'POST', payload), ticket, edit);
       const draft = preparedJourneyDraft(raw, people);
-      if (!current() || ticket !== generation.current || edit !== editing.current || peopleKey !== JSON.stringify(latest.current.props.people.map(person => person.id).sort())) return;
+      if (!current() || ticket !== generation.current || edit !== editing.current) return;
+      if (peopleKey !== peopleSignature(latest.current.props.people)) { setError('家庭成员列表已变化，请重新核对分工。'); return; }
       // Only the new editable plan crosses this boundary; the preview's signed token is discarded.
       ++editing.current; latest.current.props.onPrepared(draft);
     } catch (failure) { failed(failure, ticket, edit); }
@@ -147,7 +156,7 @@ function BriefWorkspace(props: JourneyBriefPanelProps) {
       {!denied.current && <Button disabled={!!busy || !household.online} onPress={() => void resume()}>重新核对身份</Button>}</View>
   </View>;
   return <View style={styles.page} testID="journey-brief-form">
-    <PageHeader title="整理旅行简报" description="补齐日期、目的地和预算，再带入旅行编辑。现在还不会保存。" />
+    <PageHeader title="整理旅行简报" description="核对行程、准备与分工，再带入旅行编辑。现在还不会保存。" />
     {!!error && <HelperText type="error" accessibilityRole="alert">{error}</HelperText>}
     {!!notice && <Text accessibilityLiveRegion="polite">{notice}</Text>}
     <SectionCard title="原始需求"><View style={styles.fields}>
@@ -172,7 +181,7 @@ function BriefWorkspace(props: JourneyBriefPanelProps) {
       {field('旅行总预算（元）', form.budget, budget => editForm({ budget }), 14, '待确认')}
       <Text variant="bodySmall">填写人民币家庭总额。未知可暂留空，继续前请确认；0 只用于明确的零预算，不自动换汇。</Text>
       <Text variant="labelLarge">出行成员</Text>
-      {props.people.map(person => <SelectionRow key={person.id} label={person.name} accessibilityLabel={'出行成员：' + person.name}
+      {props.people.map(person => <SelectionRow key={person.id} label={briefPersonLabel(person, props.people, props.user.id)} accessibilityLabel={'出行成员：' + briefPersonLabel(person, props.people, props.user.id)}
         checked={form.memberIds.includes(person.id)} onPress={() => editForm({ memberIds: form.memberIds.includes(person.id) ? form.memberIds.filter(id => id !== person.id) : [...form.memberIds, person.id] })} />)}
     </View></SectionCard>
     <SectionCard title={`目的地与停留 · ${form.destinations.length}`} action={<Button accessibilityLabel={stopsOpen ? '收起目的地' : '展开目的地'} onPress={() => setStopsOpen(!stopsOpen)}>{stopsOpen ? '收起' : '展开'}</Button>}>
@@ -187,7 +196,11 @@ function BriefWorkspace(props: JourneyBriefPanelProps) {
         onPress={() => editForm({ destinations: [...form.destinations, blankBriefStop()] })}>添加目的地</Button></View>
         : <Text>{form.destinations.map(row => row.city || '待填写城市').join(' → ')}</Text>}
     </SectionCard>
-    <Text variant="bodySmall">继续后可修改准备事项、负责人和采购预算。这里不会创建预订、付款或云日历安排。</Text>
+    {!!warnings.length && <View style={styles.fields}><Text variant="labelLarge">原文整理提示</Text>{warnings.map((warning, index) => <Text key={index}>{warning}</Text>)}</View>}
+    <JourneyBriefItems form={form} people={props.people} actorId={props.user.id} disabled={!ready} extractEpoch={extractEpoch} onChange={editForm}
+      onAddPreparation={() => editForm({ useDefaultChecklist: false, checklist: [...formRef.current.checklist, blankBriefPreparation('manual-task-' + ++itemSequence.current)] })}
+      onAddPurchase={() => editForm({ shopping: [...formRef.current.shopping, blankBriefPurchase('manual-purchase-' + ++itemSequence.current)] })} />
+    <Text variant="bodySmall">继续后仍可修改准备、负责人和采购预算，再预览并明确保存。这里不会创建预订、付款或云日历安排。</Text>
     <View style={styles.actions}><Button mode="contained" loading={busy === 'prepare'} disabled={!!busy} onPress={() => void prepare()}>核对并继续编辑</Button>
       <Button disabled={!!busy} onPress={cancel}>返回助理</Button></View>
   </View>;
