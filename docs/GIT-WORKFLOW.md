@@ -1,12 +1,14 @@
 # Git 与多 agent 协作
 
-每个开发任务使用独立分支和独立 worktree。代码先提交，由另一位 agent 只读审查明确的 base/head；审查通过后，由集成人合入 `codex/integration`。组合测试和再次审查通过后，集成人才将已审查的提交合入 `main`。Git 合并不代表已经部署，也不授予生产操作权限。
+每个开发任务使用独立分支和独立 worktree。代码先提交，PR 绑定明确的 base/head，由另一位 agent 只读审查；审查通过后，由集成人合入 `codex/integration`。组合测试和再次审查通过后，集成人才将已审查的提交合入 `main`。Git 推送或 PR 合并不代表已经部署，也不授予生产操作权限。
 
 ## 1. 当前仓库与分支职责
 
 本文建立时的稳定基线为 `ad667bf2b744d707db080964c662249c7cd8b056`。主仓库在 `C:/Users/caesarf/OneDrive - NVIDIA Corporation/Documents/AI/family-dashboard`，其 `.git` 是本项目的常规仓库目录，不再借用父 `AI` 仓库。后续任务使用集成人当次确认的提交，不永久固定在本文基线。
 
-当前只有本地 Git 仓库，没有 remote、线上 PR 或平台强制分支保护。下列要求是协作协议，不宣称已由 hook、CI 或托管平台自动阻止违规操作。
+当前 `origin` 为已创建并推送的私有 [caesarvan/family-dashboard](https://github.com/caesarvan/family-dashboard)。访问、clone 和远端协作需要获授权的 GitHub 账号；私有属性不允许把 `.env`、密钥、数据库、私人财务输入或测试原件提交到 Git。下列要求仍是协作协议，不宣称 GitHub 分支保护、必需检查或 CI 已配置。
+
+`main` 保持已审稳定源码，`codex/integration` 保存集成候选，`codex/<agent>-<task>` 对应独立任务及 worktree。PR 记录范围、固定提交、非作者审查与实际验证；候选有新提交时需重新核对，不能直接将未验候选推进 main。生产继续使用现有固定包、备份／迁移、stage／activate 和独立读回流程，不通过 `git push`、PR 合并或服务器 `git pull` 自动部署。
 
 | 分支／目录 | 负责人 | 用途与边界 |
 |---|---|---|
