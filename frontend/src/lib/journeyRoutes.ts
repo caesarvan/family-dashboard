@@ -15,7 +15,7 @@ export type RouteReceipt = { operation: { requestId: string; kind: 'create' | 'u
 export type StopInput = { placeId: string; expectedRevision: number } | { keepUnavailableIndex: number };
 export type RouteOrigin = Pick<JourneyRoute, 'id' | 'journeyId' | 'visibility' | 'revision' | 'canManage' | 'sourceVersion'> & { stops: { index: number; state: RouteStop['state'] }[] };
 export type RouteDraft = { title: string; visibility: 'private' | 'shared'; stops: StopInput[]; expectedJourneyRevision: number; original: RouteOrigin | null };
-export type RouteIntent = { requestId: string; method: 'POST' | 'PUT' | 'DELETE'; path: string; body: Record<string, unknown>; routeId?: string; uncertain: boolean };
+export type RouteIntent = { requestId: string; method: 'POST' | 'PUT' | 'DELETE'; path: string; body: Record<string, unknown>; routeId?: string; uncertain: boolean; expired?: boolean };
 const bad = (): never => { throw new Error('路线数据无法核对，请重新读取。'); };
 const obj = (v: unknown): Record<string, unknown> => v !== null && typeof v === 'object' && !Array.isArray(v) ? v as Record<string, unknown> : bad();
 const num = (v: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): number => Number.isSafeInteger(v) && Number(v) >= min && Number(v) <= max ? v as number : bad();
@@ -127,8 +127,57 @@ export function routeDeleteIntent(route: JourneyRoute, requestId: string): Route
     body: { requestId, revision: num(route.revision, 1), sourceVersion: routeId(route.sourceVersion, 64) } };
 }
 export async function sendRouteIntent(intent: RouteIntent, guard: <T>(action: (csrf: string) => Promise<T>) => Promise<T>, journeyId: string, signal?: AbortSignal): Promise<RouteReceipt> {
-  const raw = await checkedPlaceMutation(guard, csrf => request<unknown>(intent.path, { method: intent.method, body: JSON.stringify(intent.body), signal }, csrf), e => e instanceof ApiError ? e.status : undefined);
-  return readRouteReceipt(raw, intent, journeyId);
+  let writeCode = '';
+  try {
+    const raw = await checkedPlaceMutation(guard, async csrf => {
+      try { return await request<unknown>(intent.path, { method: intent.method, body: JSON.stringify(intent.body), signal }, csrf); }
+      catch (e) { if (e instanceof ApiError) writeCode = e.code; throw e; }
+    }, e => e instanceof ApiError ? e.status : undefined);
+    return readRouteReceipt(raw, intent, journeyId);
+  } catch (e) {
+    // Preserve codes only from the write, after BOTH identity checks succeeded.
+    if (e instanceof PlaceWriteRejected) throw new RouteWriteRejected(e.status, writeCode);
+    throw e;
+  }
+}
+export class RouteWriteRejected extends PlaceWriteRejected {
+  constructor(status: number, readonly code: string) { super(status, '本次路线写入未被接受。'); }
+}
+export function canCheckExpiredRouteIntent(intent: RouteIntent, failure: unknown): boolean {
+  return intent.uncertain && failure instanceof RouteWriteRejected && failure.status === 409 && ['source_changed', 'revision_conflict'].includes(failure.code);
+}
+/** A changed sourceVersion or missing object is NOT evidence of an expired input.
+ * Read a strictly newer, currently authorized revision of the SAME referenced ID,
+ * then check the original receipt last. The whole observation is identity-fenced.
+ */
+export async function resolveExpiredRouteIntent(intent: RouteIntent, journeyId: string,
+  guard: <T>(action: (csrf: string) => Promise<T>) => Promise<T>, get: (path: string) => Promise<unknown>): Promise<{ kind: 'saved'; receipt: RouteReceipt } | { kind: 'expired' | 'unknown' }> {
+  return guard(async () => {
+    async function newer(path: string, expectedId: string, expectedRevision: unknown, wrapper?: 'route' | 'place'): Promise<boolean> {
+      try {
+        const raw = obj(await get(path)), entity = wrapper ? obj(raw[wrapper]) : raw;
+        if (routeId(entity.id) !== routeId(expectedId)) bad();
+        return num(entity.revision, 1) > num(expectedRevision, 1);
+      } catch (e) { if (e instanceof ApiError && e.status === 404) return false; throw e; }
+    }
+    let expired = !!intent.routeId && await newer('/journey-routes/' + routeId(intent.routeId), intent.routeId, intent.body.revision, 'route');
+    if (!expired && intent.method !== 'DELETE') {
+      // Journey IDs can be recreated by an older preview; their revision alone
+      // is not a monotonic proof. Route/place IDs retain tombstones instead.
+      for (const value of rows(intent.body.stops)) {
+        const s = obj(value); if (!Object.hasOwn(s, 'placeId')) continue;
+        const placeId = routeId(s.placeId);
+        if (await newer('/journey-places/' + placeId, placeId, s.expectedRevision, 'place')) { expired = true; break; }
+      }
+    }
+    // Another request may have committed before the newer revision was observed.
+    // A receipt wins; never release the draft on the earlier 404 alone.
+    let raw: unknown;
+    try { raw = await get('/journey-routes/operations/' + routeId(intent.requestId, 32)); }
+    catch (e) { if (e instanceof ApiError && e.status === 404) return { kind: expired ? 'expired' : 'unknown' }; throw e; }
+    const receipt = readRouteReceipt(raw, intent, journeyId); if (!receipt.replayed) bad();
+    return { kind: 'saved', receipt };
+  });
 }
 /** Only a fenced, definitive rejection frees the draft; never replace an unknown key. */
 export function routeIntentUnknown(intent: RouteIntent, failure: unknown): boolean { return intent.uncertain || !(failure instanceof PlaceWriteRejected); }

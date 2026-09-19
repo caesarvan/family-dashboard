@@ -99,18 +99,24 @@ function harness(options = {}) {
   function useEffect(fn, deps) { const holder = instance, i = cursor++; if (changed(holder.slots[i], deps)) { holder.slots[i] = deps; effects.push(() => { holder.cleanups[i]?.(); if (!holder.dead) holder.cleanups[i] = fn(); }); } }
   function useCallback(fn, deps) { const i = cursor++; if (!instance.slots[i] || changed(instance.slots[i].deps, deps)) instance.slots[i] = { deps, fn }; return instance.slots[i].fn; }
   const react = { useState, useRef, useEffect, useCallback, Fragment: 'Fragment', createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.flat(Infinity).filter(v => v !== undefined && v !== null && v !== false) } }) };
-  class ApiError extends Error { constructor(message, status = 0) { super(message); this.status = status; } }
+  class ApiError extends Error { constructor(message, status = 0, code = '') { super(message); this.status = status; this.code = code; } }
   const household = { user: f.session.user, identityKey: placeApi.placeSignature(f.session), online: true, refresh: async () => {} };
   async function request(path, init = {}, csrf) {
     const body = init.body ? JSON.parse(init.body) : null, method = init.method || 'GET'; f.calls.push({ path, method, body, csrf });
     if (path === '/me') { if (f.failAfterWrite && f.wrote) throw new ApiError('SESSION DETAILS'); return clone(f.session); }
-    if (path === '/journeys/' + journeyId) { if (f.journeyDeleted) throw new ApiError('not found', 404); return clone(source); }
+    if (path === '/journeys/' + journeyId) { if (f.journeyDeleted) throw new ApiError('not found', 404); return { ...clone(source), revision: f.journeyRevision || source.revision }; }
     const url = new URL('https://synthetic.invalid' + path);
     if (url.pathname === '/journey-places') return { items: clone(f.places), offset: 0, limit: 24, total: f.places.length, hasMore: false };
-    if (path.startsWith('/journey-places/')) { const p = f.places.find(p => p.id === path.split('/').at(-1)); if (!p) throw new ApiError('not found', 404); return { place: clone(p) }; }
+    if (path.startsWith('/journey-places/')) {
+      const p = f.places.find(p => p.id === path.split('/').at(-1)); if (!p) throw new ApiError('not found', 404);
+      if (f.probeReceipt && f.rejection) { f.route = clone(f.probeReceipt.current); f.receipts.set(f.probeReceipt.operation.requestId, clone(f.probeReceipt)); f.probeReceipt = null; }
+      if (f.identityOnProbe && f.rejection) f.session.user.auth_version++;
+      return { place: clone(p) };
+    }
     if (path.startsWith('/journey-routes/operations/')) { const saved = f.receipts.get(path.split('/').at(-1)); if (!saved) throw new ApiError('not found', 404); return { ...clone(saved), replayed: true, current: clone(f.route) }; }
     if (method !== 'GET') {
-      if (f.rejection) throw new ApiError('private server message', f.rejection);
+      if (f.rejection) throw new ApiError('private server message', f.rejection, f.rejectionCode || '');
+      if (f.dropBeforeWrite) throw new ApiError('connection lost before observed acceptance');
       f.wrote = true;
       if (method === 'DELETE') f.route = null;
       else { const chosen = body.stops.map(s => 'placeId' in s ? f.places.find(p => p.id === s.placeId) : null); f.route = detail(chosen, body.visibility === 'shared'); f.route.route.title = body.title; f.route.route.revision = method === 'PUT' ? body.revision + 1 : 1; }
@@ -181,6 +187,44 @@ test('lost successful response recovers original request only and renders freshl
 test('unknown-key retry preserves exact original body and requestId, including after a second rejection', async t => {
   const h = harness({ dropReply: true }); t.after(h.close); await newRoute(h); await h.click('保存路线'); h.f.receipts.clear(); await h.click('核对原操作');
   h.f.rejection = 409; await h.click('按原内容重试'); assert.deepEqual(h.writes()[1].body, h.writes()[0].body); assert(h.control('核对原操作')); assert(!h.control('保存路线') || h.control('保存路线').props.disabled);
+});
+test('unknown retry 409 plus newer same-place revision and final absent receipt offers explicit draft recovery only', async t => {
+  const h = harness({ dropBeforeWrite: true }); t.after(h.close); await newRoute(h); await h.click('保存路线'); await h.click('核对原操作');
+  h.f.dropBeforeWrite = false; h.f.rejection = 409; h.f.rejectionCode = 'source_changed'; h.f.places[0].revision++;
+  await h.click('按原内容重试'); assert.match(h.text(), /原内容的版本已过期；这次重试未保存/); assert(h.control('保留草稿并重新核对')); assert.equal(h.writes().length, 2);
+  assert.deepEqual(h.writes()[1].body, h.writes()[0].body); assert(!h.control('保存路线') || h.control('保存路线').props.disabled);
+  await h.click('保留草稿并重新核对'); assert.equal(h.writes().length, 2); assert.equal(h.control('路线名称').props.value, '合成往返'); assert(!h.control('核对原操作')); assert(h.control('保存路线').props.disabled);
+  await h.click('按当前地点核对草稿'); h.f.rejection = 0; await h.click('保存路线'); assert.equal(h.writes().length, 3); assert.notEqual(h.writes()[2].body.requestId, h.writes()[0].body.requestId); assert.equal(h.writes()[2].body.stops[0].expectedRevision, 2);
+});
+test('newer same-route revision can resolve an unknown update without changing its original request', async t => {
+  const h = harness({ route: detail(), dropBeforeWrite: true }); t.after(h.close); await h.settle(); await h.click('查看路线 往返路线'); await h.click('编辑路线'); await h.input('路线名称', '保留的修改'); await h.click('保存路线'); await h.click('核对原操作');
+  h.f.route.route.revision++; h.f.route.route.sourceVersion = 'c'.repeat(64); h.f.rejection = 409; h.f.rejectionCode = 'revision_conflict'; await h.click('按原内容重试');
+  assert(h.control('保留草稿并重新核对')); assert.deepEqual(h.writes()[0].body, h.writes()[1].body); await h.click('保留草稿并重新核对'); assert.equal(h.control('路线名称').props.value, '保留的修改'); assert.equal(h.writes().length, 2);
+});
+test('equal/lower place versions and newer journey alone cannot release unknown intent', async t => {
+  for (const revision of [1, 2]) {
+    const h = harness({ dropBeforeWrite: true, places: [ { ...place(), revision: 2 }, { ...place(5, -170), revision: 2 } ] }); t.after(h.close); await newRoute(h); await h.click('保存路线'); await h.click('核对原操作');
+    h.f.rejection = 409; h.f.rejectionCode = 'source_changed'; h.f.journeyRevision = 100; h.f.places.forEach(p => { p.revision = revision; }); await h.click('按原内容重试');
+    assert(!h.control('保留草稿并重新核对')); assert(h.control('核对原操作')); assert(h.control('返回旅行详情').props.disabled); assert.equal(h.writes().length, 2);
+  }
+});
+test('request_conflict and generic 409 cannot release unknown intent even with a newer place', async t => {
+  for (const code of ['', 'request_conflict', 'limit_reached']) {
+    const h = harness({ dropBeforeWrite: true }); t.after(h.close); await newRoute(h); await h.click('保存路线'); await h.click('核对原操作'); h.f.rejection = 409; h.f.rejectionCode = code; h.f.places[0].revision++;
+    await h.click('按原内容重试'); assert(!h.control('保留草稿并重新核对')); assert(h.control('核对原操作')); assert.equal(h.writes().length, 2);
+  }
+});
+test('receipt appearing during version observation wins over expired inference', async t => {
+  const h = harness({ dropBeforeWrite: true }); t.after(h.close); await newRoute(h); await h.click('保存路线'); await h.click('核对原操作');
+  h.f.rejection = 409; h.f.rejectionCode = 'source_changed'; h.f.places[0].revision++;
+  const written = h.writes()[0], current = detail([h.f.places[0], h.f.places[1], h.f.places[0]]); current.route.title = written.body.title;
+  h.f.probeReceipt = receipt(written, current, true); await h.click('按原内容重试');
+  assert(!h.control('保留草稿并重新核对')); assert(!h.control('核对原操作')); assert.match(h.text(), /已确认保存/); assert.equal(h.writes().length, 2);
+});
+test('identity change during expired-version observation clears draft and cannot authorize a new save', async t => {
+  const h = harness({ dropBeforeWrite: true }); t.after(h.close); await newRoute(h); await h.click('保存路线'); await h.click('核对原操作');
+  h.f.rejection = 409; h.f.rejectionCode = 'source_changed'; h.f.places[0].revision++; h.f.identityOnProbe = true;
+  await h.click('按原内容重试'); assert(!h.control('保留草稿并重新核对')); assert(!h.control('路线名称')); assert(!h.control('核对原操作')); assert(!h.nodes().some(n => n.type === 'WorldMap'));
 });
 test('409 keeps draft and requires current-source review rather than silently resubmitting', async t => {
   const h = harness({ rejection: 409 }); t.after(h.close); await newRoute(h); await h.click('保存路线'); assert.equal(h.control('路线名称').props.value, '合成往返'); assert(h.control('保存路线').props.disabled);

@@ -7,7 +7,7 @@ import { useHousehold } from '../lib/household';
 import { newKey } from '../lib/trips';
 import { PlaceDiscarded, PlaceFence, validatePlacePage, type Place, type PlacePage, type PlaceSession } from '../lib/places';
 import { PlaceWriteRejected, PlaceWriteUnverified, readJourneyPlaceSource, type JourneyPlaceSource } from '../lib/journeyPlaces';
-import { adjacentRouteSegments, draftRouteStops, publicRoutePlace, readRouteDetail, readRoutePage, readRoutePlace, readRouteReceipt, routeDeleteIntent, routeDraft,
+import { adjacentRouteSegments, canCheckExpiredRouteIntent, draftRouteStops, publicRoutePlace, readRouteDetail, readRoutePage, readRoutePlace, readRouteReceipt, resolveExpiredRouteIntent, routeDeleteIntent, routeDraft,
   routeGeometry, routeIntentUnknown, routeOrigin, routeWriteIntent, sendRouteIntent, type RouteDetail, type RouteDraft, type RouteIntent, type RoutePage, type RouteReceipt, type RouteStop } from '../lib/journeyRoutes';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
@@ -162,7 +162,22 @@ function Workspace(props: Props & { identityKey: string }) {
     try { const receipt = await sendRouteIntent(intent, job => guard(job, ticket), props.journeyId, controller.signal); if (current(ticket)) await applyReceipt(receipt, ticket); }
     catch (caught) {
       if (!current(ticket)) return;
-      if (routeIntentUnknown(intent, caught)) { intentState({ ...intent, uncertain: true }); setError('保存结果尚未核实，请核对原操作。'); }
+      if (canCheckExpiredRouteIntent(intent, caught)) {
+        try {
+          const resolution = await resolveExpiredRouteIntent(intent, props.journeyId, job => guard(job, ticket), get);
+          if (!current(ticket)) return;
+          if (resolution.kind === 'saved') { await applyReceipt(resolution.receipt, ticket); return; }
+          if (resolution.kind === 'expired') {
+            intentState({ ...intent, uncertain: true, expired: true });
+            setError('原内容的版本已过期；这次重试未保存。可保留草稿，重新核对当前资料。'); return;
+          }
+        } catch (checkFailure) {
+          if (current(ticket)) fail(checkFailure, ticket);
+          if (!current(ticket)) return;
+          conceal(); setError('当前身份或版本暂未核实，内容已隐藏。重新核对身份后继续查询原操作。'); return;
+        }
+      }
+      if (routeIntentUnknown(intent, caught)) { intentState({ ...intent, uncertain: true }); setData(null); state.current.data = null; setError('保存结果尚未核实，请核对原操作。'); }
       else { intentState(null); setConflict(caught instanceof PlaceWriteRejected && caught.status === 409); setDeleting(false);
         setError(caught instanceof PlaceWriteRejected && caught.status === 409 ? '路线或地点已变化，草稿保留。请读取最新内容并重新核对。' : '保存未被接受，草稿保留。请核对选择与权限。'); }
       const underlying = caught instanceof PlaceWriteUnverified ? caught.reason : caught;
@@ -191,6 +206,12 @@ function Workspace(props: Props & { identityKey: string }) {
       catch (caught) { throw caught; }
     });
   }
+  function resumeExpiredDraft() {
+    if (!state.current.pending?.expired || !current() || working.current) return;
+    // This is an explicit user action, not a new request or a claim of cancellation.
+    intentState(null); setDeleting(false); setShareChecked(false); setConflict(true);
+    setNotice('已保留草稿，请核对当前地点与顺序，再明确保存。'); void readJob(reload);
+  }
   const locked = busy || !visible || !current() || !!pending;
   const button = (label: string, action: () => void, disabled = locked, mode: 'text' | 'outlined' | 'contained' = 'outlined') => <Button accessibilityLabel={label} contentStyle={styles.touch} style={styles.button} mode={mode} disabled={disabled} onPress={action}>{label}</Button>;
   const show = visible && current(), route = data?.detail?.route;
@@ -204,9 +225,9 @@ function Workspace(props: Props & { identityKey: string }) {
     {!data && draft && !pending && button('取消编辑', cancelDraft, busy)}
     {!show ? <EmptyState title={!connected() || !household.online ? '离线时隐藏路线' : '路线内容已隐藏'} description="回到前台并联网后，重新核对身份与当前内容。"
       action={button('重新读取路线', refresh, busy || denied.current || !connected() || !household.online)} /> : <>
-      {pending && <SectionCard title="核对保存结果"><View testID="journey-route-recovery" style={styles.page}><Text>原操作尚未确认。不会另建一条路线。</Text>
+      {pending && <SectionCard title="核对保存结果"><View testID="journey-route-recovery" style={styles.page}><Text>{pending.expired ? '原内容的版本已过期；这次重试未保存。原编号仍可核对，不代表已取消或封存。' : '原操作尚未确认。不会另建一条路线。'}</Text>
         <Text selectable>原操作编号：{pending.requestId}</Text>{button('核对原操作', recover, busy)}
-        {notFound && button('按原内容重试', () => void send(pending), busy)}
+        {pending.expired ? button('保留草稿并重新核对', resumeExpiredDraft, busy) : notFound && button('按原内容重试', () => void send(pending), busy)}
       </View></SectionCard>}
       {!data ? <EmptyState title="暂时无法读取当前路线" action={<View style={styles.actions}>{button('重新读取路线', refresh, busy)}{button('返回路线列表', () => { selection.current.id = ''; void readJob(reload); }, busy || !!draft || !!pending)}</View>} /> : <>
         <Text variant="titleMedium">{data.journey.title}</Text>
