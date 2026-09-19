@@ -658,7 +658,7 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
         db().commit()
 
     @contextmanager
-    def authorized(context=None, *, write=False):
+    def authorized(context=None, *, write=False, recheck_read=False):
         # The global guard ran earlier. Resolve the real cookie again in the same
         # database transaction as the read/write, including completed-plan replay.
         require_member()
@@ -666,14 +666,23 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
         con.execute('BEGIN IMMEDIATE' if write else 'BEGIN')
         try:
             sessions = app.extensions['member_sessions']
-            member = sessions.current(con)
-            if (member['owner'] != g.actor['id'] or member['auth_version'] != g.actor['auth_version']
-                    or g.actor.get('householdId', 'default') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
-                raise Problem('登录状态已变化，请重新登录', 401)
-            if context is not None:
-                sessions.validate_context(con, context, member=True)
+            def current_member():
+                member = sessions.current(con)
+                if (member['owner'] != g.actor['id'] or member['auth_version'] != g.actor['auth_version']
+                        or g.actor.get('householdId', 'default') != app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')):
+                    raise Problem('登录状态已变化，请重新登录', 401)
+                if context is not None:
+                    sessions.validate_context(con, context, member=True)
+            current_member()
             yield con
             con.commit()
+            if recheck_read:
+                # A read snapshot can predate logout in a concurrent connection.
+                # Resolve the captured credential again after releasing it. Legacy
+                # cookies may refresh expiry; release their implicit transaction.
+                con.execute('BEGIN')
+                current_member()
+                con.rollback()
         except BaseException:
             con.rollback()
             raise
@@ -730,10 +739,18 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
                     matches.append({'id': row['id'], 'kind': 'places', 'title': row['name'], 'country': row['country'],
                                     'city': row['city'], 'status': row['status'], 'journey': journey,
                                     'visibility': row['visibility'], 'revision': row['revision']})
-            matches.sort(key=lambda item: (item['kind'], item['id']))
-            page = matches[offset:offset + limit]
-            return {'query': query, 'matches': page, 'total': len(matches), 'limit': limit, 'offset': offset,
-                    'nextOffset': offset + len(page) if offset + len(page) < len(matches) else None}
+            from journey_documents import search_metadata
+            matches.extend(search_metadata(con, owner, query))
+        # Re-resolve visible metadata after releasing the first read snapshot:
+        # sharing withdrawal/deletion during that snapshot must not leave stale
+        # document titles or counts in the result. Both passes use the original
+        # member/household context and the domain metadata projection; no BLOBs.
+        with authorized(context, recheck_read=True) as con:
+            matches = [item for item in matches if item['kind'] != 'documents'] + search_metadata(con, owner, query)
+        matches.sort(key=lambda item: (item['kind'], item['id']))
+        page = matches[offset:offset + limit]
+        return {'query': query, 'matches': page, 'total': len(matches), 'limit': limit, 'offset': offset,
+                'nextOffset': offset + len(page) if offset + len(page) < len(matches) else None}
 
     @app.get('/api/assistant/search')
     def search():
