@@ -1,5 +1,7 @@
 # 已有旅行改期建议 API
 
+实际应用注册和 Expo 接线已于本批发布；生产身份、正式构建、模型／浏览器及 Linux 分轮验证见[集中验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。生产只读审计不执行此 POST；本人真实旅行与云端流程仍另验。
+
 本接口读取当前家庭旅行，提供待核对日期建议。它不创建旅行、不保存改期、不调用日历发布或预订服务。只有原旅行改期引擎签发快照、预览与最终回执。`assistant_plans` 的待办/采购创建流程不变。
 
 依赖 [旅行意图适配器](ASSISTANT-TRIP-INTENT.md)、[原旅行改期接口](JOURNEY-RESCHEDULE.md)、`home_assistant._model_json` 和真实 `ImportSession`。适配器须经过独立审查后由集成人组合；作者目录不能复制未审查的其他分支源码作为测试依据。
@@ -117,6 +119,6 @@ type TripChange = {
 
 ## 验证边界
 
-`tests/test_assistant_trip_change_api.py` 使用真实 Flask 登录/CSRF、临时家庭 SQLite、真实签名和原改期快照/预览/保存/回执接口；仅供应商网络返回为合成。涵盖无业务写入、共享旅行与跨家庭隔离、会话撤销、网络期间版本变化、短期票/未知选择、隐私上下文、共用限流，以及实际改期一次和原回执重放。测试注册包装仅补齐作者基线尚无的新 app 接线，不替换认证或旅行业务实现。
+`tests/test_assistant_trip_change_api.py` 使用真实 Flask 登录/CSRF、临时家庭 SQLite、真实签名和原改期快照/预览/保存/回执接口；仅供应商网络返回为合成。涵盖无业务写入、共享旅行与跨家庭隔离、会话撤销、网络期间版本变化、短期票/未知选择、隐私上下文、共用限流，以及实际改期一次和原回执重放。早期作者 fixture 的临时注册包装已由[应用接线](ASSISTANT-TRIP-CHANGE-INTEGRATION.md)移除；测试现在断言真实 app 唯一注册该路由。
 
-实际测试结果须记录固定组合源码、运行命令和原始输出。未完成前端接线、浏览器完整流程和真实用户旅行验收之前，此模块不能宣称产品入口已可用或场景 A 已验收。
+当前实际分轮结果绑定固定组合源码、命令和原始输出，集中于[本批验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md)。前端与实际 API 的临时完整流程已有证据；本人真实旅行及云日历完整场景 A 仍未验收。

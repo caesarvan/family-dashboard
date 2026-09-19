@@ -1,10 +1,10 @@
 # 已有旅行改期：规划适配器合同
 
-状态：独立适配器候选，尚未接入产品路由或界面。它识别「把冰岛旅行推迟三天」「把冰岛旅行改到10月8日」中的已有旅行修改意图，返回待核对的日期建议。不会创建旅行简报、写数据库、调用云服务或生成执行令牌。
+状态：适配器已接入实际应用和 Expo，并随本批发布；运行身份与分轮结果见[集中验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。它识别「把冰岛旅行推迟三天」「把冰岛旅行改到10月8日」中的已有旅行修改意图，返回待核对日期或明确缺参。适配器本身不会创建旅行简报、写数据库、调用云日历或生成执行令牌。
 
 ## 现有调用关系与接线边界
 
-目前 `frontend/src/lib/assistantJourney.ts:isJourneyRequest` 会将含旅行／行程的非搜索请求导入新旅行简报；`home_assistant.py:model_journey_brief` 通过 `_model_json(config,payload)` 调用已配置服务。后续接线应在新简报之前识别已有旅行改期，保持显式「搜索／查找／找一下」优先；未找到修改目标也不能退回创建新旅行。
+`frontend/src/lib/assistantJourney.ts:isExistingTripChangeRequest` 现已在新旅行简报之前识别已有旅行改期，并保留显式「搜索／查找／找一下」优先；未找到修改目标也不退回创建新旅行。`home_assistant.py` 的既有 `_model_json(config,payload)` 由改期 API 注入本适配器；新旅行仍走原 `model_journey_brief`。完整接线见[应用接线](ASSISTANT-TRIP-CHANGE-INTEGRATION.md)。
 
 原改期流程完整保留：
 
