@@ -7,12 +7,20 @@ import { ApiError } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import { CalendarEvent, Entity, ItemKind, ListItem, ShoppingPriority } from '../lib/types';
 import { shoppingSchedule } from '../lib/trips';
+import { SelectionRow } from './SelectionRow';
 
 export function ShoppingScheduleFields({due,priority='normal',onDueChange,onPriorityChange,disabled=false,suffix=''}:{due:string;priority?:ShoppingPriority;onDueChange:(value:string)=>void;onPriorityChange:(value:ShoppingPriority)=>void;disabled?:boolean;suffix?:string}) {
   const dateLabel='采购截止日期'+suffix+'（可选）';
   return <View style={styles.schedule}>
     <View style={styles.scheduleField}><TextInput mode="outlined" dense outlineStyle={{borderRadius:8}} label={dateLabel} accessibilityLabel={dateLabel} placeholder="YYYY-MM-DD" value={due} onChangeText={value=>{if(!disabled)onDueChange(value);}} disabled={disabled} maxLength={10} autoCapitalize="none" autoCorrect={false}/>{!due&&<Text variant="bodySmall">未设截止日</Text>}</View>
-    <View style={styles.scheduleField}><Text variant="labelMedium">优先级</Text><SegmentedButtons value={priority} onValueChange={value=>{if(!disabled&&(value==='low'||value==='normal'||value==='high'))onPriorityChange(value);}} buttons={([{value:'low',label:'低'},{value:'normal',label:'普通'},{value:'high',label:'高'}] as const).map(option=>({...option,accessibilityLabel:'采购优先级'+suffix+'：'+option.label,disabled,style:{minWidth:0},labelStyle:{minHeight:24,paddingVertical:2}}))}/></View>
+    <View style={[styles.scheduleField,{flexBasis:282}]}><Text variant="labelMedium">优先级</Text>
+      <View accessibilityRole="radiogroup" accessibilityLabel={'采购优先级'+suffix} style={{flexDirection:'row',flexWrap:'wrap'}}>
+        {([{value:'low',label:'低'},{value:'normal',label:'普通'},{value:'high',label:'高'}] as const).map(option=><View key={option.value} style={{flexGrow:1,flexBasis:94,minWidth:94}}>
+          <SelectionRow kind="radio" label={option.label} accessibilityLabel={'采购优先级'+suffix+'：'+option.label}
+            checked={priority===option.value} disabled={disabled} onPress={()=>{if(!disabled)onPriorityChange(option.value);}}/>
+        </View>)}
+      </View>
+    </View>
   </View>;
 }
 

@@ -145,12 +145,12 @@ function harness(screen,options={}) {
     if(path==='/journeys/preview')return {plan:copy(body.plan),canApply:true,previewToken:'synthetic-trip-preview',expiresIn:900,summary:{create:{trips:1,shopping:1},update:{},detach:0,warnings:[],conflicts:[],preserved:[],cloudReviews:[],policyNotice:'合成说明'}};
     throw new Error('Unexpected synthetic mutation '+path);
   };
-  const paper=Object.fromEntries(['Button','Checkbox','Chip','Divider','HelperText','IconButton','Text','TextInput','ActivityIndicator','Portal','Searchbar'].map(name=>[name,name]));
+  const paper=Object.fromEntries(['Button','Checkbox','Chip','Divider','HelperText','Icon','IconButton','Text','TextInput','TouchableRipple','ActivityIndicator','Portal','Searchbar'].map(name=>[name,name]));
   paper.Dialog={Title:'DialogTitle',Content:'DialogContent',ScrollArea:'DialogScrollArea',Actions:'DialogActions'};
   paper.List={Accordion:'Accordion',Icon:'ListIcon'};paper.Menu={Item:'MenuItem'};paper.Checkbox={Item:'CheckboxItem',Android:'CheckboxAndroid'};
   paper.useTheme=()=>({colors:{onSurfaceVariant:'#555',error:'#b00'}});
   paper.SegmentedButtons=props=>react.createElement('SegmentedButtons',props,...props.buttons.map(button=>react.createElement('Segment', {...button,onPress:()=>props.onValueChange(button.value)},button.label)));
-  const mocks={react,'react-native':{View:'View',Image:'Image',ScrollView:'ScrollView',Platform:{OS:'web'},StyleSheet:{create:x=>x},AppState:{currentState:'active',addEventListener:()=>({remove(){}})}},'react-native-paper':paper,'expo-router':{useFocusEffect:fn=>useEffect(fn,[fn])},'expo-image-picker':{},'expo-image-manipulator':{},'../lib/api':{ApiError,request},'../lib/household':{useHousehold:()=>household},'../ui/components':{PageHeader:'PageHeader',SectionCard:'SectionCard',EmptyState:'EmptyState'},'../ui/theme':{useDisplayDensity:()=>({screenGap:16,sectionGap:12,rowPadding:12})},'../ui/SelectionRow':{SelectionRow:'SelectionRow'}};
+  const mocks={react,'react-native':{View:'View',Image:'Image',ScrollView:'ScrollView',Platform:{OS:options.platform??'web'},StyleSheet:{create:x=>x},AppState:{currentState:'active',addEventListener:()=>({remove(){}})}},'react-native-paper':paper,'expo-router':{useFocusEffect:fn=>useEffect(fn,[fn])},'expo-image-picker':{},'expo-image-manipulator':{},'../lib/api':{ApiError,request},'../lib/household':{useHousehold:()=>household},'../ui/components':{PageHeader:'PageHeader',SectionCard:'SectionCard',EmptyState:'EmptyState'},'../ui/theme':{useDisplayDensity:()=>({screenGap:16,sectionGap:12,rowPadding:12})},'../ui/SelectionRow':{SelectionRow:'SelectionRow'}};
   for(const path of ['../components/ShoppingSettlementPanel','./InventoryScreen','./JourneyCalendarPanel','./JourneyTasksPanel','./JourneyPlacesPanel','./JourneyReschedulePanel','./MapScreen','./TripPhotosScreen','./JourneyDocumentsPanel','../components/JourneySegmentsPanel','../components/TripRecapPanel','../components/JourneyRoutesPanel','../components/TripImportPanel'])mocks[path]={default:'UnusedPanel'};
   const files={editor:'ui/ItemEditor.tsx',list:'screens/ListScreen.tsx',trips:'screens/TripsScreen.tsx',reschedule:'screens/JourneyReschedulePanel.tsx'};
   const Component=loader(mocks,{document,window,navigator})(resolve(root,files[screen])).default;
@@ -172,6 +172,36 @@ function harness(screen,options={}) {
   return{f,flush,text:()=>text(tree),nodes:()=>nodes(tree),value:label=>find(label).props.value,disabled:label=>!!find(label).props.disabled,
     async click(label){const n=find(label);assert(!n.props.disabled,label+' disabled');n.props.onPress();await flush();},async input(label,value){const n=find(label);assert(!n.props.disabled,label+' disabled');n.props.onChangeText(value);await flush();}};
 }
+// The editor imports ./SelectionRow, so its real radio/keyboard implementation
+// runs here. Only Paper/native hosts are substituted; no DOM state is invented.
+function assertPrioritySelection(h,selected,{suffix='',disabled=false}={}) {
+  const label='采购优先级'+suffix;
+  const groups=h.nodes().filter(n=>n.props.accessibilityRole==='radiogroup'&&n.props.accessibilityLabel===label);
+  assert.equal(groups.length,1,'one named priority radio group');
+  const controls=h.nodes().filter(n=>n.props.accessibilityRole==='radio'&&n.props.accessibilityLabel?.startsWith(label+'：'));
+  assert.equal(controls.length,3,'three real priority radio controls');
+  for(const [index,name]of ['低','普通','高'].entries()){
+    const p=controls[index].props;assert.equal(p.accessibilityLabel,label+'：'+name);
+    assert.equal(p['aria-checked'],name===selected);assert.equal(p.accessibilityState.checked,name===selected);
+    assert.equal(p['aria-disabled'],disabled);assert.equal(p.accessibilityState.disabled,disabled);assert.equal(p.disabled,disabled);
+  }
+  return controls;
+}
+test('actual shopping priority radios expose exclusive web state after click and keyboard selection',async()=>{
+  const h=harness('editor');await h.flush();assertPrioritySelection(h,'普通');
+  await h.click('采购优先级：高');assertPrioritySelection(h,'高');
+  const low=assertPrioritySelection(h,'高')[0];let prevented=0,stopped=0;
+  low.props.onKeyDown({key:' ',repeat:false,preventDefault(){prevented++;},stopPropagation(){stopped++;}});await h.flush();
+  assert.equal(prevented,1);assert.equal(stopped,1);assertPrioritySelection(h,'低');
+  await h.input('物品名称','键盘选择采购');await h.click('保存');assert.equal(h.f.calls[0].body.priority,'low');
+});
+test('actual shopping priority radios retain native selected and disabled semantics',async()=>{
+  const h=harness('editor',{platform:'android',failItem:true});await h.flush();assertPrioritySelection(h,'普通');
+  await h.click('采购优先级：低');await h.input('物品名称','原生选择采购');await h.click('保存');
+  const controls=assertPrioritySelection(h,'低',{disabled:true});
+  assert(controls.every(n=>n.props.onKeyDown===undefined));controls[2].props.onPress();await h.flush();
+  assertPrioritySelection(h,'低',{disabled:true});assert.equal(h.f.calls.length,1);assert.equal(h.f.calls[0].body.priority,'low');assert.equal(h.f.dismissed,0);
+});
 test('actual ItemEditor sends deadline/priority with unchanged photo and financial fields, and clears explicitly',async()=>{
   const item={...row(purchaseId),title:'转换插头',due:'2027-09-28',priority:'high',budget:10000,actual:null,photoIds:['synthetic-photo']};
   const h=harness('editor',{item});await h.flush();assert.equal(h.value('采购截止日期（可选）'),'2027-09-28');
@@ -185,6 +215,8 @@ test('actual ItemEditor blocks invalid date before mutation and retains new-item
 test('actual ItemEditor freezes new controls after uncertain save without losing date',async()=>{
   const h=harness('editor',{failItem:true});await h.flush();await h.input('物品名称','转换插头');await h.input('采购截止日期（可选）','2027-09-28');await h.click('采购优先级：高');await h.click('保存');
   assert(h.disabled('保存'));assert(h.disabled('采购截止日期（可选）'));assert(h.disabled('采购优先级：低'));assert.equal(h.value('采购截止日期（可选）'),'2027-09-28');assert.match(h.text(),/核对后再操作/);assert.equal(h.f.calls.length,1);
+  const controls=assertPrioritySelection(h,'高',{disabled:true});controls[0].props.onPress();controls[0].props.onKeyDown({key:' ',repeat:false,preventDefault(){},stopPropagation(){}});await h.flush();
+  assertPrioritySelection(h,'高',{disabled:true});assert.equal(h.f.calls.length,1);assert.equal(h.f.dismissed,0);
 });
 test('actual shopping list sorts by date and priority and marks only unfinished overdue rows',async()=>{
   const h=harness('list',{shopping:[row('low',{due:'2000-01-01',priority:'low'}),row('done',{done:true,due:'2000-01-01',priority:'high'}),row('normal',{due:'2000-01-01'}),row('high',{due:'2000-01-01',priority:'high'}),row('none')]});await h.flush();
@@ -193,6 +225,7 @@ test('actual shopping list sorts by date and priority and marks only unfinished 
 });
 test('actual TripsScreen controls keep schedule in preview and require separate confirm',async()=>{
   const h=harness('trips');await h.flush();await h.input('采购截止日期 1（可选）','2027-10-10');await h.click('采购优先级 1：高');await h.click('预览变更');
+  assertPrioritySelection(h,'高',{suffix:' 1'});
   const call=h.f.calls.find(x=>x.path==='/journeys/preview');assert.equal(call.body.plan.shopping[0].due,'2027-10-10');assert.equal(call.body.plan.shopping[0].priority,'high');assert.equal(call.body.plan.shopping[0].budget,null);assert(h.text().includes('2027-10-10 · 高优先级'));assert(!h.f.calls.some(x=>x.path==='/journeys/apply'));
   await h.input('采购截止日期 1（可选）','');assert(!h.text().includes('确认保存旅行'));await h.click('预览变更');assert.equal(h.f.calls.at(-1).body.plan.shopping[0].due,'');
 });
