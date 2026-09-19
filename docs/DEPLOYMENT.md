@@ -1,6 +1,6 @@
 # 部署、更新与恢复交接
 
-**当前结构与运行基线：69 张户内表、9 张平台表。** 旅行准备、采购与成员分工于 2026-09-20 01:13:38（北京时间）激活成功，01:23:44 独立只读审计通过。实际一户两库完成停写备份与启动前后完整逻辑保全，69→69／9→9，无本批 DDL。固定 source `882dce5d0bc7bba182d4fe4ba1175c040123e6fd`、镜像 `sha256:dc5ecb91f25017a19a7e59a992e94d8d281a7e68f1e97e0ca0b5dfeaf2872bd6`、计划与回执集中于[本批发布验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。已消费计划和下面的历史迁移均不可重放；后续更新必须重新绑定实际 manifest、镜像及全组数据库。
+**当前结构与运行基线：69 张户内表、9 张平台表。** 本地任务依赖于 2026-09-20 06:28:25（北京时间）激活，06:35:47 独立只读审计通过。正式 source `456585bc1a4f820ca238b3308f09a8d591628f41`、镜像 `sha256:fbb221027f4542cbfb3f9dc66b26d38314bfbbf2df00e43744936b8288fea547`；真实一户两库停写备份及 app 启动前后完整 schema／行／列／序列保持，69→69／9→9，无 DDL。固定包、已消费计划、回执、实际 Linux 354 项和恢复边界见[集中验收](TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)，工具合同见[任务依赖发布适配](TASK-DEPENDENCIES-RELEASE.md)。不得重放本次 stage／activate 或下方历史迁移；后续必须绑定新的真实安装基线、manifest、镜像及完整库组。站内提醒及其 69→71 迁移尚未部署。
 
 **历史账户分析基线：66 张户内表、9 张平台表。** 本人账户分析于 2026-09-19 16:20:25（北京时间）激活，16:20:57 独立只读审计通过。生产实际一户两库从 61/9 迁至 66/9；固定 source `f25357f935d64774922efa68d42a2ba41bb18037`、镜像 `sha256:21625d6e2d9768ba48cca35100bb8bf02c1c4146afa6b7ad25b9b72cb559c1d2` 及完整身份见[分析发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)，数据保全与恢复合同见[本批发布](FINANCE-ANALYSIS-RELEASE.md)。不得重放本批、成员迁移或下面的固定历史算子；后续更新必须绑定实际 manifest、镜像及全组数据库。下方旧基线与代码块仅供历史追溯。
 

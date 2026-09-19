@@ -1,6 +1,17 @@
 # 家庭看板接口文档
 
-当前部署身份见 [HANDOFF](HANDOFF.md)。个人账户与多家庭成员协作此前完成 58/2→61/9 迁移；本人账户分析完成 61/9→66/9，旅行路线随后完成 66→69；当前为 **69 张户内表与 9 张平台表**。最新旅行准备、采购与分工发布保持结构不变，见[最新发布验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；此前家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+当前部署身份见 [HANDOFF](HANDOFF.md)。个人账户与多家庭成员协作此前完成 58/2→61/9 迁移；本人账户分析完成 61/9→66/9，旅行路线随后完成 66→69；当前为 **69 张户内表与 9 张平台表**。最新本地任务依赖发布保持结构不变，见[最新发布验收](TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；此前家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+
+## 本地待办前置事项（已发布）
+
+2026-09-20 06:28:25（北京时间）激活，06:35:47 独立只读审计通过。继续使用原任务 CRUD，不新增表或路由；完整字段和错误见 [TASK-DEPENDENCIES](TASK-DEPENDENCIES.md)，实际范围见[集中验收](TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)。
+
+- 本地任务 POST／PATCH 接受 `dependsOn` 原 ID 数组，最多 20 项；旧客户端 PATCH 省略时保留，明确 `[]` 才解除。新建要选择 `sourceId:""` 的本地目的地，云镜像及云目的地不支持依赖。
+- 当前任务投影包含只读 `blockedBy` 和 `dependencyStatus`。完成和删除必须在服务端同一写事务内重新核对图、版本和成员；前置未完成为 `task_dependencies_incomplete`，循环为 `task_dependency_cycle`，删除被引用前置为 `task_has_dependents`（均 409）。
+- 已完成后续不会因前置重新打开而自动重开；旅行重建保留当前实体依赖。已发布到云的本地任务遇远端完成与本地阻塞时保留冲突，不自动撤销远端完成。
+- 明确 `includeShared:true` 的数据导出保留已存 `dependsOn`，不导出派生阻塞状态；个人导出不因此增加共享记录。当前角色、家庭、Origin／CSRF 和 revision 边界保持。
+
+站内提醒 `/api/task-reminders` 与 69→71 表迁移仍是后续候选，不属于本次已发布接口。
 
 ## 旅行路线（已上线）
 
