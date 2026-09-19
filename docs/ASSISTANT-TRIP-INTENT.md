@@ -78,16 +78,18 @@ result = model_trip_intent(app.config, original_prompt, current_candidates,
 
 发送的 payload 仅为现有接口支持的 `instructions`、`input`、`max_output_tokens: 1800`。模型只看到用户本次文字，以及 `{ref,title,start,end,timeZones}`；不发送原对象、预算、备注、成员、家庭标识、真实对象 ID、配置或令牌。明确搜索即使被误传到模型包装器，也保留本地分流，不出网。没有提供方回退、重试或第二套网络实现；现有安全 `ModelProviderError` 原样交由外层处理。
 
-模型 JSON 合同如下，拒绝额外字段、无效引用、写指令、对象 ID、令牌及错误日期结构。文本 JSON 解码还拒绝重复字段、非有限数字与非对象值。
+模型 JSON 仅包含 `intent`、`targetText`、`change`、`candidateRefs`；`intent` 仅为 `reschedule_existing`、`other` 或 `unclear`，`candidateRefs` 只能使用本次上下文提供的真实引用。拒绝额外字段、无效引用、写指令、对象 ID、令牌及错误日期结构。文本 JSON 解码还拒绝重复字段、非有限数字与非对象值。
+
+`change` 必须完整包含四个字段，并遵守以下互斥结构。相对推移只填写 `days`，不能根据候选日期推算 `startDate`；指定出发日只填写原文明示的绝对日期或缺年日期之一；缺参数或矛盾时三个值全为 `null`。以下仅为 `change` 对象示例，不提供可复制的假旅行引用：
 
 ```json
-{
-  "intent": "reschedule_existing",
-  "targetText": "冰岛旅行",
-  "change": {"kind":"shift_days","days":3,"startDate":null,"monthDay":null},
-  "candidateRefs": ["trip_服务端提供的当前候选引用"]
-}
+{"kind":"shift_days","days":3,"startDate":null,"monthDay":null}
+{"kind":"start_date","days":null,"startDate":"2026-10-08","monthDay":null}
+{"kind":"start_date","days":null,"startDate":null,"monthDay":"10-08"}
+{"kind":"unspecified","days":null,"startDate":null,"monthDay":null}
 ```
+
+独立合成真实调用曾返回 `shift_days`、`days: 3` 与推算出的 `startDate: "2028-03-05"`，被严格解析器拒绝。本次只明确上述模型指令并加入该失败样本的离线回归；不自动清空冲突字段、不放宽原文约束，也不把本次离线通过算作真实模型修复效果已验证。
 
 `targetText` 必须逐字来自用户本次文字。模型可辅助从较长表达中定位目标名称，但不能使原来多候选的集合自动变成选中一条。日期必须与本地提取的明确原文完全一致；模型增补年份、天数或日期时返回冲突，不能进入预览。候选标题与用户文字以 JSON 数据传递，不能替换系统指令；模型即使受到其中提示注入影响，也不能输出适配器接受的任意写动作。此约束不声称模型语义理解不会出错，所以所有建议仍须原预览与本人确认。
 
@@ -95,6 +97,6 @@ result = model_trip_intent(app.config, original_prompt, current_candidates,
 
 ## 本分支验证与剩余接线
 
-`tests/test_assistant_trip_intent.py` 使用合成记录和模型输出，106 项通过。涵盖日期有／无年份、正负日历天、闰日与原 DST 阻塞、矛盾／否定／取消／多动作（包括第二动作未提供可解析日期）、双日期范围、后句更正、半天／额外小时、多旅行请求不能由模型缩窄、同名候选、已选引用与原请求一致、当前权限过滤、模型字段与引用限制、隐私投影、提示注入作为数据、提供方失败不回退及无网络。否定语气、非整日单位、多个原文目标按类别变体回归，并保留复杂名称的有效模型辅助测试。
+`tests/test_assistant_trip_intent.py` 使用合成记录和模型输出，本次 107 项通过。涵盖日期有／无年份、正负日历天、闰日与原 DST 阻塞、矛盾／否定／取消／多动作（包括第二动作未提供可解析日期）、双日期范围、后句更正、半天／额外小时、多旅行请求不能由模型缩窄、同名候选、已选引用与原请求一致、当前权限过滤、模型字段与引用限制、隐私投影、提示注入作为数据、提供方失败不回退及无网络。否定语气、非整日单位、多个原文目标按类别变体回归，并保留复杂名称的有效模型辅助测试。新增回归保留真实合成失败的字段组合，验证其仍被拒绝、不重试或自动归一化；指令包含完整互斥示例，合规输出仍由原日历计算生成待预览建议。
 
 本机系统 Python 没有 pytest；最终执行使用主项目既有 `.venv/Scripts/python.exe` 的依赖，在本独立 worktree 运行。本批未安装依赖、修改共享文件、增加表或调用真实模型。没有完成 Flask 路由、UI、完整端到端 AI 接入、真实用户旅行、云写入或生产发布；上述接线由独立分支实现和验收。该模块文件还需由集成人加入实际加载／Docker／发布白名单，不能只合入纯函数就宣称产品可用。

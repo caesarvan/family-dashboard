@@ -373,6 +373,40 @@ def test_model_json_rejects_duplicate_fields_non_objects_and_nonfinite_values():
             decode_model_intent(raw, '把冰岛旅行推迟三天', catalog())
 
 
+def test_live_synthetic_relative_date_failure_stays_rejected_and_prompt_requires_null_dates():
+    candidates = catalog(detail(title='合成东京旅行', start='2028-03-02', end='2028-03-04'))
+    prompt = '把合成东京旅行推迟三天'
+    # Captured synthetic provider failure: it derived startDate alongside days.
+    # Only the runtime-generated candidate reference is rebound to this fixture.
+    invalid = model_output(candidates, target='合成东京旅行', change={
+        'kind': 'shift_days', 'days': 3, 'startDate': '2028-03-05', 'monthDay': None})
+    before = deepcopy(invalid)
+    calls = []
+    def invalid_invoke(_config, payload):
+        calls.append(payload)
+        return invalid
+    with pytest.raises(TripIntentError) as error:
+        model_trip_intent({}, prompt, candidates, invoke=invalid_invoke)
+    assert error.value.code == 'invalid_model_output'
+    assert len(calls) == 1 and invalid == before  # No retry or silent normalization.
+    instructions = calls[0]['instructions']
+    for change in [
+        {'kind': 'shift_days', 'days': 3, 'startDate': None, 'monthDay': None},
+        {'kind': 'start_date', 'days': None, 'startDate': '2026-10-08', 'monthDay': None},
+        {'kind': 'start_date', 'days': None, 'startDate': None, 'monthDay': '10-08'},
+        {'kind': 'unspecified', 'days': None, 'startDate': None, 'monthDay': None},
+    ]:
+        assert json.dumps(change, separators=(',', ':')) in instructions
+    assert '不能根据候选原日期推算或填写新日期' in instructions
+    assert 'trip_' not in instructions  # No sample ref to copy instead of current context.
+    valid = deepcopy(invalid)
+    valid['change']['startDate'] = None
+    result = model_trip_intent({}, prompt, candidates, invoke=lambda *_: valid)
+    assert result['status'] == 'ready' and result['mode'] == 'model'
+    assert result['change'] == valid['change'] and result['requiresPreview'] is True
+    assert (result['draft']['start'], result['draft']['end']) == ('2028-03-05', '2028-03-07')
+
+
 def test_provider_safe_failure_propagates_without_local_success_or_retry():
     calls = []
     def invoke(*args):
