@@ -1,5 +1,7 @@
 # 已有旅行改期建议：应用接线
 
+本接线已随 AI 已有旅行改期发布；运行身份、分轮证据与生产审计见[集中验收](ASSISTANT-TRIP-CHANGE-ACCEPTANCE.md#assistant-trip-change-release)。下方命令与限制保留本接线作者阶段的历史范围。
+
 本增量基于 `04e22a7e8902450fe1c38b12a4edc02a2dc091fb`，将已审查的建议 API 接入实际 Flask 应用和 Docker 源文件清单。接口行为见 [API 合同](ASSISTANT-TRIP-CHANGE-API.md)，界面流程见 [Expo 接线](EXPO-ASSISTANT-TRIP-CHANGE.md)。
 
 `create_app()` 在成员会话、旅行和原助理注册之后调用 `register_assistant_trip_change(app, db, Problem, body, require_member, limited)`。使用同一个请求解析、成员校验与限流实现，保留全局同源 JSON、CSRF、电视只读和家庭隔离保护。新家庭仍通过既有 `create_app()` 初始化，因此也正常注册此路由。注册本身没有 SQL、DDL 或数据迁移。
