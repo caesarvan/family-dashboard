@@ -321,6 +321,7 @@ class Run(BaseRun):
                     expect(page.get_by_role('heading', name='一项操作待核对', exact=True)).to_be_visible()
                     envelope = stored_recovery(page); intent = envelope['recovery']['intent']
                     assert intent['requestId'] == committed['payload']['requestId']
+                    self.settle(page, lambda: bool(faults))
                     assert faults and all(row['backendStatus'] == 200 and row['deliveredStatus'] == status for row in faults)
                     expect(page.get_by_text('这次操作未保存', exact=False)).not_to_be_visible()
                     stable = self.snapshot(); count = len(faults)
@@ -334,15 +335,30 @@ class Run(BaseRun):
                 finally:
                     page.unroute(self.base + '/api/me', intercept)
                     self.record('identity-' + str(status) + '-faults', faults)
-                receipt = self.exchange(page, REMINDERS + '/operations/' + intent['requestId'],
-                                        lambda: button(page, '核对操作结果').click(), method='GET')
+                with page.expect_response(lambda response: response.request.method == 'GET' and
+                                          response.url == self.base + REMINDERS + '?filter=unread&page=0',
+                                          timeout=15000) as refreshed:
+                    receipt = self.exchange(page, REMINDERS + '/operations/' + intent['requestId'],
+                                            lambda: button(page, '核对操作结果').click(), method='GET')
+                refreshed_response = refreshed.value
+                assert refreshed_response.status == 200
+                refreshed_list = refreshed_response.json()
+                assert refreshed_list['items'] == [] and refreshed_list['unreadCount'] == 0
                 expect(page.get_by_text(CONFIRMED, exact=True)).to_be_visible()
+                # The receipt notice appears before readList finishes. Wait for
+                # the same panel's real list and trailing identity fence, so the
+                # screenshot proves a usable final state rather than a spinner.
+                expect(labelled_button(page, '刷新提醒')).to_be_enabled(timeout=15000)
+                expect(button(page, '返回首页')).to_be_enabled()
+                expect(page.get_by_label('正在核对提醒')).not_to_be_visible()
+                expect(page.get_by_text('暂时没有未读提醒', exact=True)).to_be_visible()
                 assert receipt['backendResult'] == committed['backendResult'] and stored_recovery(page) is None
                 assert self.count_requests('POST', path) == before + 1 and self.snapshot()['entities'] == entities
                 self.assert_single_operation(uid, committed['backendResult']['operation'])
                 self.capture(page, 'identity-' + str(status) + '-restored-' + str(width), page.get_by_text(CONFIRMED, exact=True))
                 self.record('identity-' + str(status) + '-restoration', {'originalEnvelope': envelope, 'postCount': 1,
-                            'receiptMatched': True, 'unchangedTask': self.task(ctx, uid)})
+                            'receiptMatched': True, 'unchangedTask': self.task(ctx, uid),
+                            'samePageRefreshSettled': True, 'listAfterReceipt': refreshed_list})
             self.proof('identity-failure-database')
             self.passed('Real POST200 plus later genuine /me200 replaced with429/404 retains exact intent; refresh and recovery only read, with one persisted operation')
 
