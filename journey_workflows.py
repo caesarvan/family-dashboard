@@ -5,6 +5,7 @@ household's ``db()`` owns its own namespace, including signed preview isolation.
 """
 from __future__ import annotations
 
+import task_dependencies as dependencies
 from collections import Counter
 from contextlib import ExitStack, contextmanager
 from datetime import date, datetime, timedelta, timezone
@@ -493,6 +494,8 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         grouped = {kind: [] for kind in ('trips', 'tasks', 'shopping', 'events')}
         for key, entry in records.items():
             grouped[entry['kind']].append({**json.loads(entry['data']), 'id': entry['id'], 'revision': entry['revision'], 'workflowKey': key})
+        graph = dependencies.task_graph(con)
+        grouped['tasks'] = [dependencies.project(item, graph) for item in grouped['tasks']]
         tasks, purchases = grouped['tasks'], grouped['shopping']
         original = json.loads(row['plan'])
         trip = grouped['trips'][0] if grouped['trips'] else None
@@ -701,6 +704,8 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                 changed_at = stamp()
                 for item_key_, payload in claims['entityPatches'].items():
                     old = records[item_key_]
+                    if old['kind'] == 'tasks':
+                        dependencies.check_write(con, old['id'], payload, json.loads(old['data']))
                     if json.loads(old['data']) != payload:
                         con.execute('UPDATE entities SET data=?,revision=revision+1,updated_at=? WHERE id=?',
                                     (pack(payload), changed_at, old['id']))
@@ -763,9 +768,11 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                 entity_id = old['id'] if old else trip_id if item_key_ == 'trip' else secrets.token_hex(12)
                 if old:
                     old_data = json.loads(old['data'])
-                    for preserved in ('done', 'actual', 'photoIds'):
+                    for preserved in ('done', 'actual', 'photoIds', 'dependsOn'):
                         if preserved in old_data:
                             payload[preserved] = old_data[preserved]
+                    if kind == 'tasks':
+                        dependencies.check_write(con, entity_id, payload, old_data)
                     con.execute('UPDATE entities SET data=?,revision=revision+1,updated_at=? WHERE id=?',
                                 (pack(payload), changed_at, entity_id))
                     if kind == 'events' and has_publications and semantic_timing(old_data) != semantic_timing(payload):
@@ -773,6 +780,8 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                         con.execute("UPDATE calendar_publications SET status='needs_review',review_required=1,error=?,updated_at=? WHERE entity_id=?",
                                     ('旅行时间类型或时区语义已变化，请预览并确认新的云日程；旧的待处理写入已暂停。', changed_at, entity_id))
                 elif item_key_ != 'trip':
+                    if kind == 'tasks':
+                        dependencies.check_write(con, entity_id, payload)
                     con.execute('INSERT INTO entities(id,kind,data,updated_at) VALUES(?,?,?,?)',
                                 (entity_id, kind, pack(payload), changed_at))
                 con.execute('INSERT OR IGNORE INTO journey_links(journey_id,item_key,entity_id,kind) VALUES(?,?,?,?)',

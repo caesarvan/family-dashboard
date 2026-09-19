@@ -8,6 +8,8 @@ import { useHousehold } from '../lib/household';
 import { CalendarEvent, Entity, ItemKind, ListItem, ShoppingPriority } from '../lib/types';
 import { shoppingSchedule } from '../lib/trips';
 import { SelectionRow } from './SelectionRow';
+import TaskDependencyFields from './TaskDependencyFields';
+import { dependencyIds, dependencyInfo, dependencyPayload } from '../lib/taskDependencies';
 
 export function ShoppingScheduleFields({due,priority='normal',onDueChange,onPriorityChange,disabled=false,suffix=''}:{due:string;priority?:ShoppingPriority;onDueChange:(value:string)=>void;onPriorityChange:(value:ShoppingPriority)=>void;disabled?:boolean;suffix?:string}) {
   const dateLabel='采购截止日期'+suffix+'（可选）';
@@ -42,6 +44,8 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
   const [actual,setActual]=useState(existing?.actual==null?'':String(existing.actual/100));
   const [due,setDue]=useState(existing?.due||''); const [note,setNote]=useState(item?.note||'');
   const [priority,setPriority]=useState<ShoppingPriority>(existing?.priority??'normal');
+  const [dependsOn,setDependsOn]=useState<string[]>(()=>{try{return dependencyIds(existing||{});}catch{return [];}});
+  const [dependencyUnreadable,setDependencyUnreadable]=useState(()=>{try{dependencyIds(existing||{});return false;}catch{return true;}});
   const [done,setDone]=useState(!!existing?.done); const [photos,setPhotos]=useState(existing?.photoIds||[]);
   const [startDay,setStartDay]=useState(localParts(event?.start).day),[startTime,setStartTime]=useState(localParts(event?.start).time);
   const [endDay,setEndDay]=useState(localParts(event?.end).day),[endTime,setEndTime]=useState(event?.end?localParts(event.end).time:'20:00');
@@ -55,12 +59,19 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
   const locked=busy||uploading||uncertain;
   const common={mode:'outlined' as const,dense:true,disabled:locked};
   const taskCloud=kind==='tasks'&&!item&&!!sourceId;
+  const taskDependencies=dependencyInfo({...(existing||{}),id:item?.id||'',title,owner,revision:item?.revision||0,done:false,dependsOn,blockedBy:[],dependencyStatus:undefined},state?.tasks||[]);
   async function save() {
     if(busy||uploading||uncertain)return; setBusy(true);setError('');
     try {
       const payload:Record<string,unknown>={title:title.trim(),owner,note};
       if(!payload.title)throw new Error('先填写名称');
-      if(kind==='tasks')Object.assign(payload,{done:taskCloud?false:done,owner:taskCloud?'shared':owner,due,tripId:existing?.tripId||'',...(!item?{sourceId}:{})});
+      if(kind==='tasks'){
+        if(dependencyUnreadable)throw new Error('前置事项无法读取，请明确清空后重新选择，或关闭并刷新。');
+        if((taskCloud||existing?.sync)&&dependsOn.length)throw new Error('同步清单暂不支持前置事项，请选择看板本地待办或清空前置事项。');
+        const dependencies=dependencyPayload(dependsOn,state?.tasks||[],item?.id);
+        if(done&&!existing?.done&&!taskCloud&&taskDependencies.blocked)throw new Error(taskDependencies.message);
+        Object.assign(payload,{done:taskCloud?false:done,owner:taskCloud?'shared':owner,due,tripId:existing?.tripId||'',dependsOn:dependencies,...(!item?{sourceId}:{})});
+      }
       if(kind==='shopping')Object.assign(payload,{done,quantity,budget:cents(budget),actual:cents(actual),photoIds:photos,...shoppingSchedule({due:due.trim(),priority})});
       if(kind==='events') {
         if(!/^\d{4}-\d{2}-\d{2}$/.test(startDay)||!/^\d{4}-\d{2}-\d{2}$/.test(endDay)||(!allDay&&(!/^\d{2}:\d{2}$/.test(startTime)||!/^\d{2}:\d{2}$/.test(endTime))))throw new Error('日期用 YYYY-MM-DD，时间用 HH:mm');
@@ -72,7 +83,7 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
     } catch(e) {
       if(!alive.current)return;
       const unknown=e instanceof ApiError&&(e.status===0||e.status>=500);
-      setUncertain(unknown);setError(unknown?'暂时无法确认保存结果。请先关闭并刷新清单，核对后再操作，避免重复添加。':e instanceof ApiError&&e.status===409?'这条记录已更新。你的输入仍在，请关闭后重新打开最新记录。':e instanceof Error?e.message:'暂时无法保存');
+      setUncertain(unknown);setError(unknown?'暂时无法确认保存结果。请先关闭并刷新清单，核对后再操作，避免重复添加。':e instanceof ApiError&&e.status===409?(kind==='tasks'?e.message+' 你的输入仍在，请核对前置事项或关闭后重新读取。':'这条记录已更新。你的输入仍在，请关闭后重新打开最新记录。'):e instanceof Error?e.message:'暂时无法保存');
     } finally {if(alive.current)setBusy(false);}
   }
   async function addPhoto() {
@@ -97,8 +108,11 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
       {kind==='shopping'&&<ShoppingScheduleFields due={due} priority={priority} onDueChange={setDue} onPriorityChange={setPriority} disabled={locked}/>}
       {kind==='shopping'&&<><TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="数量" label="数量" value={quantity} onChangeText={setQuantity} maxLength={30}/><TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="预计总价（元，可选）" label="预计总价（元，可选）" value={budget} onChangeText={setBudget} keyboardType="decimal-pad"/><View style={styles.photos}>{photos.map((id,index)=><View key={id}><Image source={{uri:'/api/photos/'+encodeURIComponent(id)}} style={styles.photo}/><IconButton icon="close" accessibilityLabel={'移除第'+(index+1)+'张图片'} size={16} disabled={locked} onPress={()=>{if(!locked)setPhotos(values=>values.filter(value=>value!==id));}}/></View>)}</View><Button mode="outlined" icon="image-plus" disabled={locked||photos.length>=3} loading={uploading} onPress={addPhoto}>添加参考图片 · {photos.length}/3</Button><Text variant="bodySmall">保存后，参考图片与家庭共享。</Text></>}
       {kind==='events'&&<><TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="开始日期（YYYY-MM-DD）" label="开始日期（YYYY-MM-DD）" value={startDay} onChangeText={setStartDay}/>{!allDay&&<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="开始时间（HH:mm）" label="开始时间（HH:mm）" value={startTime} onChangeText={setStartTime}/>}<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel={allDay?'结束日期（不包含当天）':'结束日期（YYYY-MM-DD）'} label={allDay?'结束日期（不包含当天）':'结束日期（YYYY-MM-DD）'} value={endDay} onChangeText={setEndDay}/>{!allDay&&<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="结束时间（HH:mm）" label="结束时间（HH:mm）" value={endTime} onChangeText={setEndTime}/>}<Checkbox.Item label="全天安排" status={allDay?'checked':'unchecked'} disabled={locked} onPress={()=>{if(!locked)setAllDay(!allDay);}}/><TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="地点（可选）" label="地点（可选）" value={location} onChangeText={setLocation} maxLength={200}/><Text variant="bodySmall">时间使用北京时间</Text></>}
+      {kind==='tasks'&&dependencyUnreadable&&<><Text accessibilityRole="alert">前置事项无法读取。请关闭并刷新，或明确清空后重新选择。</Text><Button disabled={locked} onPress={()=>{if(!locked){setDependsOn([]);setDependencyUnreadable(false);}}}>清空并重新选择前置事项</Button></>}
+      {kind==='tasks'&&!dependencyUnreadable&&<TaskDependencyFields tasks={state?.tasks||[]} currentId={item?.id} value={dependsOn} onChange={setDependsOn} disabled={locked} cloud={taskCloud||!!existing?.sync}/> }
+      {kind==='tasks'&&!done&&taskDependencies.message&&<Text variant="bodySmall" accessibilityLiveRegion="polite">{taskDependencies.message}</Text>}
       <List.Accordion title="更多选项" left={props=><List.Icon {...props} icon="tune"/>}>
-        <View style={styles.fields}>{kind==='tasks'&&<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="截止日期（YYYY-MM-DD，可选）" label="截止日期（YYYY-MM-DD，可选）" value={due} onChangeText={setDue}/>}<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="备注（可选）" label="备注（可选）" value={note} onChangeText={setNote} multiline maxLength={500}/>{kind!=='events'&&!taskCloud&&<Checkbox.Item label={kind==='shopping'?'已买到':'已完成'} status={done?'checked':'unchecked'} disabled={locked} onPress={()=>{if(!locked)setDone(!done);}}/>} {kind==='shopping'&&<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="实际总价（元，可选）" label="实际总价（元，可选）" value={actual} onChangeText={setActual} keyboardType="decimal-pad"/>}</View>
+        <View style={styles.fields}>{kind==='tasks'&&<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="截止日期（YYYY-MM-DD，可选）" label="截止日期（YYYY-MM-DD，可选）" value={due} onChangeText={setDue}/>}<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="备注（可选）" label="备注（可选）" value={note} onChangeText={setNote} multiline maxLength={500}/>{kind!=='events'&&!taskCloud&&<Checkbox.Item label={kind==='shopping'?'已买到':'已完成'} status={done?'checked':'unchecked'} disabled={locked||(kind==='tasks'&&!done&&(dependencyUnreadable||taskDependencies.blocked))} onPress={()=>{if(!locked&&!(kind==='tasks'&&!done&&(dependencyUnreadable||taskDependencies.blocked)))setDone(!done);}}/>} {kind==='shopping'&&<TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="实际总价（元，可选）" label="实际总价（元，可选）" value={actual} onChangeText={setActual} keyboardType="decimal-pad"/>}</View>
       </List.Accordion>
       {!!error&&<HelperText type="error" accessibilityRole="alert" style={{flexShrink:0,lineHeight:18}}>{error}</HelperText>}
     </ScrollView></Dialog.ScrollArea>

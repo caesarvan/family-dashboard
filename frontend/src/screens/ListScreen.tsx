@@ -12,6 +12,7 @@ import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { useDisplayDensity } from '../ui/theme';
 import { dayKey } from '../lib/calendar';
 import { compareShoppingItems, shoppingScheduleText } from '../lib/trips';
+import { dependencyStates } from '../lib/taskDependencies';
 
 export const money = (value?:number|null) => Number.isSafeInteger(value) ? '¥'+((value as number)/100).toLocaleString('zh-CN',{maximumFractionDigits:2}) : '未填写';
 
@@ -78,6 +79,7 @@ function ListWorkspace(props: ScreenProps & {kind:'tasks'|'shopping';identityKey
     setSavedState(snapshot);void latest.current.refresh();
   }
   const [filter,setFilter]=useState('pending'); const [query,setQuery]=useState(''); const shopping=kind==='shopping';
+  const dependencyState=dependencyStates(state.tasks);
   const all=state[kind], pending=all.filter(item=>!item.done);
   const today=dayKey(new Date());
   const items=all.filter(item=>(filter==='all'||item.done===(filter==='done'))&&(!query||(item.title+' '+(item.note||'')).toLocaleLowerCase().includes(query.toLocaleLowerCase()))).sort(shopping?compareShoppingItems:(a,b)=>Number(a.done)-Number(b.done)||(a.due||'9999').localeCompare(b.due||'9999'));
@@ -108,9 +110,10 @@ function ListWorkspace(props: ScreenProps & {kind:'tasks'|'shopping';identityKey
       {!items.length?<EmptyState title={query?'没有找到匹配内容':'清单很清爽'} description={query?'换一个关键词试试。':shopping?'把下次需要买的东西记下来。':'需要处理的事情，随时加进来。'} />:items.map((item,index)=><React.Fragment key={item.id}>
         {index>0&&<Divider />}
         <View testID={`${kind}-item-${item.id}`} tabIndex={shopping&&returnToItem===item.id?-1:undefined} style={[styles.row,{paddingVertical:density.rowPadding}]}>
-          <CompleteItem title={item.title} checked={item.done} disabled={!!pendingId||!!item.sync?.readOnly} onPress={()=>void onToggle(kind,item)} />
+          <CompleteItem title={item.title} checked={item.done} disabled={!!pendingId||!!item.sync?.readOnly||(!shopping&&dependencyState.get(item.id)!.blocked)} onPress={()=>{if(!pendingId&&!item.sync?.readOnly&&(shopping||!dependencyState.get(item.id)!.blocked))void onToggle(kind,item);}} />
           <View style={styles.body}><Text variant="titleMedium" style={[styles.name,item.done&&{color:theme.colors.onSurfaceVariant,textDecorationLine:'line-through'}]}>{item.title}</Text>
             <Text variant="bodySmall" style={{color:theme.colors.onSurfaceVariant}}>{item.owner==='shared'?'一起':state.people.find(p=>p.id===item.owner)?.name||'家庭成员'}{!shopping&&item.due?' · '+item.due:''}{shopping?' · '+(item.quantity||'1 件'):''}{item.sync?' · 已同步':''}</Text>
+            {!shopping&&dependencyState.get(item.id)!.message&&<Text variant="bodySmall">{dependencyState.get(item.id)!.message}</Text>}
             {shopping&&<Text variant="bodySmall" style={{color:!item.done&&!!item.due&&item.due<today?theme.colors.error:theme.colors.onSurfaceVariant}}>{shoppingScheduleText(item,today)}</Text>}
             {shopping&&<Text variant="bodySmall">预算 {money(item.budget)}{item.done||Number.isSafeInteger(item.actual)?' · 实付 '+money(item.actual):''}</Text>}
             {!!item.note&&<Text variant="bodySmall" style={{color:theme.colors.onSurfaceVariant}}>{item.note}</Text>}
