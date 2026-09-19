@@ -58,7 +58,8 @@ test('structured journey fields with budgets and preparation checks stay in the 
 test('trip budget questions and explicit mixed queries retain complete finance input', () => {
   for (const prompt of ['旅行预算还剩多少', '查上月旅行花费', '查预算并修改旅行', '计划一次冰岛旅行，并查上月旅行支出',
     tripItemsPrompt + '\n另查上月旅行花费', tripItemsPrompt + '\n旅行预算还剩多少',
-    tripItemsPrompt + '\n查本月支出并把预算改成100元']) assert.equal(api.isAssistantFinanceQuery(prompt), true, prompt);
+    tripItemsPrompt + '\n查本月支出并把预算改成100元', tripItemsPrompt + '\n我本月花了多少',
+    tripItemsPrompt + '\n查本月花了多少钱']) assert.equal(api.isAssistantFinanceQuery(prompt), true, prompt);
   for (const prompt of ['搜索：' + tripItemsPrompt, '待办：检查旅行预算', '采购：旅行账本',
     '帮我新建一条待办提醒核对本月预算', '冰岛旅行延后三天，预算保持不变', '计划一次冰岛旅行，预算5000']) assert.equal(api.isAssistantFinanceQuery(prompt), false, prompt);
 });
@@ -204,11 +205,13 @@ test('actual Assistant opens the original R2 trip brief instead of sending a fin
   }
 });
 test('actual Assistant sends an entire mixed trip and finance request for clarification', async t => {
-  const prompt = tripItemsPrompt + '\n查本月支出并把预算改成100元';
-  const h = harness('assistant', { response: clarification('unsupported') }); t.after(h.close); await h.settle();
-  await h.input('告诉助理你的需求', prompt); await h.click('查询');
-  assert.equal(h.posts().length, 1); assert.equal(h.posts()[0].body.prompt, prompt);
-  assert.equal(h.control('财务问题').props.value, prompt); assert(!h.control('查看本人账本')); assert.equal(h.f.mutations, undefined);
+  for (const question of ['查本月支出并把预算改成100元', '我本月花了多少', '查本月花了多少钱']) {
+    const prompt = tripItemsPrompt + '\n' + question;
+    const h = harness('assistant', { response: clarification('unsupported') }); t.after(h.close); await h.settle();
+    await h.input('告诉助理你的需求', prompt); await h.click('查询');
+    assert.equal(h.posts().length, 1); assert.equal(h.posts()[0].body.prompt, prompt);
+    assert.equal(h.control('财务问题').props.value, prompt); assert(!h.control('查看本人账本')); assert.equal(h.f.mutations, undefined);
+  }
 });
 test('successful late response is discarded after session changes, including the final /me failure', async t => {
   for (const options of [{ identityAfterPost: true }, { failFinalMe: true }]) { const h = harness('panel', options); t.after(h.close); await h.settle(); assert(!h.control('财务问题')); assert(!h.text().includes('1,134.56')); assert(h.text().includes('隐藏') || h.text().includes('已清除')); }

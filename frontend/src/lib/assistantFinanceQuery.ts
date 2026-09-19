@@ -35,7 +35,7 @@ export function isAssistantFinanceQuery(prompt: string): boolean {
     const topic = '(?:预算|支出|消费|开销|开支|花销|花费|账单|账本|荷包|共同资金|公共资金|长期储蓄|生活费)';
     const clause = '[^\\r\\n;；。|｜,，]*';
     const asksFinance = new RegExp('(?:查|看看|瞧瞧|统计|汇总)' + clause + topic + '|' + topic + clause + '(?:多少|还剩|剩余|余额)');
-    const periodSpending = /(?:本月|这个月|这月|上月|上个月|\d{4}年\d{1,2}月|\d{4}-\d{2})[^\r\n;；。|｜,，]*(?:支出|消费|开销|开支|花销|花费|用了?多少钱)/;
+    const periodSpending = /(?:本月|这个月|这月|上月|上个月|\d{4}年\d{1,2}月|\d{4}-\d{2})[^\r\n;；。|｜,，]*(?:支出|消费|开销|开支|花销|花费|花了?多少|用了?多少钱)/;
     if (!asksFinance.test(p) && !periodSpending.test(p)) return false;
   }
   const financeQuestion = /(?:查|看看|瞧瞧|多少|还剩|余额|开销|开支|花销|支出|消费)/.test(p);
