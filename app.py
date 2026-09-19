@@ -27,6 +27,7 @@ from assistant_finance_query import register_assistant_finance_query
 from journey_workflows import register_journeys
 from journey_documents import register_journey_documents
 from journey_places import register_journey_places
+from journey_routes import register_journey_routes
 from finance_hub import register_finance_hub
 from calendar_publish import register_calendar_publish
 from dashboard_preferences import register_dashboard_layout
@@ -743,6 +744,7 @@ def create_app(config=None):
     register_journeys(app, db, Problem, body, require_member, audit)
     register_journey_documents(app, db, Problem, body, require_member, limited, audit)
     register_journey_places(app, db, Problem, body, require_member, audit)
+    register_journey_routes(app, db, Problem, body, require_member)
     register_media_library(app, db, Problem, body, require_member, audit)
     register_media_playback(app)
     register_inventory(app, db, Problem, validate=validate)
