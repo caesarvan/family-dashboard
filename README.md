@@ -1,6 +1,8 @@
 # 家庭中枢 · Family Dashboard
 
-**最新上线：本人订单关联库存（2026-09-19 13:57:12，北京时间）。** 从本人订单详情明确选择商品、复用或创建库存批次，再预览关联私人来源；数量与收货仍须手动确认。本地 API 227 项、发布工具 102 项、组合 Node 26 项、真实浏览器 3 条流程／4 图及实际 Linux 227 项分别通过；生产一户两库保持 61/9，13:59:04 独立只读审计通过。本人真实订单、云端写入和实体电视仍未验收。[操作说明](docs/EXPO-INVENTORY-SOURCES.md) · [本批验收](docs/INVENTORY-SOURCES-ACCEPTANCE.md#inventory-sources-release)。
+**最新上线：本人账户分析（2026-09-19 16:20:25，北京时间），16:20:57 独立只读审计通过。** 本人账户的趋势、分类／流动性、原币资金进出、区间核对与 ECB 公共参考汇率已发布；生产实际一户两库完成 61→66／平台 9→9，旧数据与配置保全。Windows 258、全新构建 Node 23、真实浏览器三场景及独立趋势补充、Linux 244 和两户三库演练分别通过。A–D 本人真实完整验收仍为 0/4；并行 AI 改期不在本批发布包中。 [使用](docs/EXPO-FINANCE-ANALYSIS.md) · [集中验收](docs/FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。
+
+**此前上线：本人订单关联库存（2026-09-19 13:57:12，北京时间）。** 从本人订单详情明确选择商品、复用或创建库存批次，再预览关联私人来源；数量与收货仍须手动确认。本地 API 227 项、发布工具 102 项、组合 Node 26 项、真实浏览器 3 条流程／4 图及实际 Linux 227 项分别通过；生产一户两库保持 61/9，13:59:04 独立只读审计通过。本人真实订单、云端写入和实体电视仍未验收。[操作说明](docs/EXPO-INVENTORY-SOURCES.md) · [本批验收](docs/INVENTORY-SOURCES-ACCEPTANCE.md#inventory-sources-release)。
 
 **此前上线：售后关联家庭待办（2026-09-19 12:34:35，北京时间）。** 从「采购 → 登记或查看库存 → 批次详情」为处理中售后创建家庭待办，明确填写负责人、截止日和共享备注；私人库存资料不会自动复制。R2 Linux 164/164 与合成两户三库保全演练通过；生产一户两库保持 61/9，12:35:42 独立只读审计通过。本人实际操作、外部任务平台及实体电视仍未验收。[操作与本批验收](docs/INVENTORY-FOLLOWUP-ACCEPTANCE.md#inventory-followup-release)。
 
@@ -56,7 +58,7 @@
 
 **财务使用从核对开始。** 导入账单后先看新增、重复、冲突和错误，再明确保存到本人账本；导入不会自动修改公共荷包余额。搜索或翻页打开交易详情，可查看首次来源、选择关联候选、预览金额后确认，关系可明确撤销。共同资金和个人消费分开，个人账户与消费明细仅本人可见。本人历史资产及来源覆盖从「我的资产与来源报告」查看，不与持仓或公共荷包重复相加。实际操作步骤见 [Expo 财务](docs/EXPO-FINANCE.md)、[来源报告](docs/EXPO-BASELINE.md)。
 
-**持仓与公共资金分开管理。** 本人完整持仓支持手工增改删、CSV／TXT／XLSX 整理表预览确认、稳定来源关联、版本冲突核对及保存结果读回。估值未知与零分开，历史回执不会恢复已删除记录。使用与开发入口见 [Expo 持仓](docs/EXPO-INVESTMENTS.md)、[持仓 API](docs/INVESTMENTS-API.md)；早期 753c 候选 424 项记录仍保留于 [候选验收](docs/VALIDATION.md#expo-holdings-candidate)。手动资产／负债账户及日期估值现已上线；汇率与收益归因仍待实现。
+**持仓与公共资金分开管理。** 本人完整持仓支持手工增改删、CSV／TXT／XLSX 整理表预览确认、稳定来源关联、版本冲突核对及保存结果读回。估值未知与零分开，历史回执不会恢复已删除记录。使用与开发入口见 [Expo 持仓](docs/EXPO-INVESTMENTS.md)、[持仓 API](docs/INVESTMENTS-API.md)；早期 753c 候选 424 项记录仍保留于 [候选验收](docs/VALIDATION.md#expo-holdings-candidate)。手动资产／负债账户及日期估值现已上线；本人账户分析与 ECB 参考汇率已发布，状态见[本批验收](docs/FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。扣除资金进出后的估值残差不称交易收益，券商连接和实时行情仍未实现。
 
 面向家庭成员的日程、待办、采购、旅行、财务与助理工作台。手机和电脑负责维护，50／75 英寸电视负责常亮展示；两个住处的屏幕可各自设置侧重、布局和主题。支持邀请建立独立家庭、加入已有家庭及同一个人账户切换多个家庭；每户成员与对象权限独立。
 
@@ -80,9 +82,10 @@ JPEG 补丁后本人已实际选择 5 张、全部出现预览并明确保存，
 |---|---|
 | 了解产品及全部已开发部分 | 本文「已开发范围与边界」「软件架构」「代码地图」 |
 | 开发一个模块 | [项目规则](AGENTS.md) → [交接与候选状态](docs/HANDOFF.md) → [Git 分支协作](docs/GIT-WORKFLOW.md) → 对应接口文档 |
-| 对接或修改 API | [基础 API](docs/API.md)、[平台 API](docs/PLATFORM-API.md)、[财务 API](docs/FINANCE-API.md)、[完整路由索引](docs/PLATFORM-ROUTES.md) |
+| 对接或修改 API | [基础 API](docs/API.md)、[平台 API](docs/PLATFORM-API.md)、[财务 API](docs/FINANCE-API.md)、[历史路由索引](docs/PLATFORM-ROUTES.md) |
 | 使用或继续开发旅行简报 | [操作与组件](docs/EXPO-JOURNEY-BRIEF.md)、[组合验收及边界](docs/EXPO-TRAVEL-ACCEPTANCE.md)、[开发交接](docs/HANDOFF.md#expo-travel-release) |
 | 接手旅行地点与日历同步增量 | [使用与接线](docs/EXPO-TRIP-COORDINATION.md)、[实际验证与发布阶段](docs/EXPO-TRIP-COORDINATION-ACCEPTANCE.md)、[发布工具](docs/TRIP-COORDINATION-RELEASE.md) |
+| 查看本人账户分析 | [使用与恢复](docs/EXPO-FINANCE-ANALYSIS.md)、[API](docs/FINANCE-ANALYSIS-API.md)、[汇率来源](docs/FINANCE-FX.md)、[本批验收](docs/FINANCE-ANALYSIS-ACCEPTANCE.md) |
 | 使用或继续开发本人持仓 | [使用与组件说明](docs/EXPO-INVESTMENTS.md)、[持仓及操作回执 API](docs/INVESTMENTS-API.md)、[整理表契约](docs/INVESTMENT-IMPORT.md)、[开发交接](docs/HANDOFF.md#expo-holdings-candidate) |
 | 安装、更新、备份或排障 | [部署指导](docs/DEPLOYMENT.md)、[运维手册](docs/OPERATIONS.md)、[恢复演练](docs/RECOVERY-REHEARSAL.md) |
 | 开发新版 React Native 界面 | [前端开发与构建](frontend/README.md)、[同源托管与安全边界](docs/EXPO-WEB.md)、[官网风格](docs/EXPO-SITE-STYLE.md)、[财务](docs/EXPO-FINANCE.md)、[账户与同步](docs/EXPO-ACCOUNTS.md)、[地图与旅行相册](docs/EXPO-MAP.md)、[三模块发布记录](docs/EXPO-NEXT-RELEASE.md) |
@@ -105,7 +108,7 @@ NVIDIA 已于 16:58 通过独立配置步骤启用，模型为 `us/azure/openai/
 
 **历史开发阶段：地图当时已合 main `9559ca4`，尚未部署；现在已按顶部记录发布。** 可记录心愿、已计划及明确确认的已到访地点，按年份、成员和旅行筛选，打开关联旅行继续编辑；默认私密，可单独共享并隐藏、粗化或公开坐标。使用同源世界概览底图，支持无坐标记录；不提供街道导航或自动定位。地点数据进入有权限投影的个人 ZIP 导出，电视不能读取。使用与接口见 [地图界面](docs/JOURNEY-MAP-UI.md)、[地点接口](docs/JOURNEY-PLACES.md)、[应用接入](docs/JOURNEY-MAP-INTEGRATION.md)。
 
-地图组合经过真实临时 Flask/SQLite/Edge 的 10 项流程检查，包括保存后重启读回、刷新保留草稿、旅行关联、成员切换清理、共享撤回和并发修改恢复。当前本地地图基线为 112 个方法／路径模板、44 张户内表及 2 张平台表；服务器仍是上方 43 表版本。上线必须走独立的 43→44 迁移和恢复验证。Google Photos 已选为首个影像来源，采用本人选择授权；相册授权界面、索引与电视播放仍在开发。
+地图组合经过真实临时 Flask/SQLite/Edge 的 10 项流程检查，包括保存后重启读回、刷新保留草稿、旅行关联、成员切换清理、共享撤回和并发修改恢复。该历史阶段本地地图基线为 112 个方法／路径模板、44 张户内表及 2 张平台表；当时服务器仍是上方 43 表版本。其上线须走独立的 43→44 迁移和恢复验证。Google Photos 已选为首个影像来源，采用本人选择授权；相册授权界面、索引与电视播放仍在开发。
 
 该开发阶段另有**本地已实现、当时尚未部署**的 NVIDIA 助理与开发编排，见 [模型配置及失败处理](docs/ASSISTANT-PROVIDER.md)、[并发编排使用说明](docs/INFERENCE-ORCHESTRATION.md)。产品适配经 168 项隔离回归，并通过真实模型生成草案→本人确认→幂等保存→重启读回及旅行简报的 18 项检查；使用虚构家庭数据，未连接生产账户或写云日历。开发编排的 24 个需求任务全部返回，配置 24 worker、实测峰值 14，用量 10,278 tokens；它们是未审查建议，不是 24 个功能交付。
 
@@ -196,7 +199,8 @@ NVIDIA 已于 16:58 通过独立配置步骤启用，模型为 `us/azure/openai/
 | 云日历发布 | 独立写权限升级、目标日历选择、确认入队、创建/更新读回、迁期、重试、暂停、远端修改冲突核对；时间语义复核与同目标重连恢复 | 新写流程仅完成本地模拟服务商验收；需本人真实授权验证；不自动邀请与会者或删除远端事件 |
 | 公共财务 | 荷包余额、日常预算、旅行准备金、储蓄、出资比例、核对日期；经批准的资产/负债汇总 | 手动快照；支付宝小荷包与银行没有自动连接；不执行转账或理财交易 |
 | 私有财务 | 完整本人账本分页和标题／编号／商品搜索；CSV/XLSX 工作表与金额列选择；通用四列手动映射已[发布](docs/FINANCE-COLUMN-MAPPING-ACCEPTANCE.md)；账单/订单预览、确认与对账；确认后定位实际月份，成功后读回失败只重试 GET；完整来源基线和独立消费观察分别预览确认，原资产/负债小计保持批准的共享范围 | 真实文件变体和私人来源映射未全部验证；观察报告不是已核对实付，不与账本相加；未启用无人值守刷新或银行连接 |
-| 投资 | Expo 本人完整持仓与筛选、分币种精确汇总、手工增改删、CSV/TXT/XLSX 整理表预览、稳定来源关联、版本保护、导出及持久回执恢复 | 没有完整资产账户、负债编辑、估值历史、券商连接、实时行情或自动汇率；缺估值不按零处理，股息费用不含在当前盈亏中 |
+| 投资 | Expo 本人完整持仓与筛选、分币种精确汇总、手工增改删、CSV/TXT/XLSX 整理表预览、稳定来源关联、版本保护、导出及持久回执恢复 | 券商连接和实时行情未实现；持仓不与手动账户重复加总，缺估值不按零处理，股息费用不含在当前持仓盈亏中 |
+| 本人资产账户 | 手动资产／负债账户、按日原币估值、未知值、归档／恢复与本人导出已上线；趋势、分类／流动性、资金事件、精确区间核对和 ECB 参考汇率已发布，状态见[本批验收](docs/FINANCE-ANALYSIS-ACCEPTANCE.md) | 当前仅本人明确选中的手动账户；旧估值与缺口保留，不宣称完整家庭财产；估值残差不是交易收益，不连接银行、券商或自动投资 |
 | 助理 | 旅行文字简报、可选 AI 与手工补齐、明确重新整理和旅行预览确认；本地近期概览、搜索、待办/采购草案与逐项确认；已发布“本周待处理”，从待办、冲突日程、采购金额、旅行准备和公共资金打开原记录；存在到期或异常例行计划时显示第六组，处理后回读 | 行动台范围为今天至七天后并含逾期待办，不是完整自然周；默认本地规则，可选模型调用另行验收 |
 | 电视与手机 | 配对、撤销、独立侧重成员／日程范围／卡片／主题／密度；手机管理逐屏照片许可及开始／暂停／继续／翻页／间隔，电视只读轮播获准照片 | 不返回私有财务；家庭共享不自动授权电视；实体 50／75 英寸电视、离线编辑及各系统安装体验待验收 |
 | 同步问题中心 | 共享来源状态、本人账户／来源和可管理发布项；超过 5 分钟、等待、失败、授权与未知状态分开；相同业务 revision 也局部刷新摘要 | 仅读数据库记录，不探测服务商、不自动重试或写云端；不能证明外部内容完整、进程实时健康或金融来源已同步 |
@@ -244,7 +248,7 @@ flowchart LR
 | 文件与时间 | icalendar / recurring-ical-events、Pillow；CSV/XLSX 有界解析，拒绝公式、外链及不支持的格式；固定 `tzdata==2026.4`，旅行存当地时间、IANA 时区与确认后的 UTC 时刻 |
 | 部署 | Docker Compose：app、sync、media、web 四服务；锁定基础镜像；Nginx TLS / ACME；持久化命名卷 |
 
-平台注册目录为 `/data/platform.sqlite3`；原家庭为 `/data/household.sqlite3`；子家庭为 `/data/spaces/<随机 id>/household.sqlite3`。当前为 **61 张户内表和 9 张平台表**，见[成员迁移与发布](docs/MEMBERSHIPS-RELEASE-R3.md)。`hub_import_receipts` 属于已完成的历史 53→54 财务回执迁移，旧 `hub_imports` 七列及原有数据、权限保持；此前持仓及本人账户表见历史 58 表结构和[账户发布验收](docs/EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md)为准。新交易保存首次批次来源，历史未知不回填。完整结构见 [存储索引](docs/PLATFORM-ROUTES.md)、[数据模型](docs/DATA-MODEL.md) 和 [回执迁移与恢复](docs/FINANCE-RECEIPTS-RELEASE.md)。
+平台注册目录为 `/data/platform.sqlite3`；原家庭为 `/data/household.sqlite3`；子家庭为 `/data/spaces/<随机 id>/household.sqlite3`。当前为 **66 张户内表和 9 张平台表**，本批仅增五表，见[分析发布验收](docs/FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)及[迁移合同](docs/FINANCE-ANALYSIS-RELEASE.md)。`hub_import_receipts` 属于已完成的历史 53→54 财务回执迁移，旧 `hub_imports` 七列及原有数据、权限保持；此前持仓及本人账户表见历史 58 表结构和[账户发布验收](docs/EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md)为准。新交易保存首次批次来源，历史未知不回填。完整结构见 [存储索引](docs/PLATFORM-ROUTES.md)、[数据模型](docs/DATA-MODEL.md) 和 [回执迁移与恢复](docs/FINANCE-RECEIPTS-RELEASE.md)。
 
 家庭 routing cookie 只选入口，不授予登录权限；会话和令牌加密密钥按家庭派生。切换家庭会退出原会话。坏 cookie 返回带恢复入口的错误，已注册家庭缺少数据库时返回 503，不能用原家庭环境密码自动补建身份。
 
@@ -308,7 +312,7 @@ family-dashboard/
 
 ## 接口与数据契约
 
-当前源码与本次安装版本接口索引为 **156 个 Flask 方法／路径模板**，含家庭例行操作回执 GET。另有 WSGI `GET /space/<slug>`，HEAD/OPTIONS 不重复计数。见 [路由索引](docs/PLATFORM-ROUTES.md)和[托管契约](docs/EXPO-WEB.md)；机器结构由实际应用生成，字段与权限仍见各模块契约。
+[路由索引](docs/PLATFORM-ROUTES.md)保留手动账户历史版本的 162 个 Flask 方法／路径模板计数，不作为当前总数。本批新增的九个本人账户分析操作见[分析 API](docs/FINANCE-ANALYSIS-API.md)，其它模块入口见[接口文档](docs/API.md)。另有 WSGI `GET /space/<slug>`，HEAD/OPTIONS 不重复计数；托管方式见[托管契约](docs/EXPO-WEB.md)，字段与权限以各模块契约为准。
 
 | 接口族 | 内容与权限 |
 |---|---|
@@ -382,16 +386,16 @@ node --test tests/test_calendar_views.js
 | 数据 | 命名卷 `family-dashboard_household-data` 挂载到 `/data`；平台目录与各家庭数据库位于卷内 |
 | 配置 | `/opt/family-dashboard/.env`，权限 0600；由 Compose 注入，更新保留原密钥和成员配置 |
 
-安装、DNS、HTTPS 证书与续期、OAuth 回调、备份及恢复见 [部署指导](docs/DEPLOYMENT.md)。当前为 61 张户内表及 9 张平台表，首次安装与已有数据更新使用各自流程；本轮固定发布及数据保全见[成员发布记录](docs/MEMBERSHIPS-RELEASE-R3.md)。[54 表回执恢复](docs/FINANCE-RECEIPTS-RELEASE.md) 和历史 43 表发布入口仅供追溯，不能用作当前发布入口：
+安装、DNS、HTTPS 证书与续期、OAuth 回调、备份及恢复见 [部署指导](docs/DEPLOYMENT.md)。当前为 66 张户内表及 9 张平台表，首次安装与已有数据更新使用各自流程；本轮固定发布及数据保全见[分析发布验收](docs/FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。[54 表回执恢复](docs/FINANCE-RECEIPTS-RELEASE.md) 和历史 43 表发布入口仅供追溯，不能用作当前发布入口：
 
 - **首次安装**：配置新服务器与独立密钥，初始化新数据卷，签发证书，启动 app／sync／media／web 四个服务，再绑定第三方账户。
-- **已有环境更新**：冻结实际已安装 BASE 和审查后的候选，在独立目录构建与验证；通过部署演练和独立发布审查后，停止写者、核验全组备份、安装源码并分阶段核对全部数据，再开放服务。当前为 61 张户内表及 9 张平台表；任何后续结构、依赖或配置变更需另行审查，不能重用历史 43→43 控制器或已完成的 53→54 迁移。
+- **已有环境更新**：冻结实际已安装 BASE 和审查后的候选，在独立目录构建与验证；通过部署演练和独立发布审查后，停止写者、核验全组备份、安装源码并分阶段核对全部数据，再开放服务。当前为 66 张户内表及 9 张平台表；任何后续结构、依赖或配置变更需另行审查，不能重用历史 43→43 控制器或已完成的 53→54 迁移。
 
 源代码打包命令为 `python deploy/prepare_release.py`，产物为 `release.tar.gz` 与归档内的 `RELEASE-MANIFEST.json`；它不生成登录凭据。发布白名单包括源码、文档和测试，排除 `.env`、数据库、私人财务输入与运行证据。
 
-历史版本完成 37→40、40→42、[42→43](docs/JOURNEY-DOCUMENTS-RELEASE.md)、43→44、44→48、[48→53](docs/INVENTORY-MIGRATION.md)、[53→54](docs/FINANCE-RECEIPTS-RELEASE.md) 及 [54→55](docs/HOLDINGS-RELEASE.md)。[静态 43→43](docs/STATIC-RELEASE.md)、[SOURCE 43→43](docs/SOURCE-RELEASE.md) 和 DEPLOYMENT 第 5.2 节的历史算法均不可用于当前 61/9 表结构；已完成的一次性迁移（含 55→58 和 58/2→61/9）不能重放。
+历史版本完成 37→40、40→42、[42→43](docs/JOURNEY-DOCUMENTS-RELEASE.md)、43→44、44→48、[48→53](docs/INVENTORY-MIGRATION.md)、[53→54](docs/FINANCE-RECEIPTS-RELEASE.md) 及 [54→55](docs/HOLDINGS-RELEASE.md)。[静态 43→43](docs/STATIC-RELEASE.md)、[SOURCE 43→43](docs/SOURCE-RELEASE.md) 和 DEPLOYMENT 第 5.2 节的历史算法均不可用于当前 66/9 表结构；已完成的一次性迁移（含 55→58、58/2→61/9 和本批 61/9→66/9）不能重放。
 
-备份使用 SQLite 在线备份，包含平台注册目录及全部已注册家庭，输出散列清单并保留最近 14 组。它不是跨数据库的原子快照；恢复必须核对完整备份组、配套密钥与家庭映射，按 [会话恢复要求](docs/MEMBER-SESSIONS.md#恢复后使旧成员登录失效) 使旧成员登录失效。已完成两户虚构数据的[实际 Docker 恢复演练](docs/RECOVERY-REHEARSAL.md)，包含旧登录失效、照片和隔离核对。异地备份仍待完成；本次失败后实际执行过发布前完整两库组恢复，经过独立审计，过程与边界见[成员发布历史](docs/MEMBERSHIPS-ACCEPTANCE.md)。
+备份使用 SQLite 在线备份，包含平台注册目录及全部已注册家庭，输出散列清单并保留最近 14 组。它不是跨数据库的原子快照；恢复必须核对完整备份组、配套密钥与家庭映射，按 [会话恢复要求](docs/MEMBER-SESSIONS.md#恢复后使旧成员登录失效) 使旧成员登录失效。已完成两户虚构数据的[实际 Docker 恢复演练](docs/RECOVERY-REHEARSAL.md)，包含旧登录失效、照片和隔离核对。异地备份仍待完成；此前成员发布失败后实际执行过发布前完整两库组恢复，经过独立审计，过程与边界见[成员发布历史](docs/MEMBERSHIPS-ACCEPTANCE.md)。
 
 现有环境不要执行 `docker compose down -v` 或覆盖密钥。发布后已有业务写入时先保全现场，再决定恢复方式；旧镜像不能直接连接未知的新结构。日常检查与排障见 [OPERATIONS](docs/OPERATIONS.md)。
 

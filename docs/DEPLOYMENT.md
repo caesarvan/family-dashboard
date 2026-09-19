@@ -1,12 +1,12 @@
 # 部署、更新与恢复交接
 
-**当前结构与运行基线：61 张户内表、9 张平台表。** 2026-09-18 13:51:39（北京时间）已激活个人账户与多家庭成员协作；完整安装身份、数据保全与恢复要求见 [R3 发布](MEMBERSHIPS-RELEASE-R3.md)。不得重放成员迁移或下面的固定历史算子；后续更新必须绑定当前实际 manifest、镜像及全组数据库。下方所有旧基线叙述仅是历史。
+**当前结构与运行基线：66 张户内表、9 张平台表。** 本人账户分析于 2026-09-19 16:20:25（北京时间）激活，16:20:57 独立只读审计通过。生产实际一户两库从 61/9 迁至 66/9；固定 source `f25357f935d64774922efa68d42a2ba41bb18037`、镜像 `sha256:21625d6e2d9768ba48cca35100bb8bf02c1c4146afa6b7ad25b9b72cb559c1d2` 及完整身份见[分析发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)，数据保全与恢复合同见[本批发布](FINANCE-ANALYSIS-RELEASE.md)。不得重放本批、成员迁移或下面的固定历史算子；后续更新必须绑定实际 manifest、镜像及全组数据库。下方旧基线与代码块仅供历史追溯。
 
 **历史激活版：家庭与成员，2026-09-18 05:49:18（北京时间）。** 58→58 但 `schemaChange=true`，仅新增 `users.household_role`；停写后实际 1 户两库完整组备份，旧 users 五列、其它 57 表及 registry 保全，app 启动快照等于迁移后快照。05:49:55 发布后读回通过，05:55:19 独立读回及随后审计通过；固定身份、实际 Linux 226 通过／1 精确 Windows 跳过及迁移证据见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。不得重放已完成算子或迁移。
 
 **此前运行版：旅行 JSON 导入，2026-09-18 04:42:28（北京时间）激活。** 58→58，无 DDL；实际 1 户两库停写备份、启动时原行／schema／序列与平台注册库保持。发布身份、镜像、静态资源、HTTPS 和后置备份见[旅行导入验收](EXPO-TRIP-IMPORT-ACCEPTANCE.md#expo-trip-import-release)。后续发布须重新固定实际父版本，不重放已完成的固定算子。
 
-**历史账户结构基线为 58 张户内表及 2 张平台注册表。** 2026-09-18 00:23:38（北京时间）完成手动资产账户发布，00:24:23 HTTPS 读回、00:27:22 独立只读复核通过。完整身份及证据见 [发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。后续更新须绑定新的实际基线，不可重放任何已完成迁移；该账户历史基线使用 [账户迁移检查器](FINANCE-ACCOUNTS-MIGRATION.md)。当前新增角色列后的完整组恢复必须改用 [成员角色迁移检查器](HOUSEHOLD-MEMBERS-MIGRATION.md) 的 snapshot-current／check-restored，旧结构整组回退用 check-rollback；不能仅凭同为 58 表混用检查器。生产覆盖恢复未执行。
+**历史账户结构基线为 58 张户内表及 2 张平台注册表。** 2026-09-18 00:23:38（北京时间）完成手动资产账户发布，00:24:23 HTTPS 读回、00:27:22 独立只读复核通过。完整身份及证据见 [发布验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)。后续更新须绑定新的实际基线，不可重放任何已完成迁移；该账户历史基线使用 [账户迁移检查器](FINANCE-ACCOUNTS-MIGRATION.md)。当时新增角色列后的完整组恢复必须改用 [成员角色迁移检查器](HOUSEHOLD-MEMBERS-MIGRATION.md) 的 snapshot-current／check-restored，旧结构整组回退用 check-rollback；不能仅凭同为 58 表混用检查器。生产覆盖恢复未执行。
 
 当前安装版本及实际发布证据以 [README 最新上线记录](../README.md) 和其链接的验收页为准。下方保留数据库结构变化与恢复要求的历史基线；后续界面更新不能据此复用旧发布包、镜像或固定算子。
 
@@ -32,7 +32,7 @@ SOURCE 与 static-only 共用原事务核心和锁；SOURCE 只接受逐文件�
 
 ## 历史旅行资料：已完成的一次性 42→43 发布
 
-2026-09-15 20:23:00 已正式新增 `journey_documents`、两个显式索引和解除关联触发器；当前为 **43 张户内表及 2 张平台表**。原 42 表、行、schema 和序号在停写及启动核对窗口保持，原配置字节保留。实际发布、两类合成 Docker 演练和读回见 [VALIDATION](VALIDATION.md)。新服务器由当前源码初始化为 43 + 2；完整空服务器安装与生产恢复仍须单列验收。
+2026-09-15 20:23:00 已正式新增 `journey_documents`、两个显式索引和解除关联触发器；当时为 **43 张户内表及 2 张平台表**。原 42 表、行、schema 和序号在停写及启动核对窗口保持，原配置字节保留。实际发布、两类合成 Docker 演练和读回见 [VALIDATION](VALIDATION.md)。新服务器由该历史源码初始化为 43 + 2；完整空服务器安装与生产恢复仍须单列验收。
 
 已随源码提供 [deploy/check_journey_documents_migration.py](../deploy/check_journey_documents_migration.py)，执行 `snapshot`、`validate-backup`、`warm`、`check` 四个动作；完整输入、命令和输出见 [迁移契约](JOURNEY-DOCUMENTS.md#一次性-4243-迁移检查器)。检查器不负责停服或恢复，不能把四条命令直接对运行中的数据库顺序执行。它拒绝旧表、行或序号漂移，拒绝新表预填和任何不匹配的 DDL，并在 warm 初始化前重新验证停写快照及全部备份。
 
@@ -50,7 +50,7 @@ SOURCE 与 static-only 共用原事务核心和锁；SOURCE 只接受逐文件�
 
 ## 历史 42→42 更新
 
-2026-09-15 16:25:03 的历史旅行执行版没有结构变化，当时使用第 5.2 节 42→42 流程。**该节所有代码现在仅供历史追溯，不能用于当前 43 表库。** 已完成的一次性 42→43 同样不能重复执行。纯静态 43→43 使用 [STATIC-RELEASE](STATIC-RELEASE.md)，经明确审查的既有 Python／静态更新使用 [SOURCE-RELEASE](SOURCE-RELEASE.md)；配置、依赖或结构变化仍需另行准备与审查，不能只改表数绕过。
+2026-09-15 16:25:03 的历史旅行执行版没有结构变化，当时使用第 5.2 节 42→42 流程。**该节所有代码现在仅供历史追溯，不能用于当前 66/9 表结构。** 已完成的一次性 42→43 同样不能重复执行。纯静态 43→43 使用 [STATIC-RELEASE](STATIC-RELEASE.md)，经明确审查的既有 Python／静态更新使用 [SOURCE-RELEASE](SOURCE-RELEASE.md)；配置、依赖或结构变化仍需另行准备与审查，不能只改表数绕过。
 
 ## 历史消费观察 40→42 升级要求（15:10:00）
 
@@ -60,7 +60,7 @@ SOURCE 与 static-only 共用原事务核心和锁；SOURCE 只接受逐文件�
 
 40 表原库可以升级；已经有任一新表、部分家庭已迁移、缺表或结构漂移均需停止核对，不能通过只改表数绕过。迁移检查必须匹配完整列、外键、隐式／显式索引及空行条件。失败只在提交前、配置相配且备份组验证通过时恢复；提交后发现新写入或结果不明时保全现场，禁止盲目旧库覆盖。新观察与账本导航不会写入第三方云账户。
 
-**第 5.2 节是历史 42→42 零 schema 示例，不是当时 40→42 首次升级算法，也不是当前 43 表更新步骤。** 历史消费观察迁移证据见 [VALIDATION](VALIDATION.md)；当前源码初始化 43 + 2，后续更新须使用针对实际结构另行审查并验证的流程。
+**第 5.2 节是历史 42→42 零 schema 示例，不是当时 40→42 首次升级算法，也不是当前 66/9 表结构的更新步骤。** 历史消费观察迁移证据见 [VALIDATION](VALIDATION.md)；当时源码初始化 43 + 2；当前为 66/9，后续更新须使用针对实际结构另行审查并验证的流程。
 
 消费观察文件经本人预览确认才接收；本次部署仅提供能力，不上传准备好的真实文件，不改来源刷新计划。准备工具、固定输入文件和接受契约见 [SPENDING-OBSERVATIONS](SPENDING-OBSERVATIONS.md)。
 
@@ -93,7 +93,7 @@ SOURCE 与 static-only 共用原事务核心和锁；SOURCE 只接受逐文件�
 
 已存在 138 项离线激活／恢复检查：假 Docker 控制流，加真实临时 SQLite 注册目录和两户数据库的 35→37 接受／拒绝、完整备份／恢复、临时源码归档恢复。这 138 项只证明离线模拟范围，不等于真实 Docker 回滚、新机安装或生产覆盖恢复已经验收；该历史采购版实际迁移与发布、Linux、浏览器及备份证据另见 [VALIDATION](VALIDATION.md)。失败时仅在提交前且原数据没有后续变化、完整恢复组及源码／镜像相配、`.env` 未漂移的条件下走已审查恢复；任何配置、完整性或恢复核验失败均保持停止。提交后发现新写入或状态不明，保留候选数据和现场，不能盲目恢复旧快照抹掉新数据。恢复相配备份后，先按第 6.2 节使目标家庭旧成员会话失效，再开放服务。
 
-第 5.2 节历史示例不能承担 35→37、37→40、40→42 或 42→43 首次迁移，也不能用于当前 43→43 更新。当前源码直接初始化 43 张户内表及 2 张平台表，资料、采购、例行和观察新增业务表无预填数据；旧结构按各自已审查迁移处理。旧包 193／200 等数量只作历史。
+第 5.2 节历史示例不能承担 35→37、37→40、40→42 或 42→43 首次迁移，也不能用于当前 66/9 结构的更新。该历史源码直接初始化 43 张户内表及 2 张平台表，资料、采购、例行和观察新增业务表无预填数据；旧结构按各自已审查迁移处理。旧包 193／200 等数量只作历史。
 
 ## 同步状态的零迁移发布
 
@@ -111,7 +111,7 @@ SOURCE 与 static-only 共用原事务核心和锁；SOURCE 只接受逐文件�
 
 > 当前运行 Flask/Gunicorn、同步 worker、Nginx 三服务，家庭隔离及完整备份见 [平台扩展](PLATFORM.md)。新版 Python 模块必须与前端一起交付；prepare_release.py 只打包源码。最新发布见文首和 [VALIDATION](VALIDATION.md)，下方旧记录保留历史范围；成员会话与相配数据库恢复约束继续适用。
 
-本文保留 Dockerfile、compose.yaml、deploy 的安装和维护说明；第 5.2 节仅保留已完成消费观察迁移的历史 42 表版本示例，不适用于当前 43 表，不能代替历史 40→42 首次迁移或更早的升级。源码／步骤核对日期为 2026-09-15；下方服务器快照保留 2026-09-14 历史，不代表之后实时状态。接口／权限见 [README](../README.md)，账号注册见 [ACCOUNT-SYNC](ACCOUNT-SYNC.md)，证据见 [VALIDATION](VALIDATION.md)。
+本文保留 Dockerfile、compose.yaml、deploy 的安装和维护说明；第 5.2 节仅保留已完成消费观察迁移的历史 42 表版本示例，不适用于当前 66/9 表结构，不能代替历史 40→42 首次迁移或更早的升级。源码／步骤核对日期为 2026-09-15；下方服务器快照保留 2026-09-14 历史，不代表之后实时状态。接口／权限见 [README](../README.md)，账号注册见 [ACCOUNT-SYNC](ACCOUNT-SYNC.md)，证据见 [VALIDATION](VALIDATION.md)。
 
 成员会话已于 2026-09-15 07:58:24 发布。迁移新增认证表与 OAuth 上下文字段，完整约束见 [成员登录设备](MEMBER-SESSIONS.md#发布回滚与恢复)。迁移后的 `cloud_oauth_states` 不兼容 7b 旧程序按九列位置插入；不能直接让旧镜像接管新库。恢复相配备份后必须先使本次恢复家庭旧登录失效，再启动 app/web。
 
@@ -119,7 +119,7 @@ SOURCE 与 static-only 共用原事务核心和锁；SOURCE 只接受逐文件�
 
 修订前正式基线记录（保留历史）：2026-09-15 10:43:53（北京时间）已发布同步新鲜度与问题中心，保留电视、投资、会话及此前全部模块；镜像 `sha256:6882d2a2009ce4ef378cc2448026f5a7edc4b63fd14e440bc104fcdd6d7e159c`。Windows **981 passed / 12 skipped**，Linux **992 passed / 1 skipped**；两端完整收集 993 项；本轮 3 组浏览器记录：131 项功能检查，另有 59 条页面／视口记录；两类不混算。停止入口和旧写进程后核对 35 张户内表与 2 张平台表，表、列、schema 对象、行及 SQLite 内部序号完全保留；初始化未增加表或列。发布前后完整备份、环境保留、三服务运行与 app 健康已核对；6 个既有来源有发布后成功记录，38 个静态资源匹配，15 个匿名受保护 API 返回 401。公网浏览器、两台实体电视、真实新增云写、私人来源映射和可选模型调用仍单独待验收；没有执行生产恢复或宣称商业化就绪。 完整证据见 [VALIDATION](VALIDATION.md)。
 
-完整来源预览／CAS、旅行时间明细及独立消费观察均已在历史版本发布，当前保留。对应源码为 `finance_source_bridge.py`、`journey_time.py`、`deploy/prepare-finance-source.py` 和 `pytest.ini`；固定 `tzdata==2026.4`，Docker `PYTHONTZPATH=""` 使用该包。第 5.2 节历史零 schema 流程记录了停写、备份、串行初始化和分步启动；当前 43 表的后续更新不得直接执行该示例；任何新增结构必须使用该版本专门审核的首次迁移流程。
+完整来源预览／CAS、旅行时间明细及独立消费观察均已在历史版本发布，当前保留。对应源码为 `finance_source_bridge.py`、`journey_time.py`、`deploy/prepare-finance-source.py` 和 `pytest.ini`；固定 `tzdata==2026.4`，Docker `PYTHONTZPATH=""` 使用该包。第 5.2 节历史零 schema 流程记录了停写、备份、串行初始化和分步启动；当前 66/9 表结构的后续更新不得直接执行该示例；任何新增结构必须使用该版本专门审核的首次迁移流程。
 
 本次公网浏览器验收为 `browser_environment_blocked`：本机 Microsoft Defender SmartScreen 组织策略阻止正式域名页面加载。没有通过公网浏览器 UI 验收，容器内部结果不能替代该项；真实新增 Microsoft / Google 云端写入仍未验收。临时浏览器历史测试保留其原有范围与日期，不提升为生产验收。
 
@@ -263,7 +263,7 @@ docker compose up -d --wait --wait-timeout 180 app sync
 docker compose ps
 ```
 
-首次空数据卷使用当前完整源码会创建 43 张户内表及两位用户，并初始化 2 张平台注册表；采购两张私有表、三张例行表、两张消费观察私有表及旅行资料表初始为空。首次安装的真实服务器流程仍需单独验收。未来启动只做幂等建表／兼容列迁移，不会重置已有密码或导入演示数据。UID 10001 必须能在 `/data` 创建数据库、WAL、备份及 `cloud-locks/`。暂不启动 Compose 的 web：正式 `nginx.conf` 同时引用 IP 与域名两套证书，缺任何一套都会启动失败。
+当前完整源码结构为 66 张户内表及 9 张平台表，见[分析发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)。下方命令保留历史安装说明，首次空服务器的完整流程仍需单独验收，不能以已有生产的一户两库升级证据替代。未来启动只做幂等建表／兼容列迁移，不会重置已有密码或导入演示数据。UID 10001 必须能在 `/data` 创建数据库、WAL、备份及 `cloud-locks/`。暂不启动 Compose 的 web：正式 `nginx.conf` 同时引用 IP 与域名两套证书，缺任何一套都会启动失败。
 
 ### 3.3 用独立 HTTP 入口完成 ACME，随后启动正式 HTTPS
 
@@ -369,7 +369,7 @@ docker run --rm \
 
 `prepare_release.py` 使用文件白名单，包含当前 Python 模块、Docker/Compose、pytest.ini、static、deploy、docs、tests、README、AGENTS 和 `.cursor/rules/git-collaboration.mdc`。当前 Python 运行模块在 Dockerfile 中有明确 COPY，来源准备 CLI 随 deploy 目录交接。不包含 `.git`、根 `.env`、数据库、`data/`、`.venv/`、`test-results/` 或私人访问目录。它将 `deploy/*.sh` 的归档权限设为 0755，生成 `RELEASE-MANIFEST.json`，并在源码发生并行修改时拒绝替换旧归档。
 
-发布候选必须来自已按 [Git 流程](GIT-WORKFLOW.md) 审查并合入 main 的明确提交，在独立干净发布工作树中构建；记录 commit、归档 SHA、镜像 ID、测试与迁移类型。Git 合并不会更新正在运行的容器。各 agent 在自己的 worktree 开发，不直接改服务器目录；纯静态与既有 Python／静态更新分别按 [STATIC-RELEASE](STATIC-RELEASE.md) 和 [SOURCE-RELEASE](SOURCE-RELEASE.md) 的受审范围执行。旅行资料历史版已完成独立 42→43，当前 43 表不能执行本节历史 42→42 算法。
+发布候选必须来自已按 [Git 流程](GIT-WORKFLOW.md) 审查并合入 main 的明确提交，在独立干净发布工作树中构建；记录 commit、归档 SHA、镜像 ID、测试与迁移类型。Git 合并不会更新正在运行的容器。各 agent 在自己的 worktree 开发，不直接改服务器目录；纯静态与既有 Python／静态更新分别按 [STATIC-RELEASE](STATIC-RELEASE.md) 和 [SOURCE-RELEASE](SOURCE-RELEASE.md) 的受审范围执行。旅行资料历史版已完成独立 42→43，当前 66/9 表结构不能执行本节历史 42→42 算法。
 
 历史基线说明：16:25 为 218 文件，17:35 实际源树为 222，后续 225 文件文档交接未改运行镜像；20:23 安装 237 文件，22:32 静态发布安装 248 文件。2026-09-16 11:39:20 SOURCE 发布已安装 255 文件及 manifest `169c9621…`，旧源码和旧清单原样保留；本次文档修订不自动同步服务器。任何后续更新都须核对真实源树，不能覆盖清单制造一致。历史静态发布曾因两份未列入清单的旧 Nginx 备份而预检拒绝、未停服务，保留归档后才重试，见 [VALIDATION](VALIDATION.md)。
 
@@ -385,7 +385,7 @@ scp $releaseArchive racknerd:/tmp/family-dashboard-release.tar.gz
 
 ### 5.2 备份、保留回滚材料，再替换源码
 
-> **历史代码限定：以下保留的是 42→42 更新程序及当时的验证条件，所有代码块原字节不变。当前已为 43 表，不可执行这些更新命令。纯静态更新使用 [STATIC-RELEASE](STATIC-RELEASE.md)，明确审查的既有 Python／静态更新使用 [SOURCE-RELEASE](SOURCE-RELEASE.md)；配置、依赖或结构变化仍需另审，一次性 42→43 工具也不能重复使用。**
+> **历史代码限定：以下保留的是 42→42 更新程序及当时的验证条件，所有代码块原字节不变。当前为 66/9 表结构，不可执行这些更新命令。[STATIC-RELEASE](STATIC-RELEASE.md) 和 [SOURCE-RELEASE](SOURCE-RELEASE.md) 也仅适用于其各自固定历史基线；配置、依赖或结构变化仍需另审，一次性 42→43 工具也不能重复使用。**
 
 以下在同一个 root shell 中按顺序执行，只适用于**已有 42 张户内表／2 张平台表，devices.display_layout、采购两表、例行三表和消费观察两表均存在的后续 42→42 零 schema 更新**。所有业务表可以有历史数据，所有原值必须保留；**不适用于 35→37、37→40、40→42 或任何表／列／索引增删改**。先比较归档 SHA-256 与已验收候选，冻结源码、不可变镜像及配置，禁止并行发布／导入。新迁移必须另行审查，不能修改数字、删除或放宽下方相等断言来强行通过。
 
@@ -1004,4 +1004,4 @@ docker compose exec -T app python /app/finance_baseline.py --database=/data/hous
 
 XLSX 工作表发现与助理旅行简报已于 2026-09-15 06:50:21 合入并发布，详情见 [验收记录](VALIDATION.md)。
 
-历史 40→40 校验片段的 58 项离线检查仅对应当时版本。第 5.2 节保留的历史 42→42 代码及其当时整文档散列，曾与消费观察 SCHEMA_SQL 一起绑定离线复验记录，检查临时两户非空历史、完整备份和 fake app warm。本次只修改说明正文，代码字节未变；不能把历史整文档证明当作当前 43→43 更新验收。该范围也不是 Docker 或生产恢复实测。
+历史 40→40 校验片段的 58 项离线检查仅对应当时版本。第 5.2 节保留的历史 42→42 代码及其当时整文档散列，曾与消费观察 SCHEMA_SQL 一起绑定离线复验记录，检查临时两户非空历史、完整备份和 fake app warm。本次只修改说明正文，代码字节未变；不能把历史整文档证明当作当前 66/9 表结构的更新验收。该范围也不是 Docker 或生产恢复实测。
