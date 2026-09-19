@@ -43,7 +43,7 @@ def exported_reference_fx(con):
                   'selection': 'rate_date_desc_currency_version', 'historicalReportReconstruction': False}
 ENTITY_FIELDS = {'title','owner','done','due','priority','tripId','journeyId','quantity','budget','actual','note',
                  'photoIds','start','end','allDay','location','source','imported','destination','saved','paid',
-                 'travelTiming','startDate','endDateExclusive','workflowKey'}
+                 'travelTiming','startDate','endDateExclusive','workflowKey','dependsOn'}
 INVENTORY_ITEM_FIELDS = {'id','owner','visibility','title','variant','unit','location','revision',
                          'onHandQty','inTransitQty','plannedQty','reorderPoint','belowThreshold','createdAt','updatedAt'}
 INVENTORY_ACQUISITION_FIELDS = {'id','itemId','shoppingId','kind','orderedQty','orderState','orderedOn',

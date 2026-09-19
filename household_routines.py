@@ -1,6 +1,7 @@
 """Shared, explicitly confirmed routines; local entities only, no cloud writes."""
 from __future__ import annotations
 
+import task_dependencies as dependencies
 import calendar
 import hashlib
 import json
@@ -21,7 +22,7 @@ MAX_ITEMS = 2500
 TIME_ZONE = "Asia/Shanghai"
 MAX_DATE = date(2100, 12, 31)
 OPERATIONS = {"create", "update", "pause", "resume", "skip", "archive"}
-ENTITY_FIELDS = {"title", "owner", "note", "done", "due", "quantity", "budget", "actual", "photoIds"}
+ENTITY_FIELDS = {"title", "owner", "note", "done", "due", "quantity", "budget", "actual", "photoIds", "dependsOn", "blockedBy", "dependencyStatus"}
 
 
 def today():
@@ -140,10 +141,12 @@ class RoutineEngine:
         anchor = max(day, date.fromisoformat(current["scheduled_on"])) if current else day
         return next_dates(json.loads(rule["schedule"]), anchor, strict=bool(current))
 
-    def occurrence(self, con, rule, row, *, current=False):
+    def occurrence(self, con, rule, row, *, current=False, dependency_graph=None):
         entity = con.execute("SELECT id,kind,data,revision FROM entities WHERE id=? AND kind=?",
                              (row["entity_id"], rule["kind"])).fetchone()
         value = json.loads(entity["data"]) if entity else None
+        if value is not None and rule["kind"] == "tasks" and dependency_graph is not None:
+            value = dependencies.project(value, dependency_graph)
         state = row["state"]
         if state == "current":
             state = "missing" if value is None else "completed" if value.get("done") is True else "pending"
@@ -153,7 +156,7 @@ class RoutineEngine:
                     {**{k: v for k, v in value.items() if k in ENTITY_FIELDS},
                      "id": entity["id"], "revision": entity["revision"]}}
 
-    def public(self, con, rule, day, counts=None):
+    def public(self, con, rule, day, counts=None, *, dependency_graph=None):
         counts = counts or self.counts(con)
         current, entity = self.current(con, rule)
         dates = self.dates(rule, current, day)
@@ -167,9 +170,9 @@ class RoutineEngine:
                     status = "capacity_blocked"
         output = business_plan(rule)
         output.pop("currentIndex")
-        output.update(status=status, current=self.occurrence(con, rule, current, current=True) if current else None,
+        output.update(status=status, current=self.occurrence(con, rule, current, current=True, dependency_graph=dependency_graph) if current else None,
                       nextDates=dates,
-                      history=[self.occurrence(con, rule, dict(row)) for row in con.execute(
+                      history=[self.occurrence(con, rule, dict(row), dependency_graph=dependency_graph) for row in con.execute(
                           "SELECT * FROM routine_occurrences WHERE plan_id=? ORDER BY occurrence_index DESC LIMIT 10",
                           (rule["id"],))])
         return output
@@ -194,8 +197,11 @@ class RoutineEngine:
             con.execute("UPDATE routine_occurrences SET state=?,closed_at=? "
                         "WHERE plan_id=? AND occurrence_index=? AND state='current'",
                         (close_state, moment, rule["id"], current["occurrence_index"]))
+        value = self.materialize(rule, due)
+        if rule["kind"] == "tasks":
+            dependencies.check_write(con, entity_id, value)
         con.execute("INSERT INTO entities(id,kind,data,updated_at) VALUES(?,?,?,?)",
-                    (entity_id, rule["kind"], pack(self.materialize(rule, due)), moment))
+                    (entity_id, rule["kind"], pack(value), moment))
         con.execute("INSERT INTO routine_occurrences(plan_id,occurrence_index,entity_id,scheduled_on,state,created_at) "
                     "VALUES(?,?,?,?,'current',?)", (rule["id"], index, entity_id, due, moment))
         con.execute("UPDATE household_routines SET current_index=?,revision=revision+1,updated_at=? WHERE id=?",
@@ -491,9 +497,10 @@ def register_routines(app, db, Problem, body, require_member, audit):
             if plan_id and plan_id not in {row["id"] for row in rows}:
                 rows.append(engine.row(con, plan_id))
             day, counts = today(), engine.counts(con)
+            graph = dependencies.task_graph(con)
             result = {"version": 1, "today": day.isoformat(), "timeZone": TIME_ZONE,
                       "limit": {"activePlans": MAX_PLANS, "itemsPerKind": MAX_ITEMS},
-                      "plans": [engine.public(con, row, day, counts) for row in rows],
+                      "plans": [engine.public(con, row, day, counts, dependency_graph=graph) for row in rows],
                       "pageInfo": {"page": page, "pageSize": PAGE_SIZE, "more": more}}
             return jsonify(result)
 

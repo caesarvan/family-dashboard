@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date
 from contextlib import ExitStack
 import json
+import task_dependencies as dependencies
 import secrets
 import time
 
@@ -344,7 +345,12 @@ class TaskPublicationQueue:
                             fresh = con.execute('SELECT * FROM entities WHERE id=?', (row['entity_id'],)).fetchone()
                             if not fresh or fresh['revision'] != local['revision']:
                                 raise ProviderError('本地与云端同时修改，请对比后处理', 409)
-                            value = json.loads(fresh['data']); value['done'] = remote_value['done']
+                            original = json.loads(fresh['data'])
+                            value = {**original, 'done': remote_value['done']}
+                            try:
+                                dependencies.check_write(con, fresh['id'], value, original)
+                            except dependencies.DependencyError as error:
+                                raise ProviderError('云端状态已变化，本地依赖校验未通过：' + error.message, 409) from None
                             changed = con.execute('UPDATE entities SET data=?,revision=revision+1,updated_at=? WHERE id=? AND revision=?', (pack(value), stamp(), row['entity_id'], fresh['revision']))
                             if changed.rowcount != 1:
                                 raise ProviderError('本地与云端同时修改，请对比后处理', 409)
@@ -513,8 +519,10 @@ def register_task_publish(app, db, Problem, body, require_member, audit):
                     raise Problem('本地任务已改变，请重新对比', 409)
                 if resolution == 'remote':
                     adopted = task_snapshot(remote['managed'])
-                    original = json.loads(fresh['data']); original.update(adopted)
-                    con.execute('UPDATE entities SET data=?,revision=revision+1,updated_at=? WHERE id=?', (pack(original), stamp(), row['entity_id']))
+                    original = json.loads(fresh['data'])
+                    merged = {**original, **adopted}
+                    dependencies.check_write(con, fresh['id'], merged, original)
+                    con.execute('UPDATE entities SET data=?,revision=revision+1,updated_at=? WHERE id=?', (pack(merged), stamp(), row['entity_id']))
                     con.execute("UPDATE task_publications SET remote_id=?,etag=?,baseline_data=?,pending_data=NULL,status='published',error='',next_attempt=?,updated_at=? WHERE id=?", (remote['id'], remote['etag'], pack(adopted), time.time() + 30, stamp(), rid))
                 else:
                     con.execute("UPDATE task_publications SET remote_id=?,etag=?,baseline_data=?,pending_data=?,pending_revision=?,status='pending',error='',next_attempt=0,updated_at=? WHERE id=?", (remote['id'], remote['etag'], pack(remote['managed']), pack(current), local['revision'], stamp(), rid))
