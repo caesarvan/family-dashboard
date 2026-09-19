@@ -58,7 +58,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
   const activeRoute=useRef(route);activeRoute.current=route;
   const onReschedulePending=(locked:boolean)=>{
     if(activeActor.current!==actor||!locked&&pendingNavigation.current.source!=='reschedule')return;
-    pendingNavigation.current={actor,locked,message:locked?'请先核对这次改期的保存结果，再离开旅行页面。':'',source:'reschedule'};
+    pendingNavigation.current={actor,locked,message:locked?'请先完成或取消当前旅行操作；结果不明确时，请先核对状态再离开。':'',source:'reschedule'};
   };
   const onDevicePending=useCallback((message:string|null)=>{
     if(activeActor.current!==actor||route!=='devices'||activeRoute.current!==route||!message&&pendingNavigation.current.source!=='devices')return;
