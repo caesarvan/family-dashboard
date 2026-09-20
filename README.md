@@ -6,7 +6,7 @@
 
 [日常管理](https://home.caesarcharles.world/) · [电视配对](https://home.caesarcharles.world/tv) · [私有 GitHub 仓库](https://github.com/caesarvan/family-dashboard) · [最新发布证据](docs/LOCAL-PHOTO-ACCEPTANCE.md#local-photo-release)
 
-重复照片提示与助理地点搜索的新页面往返入口仍是集成候选，**不属于当前线上版本**。代码合入、GitHub 推送、实际部署和本人验收分别记录。
+重复照片提示与助理地点搜索的新页面往返入口已完成分段浏览器、Linux功能检查及四并发元数据资源独审，仍是**未发布候选，不属于当前线上版本**。下一步为固定发布计划与生产准入；各轮证据和未验边界见[候选集中验收](docs/DISCOVERY-ACCEPTANCE.md#discovery-candidate)。
 
 ## 从这里开始
 
@@ -193,7 +193,7 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 
 待继续处理的范围：
 
-- **集成候选：** 重复照片展示副本提示、助理地点搜索的新页面往返入口，待完成各自正式构建／组合／资源／发布准入；不得视为当前线上能力。
+- **集成候选：** 重复照片展示副本提示、助理地点搜索的新页面往返入口已完成构建、分段浏览器、Linux与四并发元数据资源独审；尚无本批发布计划或上线，见[集中验收与下一步](docs/DISCOVERY-ACCEPTANCE.md#discovery-candidate)。
 - **本人验收：** A–D完整本人场景仍为0/4；真实Google视频、云日历／待办新写入、实际手机选择器和两块实体电视分别验收。
 - **影像来源：** iCloud／NAS实时连接、本地视频上传、更多格式和原图备份没有随设备照片入口交付。
 - **财务与连接：** 小荷包／银行／券商自动连接、真实来源映射持续刷新及Apple提醒事项桥接仍待接入。
