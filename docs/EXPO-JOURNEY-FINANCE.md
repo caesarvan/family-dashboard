@@ -1,6 +1,6 @@
 # 我的旅行费用（Expo）
 
-本页描述独立候选界面，尚未构建正式导出、运行组合浏览器或部署。接口按 `JOURNEY-FINANCE.md` 的五个本人接口接线；后端合入前不会有可用的服务器归集能力。
+本页描述已组合验证、尚未部署的候选界面。固定 `0ad4e41` 的正式 Expo 导出和真实临时 HTTPS／Flask／SQLite 浏览器 R2 三场景已通过，非作者原件审查通过；候选镜像另已完成 Linux 46项和73→75隔离迁移演练，执行独审尚待完成。生产仍为财务 `53ea`／73/9。使用与分轮证据见[集中验收](JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-candidate)，接口见[JOURNEY-FINANCE](JOURNEY-FINANCE.md)。
 
 ## 使用
 
@@ -19,10 +19,10 @@
 - 离线、窗口失焦、页面隐藏、应用后台及失去路由焦点都会隐藏费用并撤销在途读取资格。同身份回来重新读取，内存草稿暂时保留；身份变化清空敏感内容并隔离恢复记录。所有读取与写入复用 `PlaceFence` 的前后 `/me` 核验，整个操作最多 20 秒，迟到响应不安装。
 - 草稿和未明请求接入应用现有导航门禁，使用独立的旅行费用提示，不复用采购提示。离开未提交草稿需明确放弃；即使原旅行删除使内容隐藏，也可通过不含费用内容的通用确认放弃本地草稿并返回。未明请求仍须先核对。
 
-## 定向验证与后续
+## 实际验证与边界
 
-`node --test tests/test_expo_journey_finance.mjs` 检查金额/接口边界及实际 TSX 的合成 transport、会话存储、失效/恢复行为。它不证明真实 Flask、SQLite、浏览器布局或云账号已通过。两组 TypeScript 检查使用既有依赖只读运行，不安装依赖、不导出 Expo。
+界面作者的 Node／TypeScript 定向检查与后续真实浏览器分开记录。正式构建 R2 沿用 R1 已完成的 npm ci，实际重跑两组 TypeScript 并导出 Expo；159前端＋9补充＋1根目录测试输入、23导出逐字节绑定。R2未重新安装依赖，也未重跑 Node 套件。
 
-后续由固定组合后端与正式 Expo 导出执行真实 HTTPS/Flask/SQLite 三场景，另验证 73→75 两新增表的迁移及保全。该候选不修改数据库、Docker、发布工具或任何远端服务。
+浏览器 R2 一次3/3、六张视口截图、stderr为空：归集／退款后调整／原付款追溯与重启，确认丢响应后刷新查询原回执，离线同身份草稿恢复及切换成员后的迟到响应隔离。R1为一项通过、两项工具失败，原件保留；不是首轮全绿。上述均使用合成账单和临时真实服务，不代替本人账单、实体设备、生产操作或完整A–D验收。
 
 自动化入口：`journey-finance-panel`、`journey-finance-hidden`、`journey-finance-summary`、`journey-finance-preview`、`journey-finance-unknown`、`journey-finance-original-payment`；原 ID 卡片为 `journey-payment-<id>` 和 `journey-allocation-<id>`。
