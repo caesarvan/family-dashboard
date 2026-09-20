@@ -92,7 +92,7 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
       await refresh(); if(alive.current&&(kind!=='events'||calendarCurrent())){setNotice('已保存'+label);onDismiss();}
     } catch(e) {
       if(!alive.current||(kind==='events'&&latest.current.identityKey!==identity))return;
-      if(kind==='events'&&e instanceof ApiError&&e.status===404){unavailable.current=true;void refresh();}
+      if(kind==='events'&&e instanceof ApiError&&e.status===404&&e.code==='calendar_event_unavailable'){unavailable.current=true;void refresh();}
       const unknown=e instanceof ApiError&&(e.status===0||e.status>=500);
       setUncertain(unknown);setError(unknown?'暂时无法确认保存结果。请先关闭并刷新清单，核对后再操作，避免重复添加。':e instanceof ApiError&&e.status===409?(kind==='tasks'?e.message+' 你的输入仍在，请核对前置事项或关闭后重新读取。':'这条记录已更新。你的输入仍在，请关闭后重新打开最新记录。'):e instanceof Error?e.message:'暂时无法保存');
     } finally {if(alive.current)setBusy(false);}

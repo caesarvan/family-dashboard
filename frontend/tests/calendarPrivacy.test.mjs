@@ -9,6 +9,7 @@ import { calendarPrivacy, calendarPrivacyPayload, calendarVisibilityLabel } from
 const member={id:'member1',role:'member',name:'本人',householdId:'one',auth_version:1};
 const event=(patch={})=>({id:'original-id',revision:7,title:'私人原始标题',owner:'member2',start:'2027-01-02T10:00:00+08:00',end:'2027-01-02T11:00:00+08:00',visibility:'private',createdBy:'member1',...patch});
 const copy=value=>JSON.parse(JSON.stringify(value));
+class ApiError extends Error { constructor(message, status, code='') { super(message); this.status=status; this.code=code; } }
 
 // Real TSX with synthetic Paper hosts/HTTP; not browser or backend acceptance.
 function editor(options = {}) {
@@ -23,10 +24,9 @@ function editor(options = {}) {
     useRef(value) { const i = cursor++; return holder[i] ||= { current: value }; },
     useEffect(fn, deps) { const i = cursor++; if (!holder[i]) { holder[i] = deps; effects.push(fn); } },
   };
-  class ApiError extends Error { constructor(message, status) { super(message); this.status = status; } }
   const state = { events: options.item ? [options.item] : [], tasks: [], people: [{id:'member1',name:'本人'},{id:'member2',name:'伴侣'}], sync: {} };
   const notices=[]; const household = { state, user: member, identityKey: 'session-one', online: true, stateVerified: true, focus: 'member2', refresh: async () => {}, setNotice(message) {notices.push(message);}, mutate: async (path, method, body) => {
-    calls.push({ path, method, body }); if(options.mutate)return options.mutate(path,method,body); if (options.failure !== undefined) throw new ApiError(options.message || '服务器拒绝此操作', options.failure); return {};
+    calls.push({ path, method, body }); if(options.mutate)return options.mutate(path,method,body); if (options.failure !== undefined) throw new ApiError(options.message || '服务器拒绝此操作', options.failure, options.code); return {};
   } };
   const paper = Object.fromEntries(['Button', 'Text', 'TextInput', 'HelperText', 'IconButton', 'Portal', 'Image', 'Icon', 'TouchableRipple'].map(name => [name, name]));
   paper.Dialog = { Title: 'DialogTitle', ScrollArea: 'DialogScroll', Actions: 'DialogActions', Content: 'DialogContent' };
@@ -133,7 +133,7 @@ test('identity change hides title immediately, including reused member IDs in an
 });
 test('fresh server withdrawal and hidden-ID 404 conceal details and cannot resurrect old snapshot',async()=>{
   for(const remote of [false,true]){
-    const h=editor({item:event(),...(remote?{failure:404}:{})});await h.flush();
+    const h=editor({item:event(),...(remote?{failure:404,code:'calendar_event_unavailable'}:{})});await h.flush();
     if(remote)await h.click('保存');else{h.update({state:{...h.state,events:[]}});await h.flush();}
     assert(!h.text().includes('私人原始标题'));assert.match(h.text(),/不在当前可见范围/);
     h.update({state:{...h.state,events:[event({revision:9})]}});await h.flush();
@@ -171,7 +171,6 @@ test('root editor snapshot is bound at creation and gated before identity cleanu
 function provider() {
   const ts=createRequire(import.meta.url)('typescript'), file=new URL('../src/lib/household.tsx',import.meta.url);
   let slots=[],cursor=0,current,dirty=true,meQueue=[],state= {events:[event()],people:[member]},calls=[];
-  class ApiError extends Error {constructor(status){super('synthetic read failure');this.status=status;}}
   const React={createContext:()=>({}),createElement:()=>null,useContext:()=>null,
     useState(initial){const i=cursor++;if(!(i in slots))slots[i]=initial;return[slots[i],value=>{slots[i]=typeof value==='function'?value(slots[i]):value;dirty=true;}];},
     useRef(value){const i=cursor++;return slots[i]||=( {current:value});},useCallback:fn=>fn,useEffect:()=>{}};
@@ -195,7 +194,7 @@ test('provider admits private calendar only after both session reads; normal ref
 });
 for(const tail of [false,true])test('provider '+(tail?'tail':'first')+' identity 429 hides cached state until confirmed recovery',async()=>{
   const h=provider();h.render();h.queue([session,session]);await h.value.refresh();const snapshot=h.value.state;
-  h.queue(tail?[session,new h.ApiError(429)]:[new h.ApiError(429)]);await h.value.refresh();
+  h.queue(tail?[session,new h.ApiError('synthetic read failure',429)]:[new h.ApiError('synthetic read failure',429)]);await h.value.refresh();
   assert.equal(h.value.stateVerified,false);assert.equal(h.value.state,snapshot);
   h.queue([session,session]);await h.value.refresh();assert.equal(h.value.stateVerified,true);
 });
@@ -203,4 +202,18 @@ test('provider rejects second-session mismatch without installing private snapsh
   const h=provider();h.render();h.queue([session,session]);await h.value.refresh();
   h.queue([session,{user:{...member,householdId:'another'},csrf:'new'}]);await h.value.refresh();
   assert.equal(h.value.stateVerified,false);assert.equal(h.value.state,null);
+});
+
+for(const item of [undefined,event()])test('preflight identity 404 preserves '+(item?'existing':'new')+' draft and sends no mutation until explicit retry',async()=>{
+  const p=provider();p.render();p.queue([session,session]);await p.value.refresh();
+  const h=editor({item,mutate:(...args)=>p.value.mutate(...args)});
+  h.update(p.value);await h.flush();await h.input('名称','身份恢复后保留草稿');await h.click('日程可见范围：家庭共享');
+  const before=p.calls.length;p.queue([new ApiError('身份暂不可核验',404)]);await h.click('保存');
+  assert.deepEqual(p.calls.slice(before),['/me']);assert.equal(p.value.stateVerified,false);
+  h.update(p.value);await h.flush();assert.match(h.text(),/草稿暂时隐藏/);
+  p.queue([session,session]);await p.value.refresh();h.update(p.value);await h.flush();
+  assert.equal(h.find('名称').value,'身份恢复后保留草稿');assert.equal(h.find('日程可见范围：家庭共享')['aria-checked'],true);
+  assert.equal(h.find('保存').disabled,false);assert.equal(p.calls.filter(path=>path.startsWith('/items/')).length,0);
+  p.queue([session,session,session]);await h.click('保存');
+  assert.deepEqual(p.calls.filter(path=>path.startsWith('/items/')),['/items/events'+(item?'/original-id':'')]);
 });

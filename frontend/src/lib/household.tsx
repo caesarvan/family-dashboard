@@ -116,7 +116,17 @@ function useHouseholdState() {
   const mutate = async <T,>(path: string, method: string, payload: unknown = {}): Promise<T> => {
     const actor = current.current;
     if (actor.user?.role !== 'member') throw new ApiError('请先登录', 401);
-    const fresh = await request<Session>('/me');
+    let fresh: Session;
+    try { fresh = await request<Session>('/me'); }
+    catch (failure) {
+      // No mutation was sent. Conceal cached calendars until identity is
+      // verified again, keeping same-session drafts available for recovery.
+      if (mounted.current && signature(actor) === signature(current.current)) {
+        setStateVerified(false); setOnline(false);
+        setError(failure instanceof Error ? failure.message : '暂时无法核对登录身份');
+      }
+      throw failure;
+    }
     if (signature(fresh) !== signature(actor)) { await refresh(); throw new ApiError('登录身份已变化，请重新打开此操作', 409); }
     try {
       const result = await request<T>(path, { method, body: JSON.stringify(payload) }, actor.csrf || '');
