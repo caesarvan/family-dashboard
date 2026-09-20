@@ -200,9 +200,10 @@ class Run(calendar.Run):
             self.record('revoked-reads', {'owner': event, 'partner': self.hidden(partner, event), 'tv': self.hidden(tv, event)})
             self.capture(page, 'creator-revoked-390', page.get_by_test_id('calendar-event-' + event['id']))
             actual = self.db_event(event['id'])
+            self.record('stable-original-id', actual, 'databaseEvidence')
             assert len(actual['events']) == 1 and actual['events'][0]['id'] == event['id'] and actual['events'][0]['revision'] == 3
-            assert actual['audit'] == {'create_events': 1, 'edit_events': 2}
-            self.record('stable-original-id', actual, 'databaseEvidence'); self.proof('sharing-final')
+            assert actual['audit'] == {'create_events': 1, 'update_events': 2}
+            self.proof('sharing-final')
             self.passed('Default private, real partner/paired-TV read denial, explicit shared and creator revocation keep one original event')
 
     def private_read_surfaces(self, partner, event):
