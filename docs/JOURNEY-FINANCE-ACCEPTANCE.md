@@ -1,8 +1,9 @@
-# 本人旅行费用：候选使用与验收
+# 本人旅行费用：使用与发布验收
 
+<a id="journey-finance-release"></a>
 <a id="journey-finance-candidate"></a>
 
-**候选已实现并完成本地组合、实际 Linux 功能和隔离迁移演练，尚未发布。** 浏览器原件已由非作者审查；Linux 功能与迁移执行独审尚待完成。实际生产仍为[财务方向列批次](FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release)的 source `53ea3fd`、73张户内表／9张平台表、五服务；不能把候选75表或文档提交当作线上状态。本人 A–D 完整验收仍0/4。
+**已于2026-09-21 02:38:33（北京时间）发布，02:38:56只读回读通过；非作者生产独审已通过。** 实际 source 为 `302a62d`、75张户内表／9张平台表、五服务；原财务方向列 `53ea3fd` 是本次73表父版。浏览器、Linux功能与隔离迁移执行已分别通过非作者审查，具体范围如下。本人 A–D 完整验收仍0/4。
 
 ## 最短操作路径
 
@@ -21,8 +22,8 @@
 | API专项 | 作者44项新用例＋2项相邻最终通过，分轮原件保留，API非作者审查通过。 | 合成 Flask／SQLite 的权限、净额、重启、回执、并发额度、漂移、导出；不与下面Linux重复相加。 |
 | 正式 Expo | `0ad4e41` 的R2两组tsc、Expo导出均成功，159前端＋9补充＋1根目录测试共169输入，23导出。 | 复用R1实际npm ci；R2不是再次fresh安装，未重跑Node套件。候选包明确记录build source并校验输入复用。 |
 | 真实浏览器 | 同一 `0ad4e41` R2一次3/3，六张390／1280视口截图、stderr为空，非作者原件审查通过。 | 归集与退款调整／来源追溯及重启；真实确认响应丢失后刷新恢复且不重复写；离线草稿和迟到旧身份响应隔离。合成账单、临时HTTPS／Flask／SQLite／Edge，不是生产或本人设备。 |
-| 候选 Linux | `302a62d` 的实际新镜像构建成功；精确46项（44新＋2相邻）全部通过，0失败／错误／跳过。 | 固定包／源／镜像下的功能验证，非任意混合负载或生产容量证明；执行独审尚待完成。 |
-| 隔离迁移与恢复 | 同一候选镜像完成10阶段：验证、合成两户三库73表种子、迁移、仅app初始化、停止后保全、完整73恢复、0400故障部分迁移及整组恢复、写入非空75、重启、完整75恢复。 | 原73表／行／序列保持；初次两新表为空。每户非空夹具为3归集（有效／解除／孤立）＋1回执，直接合成存储，不冒充API用户操作。仅隔离临时库，未访问生产、未启动恢复后的服务；执行独审尚待完成。 |
+| 本批 Linux | `302a62d` 的实际新镜像构建成功；精确46项（44新＋2相邻）全部通过，0失败／错误／跳过。 | 固定包／源／镜像下的功能验证，非任意混合负载或生产容量证明；执行独审已通过。 |
+| 隔离迁移与恢复 | 同一候选镜像完成10阶段：验证、合成两户三库73表种子、迁移、仅app初始化、停止后保全、完整73恢复、0400故障部分迁移及整组恢复、写入非空75、重启、完整75恢复。 | 原73表／行／序列保持；初次两新表为空。每户非空夹具为3归集（有效／解除／孤立）＋1回执，直接合成存储，不冒充API用户操作。仅隔离临时库，未访问生产、未启动恢复后的服务；执行独审已通过。 |
 
 浏览器R1为1项通过、2项工具失败（未知结果已自动恢复后的旧预期、迟到路由重复处理）；R2修正工具后实际三项通过，原件均保留。API／迁移本地首轮测试设置或Windows长路径失败、迁移准备首轮失败也保留，不将最终结果改写为首轮全绿。本次文档整理未重新执行任何测试。
 
@@ -30,13 +31,13 @@
 
 | 对象 | 固定身份 |
 |---|---|
-| 候选包source／tree | `302a62d6c32676b4c8628bd5c0fdf967e1d143c5`／`121b31a1f5b820ffd9f935671125bfa86e51fa17` |
+| 实际发布包source／tree | `302a62d6c32676b4c8628bd5c0fdf967e1d143c5`／`121b31a1f5b820ffd9f935671125bfa86e51fa17` |
 | Package／manifest | `eca8fbaa739fe4f9300ebc2756292bbeced290badacca16489f30c4a7adf1be2`／`9a44d4c5d6002fb600e79069a44438371461b530eda03e89194927314a32820e` |
-| 候选应用镜像 | `sha256:1f957a9458cfed01108a4b028e6cdc3297e22bc0a83776c08d4bf374e09feaca` |
+| 实际应用镜像 | `sha256:1f957a9458cfed01108a4b028e6cdc3297e22bc0a83776c08d4bf374e09feaca` |
 | Expo／浏览器source | `0ad4e41eb4f13c239104918e099e8f42880b0ea1`；302a相对它只增加发布／迁移工具、测试和文档，业务及前端输入不变。 |
 | 迁移operator／runtime source | 工具 `4ec186e288ff08d8ac3c7db986b69c95139096ec`；运行源码参考 `a47372624e66cab0e8100a37f54223737780eb73`；历史73表种子固定生产源 `53ea3fdb571eae69154e61d264f3c3542631cb49`。实际镜像根模块及迁移闭包逐字节核对；不是同一Git头，也不代表工具覆盖前端。 |
 
-候选包含1199源码文件及23导出，运行文件136。此文档以候选加已审README修订的 `8b4eded` 为基线；Git/main和后续文档提交不替换上述包、构建或operator身份。发布接口与单次计划要求见[固定发布合同](JOURNEY-FINANCE-RELEASE.md)；73→75及75稳态合同见[迁移说明](JOURNEY-FINANCE-MIGRATION.md)。
+发布包包含1199源码文件及23导出，共1222安装文件；每个应用服务核对136运行文件（113非Expo＋23导出），decoder保留原4文件。此文档最初以候选加已审README修订的 `8b4eded` 为基线；Git/main和后续文档提交不替换上述包、构建或operator身份。发布接口与单次计划要求见[固定发布合同](JOURNEY-FINANCE-RELEASE.md)；73→75及75稳态合同见[迁移说明](JOURNEY-FINANCE-MIGRATION.md)。
 
 ## 原件索引
 
@@ -50,7 +51,19 @@
 | `A/journey-finance-release-candidate-r1/linux-evidence/build/build.json` | `8842ca3125888f2724b210cd301ac05ca047fce732183526d5385b3d0f2fbb15` |
 | `A/journey-finance-release-candidate-r1/linux-evidence/validate/validation.json` | `e280bff8d4fcec285c05975559f9dfee67705beaa69e868e06b1259d01758d0d` |
 | `A/journey-finance-migration-linux-r1/evidence/run-r1/result.json` | `7a6653ff50847f94d60d46362e8266e778a4ca234dd2ceac661619a302104dbf` |
+| `W/finance-flow-release-evidence/test-results/journey-finance-linux-candidate-independent-r1.json` | `f0ab00be5b184bdba21c11901a597f7c6b5c91eb53f3e79cde58d16273389c07` |
+| `W/finance-flow-release-evidence/test-results/journey-finance-migration-linux-independent-r1.json` | `ec03727481cc673625ccae48e391418d2a17a77ddcb479be49536c3e0b8a63d6` |
+| `A/journey-finance-production-r1/retained-receipts/candidate/stage.json` | `2b82aa9834847c43f5e07b224e2a0f13f43c06cc5881882381389557f84577ec` |
+| `A/journey-finance-production-r1/retained-receipts/candidate/activation.json` | `1b593a4120c55bc57af7b309220f776892a81bf2b1124c7de2d4da9d4cb1056f` |
+| `A/journey-finance-production-r1/readback.stdout` | `3a905253dceaed3c81a28abba7a5eb8c12560f61ed0c20f530317f99b044d8a9` |
+| `W/finance-flow-release-evidence/test-results/journey-finance-production-independent-r1.json` | `dac5e57fb87513995c1e7441efe9046c3d43fd6fd0c168c24c089f1012ab85b7` |
 
-## 生产待执行
+## 实际生产迁移与回读
 
-本批尚无生产stage／activate／只读回读或生产独审结果。生产仍为53ea／73/9，旧已消费计划不可重放。待本批Linux与迁移执行独审、固定新计划及实际部署回执闭合后，再以原件记录75/9状态；上述隔离恢复不等于生产恢复。真实本人A–D、账户文件和设备操作仍须各自验收。
+本次 stage 无生产写入；独占计划通过后实际 activate 完成，发布目录为 `/opt/family-dashboard-releases/journey-finance-75-20260920T183632268577Z`。北京时间2026-09-21 02:38:33完成激活，02:38:56的只读回读通过。非作者生产独审已通过。
+
+实际一户两库完成全组备份后73→75／平台9保持。旧73表的结构、行、settings和序列全部保全，两新表在app-only启动后停止核验时为空；迁移后逻辑摘要与停止态摘要均为 `50cfd61a26e50309444687b7fdfcbe598494232941066130c5685edca55964d8`。新旧全库逻辑摘要因新增表不同，不能表述为迁移前后完整库相同。
+
+只读回读核对1222安装文件、app／sync／media各136运行文件和decoder原4文件；五服务running、无OOM、重启数0，app／decoder的健康检查为healthy，其余服务没有health状态。正常TLS健康请求200、备份timer active，环境仅以散列与模式核对，不记录值。
+
+计划 `33e59a0988dcd1d84eac50c30c7ef4eac507f8645df046ca7a949f4620b000ca` 已消费，不可重放；实际operator为 `6165fad6636964a2c1c958cdda57ad7dabed0dbd76ed69b99aae3fd7316445a1`。本次生产没有恢复数据库；隔离73／75恢复不能冒充生产恢复。只读回读没有读取活库、重验备份数据库字节或证明worker业务tick，也未验证本人新业务操作、真实云或实体电视；A–D仍0/4。

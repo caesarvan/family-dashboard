@@ -1,6 +1,6 @@
 # 我的旅行费用（Expo）
 
-本页描述已组合验证、尚未部署的候选界面。固定 `0ad4e41` 的正式 Expo 导出和真实临时 HTTPS／Flask／SQLite 浏览器 R2 三场景已通过，非作者原件审查通过；候选镜像另已完成 Linux 46项和73→75隔离迁移演练，执行独审尚待完成。生产仍为财务 `53ea`／73/9。使用与分轮证据见[集中验收](JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-candidate)，接口见[JOURNEY-FINANCE](JOURNEY-FINANCE.md)。
+本页界面已随固定 `302a62d` 于2026-09-21 02:38:33（北京时间）发布，02:38:56只读回读通过，非作者生产独审已通过；线上为75/9、五服务。固定 `0ad4e41` 的正式 Expo 导出和真实临时 HTTPS／Flask／SQLite 浏览器 R2 三场景、候选镜像 Linux 46项和73→75隔离迁移演练均已通过并完成各自非作者审查。使用与分轮证据见[集中验收](JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release)，接口见[JOURNEY-FINANCE](JOURNEY-FINANCE.md)。
 
 ## 使用
 
