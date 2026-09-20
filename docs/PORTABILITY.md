@@ -91,6 +91,8 @@ JSON 金额保持原始整数分；CSV 的 amount/cost/value 是原币金额字�
 
 选中的 `shared` 包含成员显示名、本家庭共享日程/待办/采购/旅行实体、公共资金快照、批准的财务基线汇总、旅行计划和被引用图片的元数据。实体按字段白名单导出，不带内部同步凭证或镜像元数据。
 
+当前源码候选新增 `personal.calendarEvents`，只包含本人创建且当前为私密的本地日程。`shared.entities.events` 只在 `includeShared:true` 时包含当前可见的共享日程；两处保留原 ID、revision 和可用的 `visibility`／`createdBy`。伙伴的私密日程不会进入本人副本或 summary 计数。压缩后交付 ZIP 前再次核对日程快照，若共享撤回、删除或更新则拒绝交付旧副本。兼容规则见[本地日程隐私](CALENDAR-PRIVACY.md)，部署状态以 [README](../README.md) 为准。
+
 本地新增的共享事件白名单包括 `travelTiming`、`startDate`、`endDateExclusive` 和 `workflowKey`，用于保留旅行的当地时间／时区语义、纯日期及排他结束日期。这些随已共享家庭实体**仅在明确 `includeShared:true` 时**导出；不会放入默认本人资料副本，也不因此扩大个人财务可见范围。日期元数据不等同外部日历已同步证明。
 
 不包含伴侣私人账本、投资或收入明细，也不包含密码散列、应用密钥、OAuth token/state/PKCE、服务商身份 subject 或 client ID。账号标签可能含本人的邮箱，下载文件应保存在本人控制的设备上。
