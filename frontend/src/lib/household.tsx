@@ -14,6 +14,9 @@ const defaultLayout: HomeLayout = { revision: 0, order: ['calendar', 'finance', 
 function useHouseholdState() {
   const [session, setSession] = useState<Session>({ user: null });
   const [state, setState] = useState<FamilyState | null>(null);
+  // Private calendar contents stay in memory during uncertain identity reads,
+  // but may be rendered again only after a stable /me -> /state -> /me read.
+  const [stateVerified, setStateVerified] = useState(false);
   const [preferences, setPreferences] = useState<Preferences>(defaults);
   const [layout, setLayout] = useState<HomeLayout>(defaultLayout);
   const [focus, setFocus] = useState('');
@@ -57,22 +60,23 @@ function useHouseholdState() {
         const next = await request<Session>('/me');
         if (!mounted.current || ticket !== sequence.current) return;
         const changed = signature(next) !== signature(current.current);
-        if (changed) { setState(null); resetPreferences(); layoutRef.current=defaultLayout; setLayout(defaultLayout); setFocus(next.user?.id || ''); }
+        if (changed) { setStateVerified(false); setState(null); resetPreferences(); layoutRef.current=defaultLayout; setLayout(defaultLayout); setFocus(next.user?.id || ''); }
         current.current = next; setSession(next);
-        if (!next.user || next.user.role !== 'member') { setState(null); setError(''); setOnline(true); return; }
+        if (!next.user || next.user.role !== 'member') { setStateVerified(false); setState(null); setError(''); setOnline(true); return; }
         const appearanceEpoch=preferenceEpoch.current;
         const [snapshot, prefs, cards] = await Promise.all([
           request<FamilyState>('/state'), request<Preferences>('/preferences'), request<HomeLayout>('/dashboard-layout'),
         ]);
         const after=await request<Session>('/me');
         if (!mounted.current || ticket !== sequence.current || signature(next) !== signature(current.current)) return;
-        if (signature(after)!==signature(next)) { current.current=after; setSession(after); setState(null); resetPreferences(); layoutRef.current=defaultLayout; setLayout(defaultLayout); setOnline(false); setError('身份已变化，请重新读取家庭数据。'); return; }
+        if (signature(after)!==signature(next)) { setStateVerified(false); current.current=after; setSession(after); setState(null); resetPreferences(); layoutRef.current=defaultLayout; setLayout(defaultLayout); setOnline(false); setError('身份已变化，请重新读取家庭数据。'); return; }
         if (appearanceEpoch!==preferenceEpoch.current || !foreground.current || typeof document !== 'undefined' && document.hidden || typeof navigator !== 'undefined' && navigator.onLine===false) return;
-        setState(snapshot); applyPreferences(readPreferences(prefs), signature(next)); applyLayout(cards, signature(next));
+        setState(snapshot); setStateVerified(true); applyPreferences(readPreferences(prefs), signature(next)); applyLayout(cards, signature(next));
         setFocus(value => snapshot.people.some(person => person.id === value) ? value : next.user!.id);
         setError(''); setOnline(true);
       } catch (failure) {
         if (!mounted.current || ticket !== sequence.current) return;
+        setStateVerified(false);
         if (failure instanceof ApiError && [401, 403].includes(failure.status)) {
           current.current = { user: null }; setSession({ user: null }); setState(null); resetPreferences(); layoutRef.current=defaultLayout; setLayout(defaultLayout);
         }
@@ -88,7 +92,7 @@ function useHouseholdState() {
     const timer = setInterval(() => {
       if (typeof document === 'undefined' || !document.hidden) void refresh();
     }, 10000);
-    const suspend=()=>{ ++preferenceEpoch.current; preferenceController.current?.abort(); };
+    const suspend=()=>{ setStateVerified(false); ++preferenceEpoch.current; preferenceController.current?.abort(); };
     const visibility=()=>{ if(document.hidden) suspend(); else void refresh(); };
     const offline=()=>suspend();
     const subscription = AppState.addEventListener('change', value => { foreground.current=value==='active'; if (foreground.current) void refresh(); else suspend(); });
@@ -112,7 +116,17 @@ function useHouseholdState() {
   const mutate = async <T,>(path: string, method: string, payload: unknown = {}): Promise<T> => {
     const actor = current.current;
     if (actor.user?.role !== 'member') throw new ApiError('请先登录', 401);
-    const fresh = await request<Session>('/me');
+    let fresh: Session;
+    try { fresh = await request<Session>('/me'); }
+    catch (failure) {
+      // No mutation was sent. Conceal cached calendars until identity is
+      // verified again, keeping same-session drafts available for recovery.
+      if (mounted.current && signature(actor) === signature(current.current)) {
+        setStateVerified(false); setOnline(false);
+        setError(failure instanceof Error ? failure.message : '暂时无法核对登录身份');
+      }
+      throw failure;
+    }
     if (signature(fresh) !== signature(actor)) { await refresh(); throw new ApiError('登录身份已变化，请重新打开此操作', 409); }
     try {
       const result = await request<T>(path, { method, body: JSON.stringify(payload) }, actor.csrf || '');
@@ -167,12 +181,12 @@ function useHouseholdState() {
     try {
       if (reading.current) await reading.current;
       await mutate('/logout', 'POST');
-      ++sequence.current; current.current = { user: null }; setSession({ user: null }); setState(null); resetPreferences(); layoutRef.current=defaultLayout; setLayout(defaultLayout);
+      ++sequence.current; setStateVerified(false); current.current = { user: null }; setSession({ user: null }); setState(null); resetPreferences(); layoutRef.current=defaultLayout; setLayout(defaultLayout);
       preferencesRef.current=defaults;
     } finally { authTransition.current=false; }
     await refresh();
   };
-  return { user: session.user, identityKey: signature(session), state, preferences, applyPreferences, preferencesUncertain, preferencesBusy, checkPreferences, layout, applyLayout, focus, setFocus, loading, refreshing, online, error, notice, setNotice, refresh, login, logout, mutate, savePreferences };
+  return { user: session.user, identityKey: signature(session), state, stateVerified, preferences, applyPreferences, preferencesUncertain, preferencesBusy, checkPreferences, layout, applyLayout, focus, setFocus, loading, refreshing, online, error, notice, setNotice, refresh, login, logout, mutate, savePreferences };
 }
 
 const Context = createContext<ReturnType<typeof useHouseholdState> | null>(null);

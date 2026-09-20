@@ -4,6 +4,7 @@ import { Button, IconButton, ProgressBar, SegmentedButtons, Text, TouchableRippl
 import type { CalendarEvent, CalendarMode, ScreenProps } from '../lib/types';
 import { bounds, calendarConflicts, dayKey, duration, isLocalEvent, rangeDays, rangeSummary, shiftDay, shortDay, timeLabel, weekday, weekNames } from '../lib/calendar';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
+import { calendarVisibilityLabel } from '../lib/calendarPrivacy';
 import { SelectionRow } from '../ui/SelectionRow';
 import { useDisplayDensity } from '../ui/theme';
 import CalendarConflictsPanel from '../ui/CalendarConflictsPanel';
@@ -61,6 +62,7 @@ export function EventRow({ event, day, props }: { event: CalendarEvent; day: str
         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{ongoing ? '进行中' : shortDay(day)}</Text></View>
       <View style={styles.eventBody}><Text variant="titleSmall">{event.title}</Text>
         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{owner}{event.location ? ` · ${event.location}` : ''}</Text>
+        <Text variant="labelSmall">{calendarVisibilityLabel(event)}</Text>
         {!editable && <Text variant="labelSmall">同步日程 · 只读</Text>}
       </View>
       {editable && <Text accessibilityElementsHidden style={{ color: theme.colors.onSurfaceVariant }}>›</Text>}
@@ -73,6 +75,7 @@ export default function CalendarScreen(props: ScreenProps) {
   const [anchor, setAnchor] = useState<string | undefined>(), [selected, setSelected] = useState(dayKey());
   useEffect(() => { setAnchor(undefined); setSelected(dayKey()); }, [props.mode, props.user.householdId, props.user.id, props.user.auth_version]);
   if (props.user.role !== 'member') return <EmptyState title="请使用成员账户查看日程" />;
+  if(props.calendarVerified===false)return <EmptyState title="日程暂时隐藏" description="请联网并刷新，核对登录身份后继续查看。" />;
   const days = rangeDays(props.mode, anchor), summary = rangeSummary(props.state.events, days, props.focus);
   const conflicts = calendarConflicts(props.state.events, days, props.focus);
   const chosen = days.includes(selected) ? selected : days.includes(dayKey()) ? dayKey() : days[0];

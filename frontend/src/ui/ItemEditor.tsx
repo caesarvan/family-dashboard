@@ -9,6 +9,8 @@ import { CalendarEvent, Entity, ItemKind, ListItem, ShoppingPriority } from '../
 import { shoppingSchedule } from '../lib/trips';
 import { SelectionRow } from './SelectionRow';
 import TaskDependencyFields from './TaskDependencyFields';
+import CalendarPrivacyFields from './CalendarPrivacyFields';
+import { calendarPrivacy, calendarPrivacyPayload, type CalendarVisibility } from '../lib/calendarPrivacy';
 import { dependencyIds, dependencyInfo, dependencyPayload } from '../lib/taskDependencies';
 
 export function ShoppingScheduleFields({due,priority='normal',onDueChange,onPriorityChange,disabled=false,suffix=''}:{due:string;priority?:ShoppingPriority;onDueChange:(value:string)=>void;onPriorityChange:(value:ShoppingPriority)=>void;disabled?:boolean;suffix?:string}) {
@@ -38,8 +40,14 @@ function localParts(value?:string) {
   return {day:new Intl.DateTimeFormat('sv-SE',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit'}).format(date),time:value?new Intl.DateTimeFormat('en-GB',{timeZone:'Asia/Shanghai',hour:'2-digit',minute:'2-digit',hourCycle:'h23'}).format(date):'19:00'};
 }
 export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:Entity;onDismiss:()=>void}) {
-  const {state,mutate,refresh,setNotice}=useHousehold(); const existing=item as ListItem|undefined, event=item as CalendarEvent|undefined;
-  const [title,setTitle]=useState(item?.title||''); const [owner,setOwner]=useState(item?.owner||'shared');
+  const household=useHousehold(); const {state,mutate,refresh,setNotice,user,identityKey}=household; const existing=item as ListItem|undefined, event=item as CalendarEvent|undefined;
+  const identity=useRef(identityKey).current, latest=useRef(household); latest.current=household;
+  const unavailable=useRef(false);
+  if(kind==='events'&&(identityKey!==identity||(item&&!state?.events.some(value=>value.id===item.id))))unavailable.current=true;
+  const calendarCurrent=()=>!unavailable.current&&latest.current.stateVerified!==false&&latest.current.identityKey===identity && latest.current.user?.role==='member'
+    && (!item || !!latest.current.state?.events.some(value=>value.id===item.id));
+  const [visibility,setVisibility]=useState<CalendarVisibility>(()=>calendarPrivacy(event,user).visibility||'private');
+  const [title,setTitle]=useState(item?.title||''); const [owner,setOwner]=useState(item?.owner||(kind==='events'&&!item?user?.id||'shared':'shared'));
   const [quantity,setQuantity]=useState(existing?.quantity||'1 件'); const [budget,setBudget]=useState(existing?.budget==null?'':String(existing.budget/100));
   const [actual,setActual]=useState(existing?.actual==null?'':String(existing.actual/100));
   const [due,setDue]=useState(existing?.due||''); const [note,setNote]=useState(item?.note||'');
@@ -61,7 +69,7 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
   const taskCloud=kind==='tasks'&&!item&&!!sourceId;
   const taskDependencies=dependencyInfo({...(existing||{}),id:item?.id||'',title,owner,revision:item?.revision||0,done:false,dependsOn,blockedBy:[],dependencyStatus:undefined},state?.tasks||[]);
   async function save() {
-    if(busy||uploading||uncertain)return; setBusy(true);setError('');
+    if(busy||uploading||uncertain||(kind==='events'&&!calendarCurrent()))return; setBusy(true);setError('');
     try {
       const payload:Record<string,unknown>={title:title.trim(),owner,note};
       if(!payload.title)throw new Error('先填写名称');
@@ -74,14 +82,17 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
       }
       if(kind==='shopping')Object.assign(payload,{done,quantity,budget:cents(budget),actual:cents(actual),photoIds:photos,...shoppingSchedule({due:due.trim(),priority})});
       if(kind==='events') {
+        Object.assign(payload,calendarPrivacyPayload(event,user,visibility));
         if(!/^\d{4}-\d{2}-\d{2}$/.test(startDay)||!/^\d{4}-\d{2}-\d{2}$/.test(endDay)||(!allDay&&(!/^\d{2}:\d{2}$/.test(startTime)||!/^\d{2}:\d{2}$/.test(endTime))))throw new Error('日期用 YYYY-MM-DD，时间用 HH:mm');
         Object.assign(payload,{start:startDay+'T'+(allDay?'00:00':startTime)+':00+08:00',end:endDay+'T'+(allDay?'00:00':endTime)+':00+08:00',allDay,location,source:event?.source||'手动'});
       }
       if(item)payload.revision=item.revision;
       await mutate('/items/'+kind+(item?'/'+encodeURIComponent(item.id):''),item?'PATCH':'POST',payload);
-      await refresh(); if(alive.current){setNotice('已保存'+label);onDismiss();}
+      if(kind==='events'&&alive.current){setUncertain(true);setError('已收到保存成功响应。请关闭并刷新，核对当前日程后再操作。');}
+      await refresh(); if(alive.current&&(kind!=='events'||calendarCurrent())){setNotice('已保存'+label);onDismiss();}
     } catch(e) {
-      if(!alive.current)return;
+      if(!alive.current||(kind==='events'&&latest.current.identityKey!==identity))return;
+      if(kind==='events'&&e instanceof ApiError&&e.status===404&&e.code==='calendar_event_unavailable'){unavailable.current=true;void refresh();}
       const unknown=e instanceof ApiError&&(e.status===0||e.status>=500);
       setUncertain(unknown);setError(unknown?'暂时无法确认保存结果。请先关闭并刷新清单，核对后再操作，避免重复添加。':e instanceof ApiError&&e.status===409?(kind==='tasks'?e.message+' 你的输入仍在，请核对前置事项或关闭后重新读取。':'这条记录已更新。你的输入仍在，请关闭后重新打开最新记录。'):e instanceof Error?e.message:'暂时无法保存');
     } finally {if(alive.current)setBusy(false);}
@@ -99,11 +110,20 @@ export default function ItemEditor({kind,item,onDismiss}:{kind:ItemKind;item?:En
     }catch(e){if(alive.current)setError(e instanceof Error?e.message:'图片暂时无法添加');}
     finally{if(alive.current)setUploading(false);}
   }
+  // Conceal a stale snapshot synchronously, including the render before an
+  // identity-change cleanup effect. A fresh server state remains the authority.
+  if(kind==='events'&&!unavailable.current&&household.stateVerified===false)return <Portal><Dialog visible onDismiss={onDismiss} style={styles.dialog}>
+    <Dialog.Title>请先核对日程身份</Dialog.Title><Dialog.Content><Text>日程和草稿暂时隐藏。联网并核对身份后可继续；不会自动重试保存。</Text></Dialog.Content>
+    <Dialog.Actions><Button onPress={onDismiss}>关闭</Button><Button disabled={household.refreshing} onPress={()=>void refresh()}>核对身份并继续</Button></Dialog.Actions></Dialog></Portal>;
+  if(kind==='events'&&!calendarCurrent())return <Portal><Dialog visible onDismiss={onDismiss} style={styles.dialog}>
+    <Dialog.Title>请重新读取日程</Dialog.Title><Dialog.Content><Text>这条安排已不在当前可见范围，或登录身份已变化。</Text></Dialog.Content>
+    <Dialog.Actions><Button onPress={()=>{onDismiss();void refresh();}}>关闭并刷新</Button></Dialog.Actions></Dialog></Portal>;
   return <Portal><Dialog visible onDismiss={()=>{if(!busy&&!uploading)onDismiss();}} style={styles.dialog}>
     <Dialog.Title>{item?'编辑':'添加'}{label}</Dialog.Title>
     <Dialog.ScrollArea style={styles.scroll}><ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.fields}>
       <TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel={kind==='shopping'?'物品名称':'名称'} label={kind==='shopping'?'物品名称':'名称'} value={title} onChangeText={setTitle} maxLength={100} autoFocus />
       {kind==='tasks'&&!item&&!!sources.length&&<Menu visible={sourceMenu} onDismiss={()=>setSourceMenu(false)} anchor={<Button mode="outlined" icon="cloud-outline" disabled={locked} onPress={()=>{if(!locked)setSourceMenu(true);}}>{sourceId?sources.find(s=>s.id===sourceId)?.name:'看板本地待办'}</Button>}><Menu.Item title="看板本地待办" disabled={locked} onPress={()=>{if(locked)return;setSourceId('');setSourceMenu(false);}}/>{sources.map(s=><Menu.Item key={s.id} title={s.name} disabled={locked} onPress={()=>{if(locked)return;setSourceId(s.id);setSourceMenu(false);}}/>)}</Menu>}
+      {kind==='events'&&<><CalendarPrivacyFields event={event} user={user} value={visibility} onChange={setVisibility} disabled={locked}/><Text variant="labelMedium">负责人（不改变可见范围）</Text></>}
       {!taskCloud&&<SegmentedButtons value={owner} onValueChange={value=>{if(!locked)setOwner(value);}} buttons={[{value:'shared',label:'一起',disabled:locked},...(state?.people||[]).map(person=>({value:person.id,label:person.name,disabled:locked}))]} />}
       {kind==='shopping'&&<ShoppingScheduleFields due={due} priority={priority} onDueChange={setDue} onPriorityChange={setPriority} disabled={locked}/>}
       {kind==='shopping'&&<><TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="数量" label="数量" value={quantity} onChangeText={setQuantity} maxLength={30}/><TextInput outlineStyle={{borderRadius:8}} {...common} accessibilityLabel="预计总价（元，可选）" label="预计总价（元，可选）" value={budget} onChangeText={setBudget} keyboardType="decimal-pad"/><View style={styles.photos}>{photos.map((id,index)=><View key={id}><Image source={{uri:'/api/photos/'+encodeURIComponent(id)}} style={styles.photo}/><IconButton icon="close" accessibilityLabel={'移除第'+(index+1)+'张图片'} size={16} disabled={locked} onPress={()=>{if(!locked)setPhotos(values=>values.filter(value=>value!==id));}}/></View>)}</View><Button mode="outlined" icon="image-plus" disabled={locked||photos.length>=3} loading={uploading} onPress={addPhoto}>添加参考图片 · {photos.length}/3</Button><Text variant="bodySmall">保存后，参考图片与家庭共享。</Text></>}
