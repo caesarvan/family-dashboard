@@ -1,12 +1,18 @@
 # 联合开发接手说明
 
-## 最新发布：本地日程默认私密
+## 最新发布：视频导入与混合播放
+
+2026-09-20 17:26:15（北京时间）激活，17:33:17 生产只读检查通过，随后非作者复核通过。相册支持明确选择并保存视频、成员播放和逐台授权的照片／视频轮播；真实 Google 视频和实体电视仍待验。固定应用 source `b8c4d599`，一户两库完成 71→73／平台 9 表保全；app、sync、media、decoder、web 五服务正常，源码与实际镜像逐项核对。[接手入口和原件索引](MEDIA-VIDEO-ACCEPTANCE.md#media-video-release)。
+
+新接缝为独立解码服务、私密加密视频副本和设备播放进度；下一次发布须适配当前 73/9 及五服务，禁止重放本次已消费计划或旧四服务迁移。R5 控制器正常／部分失败完整组恢复已在隔离场景实际通过；生产本次未做恢复。设备本地照片上传和「那年今日」仍在独立 PR，不能从其源码存在推断上线。
+
+## 此前发布：本地日程默认私密
 
 2026-09-20 10:11:17（北京时间）激活，10:18:48 独立生产只读审计通过。 新建本地日程／ICS 默认私人，统一权限覆盖 state、CRUD、助理、导出与电视；旧共享及已选择云来源保持。[使用与集中验收](CALENDAR-PRIVACY-ACCEPTANCE.md#calendar-privacy-release)。[PR #17](https://github.com/caesarvan/family-dashboard/pull/17) 合入 main `a6c0c39`，与安装 source `8d3e637` 同树；一户两库保持 71/9。
 
 后端接缝为 `calendar_privacy.py` 及 app／assistant／portability 的统一过滤；前端使用 `stateVerified`、稳定身份和原 ID／revision。43 个 Linux 用例、R1 后两项＋R4 首项浏览器、正式构建和生产审计分别留证。已消费计划不重放，纯文档提交不改变运行包。
 
-视频处理及混合电视播放保留在 [草稿 PR #19](https://github.com/caesarvan/family-dashboard/pull/19)，未进入本次部署。正式构建、临时浏览器、真实 Linux 两户三库迁移和两项媒体资源实验已分段通过；服务器候选准备已通过非作者审查，完整五服务控制器演练及生产 stage／activate 仍未完成。具体身份、失败历史和边界见[视频发布候选进展](MEDIA-VIDEO-ACTIVATION.md#2026-09-20-候选验证进展)。A–D 本人完整验收仍 0/4，真实云目标待选，实体电视暂无法验证。
+当时 10:11 的日程隐私包未包含视频；视频后续已按文首记录部署，[PR #19](https://github.com/caesarvan/family-dashboard/pull/19)保存对应源码审查链。A–D 本人完整验收仍 0/4，真实云目标待选，实体电视暂无法验证。
 
 ## 此前发布：日程时间重叠
 
