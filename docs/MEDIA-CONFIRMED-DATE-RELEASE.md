@@ -1,6 +1,6 @@
 # 照片日期确认：发布适配
 
-这是本轮候选的发布说明，不表示已上线。当前已安装的父版本是旅行费用源码 `302a62d6c32676b4c8628bd5c0fdf967e1d143c5`，家庭／平台库为 75／9 表，五个服务；实际发布身份以 [HANDOFF](HANDOFF.md) 为准。
+这是照片日期批次的固定发布说明，实际状态见[集中验收](MEDIA-CONFIRMED-DATE-ACCEPTANCE.md#media-date-release)。本轮升级前的父版本为旅行费用源码 `302a62d6c32676b4c8628bd5c0fdf967e1d143c5`，家庭／平台库均保持 75／9 表及五个服务。该固定适配不能用于未来任意父版本；新发布须重新核对 [HANDOFF](HANDOFF.md) 和现场身份。
 
 本轮只更新本人照片日期元数据、个人导出与 Expo 界面。字段加密保存在既有媒体行，没有 DDL、回填、图片重解码或新依赖。日期契约及兼容规则见 [MEDIA-CONFIRMED-DATE](MEDIA-CONFIRMED-DATE.md)，浏览器两个流程见[验证工具](MEDIA-CONFIRMED-DATE-BROWSER.md)。
 
