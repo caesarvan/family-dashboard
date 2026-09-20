@@ -18,8 +18,8 @@ video = parent.video
 
 policy, build, routes, previous = video.policy, video.build, video.routes, video.previous
 need, sha, encoded, hashes = video.need, video.sha, video.encoded, video.hashes
-BASE = 'add881ed6a7d455e2743ce2affa6cf8b931b47d2'
-BASE_MAP_SHA = '19d4543691d3fff911102cb21129a1b88cd2bb688fb0b632c232a632a65b5a38'
+BASE = 'aa55f3e7154ec5076ca0ec2360df30e9cf73f981'
+BASE_MAP_SHA = '1303aa0fb903202ead0e16af220ff88ba8d083a65d381f1141f2d007b9088d1a'
 HISTORY = 'e8f0427b35157074d179bc4de86a7c5c4db0a755'
 SEED_REFERENCE = HISTORY
 SELF = 'deploy/tv_trip_migration_linux_probe.py'
