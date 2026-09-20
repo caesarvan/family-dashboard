@@ -1,3 +1,4 @@
+import { isConfirmedDate, canConfirmPhotoDate } from './photoConfirmedDate.ts';
 import { sessionIdentity } from './sessionIdentity.ts';
 // Local media contracts. Provider URLs never become preview image sources.
 export type Photo = {
@@ -6,6 +7,7 @@ export type Photo = {
   journey: { id: string; tripId: string; title: string } | null;
   accountId?: string | null; displayFilename?: string; source?: 'google-photos' | 'local-upload';
   sourceCreatedAt?: string | null; sourceTimeState?: 'known' | 'unknown';
+  userConfirmedDate?: string | null;
   mediaType?: 'photo' | 'video'; durationMs?: number; hasAudio?: boolean; videoUrl?: string;
 };
 export type PhotoImport = {
@@ -81,6 +83,8 @@ export function validatePhoto(item: Photo): Photo {
   if (item.mediaType !== undefined && !['photo', 'video'].includes(item.mediaType)) throw new Error('媒体类型无法核对。');
   if (item.mediaType === 'video' && (!videoPath(item) || !Number.isSafeInteger(item.durationMs)
     || item.durationMs! < 1 || item.durationMs! > 600250 || typeof item.hasAudio !== 'boolean')) throw new Error('视频数据已变化，请重新读取。');
+  if (Object.hasOwn(item, 'userConfirmedDate') && (!item.canManage || item.userConfirmedDate !== null
+    && (!isConfirmedDate(item.userConfirmedDate) || !canConfirmPhotoDate(item)))) throw new Error('本人确认日期无法核对。');
   return item;
 }
 
