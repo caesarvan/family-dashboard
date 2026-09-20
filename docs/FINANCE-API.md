@@ -508,7 +508,9 @@ HTTP 200 只表示名称列表已生成。列表包括隐藏的普通工作表�
 XLSX 工作表发现与助理旅行简报已于 2026-09-15 06:50:21 合入并发布，详情见 [验收记录](VALIDATION.md)。
 
 
-## 通用支付流水的可选收支方向列（候选，未发布）
+## 通用支付流水的可选收支方向列（已发布）
+
+已于2026-09-21发布，固定身份、验证与实际生产边界见[集中验收](FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release)。
 
 仍使用 `/api/finance-hub/imports/preview` 和 `/api/finance-hub/imports/confirm`，不增加路由或表。通用 CSV／XLSX 支付流水可在已选择四个必填列后，明确选择原文件的收支方向列：
 
