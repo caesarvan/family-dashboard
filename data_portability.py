@@ -17,6 +17,7 @@ from finance_analysis import export_owned_analysis
 from finance_baseline import shared_baselines
 from finance_source_bridge import ImportSession
 from shopping_settlement import export_owned_settlements
+from journey_finance import export_owned_allocations
 from household_routines import export_shared_routines
 from spending_observations import export_owned_spending_observations
 from journey_documents import exported_documents
@@ -372,6 +373,9 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     'FROM hub_reconciliations WHERE owner=? ORDER BY id', (uid,))]
             if {'hub_shopping_settlements', 'hub_shopping_settlement_receipts'}.issubset(available):
                 personal['shoppingSettlements'] = export_owned_settlements(con, uid)
+            if {'hub_journey_allocations', 'hub_journey_allocation_operations'}.issubset(available):
+                personal['journeyAllocations'] = export_owned_allocations(con, uid)
+                snapshot['coverage']['journeyAllocations'] = 'owner_allocations_and_minimal_operations_without_preview_or_source_digests'
             personal['monthlyFinance'] = [dict(data=json.loads(r['data']), revision=r['revision']) for r in owned_rows(con, 'private_finance')]
             personal['financeBaselines'] = [{'data':json.loads(r['private_data']), 'revision':r['revision'], 'updatedAt':r['updated_at']} for r in owned_rows(con, 'finance_baselines')]
             if {'finance_spending_observations', 'finance_spending_receipts'}.issubset(available):
@@ -453,6 +457,7 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     '独立消费观察和接受回执保存在 data.json；其报告日期与覆盖范围不改变资产余额日期，不与账单、订单或基线消费重复相加。\n',
                     'CSV 的公式危险前缀加了单引号，JSON 保留原文。估值未知保持空白，不作为零。\n',
                     '勾选共同记录时含双方已共享的日程、待办、采购、旅行和资金汇总；不含伴侣私人账本。采购图片与旅行资料仅含元数据，不含文件。旅行资料夹可逐份下载文件。\n',
+                    'personal.journeyAllocations 仅含本人旅行费用关联和最小操作摘要，保留已删除旅行或付款的引用；不含请求编号、来源或请求摘要、预览凭据与历史标题。金额不加入共享旅行或原交易CSV，勾选共同记录不扩大权限。此副本不能导入或重放归集操作。\n',
                     '本人旅行资料只在 personal.journeyDocuments 出现一次，含旅行已删除后保留的本人资料；shared.journeyDocuments 仅含仍关联有效旅行的伙伴共享资料，不含内容、文件网址、请求标识或内容散列。\n',
                     'personal.journeyPlaces 含本人未删除地点及精确坐标；shared.journeyPlaces 仅含伙伴明确共享地点，坐标按其隐藏、粗化或精确设置导出。地点创建回执与已删除记录不在本副本内，整库备份另行保留。\n',
                     'personal.journeyRoutes 含本人未删除路线；勾选共同记录才含 shared.journeyRoutes 中伙伴明确共享路线。站点按当前授权及原顺序投影，共享路线的作者也只看到共享坐标。不可用站点仅保留位置，不跨缺口连线；不含隐藏地点编号、历史回执或请求摘要。路线顺序不代表导航或实际到访。\n',

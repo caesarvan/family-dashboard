@@ -32,6 +32,7 @@ export type ScreenProps = {
   onFinanceSourcePending?: (pending: boolean) => void;
   onFinanceAccountsPending?: (pending: boolean) => void;
   onShoppingSettlementPending?: (pending: boolean) => void;
+  onJourneyFinancePending?: (pending: boolean) => void;
   onInventoryPending?: (message: string | null) => void;
   calendarVerified?: boolean;
   state: FamilyState; user: Member; focus: string; mode: CalendarMode; layout: HomeLayout;
