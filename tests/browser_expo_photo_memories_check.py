@@ -298,7 +298,10 @@ class Run(MediaRun):
                 old.append(value); route.fulfill(response=actual)
             target = self.base + self.path(); page.route(target, switch, times=1)
             try:
-                button(page, '刷新').click(); self.settle(page, lambda: len(old) == 1)
+                # Natural five-second polling consumes this route. An extra
+                # click races the resulting identity clear/remount; the icon
+                # button also does not have the exact accessible name "刷新".
+                self.settle(page, lambda: len(old) == 1)
                 expect(page.get_by_label('查看照片：' + owner['caption'], exact=True)).to_have_count(0)
                 expect(page.locator('body')).not_to_contain_text('合成离线草稿不外露')
                 assert self.get(ctx, '/api/me')['user']['id'] == 'member2'
