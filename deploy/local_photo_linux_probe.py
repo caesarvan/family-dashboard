@@ -266,9 +266,14 @@ class TempWatch:
                 name = raw[pos:pos+size].split(b'\0')[0].decode('utf8', 'replace'); pos += size
                 self.events.append({'at': time.time(), 'directory': self.names.get(wd), 'mask': mask, 'name': name})
                 need(not mask & (0x4000 | 0x8000 | 0x400 | 0x800), 'inotify coverage lost; inconclusive')
+    def close(self):
+        if self.fd is not None:
+            fd, self.fd = self.fd, None
+            os.close(fd)
     def finish(self):
-        try: self.sample()
-        finally: os.close(self.fd)
+        if self.fd is not None:
+            try: self.sample()
+            finally: self.close()
         need(not self.events, 'request/proxy temporary file activity observed')
 
 
@@ -336,9 +341,11 @@ def run(prepared, output, profile, expected_input_sha256):
         failure = type(error).__name__+': '+str(error)
     finally:
         if watch:
-            try: watch.sample()
-            except Exception as error: failure = failure or str(error)
-            result['temporaryEvents'] = watch.events; os.close(watch.fd)
+            try: watch.finish()
+            except BaseException as error:
+                result['temporaryWatchError'] = type(error).__name__+': '+str(error)
+                failure = failure or result['temporaryWatchError']
+            result['temporaryEvents'] = watch.events
         errors = []
         for role,cid in reversed(list(owned.items())):
             try:

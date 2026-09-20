@@ -154,3 +154,102 @@ def test_direct_script_help_needs_no_pythonpath_or_docker(tmp_path):
     env={k:v for k,v in os.environ.items() if k!='PYTHONPATH'}
     result=subprocess.run([sys.executable,'-B',str(ROOT/probe.SELF),'--help'],cwd=tmp_path,env=env,capture_output=True,timeout=15)
     assert result.returncode==0 and b'prepare' in result.stdout and b'run' in result.stdout
+
+
+def test_temp_watch_finish_keeps_failure_and_closes_real_fd_once(tmp_path, monkeypatch):
+    import os
+    watch=probe.TempWatch.__new__(probe.TempWatch)
+    watch.fd=os.open(tmp_path/'events',os.O_RDWR|os.O_CREAT)
+    fd=watch.fd;watch.events=[{'name':'body.tmp'}];watch.names={}
+    close=os.close;closed=[]
+    def tracked_close(value):
+        closed.append(value);close(value)
+    monkeypatch.setattr(probe.os,'close',tracked_close)
+    for _ in range(2):
+        with pytest.raises(RuntimeError,match='temporary file activity observed'):watch.finish()
+    watch.close()
+    assert closed==[fd] and watch.fd is None and watch.events==[{'name':'body.tmp'}]
+    with pytest.raises(OSError):os.fstat(fd)
+
+
+@pytest.mark.parametrize('fault,reason',[
+    ('activity','temporary file activity observed'),
+    ('coverage','inotify coverage lost'),
+    ('close','injected close failure'),
+])
+def test_temp_watch_failure_still_cleans_all_owned_and_records_result(tmp_path,monkeypatch,fault,reason):
+    """Actual coordinator/parser/finalizer; synthetic Docker and ordinary file fd, not Linux proof."""
+    import os, struct
+    from types import SimpleNamespace
+    prepared=tmp_path/'input';prepared.mkdir();(prepared/'input.json').write_text('{}')
+    output=tmp_path/'output';event_path=tmp_path/'events';event_path.write_bytes(b'')
+    token='lp-'+'1'*16;network='a'*64;closed=[];instances=[];monitors=[]
+    watch=probe.TempWatch.__new__(probe.TempWatch)
+    watch.fd=os.open(event_path,os.O_RDONLY);fd=watch.fd;watch.events=[];watch.names={1:'client'}
+    close=os.close
+    def tracked_close(value):
+        close(value)
+        if value==fd:
+            closed.append(value)
+            if fault=='close':raise OSError('injected close failure')
+    class Executor:
+        def __init__(self,_):self.records=[];self.info={};instances.append(self)
+        def call(self,args,**kwargs):
+            self.records.append(args)
+            if args[:2]==['network','create']:return 0,network.encode()
+            if args[:2]==['network','inspect']:
+                return 0,json.dumps([{'Id':network,'Internal':True,'Labels':{'local-photo-probe':token},'Containers':{}}]).encode()
+            if args[0]=='create':
+                role=args[args.index('--name')+1].removeprefix(token+'-');cid=str(len(self.info)+1)*64
+                self.info[cid]={'Id':cid,'Name':'/'+token+'-'+role,'Config':{'Labels':{'local-photo-probe':token}},
+                    'Image':probe.WEB_IMAGE if role=='web' else probe.APP_IMAGE,
+                    'HostConfig':{'Memory':probe.LIMITS[role]*probe.MIB,'MemorySwap':probe.LIMITS[role]*probe.MIB,'PortBindings':{}},
+                    'State':{'Running':False,'Pid':0,'ExitCode':0,'OOMKilled':False}}
+                return 0,cid.encode()
+            if args[0]=='inspect':return 0,json.dumps(self.info[args[-1]]).encode()
+            if args[0]=='start':
+                row=self.info[args[1]];row['State'].update(Running=True,Pid=100)
+                if row['Name'].endswith('-app'):(output/'app/ready.json').write_text('{}')
+            elif args[0]=='wait':
+                if fault!='close':
+                    mask=0x100 if fault=='activity' else 0x8000
+                    event_path.write_bytes(struct.pack('iIII',1,mask,0,9)+b'body.tmp\0')
+                return 0,b'0'
+            elif args[0] in ('stop','kill'):self.info[args[-1]]['State'].update(Running=False,Pid=0)
+            return 0,b''
+    class Monitor:
+        def __init__(self,_):self.thread=None;self.failure=None;self.finished=False;monitors.append(self)
+        def start(self):self.thread=object()
+        def check(self):pass
+        def finish(self):self.finished=True;return {'threadStarted':True,'failure':None}
+    def cgroup(_):
+        (output/'client/result.json').write_text('{"passed":true}')
+        (output/'client/finished.json').write_text('{}')
+        for row in instances[0].info.values():
+            if row['Name'].endswith('-client'):row['State'].update(Running=False,Pid=0)
+        return {'memory.current':'1','memory.peak':'2','memory.max':'3','memory.events':'max 0\noom 0\noom_kill 0'}
+    monkeypatch.setattr(probe.sys,'platform','linux');monkeypatch.setattr(probe.sys,'dont_write_bytecode',True)
+    monkeypatch.setattr(probe,'safe',lambda p,**kw:Path(p));monkeypatch.setattr(probe,'checked_input',lambda p:{})
+    monkeypatch.setattr(probe,'common_module',lambda:SimpleNamespace(Executor=Executor,HostMemoryMonitor=Monitor,host_preflight=lambda p:{'status':'ready'}))
+    monkeypatch.setattr(probe.secrets,'token_hex',lambda n:'1'*16)
+    monkeypatch.setattr(probe.os,'chown',lambda *args:None,raising=False);monkeypatch.setattr(probe.os,'close',tracked_close)
+    monkeypatch.setattr(probe,'TempWatch',lambda p:watch);monkeypatch.setattr(probe,'cgroup_state',cgroup)
+    monkeypatch.setattr(probe.time,'sleep',lambda _:None)
+    try:
+        with pytest.raises(RuntimeError,match='profile not passed'):
+            probe.run(prepared,output,'nginx_raw',probe.sha(prepared/'input.json'))
+        receipt=json.loads((output/'result.json').read_text())
+        assert not receipt['passed'] and reason in receipt['failure']
+        assert receipt['cleanupErrors']==[] and receipt['unknownCreate'] is None
+        assert receipt['hostMemory']['threadStarted'] and monitors[0].finished
+        assert (output/'cgroup-samples.json').is_file() and closed==[fd] and watch.fd is None
+        assert receipt['temporaryEvents']==watch.events
+        if fault!='close':assert receipt['temporaryEvents'][0]['name']=='body.tmp'
+        for role,cid in receipt['containers'].items():
+            final=json.loads((output/(role+'-final.json')).read_text())
+            assert not final['State']['Running'] and final['State']['Pid']==0
+            assert ['rm',cid] in instances[0].records
+            if role!='client':assert ['stop','--time=5',cid] in instances[0].records
+        assert instances[0].records[-1]==['network','rm',network]
+    finally:
+        if watch.fd is not None:close(watch.fd)

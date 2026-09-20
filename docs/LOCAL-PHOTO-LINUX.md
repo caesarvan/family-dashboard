@@ -32,4 +32,6 @@ python -B <固定工具路径>/local_photo_linux_probe.py run --input <准备目
 
 输出包括命令 argv/PID/终态/stdout/stderr、输入 SHA、宿主内存连续样本、各实际 cgroup 的 current／peak／events／limit、HTTP 时序、数据库读回、Gunicorn 源码导入证明及已停止容器状态。峰值包含启动／合成种子阶段，不伪装成仅图片净化峰值；两次实验不能相加推断生产并发。停止只作用于本次 owned CID，随后核零 PID 再移除容器／专用网络，合成目录与所有失败原件保留。
 
+临时文件事件、监控覆盖丢失或关闭错误仍判失败；监控描述符最多关闭一次，异常不阻断本次 owned 容器与网络收尾、宿主内存及最终结果留证。离线回归使用真实文件描述符和协调者、合成事件与 Docker 替身，不等于实际 Linux inotify／容器已验。
+
 离线测试验证配置边界、真实 Pillow 合成输入和恰 8MiB JPEG 净化等，不执行 Docker／SSH／Linux 负载。真实执行仍可能出现 OOM、线程／临时文件行为或超时；只有新运行原件可以确定这些结果。
