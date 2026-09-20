@@ -6,8 +6,8 @@
 
 1. **真实短片完整链路。** 非 root 子进程启动实际 `serve`，确认 UID、0700 socket/临时目录和 0600 socket。通过实际 Unix socket 传入 12 秒合成 H.264/AAC，返回真实 MP4/JPEG 并校验 SHA、时长；另用真实 FFmpeg 完整解码返回视频。退出验证原 socket、子进程及临时解码目录清理。
 2. **实际文件系统权限。** 0750 目录、0660 socket 和软链路径均拒绝；已有 stale socket 被拒绝且原 inode 保留。没有伪造 stat，也未用 root 改 UID。
-3. **单 slot 与绝对接收 deadline。** 第一连接发送不完整 body 并持续发送少量字节，第二连接得到固定 `timeout` 且关闭；第一请求不会逐块续期。结束后新请求能进入原槽位，服务保持存活。
-4–6. **真实转码取消。** 分别触发断连、SIGTERM 和绝对 deadline。测试专用可执行 wrapper 仅向实际 FFmpeg 的 `display.mp4` 转码添加 `-re` 输入节流，随后 `exec` 为真正 FFmpeg；不睡眠冒充解码，也不返回伪造成功结果。必须先从 `/proc` 观察实际 FFmpeg 命令、PID/start ticks 和非空 codec 工作目录，再取消；断言真实子进程消失、临时目录清空，必要时原服务槽位恢复。
+3. **单 slot 与绝对接收 deadline。** 第一连接发送不完整 body 并持续发送少量字节，第二连接得到固定 `timeout` 且关闭。最后一块必须在请求开始后 1.0～1.3 秒发送，1.5 秒绝对 deadline 的 EOF 必须在 1.9 秒前；与最后一块续期后的最早到期时间至少相差 0.5 秒，不能把约 2.65 秒才关闭当作成功。结束后新请求能进入原槽位，服务保持存活；时序不满足时明确失败。
+4–6. **真实转码取消。** 分别触发断连、SIGTERM 和绝对 deadline。测试专用可执行 wrapper 仅向实际 FFmpeg 的 `display.mp4` 转码添加 `-re` 输入节流，随后 `exec` 为真正 FFmpeg；不睡眠冒充解码，也不返回伪造成功结果。必须先从 `/proc` 观察实际含 `-re` 的 FFmpeg 命令、PID/start ticks 和非空 codec 工作目录，再取消。源片经实际 ffprobe 确认至少 11.8 秒，取消时保守估计距自然结束仍至少 4 秒；子进程消失、临时目录清空及 SIGTERM 服务退出／socket 清理必须全部落在同一个 2 秒绝对窗口内。deadline 用请求开始后第 6 秒作为窗口起点，不能从迟到的 EOF 重新计时；必要时另核原服务槽位恢复。
 
 节流 wrapper 是随测试只读挂载、模式 0755 的固定 [helper](../tests/fixtures/media_video_realtime_ffmpeg.py)，不写入 `/tmp`，不改变 tmpfs 的 `noexec,nosuid,nodev` 限制。它使用本次 Python 镜像已有的 `/usr/local/bin/python3` 执行，并固定 exec `/usr/bin/ffmpeg`；不改业务源码、FFmpeg 参数实现或发布配置。取消测试证明真实 FFmpeg 被信号路径终止，**不**证明正常视频性能或无节流输入的时序。没有扩大到 100 MiB 源／64 MiB 完整 IPC 内存预算，后者需独立资源 profile。
 
@@ -30,6 +30,6 @@
 
 ## 原件与清理
 
-每例保存服务 argv、仅明确允许的子进程环境变量名、UID/socket mode、实际 `/proc` 子进程身份、取消与槽位恢复观测、stdout/stderr SHA；真实返回视频、独立解码日志和合成源单独保留。正常清理使用实际 SIGTERM 与 codec finally；若不得不紧急 SIGKILL，只对记录的子孙 PID 且 start ticks 仍一致者操作，明确写 `forcedCleanup=true` 并使测试失败，不把强制清理算作正常回收。
+每例保存服务 argv、仅明确允许的子进程环境变量名、UID/socket mode、实际 `/proc` 子进程身份、取消与槽位恢复观测、stdout/stderr SHA；真实返回视频、独立解码日志、合成源与 ffprobe 时长原件单独保留。每例 evidence 只记录观测，测试结果以实际 pytest JUnit 和进程退出码为准；yield fixture 不自行推断测试体成功。正常清理使用实际 SIGTERM 与 codec finally；较长等待仅用于失败后的 teardown，不能覆盖取消用例的 2 秒断言。若不得不紧急 SIGKILL，只对记录的子孙 PID 且 start ticks 仍一致者操作，明确写 `forcedCleanup=true` 并使测试失败，不把强制清理算作正常回收。
 
 本工具只删除自身刚创建且再次检查的 `vsl-*` 合成目录，先保存日志和剩余临时文件列表。没有生产路径、原文件覆盖、外部 provider 或数据库。Linux 真实结果待独立执行、复核后补充，不从本准备提交推断服务已接入 worker 或可以上线。

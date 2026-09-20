@@ -194,9 +194,14 @@ class Scenario:
             'workspace': [str(p.relative_to(self.work)) for p in self.work.rglob('*')]})
         return actual
 
-    def clean_decode(self):
-        wait_until(lambda: not list(self.work.iterdir()), seconds=10)
-        wait_until(lambda: not any(alive(row) for row in self.children.values()), seconds=5)
+    def clean_decode(self, *, until=None):
+        # Cancellation callers share one short absolute bound across all waits.
+        # The longer default is only for teardown after the test verdict.
+        until = time.monotonic() + 15 if until is None else until
+        wait_until(lambda: not list(self.work.iterdir()) and
+                   not any(alive(row) for row in self.children.values()),
+                   seconds=until - time.monotonic())
+        assert time.monotonic() <= until, 'Decoder cleanup exceeded its absolute bound'
         self.evidence['observations'].append({'decoderWorkspaceEmpty': True, 'observedChildrenGone': True})
 
     def close(self):
@@ -242,13 +247,9 @@ def scenario(request, configuration):
     value = Scenario(name, configuration)
     try:
         yield value
-    except BaseException as error:
-        value.evidence['testBodyCompleted'] = False
-        value.evidence['testBodyFailure'] = type(error).__name__ + ': ' + str(error)[:1000]
-        raise
-    else:
-        value.evidence['testBodyCompleted'] = True
     finally:
+        # pytest does not throw the test-call exception into a yield fixture.
+        # JUnit and the pytest process exit are the verdict, never teardown.
         value.close()
 
 
@@ -264,8 +265,16 @@ def source(configuration):
     (evidence / 'source.stdout').write_bytes(result.stdout); (evidence / 'source.stderr').write_bytes(result.stderr)
     assert result.returncode == 0, result.stderr[-1000:]
     raw = target.read_bytes(); assert 0 < len(raw) < 4 * 1024**2
+    probe_argv = [tools.ffprobe, '-v', 'error', '-show_entries', 'format=duration', '-of', 'json', str(target)]
+    probe = subprocess.run(probe_argv, capture_output=True, timeout=10)
+    (evidence / 'source-probe.stdout').write_bytes(probe.stdout)
+    (evidence / 'source-probe.stderr').write_bytes(probe.stderr)
+    assert probe.returncode == 0
+    duration = float(json.loads(probe.stdout)['format']['duration'])
+    assert 11.8 <= duration <= 12.3
     with (evidence / 'source.json').open('x') as stream:
-        json.dump(dict(argv=argv, exitCode=result.returncode, sha256=sha(target), bytes=len(raw)), stream, indent=2)
+        json.dump(dict(argv=argv, exitCode=result.returncode, sha256=sha(target), bytes=len(raw),
+                       probeArgv=probe_argv, probeExitCode=probe.returncode, durationSeconds=duration), stream, indent=2)
     return raw
 
 
@@ -318,17 +327,24 @@ def test_linux_single_slot_busy_and_total_receive_deadline(scenario):
         with closing(scenario.connect()) as second:
             busy = wire.receive_header(second, wire.deadline_after(2))
             assert busy == {'v': 1, 'ok': False, 'code': 'timeout'} and second.recv(1) == b''
-        for _ in range(3):
+        for _ in range(5):
             time.sleep(.2); first.sendall(b'b')
-        first.settimeout(3); assert first.recv(1) == b''
-        elapsed = time.monotonic() - start
-        assert 1 <= elapsed < 3, 'Incoming chunks must not renew the absolute request deadline'
+        last_chunk = time.monotonic()
+        assert 1 <= last_chunk - start < 1.3, 'Trickle timing must leave a distinct absolute-deadline window'
+        first.settimeout(max(.001, start + 1.9 - time.monotonic()))
+        assert first.recv(1) == b''
+        closed = time.monotonic(); elapsed = closed - start
+        renewed_earliest = last_chunk + 1.5
+        assert 1 <= elapsed < 1.9 and renewed_earliest - closed >= .5, (
+            'Incoming chunks must not renew the absolute request deadline')
     assert scenario.server.poll() is None and not descendants(scenario.server.pid)
     time.sleep(.05)  # EOF precedes the handler's immediately following slot.release().
     with closing(scenario.connect()) as fresh, pytest.raises(wire.ProtocolError) as rejected:
         wire.exchange(fresh, b'not-a-video', 'video/mp4', wire.deadline_after(2))
     assert rejected.value.code == 'invalid', 'A fresh request must reach the released slot'
-    scenario.evidence['observations'].append({'busy': busy, 'elapsedSeconds': elapsed, 'slotRecovered': True})
+    scenario.evidence['observations'].append({'busy': busy, 'elapsedSeconds': elapsed, 'slotRecovered': True,
+        'lastChunkSeconds': last_chunk - start, 'renewedEarliestSeconds': renewed_earliest - start,
+        'renewedDeadlineGapSeconds': renewed_earliest - closed, 'closeUpperBoundSeconds': 1.9})
 
 
 @pytest.mark.parametrize('trigger', ('disconnect', 'sigterm', 'deadline'))
@@ -342,15 +358,32 @@ def test_linux_cancels_actual_ffmpeg_without_child_or_temp_leak(scenario, source
         peer.sendall(source)
         actual = scenario.observe_decoder()
         assert time.monotonic() - start < 4, 'Cancellation must target a live real transcode'
+        assert b'-re' in actual['argv'] and alive(actual), 'Observe the actual paced decoder before cancelling'
+        cancel_at = start + timeout if trigger == 'deadline' else time.monotonic()
+        cleanup_until = cancel_at + 2
+        # The measured source is >=11.8s and -re decoding started after this
+        # request. Even the earliest natural finish is >4s after cancellation.
+        natural_remaining = 11.8 - (cancel_at - start)
+        assert natural_remaining >= 4
+        scenario.evidence['cancellation'] = dict(trigger=trigger, cancelSeconds=cancel_at - start,
+            cleanupUpperBoundSeconds=2, earliestNaturalRemainingSeconds=natural_remaining)
         if trigger == 'disconnect':
             peer.close()
         elif trigger == 'sigterm':
-            scenario.server.terminate(); assert scenario.server.wait(timeout=10) == 0
+            scenario.server.terminate()
         else:
-            peer.settimeout(8); assert peer.recv(1) == b''
-            assert 5 <= time.monotonic() - start < 9
-        scenario.clean_decode()
+            peer.settimeout(max(.001, cleanup_until - time.monotonic()))
+            assert peer.recv(1) == b''
+            assert 5 <= time.monotonic() - start <= timeout + 2
+        scenario.clean_decode(until=cleanup_until)
         assert not alive(actual)
+        if trigger == 'sigterm':
+            assert scenario.server.wait(timeout=max(.001, cleanup_until - time.monotonic())) == 0
+            assert not scenario.path.exists()
+        finished = time.monotonic()
+        assert finished <= cleanup_until, 'Cancellation and all cleanup must complete within the same two seconds'
+        scenario.evidence['cancellation'].update(finishedSeconds=finished - start,
+            cleanupSeconds=finished - cancel_at, earliestNaturalFinishGapSeconds=start + 11.8 - finished)
     if trigger != 'sigterm':
         assert scenario.server.poll() is None and scenario.path.exists()
         time.sleep(.05)  # Let connection close and the following slot release finish.
