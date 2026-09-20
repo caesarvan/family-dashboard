@@ -53,10 +53,12 @@ DATA_ACTIONS = {
 
 
 def verify_operator(candidate, expected, *, mode='video-migration'):
-    need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update'), 'unsupported_release_mode')
+    need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update'), 'unsupported_release_mode')
     policy = prepare
     if mode == 'local-photo-source-update':
         from deploy import prepare_local_photo_activation as policy
+    elif mode == 'finance-flow-source-update':
+        from deploy import prepare_finance_flow_activation as policy
     elif mode == 'discovery-source-update':
         from deploy import prepare_discovery_activation as policy
     manifest = read(candidate / 'operator.json', expected)
@@ -79,20 +81,23 @@ class Controller:
         self.plan = read(self.candidate / 'plan.json', plan_sha256)
         self.runner = runner
         self.source = self.candidate / 'source'
-        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update'), 'unsupported_release_mode')
+        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update'), 'unsupported_release_mode')
         self.mode, self.policy = mode, prepare
         self.source_update = mode != 'video-migration'
         self.images, self.parent_image, self.before_schema = prepare.IMAGES, services.PARENT_IMAGE, [71, 9]
         self.release_prefix = 'media-video-73-'
         self.data_prefix, self.data_actions = DATA_PREFIX, DATA_ACTIONS
         if self.source_update:
-            if mode == 'discovery-source-update':
+            if mode == 'finance-flow-source-update':
+                from deploy import prepare_finance_flow_activation as policy
+            elif mode == 'discovery-source-update':
                 from deploy import prepare_discovery_activation as policy
             else:
                 from deploy import prepare_local_photo_activation as policy
             self.policy, self.images = policy, policy.plan_images(self.plan)
             self.parent_image, self.before_schema = policy.package.PARENT_IMAGE, [73, 9]
-            self.release_prefix = 'discovery-73-' if mode == 'discovery-source-update' else 'local-photo-73-'
+            self.release_prefix = ('finance-flow-73-' if mode == 'finance-flow-source-update' else
+                                   'discovery-73-' if mode == 'discovery-source-update' else 'local-photo-73-')
             self.data_prefix = DATA_PREFIX.replace('check_media_video_migration', 'media_video_release_data')
             self.data_actions = {'backup': DATA_ACTIONS['backup'], 'check': DATA_ACTIONS['check'],
                 'verify-rollback': 'from deploy.activate_local_photo_release import verify_restored_group; value=verify_restored_group(root,proof,**kwargs)'}
