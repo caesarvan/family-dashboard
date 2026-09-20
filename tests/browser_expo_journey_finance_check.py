@@ -18,12 +18,13 @@ import subprocess
 import sys
 import traceback
 from unittest.mock import patch
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlsplit
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path[:0] = [str(ROOT), str(ROOT / 'tests')]
 from playwright.sync_api import expect, sync_playwright
+from flask import request
 import browser_finance_flow_mapping_check as fixture
 from browser_expo_finance_check import DAY, button, row, sha
 
@@ -36,13 +37,26 @@ class Run(fixture.Run):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         assert Path(__file__).resolve() == (self.root / HARNESS).resolve()
-        self.report['fixtureHashes'][HARNESS] = sha(Path(__file__))
+        actual_hashes = {HARNESS: sha(Path(__file__))}
         for name in ('journey_finance', 'journey_workflows', 'finance_hub', 'finance_source_bridge'):
             actual = Path(sys.modules[name].__file__).resolve()
             relative = name + '.py'
             assert actual == (self.root / relative).resolve()
-            self.report['fixtureHashes'][relative] = sha(actual)
+            actual_hashes[relative] = sha(actual)
+        assert self.report.setdefault('journeyFixtureHashes', actual_hashes) == actual_hashes
         self.exchange = 0
+
+    def restart(self):
+        super().restart()
+        # BaseRun creates a new Flask application. Keep observing that actual
+        # application, rather than silently losing the post-restart requests.
+        @self.application.after_request
+        def journal(response):
+            if request.path.startswith('/api/'):
+                with self.journal_lock:
+                    self.http.append({'index': len(self.http), 'method': request.method,
+                        'path': request.path, 'status': response.status_code})
+            return response
 
     def snapshot(self):
         result = super().snapshot()
@@ -55,9 +69,28 @@ class Run(fixture.Run):
     def protected(self):
         """The allocation feature must leave these authority rows unchanged."""
         snap = self.snapshot()
-        return {name: snap[name] for name in ('hub_transactions', 'hub_imports',
+        result = {name: snap[name] for name in ('hub_transactions', 'hub_imports',
             'hub_import_receipts', 'hub_reconciliations', 'hub_budgets',
             'journey_workflows', 'journey_links', 'entities', 'settings')}
+        # audit() legitimately increments only settings.meta.revision. Its
+        # exact increment and the exact new audit row are verified separately.
+        result['settings'] = [(r[0], r[1], None) if r[0] == 'meta' else r for r in result['settings']]
+        return result
+
+    def audit_state(self):
+        with closing(sqlite3.connect(self.database)) as con:
+            return {'revision': con.execute("SELECT revision FROM settings WHERE id='meta'").fetchone()[0],
+                    'rows': con.execute('SELECT * FROM audit ORDER BY id').fetchall()}
+
+    def audit_increment(self, before, operation, target):
+        after = self.audit_state()
+        assert after['revision'] == before['revision'] + 1
+        assert after['rows'][:-1] == before['rows']
+        assert len(after['rows']) == len(before['rows']) + 1
+        with closing(sqlite3.connect(self.database)) as con:
+            actor, action, actual_target = con.execute('SELECT actor,action,target FROM audit ORDER BY id DESC LIMIT 1').fetchone()
+        assert (actor, action, actual_target) == ('member1', 'finance.journey.' + operation, target)
+        return after
 
     def allocation_rows(self):
         snap = self.snapshot()
@@ -169,6 +202,7 @@ class Run(fixture.Run):
             self.write(ctx, 'PATCH', '/api/items/shopping/' + shop['id'], {
                 'revision': shop['revision'], 'actual': 30000, 'done': True})
             protected = self.protected()
+            audit_before = self.audit_state()
             self.open_trip(page, journey)
             self.draft(page, payment, '700.00')
             preview = self.preview(page)['result']
@@ -176,6 +210,7 @@ class Run(fixture.Run):
             self.capture(page, 'private-allocation-preview', 390, button(page, '确认归集'))
             saved = self.confirm(page)
             allocation_id = saved['result']['receipt']['allocationId']
+            self.audit_increment(audit_before, 'apply', allocation_id)
             current = self.allocations(ctx, journeyId=journey['id'])
             assert current['summary']['currentAllocatedCents'] == 70000
             assert current['summary']['sharedBudgetCents'] == 100000 and current['summary']['coverage'] == 'owner_partial'
@@ -191,6 +226,7 @@ class Run(fixture.Run):
             button(page, '返回旅行费用').click()
             expect(page.get_by_test_id('journey-allocation-' + allocation_id)).to_be_visible()
             rows = self.allocation_rows()
+            journal_before_restart = len(self.http)
             self.restart()
             assert self.allocation_rows() == rows
             self.open_trip(page, journey)
@@ -201,6 +237,7 @@ class Run(fixture.Run):
             assert drift['summary']['currentAllocatedCents'] == 0 and drift['summary']['needsReviewAllocatedCents'] == 70000
             assert drift['allocations'][0]['state'] == 'needs_review'
             protected_after_refund = self.protected()
+            audit_after_refund = self.audit_state()
             card = page.get_by_test_id('journey-allocation-' + allocation_id)
             expect(card).to_contain_text('需核对')
             card.get_by_role('button', name='调整归集', exact=True).click()
@@ -208,9 +245,11 @@ class Run(fixture.Run):
             self.preview(page)
             updated = self.confirm(page)['result']['receipt']
             assert updated['allocationId'] == allocation_id and updated['revision'] == 2
+            self.audit_increment(audit_after_refund, 'update', allocation_id)
             final = self.allocations(ctx, journeyId=journey['id'])
             assert final['summary']['currentAllocatedCents'] == 60000 and final['summary']['needsReviewCount'] == 0
             assert self.protected() == protected_after_refund
+            assert any(r['path'] == PREFIX + '/confirm' and r['status'] == 200 for r in self.http[journal_before_restart:])
             self.capture(page, 'refund-reconciled', 390, page.get_by_test_id('journey-finance-summary'))
             self.proof('authority-preserved', {'beforeAllocation': protected, 'afterRefund': protected_after_refund,
                 'finalProtected': self.protected(), 'drift': drift, 'final': final})
@@ -221,11 +260,13 @@ class Run(fixture.Run):
             page.set_viewport_size({'width': 1280, 'height': 1080})
             journey, payment = self.journey(ctx), self.payment(ctx)
             protected = self.protected()
+            audit_before = self.audit_state()
             self.open_trip(page, journey)
             self.draft(page, payment, '300.00')
             self.preview(page)
             saved = self.confirm(page, drop=True)
             request_id = saved['payload']['requestId']
+            committed_audit = self.audit_increment(audit_before, 'apply', saved['result']['receipt']['allocationId'])
             original_rows = self.allocation_rows()
             assert len(original_rows['hub_journey_allocations']) == len(original_rows['hub_journey_allocation_operations']) == 1
             self.capture(page, 'unknown-actual-commit', 1280, page.get_by_test_id('journey-finance-unknown'))
@@ -240,6 +281,7 @@ class Run(fixture.Run):
             result = self.get(ctx, PREFIX + '/operations/' + request_id)
             assert result['found'] and result['receipt'] == saved['result']['receipt']
             assert self.allocation_rows() == original_rows and self.protected() == protected
+            assert self.audit_state() == committed_audit
             assert self.count_requests('POST', PREFIX + '/confirm') == 1
             assert self.count_requests('GET', PREFIX + '/operations/' + request_id) >= 1
             self.capture(page, 'recovered-original-request', 1280, page.get_by_test_id('journey-finance-summary'))
@@ -265,9 +307,10 @@ class Run(fixture.Run):
             before = self.allocation_rows()
             held, url = [], self.base + PREFIX + '*'
             def hold(route):
-                if route.request.method != 'GET' or '/operations/' in route.request.url:
+                if route.request.method != 'GET' or urlsplit(route.request.url).path != PREFIX:
                     route.continue_(); return
                 response = route.fetch(max_redirects=0)
+                assert response.status == 200 and 'set-cookie' not in response.headers
                 held.append((route, response.status, response.headers, response.body()))
             page.route(url, hold)
             try:
@@ -275,16 +318,48 @@ class Run(fixture.Run):
                 if not page.get_by_test_id('journey-finance-panel').count():
                     button(page, '我的旅行费用').click()
                 self.settle(page, lambda: bool(held))
+                assert any(any(a['id'] == allocation_id for a in json.loads(raw)['allocations']) for _, _, _, raw in held)
+                expect(page.get_by_test_id('journey-allocation-' + allocation_id)).to_have_count(0)
+                page.evaluate('''({id,title}) => {
+                  const evidence = window.__journeyPrivacyEvidence = {violations:[]};
+                  const check = () => {
+                    if (document.querySelector('[data-testid="journey-allocation-'+id+'"]')
+                        || document.body.textContent.includes(title))
+                      evidence.violations.push({time:performance.now(),reason:'old-private-content-installed'});
+                  };
+                  window.__journeyPrivacyObserver = new MutationObserver(check);
+                  window.__journeyPrivacyObserver.observe(document.body,
+                    {subtree:true,childList:true,characterData:true,attributes:true});
+                  check();
+                }''', {'id': allocation_id, 'title': payment['title']})
                 self.write(ctx, 'POST', '/api/logout', {})
                 self.login(ctx, 2)
                 pending = list(held)
                 held.clear()
                 page.unroute(url, hold)
-                for route, status, headers, raw in pending:
-                    route.fulfill(status=status, headers=headers, body=raw)
-                # Wait for a real membership read after the stale response.
-                self.settle(page, lambda: not page.get_by_test_id('journey-allocation-' + allocation_id).count())
+                self.proof('held-real-owner-response', {'responses': [json.loads(raw) for _, _, _, raw in pending],
+                    'deliveredAfterMemberSwitch': True})
+                with page.expect_response(lambda response: urlsplit(response.url).path == '/api/me'
+                    and response.request.method == 'GET' and response.status == 200
+                    and response.json().get('user', {}).get('id') == 'member2') as fresh:
+                    for route, status, headers, raw in pending:
+                        route.fulfill(status=status, headers=headers, body=raw)
+                page_session = fresh.value.json()
+                assert page_session['user']['id'] == 'member2'
+                # Positive rendered completion: AppShell receives the new
+                # provider identity, rather than treating an already-empty
+                # loading panel as proof that the stale response was handled.
+                expect(button(page, page_session['user']['name'] + '，账户菜单')).to_be_visible(timeout=15000)
                 expect(page.locator('body')).not_to_contain_text(payment['title'])
+                expect(page.get_by_test_id('journey-allocation-' + allocation_id)).to_have_count(0)
+                observation = page.evaluate('''() => {
+                  window.__journeyPrivacyObserver.disconnect();
+                  return window.__journeyPrivacyEvidence;
+                }''')
+                assert observation['violations'] == []
+                self.proof('page-identity-completion', {'pageMeStatus': fresh.value.status,
+                    'pageUserId': page_session['user']['id'], 'renderedNewAccountMenu': True,
+                    'mutationObservation': observation})
                 own = self.allocations(ctx, journeyId=journey['id'])
                 assert own['allocations'] == [] and own['summary']['currentAllocatedCents'] == 0
                 receipt = self.get(ctx, PREFIX + '/operations/' + saved['requestId'])
@@ -371,11 +446,13 @@ def main():
             report['bundleUnchanged'] = report['bundleHashesBefore'] == report['bundleHashesAfter']
             report['fixtureHashesAfter'] = {name: sha(root / name) for name in report.get('fixtureHashes', {})}
             report['fixturesUnchanged'] = bool(report.get('fixtureHashes')) and report['fixtureHashesAfter'] == report['fixtureHashes']
+            report['journeyFixtureHashesAfter'] = {name: sha(root / name) for name in report.get('journeyFixtureHashes', {})}
+            report['journeyFixturesUnchanged'] = bool(report.get('journeyFixtureHashes')) and report['journeyFixtureHashesAfter'] == report['journeyFixtureHashes']
             report['sourceStillFrozen'] = git('rev-parse', 'HEAD') == head and not git('status', '--porcelain=v1')
             report['temporaryFixturesRemoved'] = len(report['scenarioResults']) == len(cases) and all(
                 c['temporaryFixtureRemoved'] and c['listenerStopped'] for c in report['scenarioResults'])
             report['passed'] = report['passed'] and all(report[k] for k in ('sourceUnchanged', 'bundleUnchanged',
-                'fixturesUnchanged', 'sourceStillFrozen', 'temporaryFixturesRemoved')) and not (
+                'fixturesUnchanged', 'journeyFixturesUnchanged', 'sourceStillFrozen', 'temporaryFixturesRemoved')) and not (
                 report['pageErrors'] or report['externalRequests'])
         except Exception:
             report['passed'] = False; report['finalEvidenceFailure'] = traceback.format_exc()
