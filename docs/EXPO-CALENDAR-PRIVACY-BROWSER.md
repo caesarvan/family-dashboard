@@ -14,6 +14,8 @@
 
 复用既有 `browser_expo_finance_check.Run` 的临时 HTTPS Flask／SQLite、真实 Edge、登录与现场失败保全，复用 calendar conflicts 的安全 DOM 测量及 dependencies 的 HTTP／DB 证据。390/1280 检查实际 body/root 水平宽度与控件裁切，已有水平滚动祖先的严格边界保持。所有数据均为新临时合成家庭；TV 是真实配对会话的接口权限验证，不代替实体电视显示验收。
 
+本工具在既有页面打开后，用带时区的 `NOW` datetime 调用 `page.clock.set_system_time`：保持合成日期并恢复时钟走时。继承的固定 `Date.now()` 会阻止 React Native Web 浮动标签动画完成；此处仅修正隐私工具的时钟，不修改共享夹具或产品样式。 每次打开实际断言 Date.now 跨帧推进且仍为合成日期；首条截图前等待地点标签几何位置移到输入文字区域上方，保存时钟和标签几何原件。
+
 ## 运行合同
 
 由集成人提供完整冻结 source head、新 bundle 和 `build-evidence.json` SHA。Windows 为 bundle 使用 `\\?\` 绝对长路径，`--temp-root` 是现有短临时目录。使用 `python -B -X utf8`，禁止 `-O`。
