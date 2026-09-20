@@ -1,5 +1,7 @@
 # Google Photos 私有精选 API 与任务状态机
 
+本轮设备照片日期扩展见[照片日期确认契约](MEDIA-CONFIRMED-DATE.md)：本人 DTO 增加 `userConfirmedDate`，仅本人已保存的有效设备照片可单独以 `{revision,userConfirmedDate}` 修改或清空；不能混入说明、共享或旅行修改。伙伴与电视 DTO 不含该字段。本文其余章节保留原模块协议与历史接入说明，实际上线状态以 [HANDOFF](HANDOFF.md) 为准。
+
 此模块需要显式注册，当前候选未接 `app.py`、账号事务钩子、前端或 Docker。仅新增 `household_media.py`、专项测试和本文。图片 worker 使用同一引擎，不直接写 SQL。Google OAuth/Picker、加密与图片净化沿用已审基础组件；本文测试是合成账号、真实成员 cookie/SQLite/Fernet/Pillow，不是实际 Google 或电视设备验收。
 
 ## 注册与三表
