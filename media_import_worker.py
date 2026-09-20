@@ -155,15 +155,23 @@ class MediaImportWorker:
     def _download_video(self,picker,job,media,current,session_id):
         from media_videos import MediaVideoError, VideoTools, sanitize_media_video
         config=getattr(getattr(self.engine,'app',None),'config',{})
-        tools=self.video_tools or VideoTools(
-            config.get('MEDIA_VIDEO_FFMPEG') or os.environ.get('MEDIA_VIDEO_FFMPEG',''),
-            config.get('MEDIA_VIDEO_FFPROBE') or os.environ.get('MEDIA_VIDEO_FFPROBE',''))
-        temporary=self.video_temp_root or config.get('MEDIA_VIDEO_TEMP_ROOT') or os.environ.get('MEDIA_VIDEO_TEMP_ROOT')
+        socket_path=config.get('MEDIA_VIDEO_SOCKET') or os.environ.get('MEDIA_VIDEO_SOCKET')
         downloaded=picker.download_media(session_id,media['id'],variant='video')
         if not self.engine.validate_job(job):
             return
         try:
-            video=sanitize_media_video(downloaded.data,downloaded.content_type,tools=tools,temp_root=temporary)
+            if socket_path:
+                from media_video_transport import sanitize_remote_media_video
+                # A configured isolation boundary never falls back to the
+                # credential-bearing worker's local decoder on failure.
+                video=sanitize_remote_media_video(downloaded.data,downloaded.content_type,
+                                                 socket_path=socket_path,timeout=900)
+            else:
+                tools=self.video_tools or VideoTools(
+                    config.get('MEDIA_VIDEO_FFMPEG') or os.environ.get('MEDIA_VIDEO_FFMPEG',''),
+                    config.get('MEDIA_VIDEO_FFPROBE') or os.environ.get('MEDIA_VIDEO_FFPROBE',''))
+                temporary=self.video_temp_root or config.get('MEDIA_VIDEO_TEMP_ROOT') or os.environ.get('MEDIA_VIDEO_TEMP_ROOT')
+                video=sanitize_media_video(downloaded.data,downloaded.content_type,tools=tools,temp_root=temporary)
             # Do not retain up to 100 MiB of source bytes through seal/SQLite.
             del downloaded
         except MediaVideoError as error:
