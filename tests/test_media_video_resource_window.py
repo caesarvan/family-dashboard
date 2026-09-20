@@ -12,6 +12,7 @@ class Simulation:
         self.output, self.fault, self.commands = output, fault, []
         self.running, self.timer, self.service_reads = True, 'active', 0
         self.started, self.app_pid, self.changed = False, 11, False
+        self.web_reads = 0
         self.experiments = {}
 
     def __call__(self, argv, *, timeout=120, private=False):
@@ -67,6 +68,13 @@ class Simulation:
                            'StartedAt': 'new' if self.started and name == 'media' else 'original',
                            'Health': {'Status': 'healthy'}}}
         if self.fault == 'wrong_parent': value['Id'] = '0' * 64
+        if name == 'web' and self.fault in ('mount_order', 'mount_value', 'duplicate_mount'):
+            self.web_reads += 1
+            mounts = [{'Destination': '/a', 'Source': '/original-a', 'RW': False},
+                      {'Destination': '/b', 'Source': '/original-b', 'RW': False}]
+            if self.fault == 'duplicate_mount': mounts[1]['Destination'] = '/a'
+            if self.fault == 'mount_value' and self.web_reads > 1: mounts[1]['RW'] = True
+            value['Mounts'] = mounts if self.web_reads % 2 else list(reversed(mounts))
         return json.dumps([value]).encode()
 
 
@@ -159,3 +167,21 @@ def test_private_command_output_is_hashed_but_never_written(tmp_path, monkeypatc
     assert run([*window.DOCKER, 'inspect', window.IDS['media']], private=True) == b'synthetic-private-inspect'
     assert not list(tmp_path.glob('*.stdout')) and not list(tmp_path.glob('*.stderr'))
     assert all(b'synthetic-private-inspect' not in f.read_bytes() for f in tmp_path.iterdir())
+
+
+def test_docker_mount_order_changes_do_not_block_drain_or_recovery(rig):
+    sim, obj = rig('mount_order'); result = obj.run()
+    assert result['passed'] and result['mediaProcessRestored'] and result['backupTimerRestored']
+    assert sim.web_reads >= 5 and len(mutations(sim)) == 4
+
+
+def test_changed_mount_value_is_still_rejected(rig):
+    sim, obj = rig('mount_value'); result = obj.run()
+    assert not result['passed'] and result['failure'].endswith('parent_configuration_changed')
+    assert not obj.stop_attempted and not obj.profiles
+
+
+def test_duplicate_mount_destinations_fail_before_mutation(rig):
+    sim, obj = rig('duplicate_mount'); result = obj.run()
+    assert not result['passed'] and result['failure'].endswith('invalid_mounts')
+    assert not mutations(sim)

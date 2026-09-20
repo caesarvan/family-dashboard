@@ -114,6 +114,12 @@ class Window:
         need(value['Image'] == (WEB_IMAGE if name == 'web' else PARENT_IMAGE), 'parent_image')
         need(not value['State']['OOMKilled'] and value['RestartCount'] == 0, 'parent_unhealthy')
         immutable = {key: value[key] for key in ('Id', 'Image', 'Config', 'HostConfig', 'Mounts')}
+        # Docker constructs Mounts from a map; list order is not configuration.
+        # Preserve every field while canonicalizing by unique destination.
+        mounts = value['Mounts']
+        need(isinstance(mounts, list) and all(isinstance(m, dict) and isinstance(m.get('Destination'), str)
+             for m in mounts) and len({m['Destination'] for m in mounts}) == len(mounts), 'invalid_mounts')
+        immutable['Mounts'] = sorted(mounts, key=lambda m: m['Destination'])
         state = value['State']
         return {'id': value['Id'], 'image': value['Image'], 'configurationSha256': digest(encoded(immutable)),
                 'running': state['Running'], 'exitCode': state['ExitCode'], 'pid': state['Pid'],
