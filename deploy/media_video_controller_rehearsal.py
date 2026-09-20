@@ -169,8 +169,12 @@ def available_kib():
 def preflight(reader=available_kib, sleeper=time.sleep):
     samples = []
     for i in range(BUDGET['samples']):
-        if i: sleeper(BUDGET['intervalSeconds'])
-        samples.append({'at': time.time(), 'availableKiB': reader()})
+        try:
+            if i: sleeper(BUDGET['intervalSeconds'])
+            samples.append({'at': time.time(), 'availableKiB': reader()})
+        except BaseException as error:
+            return {'policy': BUDGET, 'samples': samples, 'passed': False, 'failedSample': i+1,
+                    'failure': type(error).__name__+':'+str(error)}
     return {'policy': BUDGET, 'samples': samples,
             'passed': all(s['availableKiB'] >= BUDGET['preflightMiB']*1024 for s in samples)}
 
@@ -178,6 +182,7 @@ def preflight(reader=available_kib, sleeper=time.sleep):
 class Monitor:
     def __init__(self):
         self.stop = threading.Event(); self.failed = None; self.last = 0; self.minimum = None; self.count = 0
+        self.thread = None; self.thread_started = False
     def sample(self):
         while not self.stop.is_set():
             try:
@@ -188,6 +193,7 @@ class Monitor:
             self.stop.wait(BUDGET['monitorIntervalSeconds'])
     def start(self):
         self.thread = threading.Thread(target=self.sample, daemon=True); self.thread.start()
+        self.thread_started = True
         until = time.monotonic()+1
         while not self.last and time.monotonic()<until: time.sleep(.01)
         self.check()
@@ -195,9 +201,11 @@ class Monitor:
         if time.monotonic()-self.last > BUDGET['maxLagSeconds']: self.failed = 'host_memory_monitor_stalled'
         need(self.failed is None, self.failed or 'host_memory_monitor_failed')
     def finish(self):
-        self.stop.set(); self.thread.join(2)
+        self.stop.set()
+        if self.thread_started: self.thread.join(2)
         return {'policy': BUDGET, 'failure': self.failed, 'minimumAvailableKiB': self.minimum,
-                'sampleCount': self.count, 'threadStopped': not self.thread.is_alive()}
+                'sampleCount': self.count, 'threadStarted': self.thread_started,
+                'threadStopped': not self.thread_started or not self.thread.is_alive()}
 
 
 class Transport:
@@ -479,8 +487,9 @@ def owned_helper(transport, image, program, mounts, env_file):
 
 def create_data_volume(transport):
     name = transport.project+'_household-data'
-    existing = transport.raw('volume', 'ls', '--quiet', '--filter', 'name=^'+name+'$')
-    need(not existing.strip(), 'fixture_volume_already_exists')
+    for suffix in ('_household-data', '_decoder-socket'):
+        existing = transport.raw('volume', 'ls', '--quiet', '--filter', 'name=^'+transport.project+suffix+'$')
+        need(not existing.strip(), 'fixture_volume_already_exists')
     transport.raw('volume', 'create', '--label', LABEL+'='+transport.project, name)
     value = json.loads(transport.raw('volume', 'inspect', name))[0]
     need(value['Name']==name and value['Driver']=='local' and not value.get('Options') and
@@ -605,11 +614,13 @@ def run(bundle, input_sha256, output_dir):
     need(output.parent==LAB and re.fullmatch('run-[a-f0-9]{16}',output.name) and not output.exists(), 'exclusive_lab_output_required')
     output.mkdir(parents=True,mode=0o700)
     save(output/'started.json', {'pid': os.getpid(), 'at': time.time(), 'inputSha256': input_sha256})
-    admission = preflight(); save(output/'preflight.json', admission)
     result = {'passed': False, 'inputSha256': input_sha256, 'productionAccess': False, 'scenarios': {},
-              'productionPlanAdmissionExercised': False, 'fixtureLimitsMiB': LIMITS}
+              'productionPlanAdmissionExercised': False, 'fixtureLimitsMiB': LIMITS, 'containersCreated': 0}
+    admission = preflight(); save(output/'preflight.json', admission)
     if not admission['passed']:
-        result['status'] = 'preflight_blocked'; result['containersCreated'] = 0
+        result['status'] = 'preflight_failed' if admission.get('failure') else 'preflight_blocked'
+        if admission.get('failure'): result['failure'] = admission['failure']
+        result['completedAt'] = time.time()
         save(output/'result.json', result); return result
     def interrupt(*_): raise controller.ReleaseError('rehearsal_interrupted')
     for sig in (signal.SIGTERM, signal.SIGINT): signal.signal(sig, interrupt)
@@ -617,6 +628,7 @@ def run(bundle, input_sha256, output_dir):
     try:
         monitor.start()
         for name in ('success','failure'):
+            result.pop('containersCreated', None)  # From here the per-scenario owned-CID receipts count actual work.
             outcome = scenario(bundle,input_sha256,meta,verified,output,name,output.name[4:],monitor)
             result['scenarios'][name] = sha((output/name/'result.json').read_bytes())
             need(outcome['passed'], 'scenario_failed_'+name)
@@ -625,9 +637,8 @@ def run(bundle, input_sha256, output_dir):
         result['passed'] = True
     except BaseException as error: result['failure'] = type(error).__name__+':'+str(error)
     finally:
-        if hasattr(monitor,'thread'):
-            result['hostMemory'] = monitor.finish()
-            result['passed'] = bool(result['passed'] and not result['hostMemory']['failure'] and result['hostMemory']['threadStopped'])
+        result['hostMemory'] = monitor.finish()
+        result['passed'] = bool(result['passed'] and not result['hostMemory']['failure'] and result['hostMemory']['threadStopped'])
         result['completedAt'] = time.time(); save(output/'result.json', result)
     return result
 

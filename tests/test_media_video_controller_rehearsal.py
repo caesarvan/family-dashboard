@@ -50,6 +50,64 @@ def test_admission_samples_all_three_and_never_polls_for_a_high_point():
     assert rehearsal.preflight(reader=lambda:1088*1024,sleeper=lambda _:None)['passed']
 
 
+def test_preflight_read_error_retains_completed_samples():
+    calls=[];sleeps=[]
+    def read():
+        calls.append(1)
+        if len(calls)==2:raise OSError('synthetic memory read refused')
+        return 1200*1024
+    result=rehearsal.preflight(reader=read,sleeper=sleeps.append)
+    assert not result['passed'] and result['failedSample']==2
+    assert result['failure']=='OSError:synthetic memory read refused'
+    assert [s['availableKiB'] for s in result['samples']]==[1200*1024]
+    assert len(calls)==2 and sleeps==[1]
+
+
+@pytest.mark.parametrize('failure',['first_read','thread_start'])
+def test_coordinator_initialization_failure_keeps_zero_container_receipt(tmp_path,monkeypatch,failure):
+    # Only platform/input/resource admission are synthetic; execute the real run()
+    # exception/finalization path. No Docker or scenario may be entered.
+    monkeypatch.setattr(rehearsal.sys,'platform','linux')
+    monkeypatch.setattr(rehearsal.os,'geteuid',lambda:0,raising=False)
+    for key in list(rehearsal.os.environ):
+        if key.upper().startswith(('DOCKER_','COMPOSE_')):monkeypatch.delenv(key)
+    monkeypatch.setattr(rehearsal,'LAB',tmp_path/'lab')
+    monkeypatch.setattr(rehearsal,'verify',lambda *a:(tmp_path,{}, {}, {}))
+    monkeypatch.setattr(rehearsal.signal,'signal',lambda *a:None)
+    monkeypatch.setattr(rehearsal,'scenario',lambda *a:pytest.fail('no scenario before monitoring starts'))
+    monkeypatch.setattr(rehearsal.subprocess,'Popen',lambda *a,**k:pytest.fail('no child process permitted'))
+    def bad_read():raise OSError('synthetic memory read refused')
+    original_preflight=rehearsal.preflight
+    monkeypatch.setattr(rehearsal,'preflight',lambda:original_preflight(
+        reader=bad_read if failure=='first_read' else lambda:1200*1024,sleeper=lambda _:None))
+    if failure=='thread_start':
+        def failed_start(_):raise RuntimeError('synthetic monitor start refused')
+        monkeypatch.setattr(rehearsal.threading.Thread,'start',failed_start)
+        monkeypatch.setattr(rehearsal.threading.Thread,'join',lambda *a:pytest.fail('must not join an unstarted thread'))
+    out=rehearsal.LAB/'run-0123456789abcdef'
+    result=rehearsal.run(tmp_path,'a'*64,out)
+    assert result==json.loads((out/'result.json').read_bytes())
+    assert not result['passed'] and result['containersCreated']==0 and result['scenarios']=={}
+    assert (out/'started.json').is_file()
+    admission=json.loads((out/'preflight.json').read_bytes())
+    if failure=='first_read':
+        assert result['status']=='preflight_failed' and result['failure']=='OSError:synthetic memory read refused'
+        assert admission['samples']==[] and admission['failedSample']==1
+    else:
+        assert result['failure']=='RuntimeError:synthetic monitor start refused' and admission['passed']
+        assert result['hostMemory']['threadStarted'] is False and result['hostMemory']['threadStopped'] is True
+
+
+def test_monitor_started_thread_is_actually_joined(monkeypatch):
+    monkeypatch.setattr(rehearsal,'available_kib',lambda:1200*1024)
+    monitor=rehearsal.Monitor()
+    try:
+        monitor.start();assert monitor.thread_started
+    finally:result=monitor.finish()
+    assert result['threadStarted'] and result['threadStopped'] and result['sampleCount']>=1
+    assert not monitor.thread.is_alive() and result['failure'] is None
+
+
 class Healthy:
     def check(self): pass
 
@@ -141,6 +199,20 @@ def test_discovery_requires_completed_fresh_fixture_admission(transport,monkeypa
     monkeypatch.setattr(transport,'raw',lambda *a,**k:pytest.fail('must fail before reading containers'))
     with pytest.raises(rehearsal.controller.ReleaseError,match='fixture_discovery_not_admitted'):
         transport.discover()
+
+
+@pytest.mark.parametrize('suffix',['_household-data','_decoder-socket'])
+def test_existing_fixture_volume_blocks_before_any_creation(transport,monkeypatch,suffix):
+    calls=[]
+    def raw(*args,**kw):
+        calls.append(args)
+        assert args[:2]==('volume','ls'), 'must not create/inspect/change an existing volume'
+        return (PROJECT+suffix).encode() if args[-1]=='name=^'+PROJECT+suffix+'$' else b''
+    monkeypatch.setattr(transport,'raw',raw)
+    with pytest.raises(rehearsal.controller.ReleaseError,match='fixture_volume_already_exists'):
+        rehearsal.create_data_volume(transport)
+    assert not transport.discovery_admitted and transport.data_path is None and not transport.owned
+    assert len(calls)==(1 if suffix=='_household-data' else 2)
 
 
 def test_host_pressure_latches_before_any_next_command(transport,monkeypatch):
