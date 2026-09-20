@@ -36,6 +36,22 @@ def make_picture(path, kind, color):
     return {'name': path.name, 'bytes': path.stat().st_size, 'sha256': sha(path), 'format': kind}
 
 
+def assert_revoked_upload(committed, pending, database):
+    """A successful raw PUT remains staged, but its revoked login cannot resume."""
+    assert committed['import']['id'] == pending['import']['id']
+    assert committed['import']['state'] == pending['import']['state'] == 'staging'
+    assert not committed['import']['canConfirm'] and not pending['import']['canConfirm']
+    assert len(committed['items']) == 1
+    assert [row['status'] for row in committed['upload']['files']] == ['successful']
+    original_id = committed['items'][0]['id']
+    assert pending['items'] == [] and pending['upload'] == {'files': [], 'canUpload': False}
+    stored = next(row for row in database['items'] if row['id'] == original_id)
+    assert stored['owner'] == 'member1' and stored['state'] == 'staged'
+    assert stored['confirmed_at'] is None and stored['visibility'] == 'private'
+    assert stored['previewBytes'] > 0 and stored['metadataBytes'] > 0
+    return original_id
+
+
 class Run(BaseRun):
     capture = CalendarRun.capture
 
@@ -305,7 +321,11 @@ class Run(BaseRun):
                 actual = route.fetch(max_redirects=0)
                 try:
                     assert actual.status == 200
-                    value = actual.json(); self.login(owner, 2)
+                    value = actual.json()
+                    self.record('late-upload-committed-before-switch', {'response': value,
+                        'requestSha256': hashlib.sha256(route.request.post_data_buffer).hexdigest(),
+                        'database': self.database_proof()}, 'databaseEvidence')
+                    self.login(owner, 2)
                     late.append(value); route.fulfill(response=actual)
                 finally:
                     actual.dispose()
@@ -320,12 +340,24 @@ class Run(BaseRun):
             expect(page.get_by_label('查看照片：合成本地私密内容', exact=True)).to_have_count(0)
             original_member = self.context(browser, 1); self.lifecycle.callback(original_member.close)
             pending_id = late[0]['import']['id']; pending = self.get(original_member, '/api/media/imports/' + pending_id)
-            assert pending['import']['state'] == 'staging' and not pending['import']['canConfirm']
-            assert len(pending['items']) == 1
+            before = self.database_proof()
+            self.record('late-upload-revoked-context-before-assert', {'originalResponse': late,
+                'originalOwnerFreshRead': pending, 'database': before}, 'databaseEvidence')
+            original_id = assert_revoked_upload(late[0], pending, before)
             assert not any(r['method'] == 'POST' and r['path'].endswith(('/finish', '/confirm')) for r in self.requests[mark:])
             assert peer.request.get(self.base + '/api/media/imports/' + pending_id).status == 404
             assert child.request.get(self.base + '/api/media/imports/' + pending_id).status == 404
-            self.record('late-committed-upload-no-confirm', {'originalResponse': late, 'currentMember': 'member2', 'originalPending': pending, 'database': self.database_proof()}, 'databaseEvidence')
+            # Deliberate negative API probes, separate from browser write counts:
+            # logging in again as the owner must not revive the old batch.
+            rejected_finish = self.write(original_member, 'POST', URL + '/' + pending_id + '/finish',
+                {'revision': pending['import']['revision'], 'requestId': 'rejected-finish-' + pending_id}, 410)
+            rejected_confirm = self.write(original_member, 'POST', '/api/media/imports/' + pending_id + '/confirm',
+                {'revision': pending['import']['revision'], 'confirmRequestId': 'rejected-confirm-' + pending_id,
+                 'itemIds': [original_id], 'consentVersion': 'media-v1', 'persistSelected': True}, 410)
+            after = self.database_proof(); assert before == after
+            self.record('late-committed-upload-no-confirm', {'originalResponse': late, 'currentMember': 'member2',
+                'originalPending': pending, 'rejectedFinish': rejected_finish, 'rejectedConfirm': rejected_confirm,
+                'databaseBeforeNegativeProbes': before, 'databaseAfterNegativeProbes': after}, 'databaseEvidence')
             self.capture(page, 'late-upload-identity-cleared-390', page.locator('body'))
             self.passed('Private uploads reject peer/other household/TV; sharing and individual TV grant are explicit, revocation clears peer UI and bytes; committed late upload after real identity switch cannot confirm or reveal old content')
 

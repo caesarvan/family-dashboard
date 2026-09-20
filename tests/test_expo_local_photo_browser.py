@@ -14,7 +14,7 @@ from unittest.mock import patch
 from PIL import Image
 import pytest
 from scripts import check_expo_local_photo_browser as wrapper
-from browser_expo_local_photo_check import Run, make_picture
+from browser_expo_local_photo_check import Run, make_picture, assert_revoked_upload
 
 
 @pytest.fixture
@@ -162,3 +162,45 @@ def test_actual_fixture_initialization_and_thread_cleanup_without_browser(tmp_pa
         assert run.server is not None and run.thread.is_alive()
         assert len(report['fixtureHashes']) >= 14 and not report['unexpectedProviderAttempts']
     assert run.server is None and not run.thread.is_alive() and not folder.exists()
+
+
+def test_real_login_switch_revokes_import_context_but_retains_unconfirmed_original(tmp_path, monkeypatch):
+    from app import create_app
+    monkeypatch.setenv('MEMBER1_PASSWORD', 'testing-password-one')
+    monkeypatch.setenv('MEMBER2_PASSWORD', 'testing-password-two')
+    app = create_app({'TESTING': True, 'SECRET_KEY': 'synthetic-local-upload-context-only',
+                      'DATA_DIR': str(tmp_path), 'SESSION_COOKIE_SECURE': False})
+    client = app.test_client()
+    def login(target, number):
+        response = target.post('/api/login', json={'username': 'member' + str(number),
+            'password': 'testing-password-' + ('one' if number == 1 else 'two')})
+        assert response.status_code == 200
+        return {'X-CSRF-Token': target.get('/api/me').json['csrf']}
+    headers = login(client, 1)
+    path = tmp_path / 'synthetic-late-upload.jpg'
+    declared = make_picture(path, 'JPEG', '#754394'); raw = path.read_bytes()
+    created = client.post('/api/media/local-imports', headers=headers, json={
+        'requestId': 'synthetic-create-0001', 'consentVersion': 'media-v1', 'allowTemporaryProcessing': True,
+        'files': [{'clientFileId': 'synthetic-file-000001', 'filename': path.name,
+                   'contentType': 'image/jpeg', 'bytes': declared['bytes'], 'sha256': declared['sha256']}]})
+    assert created.status_code == 201
+    uid = created.json['import']['id']; slot = created.json['upload']['files'][0]['slotId']
+    uploaded = client.put('/api/media/local-imports/' + uid + '/files/' + slot, data=raw,
+        content_type='image/jpeg', headers={**headers, 'X-Import-Revision': str(created.json['import']['revision'])})
+    assert uploaded.status_code == 200
+    committed = uploaded.json
+    login(client, 2)  # Real login revokes the previous browser generation.
+    assert client.get('/api/media/imports/' + uid).status_code == 404
+    original_owner = app.test_client(); fresh_headers = login(original_owner, 1)
+    response = original_owner.get('/api/media/imports/' + uid); assert response.status_code == 200
+    run = Run.__new__(Run); run.database, run.folder = tmp_path / 'household.sqlite3', tmp_path
+    before = run.database_proof()
+    original_id = assert_revoked_upload(committed, response.json, before)
+    revision = response.json['import']['revision']
+    finish = original_owner.post('/api/media/local-imports/' + uid + '/finish', headers=fresh_headers,
+        json={'revision': revision, 'requestId': 'synthetic-rejected-finish'})
+    confirm = original_owner.post('/api/media/imports/' + uid + '/confirm', headers=fresh_headers,
+        json={'revision': revision, 'confirmRequestId': 'synthetic-rejected-confirm', 'itemIds': [original_id],
+              'consentVersion': 'media-v1', 'persistSelected': True})
+    assert finish.status_code == confirm.status_code == 410
+    assert run.database_proof() == before
