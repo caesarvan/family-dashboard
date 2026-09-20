@@ -10,6 +10,8 @@ from hashlib import sha256
 from io import BytesIO
 from threading import Lock
 from typing import Literal
+import ctypes
+import sys
 import warnings
 import zlib
 
@@ -23,6 +25,7 @@ MAX_OUTPUT_BYTES = 2 * 1024 * 1024
 JPEG_QUALITIES = (90, 85, 80, 75, 65)
 FORMATS = {'image/jpeg': 'JPEG', 'image/png': 'PNG', 'image/webp': 'WEBP'}
 _WEBP_PILLOW_VERSION = '12.3.0'
+_WEBP_NATIVE_VERSION = 0x010600
 _DECODE_LOCK = Lock()
 _MESSAGES = {
     'invalid_input': '请提供有效的图片字节和媒体类型。',
@@ -258,9 +261,72 @@ def _webp_frame(raw):
         return size, rawmode, source.info.copy(), frame[0]
 
 
+def _webp_metadata(raw):
+    # The plugin allocates animation canvases even for one frame. Return only
+    # small metadata, letting this entire plugin/decoder die before allocating
+    # the destination buffer or invoking the single-frame decoder.
+    with closing(Image.open(BytesIO(raw), formats=['WEBP'])) as source:
+        _check_image(source, 'WEBP')
+        if type(source) is not WebPImagePlugin.WebPImageFile:
+            raise MediaImageError('unsafe_decoder_configuration')
+        size, _, _, frames, rawmode = source._decoder.get_info()
+        if (size != source.size or frames != 1 or rawmode not in ('RGBA', 'RGBX') or
+                rawmode != source.rawmode or source.mode != ('RGB' if rawmode == 'RGBX' else 'RGBA')):
+            raise MediaImageError('unsafe_decoder_configuration')
+        return size, rawmode, source.info.copy()
+
+
+def _webp_native_library():
+    # Use only the already imported Pillow extension and its linked libwebp.
+    # Never search the system, honor an environment library path, or fall back
+    # to the higher-memory decoder after a Linux ABI/configuration failure.
+    if (Image.__version__ != _WEBP_PILLOW_VERSION or
+            Image.core.PILLOW_VERSION != _WEBP_PILLOW_VERSION):
+        raise MediaImageError('unsafe_decoder_configuration')
+    try:
+        library = ctypes.CDLL(WebPImagePlugin._webp.__file__)
+        library.WebPGetDecoderVersion.argtypes = []
+        library.WebPGetDecoderVersion.restype = ctypes.c_int
+        if library.WebPGetDecoderVersion() != _WEBP_NATIVE_VERSION:
+            raise ValueError('unsupported libwebp version')
+        # Public libwebp 1.6.0 decode.h, no private C struct layout assumptions.
+        library.WebPGetInfo.argtypes = [ctypes.c_char_p, ctypes.c_size_t,
+                                       ctypes.POINTER(ctypes.c_int), ctypes.POINTER(ctypes.c_int)]
+        library.WebPGetInfo.restype = ctypes.c_int
+        library.WebPDecodeRGBAInto.argtypes = [ctypes.c_char_p, ctypes.c_size_t,
+                                             ctypes.POINTER(ctypes.c_uint8), ctypes.c_size_t, ctypes.c_int]
+        library.WebPDecodeRGBAInto.restype = ctypes.c_void_p
+        return library
+    except (AttributeError, OSError, ValueError):
+        raise MediaImageError('unsafe_decoder_configuration') from None
+
+
+def _webp_native_frame(raw):
+    library = _webp_native_library()
+    size, rawmode, info = _webp_metadata(raw)
+    width, height = ctypes.c_int(), ctypes.c_int()
+    if not library.WebPGetInfo(raw, len(raw), ctypes.byref(width), ctypes.byref(height)):
+        _invalid()
+    if (width.value, height.value) != size:
+        raise MediaImageError('unsafe_decoder_configuration')
+    # Dimensions already passed _check_image's 20 MP limit. No scaling or
+    # incremental/partial decode: this API returns only after a complete frame.
+    pixels = bytearray(size[0] * size[1] * 4)
+    destination = (ctypes.c_uint8 * len(pixels)).from_buffer(pixels)
+    result = library.WebPDecodeRGBAInto(raw, len(raw), destination, len(pixels), size[0] * 4)
+    if not result:
+        _invalid()
+    if result != ctypes.addressof(destination):
+        raise MediaImageError('unsafe_decoder_configuration')
+    # libwebp writes alpha=255 for opaque images. Mapping as RGBX preserves
+    # Pillow's existing opaque-mode resampling behavior without another copy.
+    return size, rawmode, info, pixels
+
+
 def _load_image(raw, fmt):
     if fmt == 'WEBP':
-        size, rawmode, info, pixels = _webp_frame(raw)
+        size, rawmode, info, pixels = (_webp_native_frame(raw) if sys.platform == 'linux'
+                                      else _webp_frame(raw))
         # RGBX is opaque padding, never an alpha channel. Both modes are mapped
         # read-only by pinned Pillow; the image owns a reference to these bytes.
         image = Image.frombuffer(rawmode, size, pixels, 'raw', rawmode, 0, 1)
