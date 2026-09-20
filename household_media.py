@@ -916,6 +916,42 @@ class MediaLibrary:
                           sourceCreatedAt=source_time if known else None,sourceTimeState='known' if known else 'unknown')
         return result
 
+    def on_this_day(self, limit, offset):
+        """Read confirmed owner photos by source date without touching media bytes."""
+        with self._suggestion_transaction() as con:
+            owner = g.actor['id']
+            reference_zone = zone('Asia/Shanghai', 'referenceTimezone')
+            reference_date = datetime.fromtimestamp(self.clock(), reference_zone).date()
+            rows = con.execute('SELECT '+ITEM_VIEW+" FROM media_items WHERE owner=? "
+                "AND state='ready' AND confirmed_at IS NOT NULL ORDER BY id", (owner,))
+            matches, unknown = [], 0
+            for row in rows:
+                meta = self._metadata(row)
+                if meta.get('mediaType', 'photo') != 'photo':
+                    continue
+                source = meta.get('sourceCreatedAt')
+                instant = _source_time(source)
+                try:
+                    source_date = instant.astimezone(reference_zone).date() if instant else None
+                except (ValueError, OverflowError):
+                    source_date = None
+                if source_date is None:
+                    unknown += 1
+                    continue
+                if (source_date.year >= reference_date.year or
+                    (source_date.month, source_date.day) != (reference_date.month, reference_date.day)):
+                    continue
+                matches.append((source_date, row))
+            matches.sort(key=lambda value: (-value[0].toordinal(), value[1]['id']))
+            items = [{'item': self._item_dto(con, row, owner),
+                      'sourceLocalDate': source_date.isoformat(),
+                      'yearsAgo': reference_date.year-source_date.year}
+                     for source_date, row in matches[offset:offset+limit]]
+            return dict(referenceDate=reference_date.isoformat(), referenceTimezone='Asia/Shanghai',
+                dateBasis='sourceCreatedAt', scope='mine', items=items, total=len(matches),
+                limit=limit, offset=offset, hasMore=offset+limit<len(matches),
+                unknownSourceTimeCount=unknown)
+
     def journey_suggestions(self, uid):
         """Read a current owner-only date match, never infer a visit or grant access."""
         with self._suggestion_transaction() as con:
@@ -1304,6 +1340,12 @@ def register_media_library(app, db, Problem, body, require_member, audit):
     def media_import_confirm(uid):
         require_member()
         return jsonify(engine.confirm_import(uid,_request_object()))
+
+    @app.get('/api/media/memories/on-this-day')
+    def media_on_this_day():
+        require_member()
+        query = _query(set(), default=24)
+        return jsonify(engine.on_this_day(query['limit'], query['offset']))
 
     @app.get('/api/media/items')
     def media_items():
