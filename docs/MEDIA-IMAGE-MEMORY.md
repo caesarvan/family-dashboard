@@ -33,3 +33,20 @@ Windows 测量不代表 Linux cgroup、Flask/SQLite/加密开销或生产容量�
 公共 ABI 依据：[libwebp 1.6.0 decode.h](https://github.com/webmproject/libwebp/blob/v1.6.0/src/webp/decode.h)；画布分配依据：[同版本 anim_decode.c](https://github.com/webmproject/libwebp/blob/v1.6.0/src/demux/anim_decode.c)。未使用私有 C 结构布局。
 
 新增的 12 项本机检查覆盖四种真实 WebP 像素／输出对照、元数据插件释放时序，以及库／版本／符号／尺寸／解码失败／返回地址边界。其 native 调用边界为合成替身，内部使用真实 Pillow 完整解码提供像素，**不证明 Linux C ABI 或资源通过**。现有像素、方向、损坏容器、动画、20 MP 等用例在 Linux 执行时会自然进入真实 native 路径；三个旧 `get_next()` 失配用例明确只验非 Linux 分支。仍需在审查后的固定提交上实际执行 Linux 解码对照和原 **384 MiB / 64 MiB 响应重叠** 验证。本作者未执行 SSH、Docker、生产修改或真实媒体读取。
+
+## 独立 Linux 解码合同检查器
+
+`tests/check_media_image_native_linux.py` 只使用标准库及镜像已有的 Pillow，不依赖 Git／pytest，不联网、不读应用配置。它要求实际 Linux，拒绝覆盖原结果；两个只读模块必须分别匹配原公开 Pillow 路径 `c2cc2b8` 和 native 实现 `1531aed` 的固定 SHA。不修改运行模块，也不替换平台或 C 函数。
+
+```sh
+python -B /proof/check_media_image_native_linux.py \
+  --runtime /proof/native_media_images.py \
+  --runtime-sha256 3a4dc65a11dd996f128c9a8559806a6c8067fb573cf790dcf9c6bacd0c21cbf1 \
+  --baseline /proof/baseline_media_images.py \
+  --baseline-sha256 89e1153805604e1b2dba0ae41778570b4247bffa492dd25327c768e24b3049ef \
+  --output /results/native-contract.json
+```
+
+检查器自行生成 1901×971 的小图：RGB／RGBA × 有损／无损 × 8 种 EXIF 方向，共 **32 项**，逐字节比较旧／新最终 JPEG 和尺寸，并真实读回无元数据 JPEG。另 **7 项**检查容器截断、尾随数据、动图、合法封装但压缩像素截断、透明白底，以及 RGB／RGBA 的完整原始像素对照。记录实际扩展路径／SHA、版本、PID、输入前后哈希、每项结果；任一差异退出非零并保留失败 JSON。它没有 20 MP 旧实现压力用例；资源结论由原 384 MiB 重叠 profile 单独产生。
+
+本次作者仅离线编译和实际 `--help` 校验；实际 Linux 32＋7 项尚待集成人在审查后的无网络隔离容器执行，不能由这份脚本存在推断通过。
