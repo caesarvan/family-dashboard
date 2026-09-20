@@ -279,6 +279,35 @@ def test_resource_contract_accepts_separate_tool_head_only_with_exact_runtime(re
     assert observed['result.json']==digest and result['contract']['sourceHead']!=prepare.APP_SOURCE
 
 
+@pytest.mark.parametrize('record', [
+    {'verdict': 'PASS', 'findings': []},
+    {'conclusion': 'PASS_FOR_COMPONENT', 'findings': []},
+    {'status': 'PASS_REAL_PACKAGE_AND_B2_EVIDENCE_ONLY', 'findings': []},
+    {'decision': 'PASS_ACTUAL_ISOLATED_LINUX_MIGRATION_AND_RESTORE', 'blockingFindings': []},
+    {'decision': 'PASS_FOR_RECORDED_LOCAL_BROWSER_SCOPE', 'blockingFindings': []},
+])
+def test_independent_review_accepts_existing_report_formats(record):
+    prepare.verify_review(record)
+
+
+@pytest.mark.parametrize('record', [
+    {'verdict': 'PASS', 'decision': 'BLOCKED', 'findings': []},
+    {'decision': 'PASS', 'findings': [], 'blockingFindings': ['unresolved migration']},
+    {'decision': 'PASS', 'findings': ['unresolved identity'], 'blockingFindings': []},
+    {'decision': 'PASS', 'blockingFindings': None},
+    {'decision': 'PASS', 'blockingFindings': {}},
+    {'decision': 'PASS'},
+    {'verdict': None, 'decision': 'PASS', 'blockingFindings': []},
+    {'decision': 'PASSIVE', 'blockingFindings': []},
+    {'decision': 'BLOCKED', 'blockingFindings': []},
+    {'findings': []},
+    [],
+])
+def test_independent_review_rejects_conflicts_unresolved_or_malformed_reports(record):
+    with pytest.raises(ReleaseError, match='review_not_passed'):
+        prepare.verify_review(record)
+
+
 def test_missing_resource_inputs_and_absent_reviews_are_rejected_without_output(tmp_path):
     with pytest.raises(ReleaseError,match='release_inputs_incomplete'):prepare.verify_evidence({})
     with pytest.raises(ReleaseError):prepare.checked_record({'root':str(tmp_path),'result':'../outside','sha256':'1'*64})
