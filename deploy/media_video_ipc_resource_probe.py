@@ -26,7 +26,7 @@ ROOT = Path('/tmp/family-dashboard-media-ipc-probe')
 SOCKET = '/decoder-private/video.sock'
 PROFILES = ('worker100', 'response64')
 LIMITS = {'application': 384, 'decoder': 768}
-HOST_BUDGET = {'preflightMiB': 1280, 'preflightSamples': 3, 'preflightSpanSeconds': 1,
+HOST_BUDGET = {'preflightMiB': 1280, 'preflightSamples': 3, 'preflightIntervalSeconds': 1,
                'abortBelowMiB': 256, 'sampleIntervalSeconds': .25, 'maxSampleLagSeconds': 1}
 DECODER_FILES = ('media_video_service.py', 'media_video_transport.py', 'media_videos.py', 'media_images.py')
 APP_FILES = tuple('''app.py frontend_runtime.py member_sessions.py household_members.py tv_display.py
@@ -161,7 +161,7 @@ def host_preflight(output, *, reader=None, sleeper=None):
     samples = []; failure = None
     try:
         for index in range(HOST_BUDGET['preflightSamples']):
-            if index: sleeper(HOST_BUDGET['preflightSpanSeconds'] / (HOST_BUDGET['preflightSamples'] - 1))
+            if index: sleeper(HOST_BUDGET['preflightIntervalSeconds'])
             value = reader()
             need(type(value) is int and value >= 0, 'invalid MemAvailable reading')
             samples.append({'at': time.time(), 'monotonic': time.monotonic(), 'availableKiB': value})
@@ -186,7 +186,7 @@ class HostMemoryMonitor:
         self.stop_event, self.ready = threading.Event(), threading.Event()
         self.lock = threading.Lock(); self.failure = None
         self.count = 0; self.minimum = None; self.last_sample = time.monotonic()
-        self.thread = None; self.stream = None
+        self.thread = None; self.thread_started = False; self.stream = None
 
     def latch(self, reason):
         with self.lock:
@@ -212,12 +212,17 @@ class HostMemoryMonitor:
     def start(self):
         self.stream = (self.output / 'host-memory-samples.jsonl').open('x', encoding='utf8')
         self.thread = threading.Thread(target=self._sample, name='host-memory-monitor', daemon=True)
-        self.thread.start()
+        try:
+            self.thread.start()
+            self.thread_started = True
+        except BaseException as error:
+            self.latch('host_memory_thread_start_failed:' + type(error).__name__)
+            raise HostMemoryAbort(self.failure['reason']) from error
         if not self.ready.wait(HOST_BUDGET['maxSampleLagSeconds']): self.latch('host_memory_monitor_stalled')
         self.check()
 
     def check(self):
-        if self.thread is None or not self.thread.is_alive(): self.latch('host_memory_monitor_stopped')
+        if not self.thread_started or not self.thread.is_alive(): self.latch('host_memory_monitor_stopped')
         if time.monotonic() - self.last_sample > HOST_BUDGET['maxSampleLagSeconds']:
             self.latch('host_memory_monitor_stalled')
         if self.failure: raise HostMemoryAbort(self.failure['reason'])
@@ -227,11 +232,12 @@ class HostMemoryMonitor:
         try: self.check()
         except HostMemoryAbort: pass
         self.stop_event.set()
-        if self.thread: self.thread.join(HOST_BUDGET['maxSampleLagSeconds'])
-        if self.thread and self.thread.is_alive(): self.latch('host_memory_monitor_join_failed')
+        if self.thread_started: self.thread.join(HOST_BUDGET['maxSampleLagSeconds'])
+        if self.thread_started and self.thread.is_alive(): self.latch('host_memory_monitor_join_failed')
         elif self.stream: self.stream.close()
         record = {'policy': HOST_BUDGET, 'sampleCount': self.count, 'minimumAvailableKiB': self.minimum,
-                  'failure': self.failure, 'threadStopped': not self.thread or not self.thread.is_alive()}
+                  'failure': self.failure, 'threadStarted': self.thread_started,
+                  'threadStopped': not self.thread_started or not self.thread.is_alive()}
         save(self.output / 'host-memory.json', record)
         return record
 

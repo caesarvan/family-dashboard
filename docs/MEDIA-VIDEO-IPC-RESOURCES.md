@@ -25,11 +25,11 @@ python -B <已冻结 probe.py> run --prepared /tmp/family-dashboard-media-ipc-pr
 
 decoder 只挂载冻结工具、自己的合成证据／媒体 fixture 与唯一私有 socket 目录，**不挂 application 的 SQLite 目录**。application 只读挂载合成 fixture，单独保存 SQLite 与成员测试证据。两者匹配 UID，socket 目录 0700／socket 0600。decoder 自己的解码临时目录使用限额 tmpfs。主机空闲内存不足直接拒绝，不占用生产 volume，不修改生产服务。
 
-主机预算采用明确的新策略：每个 profile 启动前，在 1 秒内读取 3 次 `/proc/meminfo` 的 `MemAvailable`（首读及间隔两次 0.5 秒），**全部至少 1280 MiB** 才继续。任何一读不足或读取失败均保存 `preflight.json` 与 `result.json` 的 `preflight_blocked`，不创建容器、不自动等待下一次高点。这个启动阈值是实验准入政策，并非实测峰值；两个容器仍严格保持 384／768 MiB。
+主机预算采用明确的新策略：每个 profile 启动前，读取 3 次 `/proc/meminfo` 的 `MemAvailable`（t0、t1、t2，读数间隔各 1 秒，总计 2 秒），**全部至少 1280 MiB** 才继续。任何一读不足或读取失败均保存 `preflight.json` 与 `result.json` 的 `preflight_blocked`，不创建容器、不自动等待下一次高点。这个启动阈值是实验准入政策，并非实测峰值；两个容器仍严格保持 384／768 MiB。
 
 通过预检后，独立只读线程从镜像核验前持续到本次两个容器清理结束，每 250 ms 读取主机内存，并即时保存 `host-memory-samples.jsonl`。低于 **256 MiB**、读取／线程异常、采样超过 1 秒未完成均锁定中止，之后内存回升也不恢复。阻塞的 Docker attach 和 decoder 就绪等待都会检查该信号；协调者中止当前 CLI，并立即 `kill` 仅本次已记录的容器 ID，再读终态和日志，不逐个等待 10 秒停止期。先创建并记录两个容器 ID，再启动任何负载。每个 create 最多等待 10 秒，先取得原 ID 再消费中止信号，避免丢失可安全清理的目标；创建本身不会启动负载。若 create 超时但没有返回 ID，结果保留 unconfirmedCreate，可能已创建的未启动容器不猜测 ID、不扩大清理范围，整轮失败。监测线程不执行 Docker，不竞争命令原件编号。正常路径仍使用既有有序停止／验证。
 
-`host-memory.json` 保存样本数、实际最小主机可用量、锁定原因和线程终态；压力中止的结果必须为 `aborted`，缺失／部分内层回执不得补成成功。主机采样最小值不等于两个 cgroup 同时峰值，也不构成生产负载保证。监测和预检只用于本次隔离验收，不扩展为生产监控。
+线程启动本身失败时，也保留锁定原因、threadStarted=false 和独占失败回执，不 join 尚未启动的线程。`host-memory.json` 保存样本数、实际最小主机可用量、锁定原因和线程终态；压力中止的结果必须为 `aborted`，缺失／部分内层回执不得补成成功。主机采样最小值不等于两个 cgroup 同时峰值，也不构成生产负载保证。监测和预检只用于本次隔离验收，不扩展为生产监控。
 
 ## 证据与判定
 
@@ -42,3 +42,5 @@ decoder 只挂载冻结工具、自己的合成证据／媒体 fixture 与唯一
 本次离线 R1 实际 21／21；随后只复验临时盘挂载调整影响的 2 项，R2 2／2、19 项未选。共 21 个唯一用例、23 次执行；两个轮次的命令、开始与终态、源码前后摘要、stdout／stderr／JUnit 保留在 ignored `test-results/media-video-ipc-resources-r1` 和 `r2`。此计数不是 Linux 资源通过证明。
 
 预算策略增量另存 `test-results/media-video-ipc-resources-budget-r1`／`r2`／`r3`：实际分别 14／14、2／2、4／4，共 17 个唯一新增用例、20 次执行；旧 21 项未重跑。各轮均保存运行时三文件完整快照与哈希，后两轮只验证新增协调顺序及受影响的 CLI 退出码边界。覆盖启动不足／读失败、256 MiB 边界、锁定中止、线程异常／停滞、在途 child 中止、仅本次 ID 清理、正常顺序和未知 create 结果。它们是离线控制流程证据，未运行 Docker 或本轮 Linux 资源验收。
+
+独立审查指出原三读间隔为 0.5 秒、线程启动失败时 join 未启动线程会截断回执；原提交和反例保持。修正后 R4 仅执行 3 个采样参数用例及新增的线程启动失败协调者用例，实际 4／4、35 项未选；原件与三文件快照在 `test-results/media-video-ipc-resources-budget-r4`。没有重跑之前的预算／业务全组，也不表示已在 Linux 运行 profile。

@@ -151,7 +151,7 @@ def test_budget_preflight_requires_all_three_readings_without_retry(tmp_path, re
     def read():
         value = next(values); calls.append(value); return value * 1024
     result = probe.host_preflight(tmp_path, reader=read, sleeper=pauses.append)
-    assert result['status'] == expected and calls == readings and pauses == [.5, .5]
+    assert result['status'] == expected and calls == readings and pauses == [1, 1]
     assert json.loads((tmp_path/'preflight.json').read_text()) == result
     assert not list(tmp_path.glob('*owned*'))
 
@@ -278,6 +278,38 @@ def test_budget_run_preflight_blocked_creates_evidence_and_no_executor(tmp_path,
     result = json.loads((output/'result.json').read_text())
     assert not result['passed'] and result['status'] == 'preflight_blocked' and result['containers'] == {} and result['commands'] == []
     assert set(result['artifacts']) == {'started.json', 'preflight.json'}
+
+
+def test_budget_thread_start_failure_preserves_coordinator_failure_evidence(tmp_path, monkeypatch):
+    tools = tmp_path/'prepared/tools'; tools.mkdir(parents=True)
+    monkeypatch.setattr(probe, 'ROOT', tmp_path)
+    monkeypatch.setattr(probe.sys, 'platform', 'linux')
+    monkeypatch.setattr(probe, 'prepared', lambda _: (tools, {'sourceHead': 'a'*40}))
+    monkeypatch.setattr(probe.os, 'chown', lambda *args: None, raising=False)
+    monkeypatch.setattr(probe, 'mem_available_kib', lambda: 2048*1024)
+    monkeypatch.setattr(probe.time, 'sleep', lambda _: None)
+    def failed_start(_): raise RuntimeError('synthetic thread resource exhaustion')
+    monkeypatch.setattr(probe.threading.Thread, 'start', failed_start)
+    class Executor:
+        def __init__(self, _): self.records = []
+        def call(self, *args, **kwargs): raise AssertionError('no Docker call after monitor start failure')
+    monkeypatch.setattr(probe, 'Executor', Executor)
+    monitors = []; real_monitor = probe.HostMemoryMonitor
+    def monitor_factory(output):
+        monitor = real_monitor(output); monitors.append(monitor); return monitor
+    monkeypatch.setattr(probe, 'HostMemoryMonitor', monitor_factory)
+    output = tmp_path/'thread-start-failed'
+    with pytest.raises(RuntimeError, match='resource experiment failed'):
+        probe.run(tmp_path/'prepared', output, 'worker100')
+    result = json.loads((output/'result.json').read_text())
+    memory = json.loads((output/'host-memory.json').read_text())
+    assert result['status'] == 'aborted' and not result['passed']
+    assert result['containers'] == {} and result['commands'] == [] and result['cleanupErrors'] == []
+    assert memory == result['hostMemory'] and memory['failure']['reason'] == 'host_memory_thread_start_failed:RuntimeError'
+    assert not memory['threadStarted'] and memory['threadStopped'] and memory['sampleCount'] == 0
+    assert monitors[0].stream.closed and not monitors[0].thread_started
+    assert (output/'host-memory-samples.jsonl').read_bytes() == b''
+    assert {'started.json', 'preflight.json', 'host-memory.json', 'host-memory-samples.jsonl'} <= set(result['artifacts'])
 
 
 @pytest.mark.parametrize('abort_after_create', [False, True, 'create-timeout'])
