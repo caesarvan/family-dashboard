@@ -65,4 +65,4 @@ python -B <candidate>/operator/deploy/media_video_release_controller.py verify-r
 - operator SHA256：`954007aa8478b6a8d32af4220c0ff58515c2c87c008f823bc194ef3fd7b8aea8`，与本机成功准备相同。
 - 本机原件归档：访问目录下 `media-video-activation-server-r1/evidence`，包含实际命令、终态、计划、输入、原审查报告及服务器候选文件摘要；这些原件保持在 Git 外。
 
-服务器计划仍需非作者核对。新控制器自身的完整 Linux 五服务隔离演练和生产运行尚未完成；演练工具首轮独审发现监控初始化失败回执及预存 socket 卷准入问题，必须修正并复审后执行。已有单项迁移、媒体资源与浏览器成功不能替代该演练，也不表示视频已经上线。
+服务器准备已通过非作者核对：`media-video-activation-server-independent-r1.json`，SHA256 `6013459bc5a308c17c3fb3121d13802d5805aaa3b402c0f2cab84835b1bb4608`，结论仅为 `PASS_SERVER_PREPARATION_NOT_ACTIVATION`。17 件下载原件和 1113 个来源／manifest／operator 文件均核对一致，与本机 R3 的计划仅有 12 处绝对路径变化，证据映射相同。新控制器自身的完整 Linux 五服务隔离演练和生产运行尚未完成；演练工具首轮独审发现监控初始化失败回执及预存 socket 卷准入问题，必须修正并复审后执行。已有单项迁移、媒体资源与浏览器成功不能替代该演练，也不表示视频已经上线。
