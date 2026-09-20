@@ -359,8 +359,10 @@ class Run(video_fixture.Run):
         with self.flow(browser) as (ctx, phone):
             phone.set_viewport_size({'width': 1280, 'height': 900})
             f = self.seed(browser, ctx, with_video=False); uid = f['first']['id']
+            self.unsubmitted_start_reload(phone, f)
             self.open_preview(phone, f, route=f['route'])
             path, lost = CONTROL + uid + '/journey-start', []
+            starts_before = self.start_count(path)
             before, operation_count, bookkeeping = self.facts(), len(self.operations()), self.bookkeeping()
             def lose(route):
                 response = route.fetch(max_redirects=0, timeout=TIMEOUT)
@@ -400,7 +402,9 @@ class Run(video_fixture.Run):
             self.completed_json(phone, 'reload-current-scope', 'GET', CONTROL + uid,
                 lambda: phone.get_by_test_id('trip-tv-current').click())
             expect(phone.get_by_test_id('trip-tv-controls')).to_contain_text(f['journey']['trip']['title'])
-            assert self.operations() == committed and self.start_count(path) == 1
+            assert self.operations() == committed and self.start_count(path) == starts_before + 1
+            self.evidence('committed-loss-segment', dict(serverStartRequests=1, addedReceipts=1,
+                recoveredByOriginalGet=True, requestId=request_id, bookkeepingUnchangedAfterRecovery=True))
             self.late_member_preview(phone, f, request_id)
             self.login(ctx, 1)  # A new real owner session, never a browser-global user injection.
             phone.reload()
@@ -464,10 +468,95 @@ class Run(video_fixture.Run):
             self.tv(f['tv1'], 401)
             expect(screen.get_by_test_id('tv-trip-recap')).to_be_hidden(timeout=TIMEOUT)
             receipt = self.get(ctx, OPERATIONS + request_id); assert receipt['found'] and receipt['playback'] is None
-            assert self.start_count(path) == 1
+            assert self.start_count(path) == starts_before + 1
             self.http_guard.assert_clean()
             self.assert_tv_requests()
-            self.passed('Real committed response loss uses original GET receipt without duplicate start; current grants/routes/journey/device and foreign household deny stale content')
+            self.passed('Unsubmitted loss reloads only a marker and requires explicit repreview/start; committed loss uses original GET without duplicate start; current authority denies stale content')
+
+    def unsubmitted_start_reload(self, page, fixture):
+        """Abort before forwarding; no business response or successful DTO is invented."""
+        uid = fixture['first']['id']; path = CONTROL + uid + '/journey-start'
+        preview = self.open_preview(page, fixture, route=fixture['route'])
+        before, operations, bookkeeping = self.facts(), self.operations(), self.bookkeeping()
+        saved_playback = self.get(page.context, CONTROL + uid)
+        starts_before = self.start_count(path)
+        attempts, aborted = [], []
+        def observed(request):
+            if request.method == 'POST' and request.url == self.base + path:
+                attempts.append(request.post_data_json)
+        def abort_unsubmitted(route):
+            # Deliberately do not route.fetch: the actual browser request never
+            # reaches Flask. Server journal and SQLite must independently agree.
+            body = route.request.post_data_json
+            assert body['previewToken'] == preview['previewToken'] and body['confirmStart'] is True
+            self.evidence('unsubmitted-start-aborted', dict(method='POST', path=path,
+                requestId=body['requestId'], forwarded=False))
+            route.abort('failed'); aborted.append(body)
+        page.on('request', observed)
+        page.route(self.base + path, abort_unsubmitted, times=1)
+        try:
+            with page.expect_event('requestfailed', predicate=lambda r:r.url == self.base + path and r.method == 'POST', timeout=TIMEOUT):
+                page.get_by_test_id('trip-tv-start').click()
+            expect(page.get_by_test_id('trip-tv-unknown')).to_be_visible()
+            expect(page.get_by_test_id('trip-tv-recheck')).to_be_enabled()
+            assert len(aborted) == len(attempts) == 1
+            request_id = aborted[0]['requestId']
+            marker = page.evaluate("JSON.parse(sessionStorage.getItem('family-dashboard:trip-tv-operation:v1'))")
+            assert set(marker) == {'memberIdentity', 'deviceId', 'requestId'}
+            assert marker['deviceId'] == uid and marker['requestId'] == request_id
+            assert self.start_count(path) == starts_before and self.operations() == operations
+            assert self.facts() == before and self.bookkeeping() == bookkeeping
+            page.unroute(self.base + path, abort_unsubmitted)
+            # Refresh while still unknown: neither Token nor private DTO is in
+            # the surviving marker, and no retry is inferred from found:false.
+            page.reload()
+            assert page.evaluate("JSON.parse(sessionStorage.getItem('family-dashboard:trip-tv-operation:v1'))") == marker
+            self.open_panel(page, fixture['journey'])
+            with page.expect_event('requestfinished', predicate=lambda r:r.url == self.base + CONTROL + uid and r.method == 'GET', timeout=TIMEOUT) as current_done:
+                receipt, _ = self.completed_json(page, 'reload-unsubmitted-receipt', 'GET', OPERATIONS + request_id,
+                    lambda: page.get_by_test_id('trip-tv-entry').click())
+            response = current_done.value.response(); assert response is not None and response.status == 200
+            current = response.json()
+            assert receipt == {'found': False} and current == saved_playback
+            self.evidence('reload-unsubmitted-current', dict(status=response.status, response=current))
+            expect(page.get_by_test_id('trip-tv-unknown')).to_be_visible()
+            expect(page.get_by_test_id('trip-tv-repreview')).to_be_enabled()
+            expect(page.get_by_test_id('trip-tv-retry')).to_have_count(0)
+            assert len(attempts) == 1 and self.start_count(path) == starts_before
+            assert self.operations() == operations and self.bookkeeping() == bookkeeping and self.facts() == before
+            # The explicit exit rechecks the old request and current device,
+            # creates only a preview, and still requires a separate start click.
+            journal_start = len(self.journal)
+            renewed, body = self.completed_json(page, 'explicit-repreview-after-reload', 'POST', CONTROL + uid + '/journey-preview',
+                lambda: page.get_by_test_id('trip-tv-repreview').click())
+            reads = self.journal[journal_start:]
+            receipt_index = next(i for i, r in enumerate(reads) if r['method'] == 'GET' and r['path'] == OPERATIONS + request_id and r['status'] == 200)
+            current_index = next(i for i, r in enumerate(reads) if r['method'] == 'GET' and r['path'] == CONTROL + uid and r['status'] == 200)
+            preview_index = next(i for i, r in enumerate(reads) if r['method'] == 'POST' and r['path'] == CONTROL + uid + '/journey-preview' and r['status'] == 200)
+            assert receipt_index < current_index < preview_index
+            assert body == dict(revision=saved_playback['revision'], journeyId=fixture['journey']['id'], routeId=None)
+            assert renewed['routeStatus'] == 'not_selected' and renewed['canStart']
+            expect(page.get_by_test_id('trip-tv-start')).to_be_enabled()
+            expect(page.get_by_test_id('trip-tv-unknown')).to_have_count(0)
+            assert page.evaluate("sessionStorage.getItem('family-dashboard:trip-tv-operation:v1')") is None
+            assert len(attempts) == 1 and self.start_count(path) == starts_before
+            assert self.operations() == operations and self.bookkeeping() == bookkeeping and self.facts() == before
+            result, body = self.completed_json(page, 'confirmed-new-start-after-repreview', 'POST', path,
+                lambda: page.get_by_test_id('trip-tv-start').click())
+            assert body['requestId'] != request_id and body['previewToken'] == renewed['previewToken'] and body['confirmStart'] is True
+            assert result['operation']['requestId'] == body['requestId'] and result['operation']['deviceId'] == uid and result['replayed'] is False
+            expect(page.get_by_test_id('trip-tv-controls')).to_be_visible()
+            assert len(attempts) == 2 and self.start_count(path) == starts_before + 1
+            assert self.operations() == sorted(operations + [['member1', body['requestId'], uid]])
+            assert self.bookkeeping() == dict(meta=bookkeeping['meta'] + 1,
+                audit=bookkeeping['audit'] + [['member1', 'media_playback_journey_start', uid]])
+            assert self.facts() == before and self.get(page.context, OPERATIONS + request_id) == {'found': False}
+            self.evidence('unsubmitted-loss-segment', dict(browserStartAttempts=2, unforwardedAttempts=1,
+                serverStartRequests=1, addedReceipts=1, unknownRequestId=request_id,
+                confirmedRequestId=body['requestId'], automaticStartRequests=0, restoredMarkerFields=sorted(marker)))
+        finally:
+            page.unroute(self.base + path, abort_unsubmitted)
+            page.remove_listener('request', observed)
 
     def late_member_preview(self, page, fixture, request_id):
         """Release an actual old-owner projection after real login replaces its cookie."""
