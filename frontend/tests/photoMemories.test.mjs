@@ -17,7 +17,7 @@ const page = (items = [memory()]) => ({
 test('owner photos retain original identity and revision across sorted years', () => {
   const original = page([memory('a'.repeat(24)), memory('b'.repeat(24)), memory('c'.repeat(24), 2024)]);
   assert.deepEqual(readPhotoMemories(original, 0), original);
-  assert.equal(photoMemoriesQuery(24), '/media/memories/on-this-day?limit=24&offset=24');
+  assert.equal(photoMemoriesQuery(24), '/media/memories/on-this-day?limit=24&offset=24&dateMode=confirmed-or-source');
 });
 
 test('date basis is source time, never import time or caller supplied timezone', () => {
@@ -70,7 +70,7 @@ test('server day changes reset page two for polling and background return', () =
   // still detects midnight. An empty second page must not hide the first page.
   const dateRetainedDuringConcealment = old.referenceDate;
   assert.equal(photoMemoriesQuery(memoryOffsetAfterDateChange(dateRetainedDuringConcealment, nextDay)),
-    '/media/memories/on-this-day?limit=24&offset=0');
+    '/media/memories/on-this-day?limit=24&offset=0&dateMode=confirmed-or-source');
   const firstPage = readPhotoMemories({ ...page([]), referenceDate: nextDay.referenceDate }, 0);
   assert.equal(memoryOffsetAfterDateChange(nextDay.referenceDate, firstPage), 0);
   assert.equal(memoryOffsetAfterDateChange(null, firstPage), 0);

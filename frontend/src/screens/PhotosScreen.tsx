@@ -11,6 +11,8 @@ import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, 
 import type { ImportDetail, Photo, PhotoAccount, PhotoDevice, PhotoImport, PhotoJourney, PhotoPage, PhotoSession } from '../lib/photos';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
+import PhotoConfirmedDate from '../components/PhotoConfirmedDate';
+import { canConfirmPhotoDate, confirmedDateBody } from '../lib/photoConfirmedDate';
 import PhotoJourneySuggestions from '../components/PhotoJourneySuggestions';
 import PhotoDuplicateHints from '../components/PhotoDuplicateHints';
 import { duplicatePhotoKey, fetchPhotoDuplicates, verifyDuplicatePhotos, withPhotoDuplicateRead, type PhotoDuplicateRead, type PhotoDuplicates } from '../lib/photoDuplicates';
@@ -18,15 +20,24 @@ import MemberVideoPlayer from '../components/MemberVideoPlayer';
 import LocalPhotoImportPanel from '../components/LocalPhotoImportPanel';
 import { LocalPhotoUpload } from '../lib/localPhotoUpload';
 import { photoSuggestionBody, readPhotoJourneySuggestions, type PhotoJourneySuggestions as Suggestions } from '../lib/photoJourneySuggestions';
-import { memoryOffsetAfterDateChange, photoMemoriesQuery, readPhotoMemories, type PhotoMemories } from '../lib/photoMemories';
+import { memoryDisplayDate, memoryDateLabel, unknownMemoryDates, memoryOffsetAfterDateChange, photoMemoriesQuery, readPhotoMemories, type PhotoMemories } from '../lib/photoMemories';
 
-type Editor = { item: Photo; caption: string; visibility: 'private' | 'shared'; journeyId: string; grants: string[]; savedGrants: string[]; tvConsent: boolean; blocked: boolean; suggestionReview: boolean; message: string };
+type Editor = { dateDraft: string; dateReview: boolean; dateMessage: string; item: Photo; caption: string; visibility: 'private' | 'shared'; journeyId: string; grants: string[]; savedGrants: string[]; tvConsent: boolean; blocked: boolean; suggestionReview: boolean; message: string };
 type Receipt = { path: string; body: Record<string, unknown> };
+// A /me or grants 404 is not proof that the original photo disappeared.
+class PhotoDateItemUnavailable extends Error {
+  constructor(readonly responseError: ApiError) { super('照片已移除或不再可见。'); }
+}
+function dateItemError(caught: unknown): unknown {
+  return caught instanceof ApiError && [404, 410].includes(caught.status) ? new PhotoDateItemUnavailable(caught) : caught;
+}
 const origin = (process.env.EXPO_PUBLIC_API_ORIGIN || '').replace(/\/$/, '');
 const imageUri = (item: Photo) => { const path = previewPath(item); return path ? (Platform.OS === 'web' ? path : origin + path) : ''; };
 const dirty = (e: Editor) => e.caption !== e.item.caption || e.visibility !== e.item.visibility || e.journeyId !== (e.item.journey?.id || '');
-const anyDraft = (e: Editor) => dirty(e) || e.tvConsent || [...e.grants].sort().join(',') !== [...e.savedGrants].sort().join(',');
-const draftKey = (e: Editor) => JSON.stringify([e.item.id, e.item.revision, e.caption, e.visibility, e.journeyId, e.grants, e.tvConsent]);
+const settingsDraft = (e: Editor) => dirty(e) || e.tvConsent || [...e.grants].sort().join(',') !== [...e.savedGrants].sort().join(',');
+const dateDirty = (e: Editor) => e.dateDraft !== (e.item.userConfirmedDate ?? '');
+const anyDraft = (e: Editor) => settingsDraft(e) || dateDirty(e);
+const draftKey = (e: Editor) => JSON.stringify([e.item.id, e.item.revision, e.caption, e.visibility, e.journeyId, e.grants, e.tvConsent, e.dateDraft]);
 const toggle = (ids: string[], id: string) => ids.includes(id) ? ids.filter(value => value !== id) : [...ids, id];
 
 type Props = ScreenProps & { initialPhotoId?: string; onBack?: () => void };
@@ -100,7 +111,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   // This local transport covers identity, source and photo suggestion reads. The URL
   // is fixed to this origin, and both JSON consumption and lifetime are bounded.
   async function suggestionRequest<T>(path: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
-    if (!(path === '/me' || path === '/accounts' || /^\/media\/items\/[a-f0-9]{24}(?:\/journey-suggestions|\/tv-grants|\/duplicates\?limit=20&offset=\d{1,4})?$/.test(path))
+    if (!(path === '/me' || path === '/accounts' || /^\/media\/items\/[a-f0-9]{24}(?:\/journey-suggestions\?dateMode=confirmed-or-source|\/tv-grants|\/duplicates\?limit=20&offset=\d{1,4})?$/.test(path))
       || body && !/^\/media\/items\/[a-f0-9]{24}$/.test(path)) throw new Error('照片请求无法核对。');
     const controller = new AbortController(); requests.current.add(controller);
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -150,6 +161,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     const data = await checked(async () => {
       if (nextScope === 'memories') {
         const memories = readPhotoMemories(await request(photoMemoriesQuery(nextOffset)), nextOffset);
+        if (memories.version !== 2) throw new Error('回看日期格式无法核对，请重新读取。');
         return { items: memories.items.map(row => row.item), total: memories.total, hasMore: memories.hasMore, memories };
       }
       const result = await request<PhotoPage>(`/media/items?scope=${nextScope}&limit=24&offset=${nextOffset}`);
@@ -222,11 +234,12 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     const previous = editorRef.current?.item.id === id ? editorRef.current : null;
     const retained = keepDraft && previous;
     const blocked = !!(resuming && previous && (previous.blocked || previous.item.revision !== data.item.revision));
-    const next: Editor = { item: data.item, caption: retained ? retained.caption : data.item.caption,
+    const next: Editor = { dateDraft: retained ? retained.dateDraft : data.item.userConfirmedDate || '',
+      dateReview: !!(retained && retained.dateReview), dateMessage: retained ? retained.dateMessage : '', item: data.item, caption: retained ? retained.caption : data.item.caption,
       visibility: retained ? retained.visibility : data.item.visibility,
       journeyId: retained ? retained.journeyId : data.item.journey?.id || '',
       grants: retained ? retained.grants : data.grants, savedGrants: data.grants,
-      tvConsent: retained ? retained.tvConsent : false, blocked,
+      tvConsent: retained ? retained.tvConsent : false, blocked: blocked || !!(retained && retained.dateReview),
       suggestionReview: !!(resuming && previous?.suggestionReview),
       message: resuming ? blocked ? previous?.suggestionReview ? '旅行关联需要核对，页面不会自动重发。' : '照片已更新。你的草稿仍保留，请读取当前版本后核对。' : previous?.message || ''
         : retained ? '已读取当前版本，保留你的未保存修改；请比较后再保存。' : '' };
@@ -439,6 +452,66 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     } }
     finally { locked.current = false; if (alive.current) setBusy(false); }
   }
+  function invalidateDateViews() {
+    clearDuplicates(); setSuggestionVersion(value => value + 1); ++serial.current.gallery; setMemories(null);
+    if (scope === 'memories') setPage({ items: [], total: 0, hasMore: false });
+  }
+  function dateFailure(caught: unknown, id: string) {
+    if (caught instanceof PhotoDateItemUnavailable) suggestionFailure(caught.responseError, id);
+    else failure(caught);
+  }
+  async function saveDate(value: string | null) {
+    const initial = editorRef.current;
+    if (locked.current || !current() || !initial || initial.blocked || settingsDraft(initial) || !canConfirmPhotoDate(initial.item)) return;
+    const ticket = epoch.current, key = draftKey(initial);
+    const valid = () => current() && epoch.current === ticket && !!editorRef.current && draftKey(editorRef.current) === key;
+    locked.current = true; setBusy(true); setError(''); let attempted = false;
+    try {
+      const body = confirmedDateBody(initial.item, value);
+      const outcome = await suggestionFence.current.read(async () => {
+        if (!freshSession.current?.csrf) throw new PhotoReadDiscarded('identity');
+        attempted = true; invalidateDateViews();
+        update({ blocked: true, dateReview: true, dateMessage: '结果待核对，不会自动重发。' });
+        try { return { result: await suggestionRequest<{ item: Photo }>(`/media/items/${initial.item.id}`, body) }; }
+        catch (error) { return { error: dateItemError(error) }; }
+      }, valid);
+      if ('error' in outcome) throw outcome.error;
+      const saved = validatePhoto(outcome.result.item);
+      if (saved.id !== initial.item.id || !canConfirmPhotoDate(saved) || saved.revision !== initial.item.revision + 1
+        || saved.userConfirmedDate !== value) throw new Error('照片日期响应无法核对。');
+      // A bounded, identity-checked successful response is sufficient to install
+      // this revision. Refreshing the gallery is GET-only and cannot resend it.
+      update({ item: saved, dateDraft: value || '', dateReview: false, blocked: false, dateMessage: '照片日期已更新。' });
+    } catch (caught) {
+      if (!current() || ticket !== epoch.current) return;
+      if (attempted && editorRef.current?.item.id === initial.item.id) update({ blocked: true, dateReview: true,
+        dateMessage: caught instanceof ApiError && caught.status === 409 ? '照片已变化，请核对当前照片日期。输入仍保留，不会自动重发。' : '结果待核对，不会自动重发。' });
+      dateFailure(caught, initial.item.id); return;
+    } finally { locked.current = false; if (alive.current) setBusy(false); }
+    try { await gallery(); } catch (caught) { if (current() && ticket === epoch.current) {
+      if (caught instanceof PhotoReadDiscarded || caught instanceof ApiError && [401, 403].includes(caught.status)) failure(caught);
+      else update({ dateMessage: '照片日期已更新，列表暂未刷新。请刷新列表。' });
+    } }
+  }
+  async function reviewDate() {
+    const initial = editorRef.current;
+    if (locked.current || !current() || !initial?.dateReview) return;
+    locked.current = true; setBusy(true); setError(''); const ticket = epoch.current;
+    try {
+      const detail = ++serial.current.detail;
+      clearDuplicates(); setSuggestionVersion(value => value + 1);
+      const data = await suggestionFence.current.read(() => editorData(initial.item.id, async <T,>(path: string, signal?: AbortSignal) => {
+        try { return await suggestionRequest<T>(path, undefined, signal); }
+        catch (caught) { throw path === `/media/items/${initial.item.id}` ? dateItemError(caught) : caught; }
+      }), () => current() && ticket === epoch.current && detail === serial.current.detail);
+      installEditor(data, initial.item.id, true);
+      if (current() && ticket === epoch.current) {
+        update({ dateReview: false, blocked: false, dateMessage: '已读取当前照片日期；这不是上一请求的执行回执。' });
+        await gallery();
+      }
+    } catch (caught) { if (current() && ticket === epoch.current) dateFailure(caught, initial.item.id); }
+    finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
   async function loadSuggestions(): Promise<Suggestions | null> {
     const initial = editorRef.current;
     if (locked.current || !current() || !initial?.item.canManage || initial.blocked || anyDraft(initial)) return null;
@@ -449,7 +522,9 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
       return await suggestionFence.current.read(async () => {
         const { item } = await suggestionRequest<{ item: Photo }>(`/media/items/${initial.item.id}`); validatePhoto(item);
         if (!item.canManage || item.id !== initial.item.id || item.revision !== initial.item.revision || item.journey?.id !== initial.item.journey?.id) throw new ApiError('照片已变化，请重新核对。', 409);
-        return readPhotoJourneySuggestions(await suggestionRequest(`/media/items/${item.id}/journey-suggestions`), item);
+        const suggestions = readPhotoJourneySuggestions(await suggestionRequest(`/media/items/${item.id}/journey-suggestions?dateMode=confirmed-or-source`), item);
+        if (suggestions.version !== 2) throw new Error('建议日期格式无法核对，请重新读取。');
+        return suggestions;
       }, () => current() && valid());
     } catch (caught) {
       if (current() && valid()) {
@@ -527,14 +602,14 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     void write(receipt.path, 'POST', receipt.body, async () => { await readImport(importDetail.import.id); await gallery(); await support(); setNotice('保存结果已更新，仅留下本次明确勾选的照片或视频。'); }, 'confirm');
   }
   function saveEditor() {
-    if (!editor || editor.blocked) return;
+    if (!editor || editor.blocked || dateDirty(editor)) return;
     const item = editor.item;
     void write(`/media/items/${item.id}`, 'PATCH', { revision: item.revision, caption: editor.caption, visibility: editor.visibility, journeyId: editor.journeyId || null }, async () => {
       await readEditor(item.id); await gallery(); setNotice('照片设置已保存。');
     }, 'editor');
   }
   function saveGrants(revoke = false) {
-    if (!editor || editor.blocked || dirty(editor)) return;
+    if (!editor || editor.blocked || dirty(editor) || dateDirty(editor)) return;
     const ids = revoke ? [] : editor.grants;
     if (ids.length && !editor.tvConsent) { setError('请确认允许选中的电视展示此照片或视频。'); return; }
     void write(`/media/items/${editor.item.id}/tv-grants`, 'PUT', { revision: editor.item.revision, deviceIds: ids, consentVersion: CONSENT, allowTvDisplay: !!ids.length }, async () => {
@@ -632,22 +707,22 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     <View style={styles.actions}><SegmentedButtons style={styles.scope} value={scope} onValueChange={value => { if (!busy) { setScope(value); setOffset(0); setLoading(true); } }} buttons={[{ value: 'mine', label: '我的照片', disabled: busy }, { value: 'shared', label: '家人共享', disabled: busy }, { value: 'memories', label: '那年今日', disabled: busy }]} /><Button icon="refresh" disabled={busy} onPress={() => void readAction(async () => { await Promise.all([gallery(), support()]); })}>刷新</Button></View>
     {scope === 'memories' && !loading && memories && <View style={{ gap: 6 }} testID="photo-memories-summary">
       <Text variant="titleLarge" accessibilityRole="header">{Number(memories.referenceDate.slice(5, 7))} 月 {Number(memories.referenceDate.slice(8))} 日，那些年的今天</Text>
-      <Text variant="bodyMedium">按来源日期（北京时间）回看你保存的照片。</Text>
-      {!!memories.unknownSourceTimeCount && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{memories.unknownSourceTimeCount} 张照片没有可核对的来源日期，暂未纳入回看。</Text>}
+      <Text variant="bodyMedium">按本人确认日期或来源日期回看；来源时刻按北京时间取日期。</Text>
+      {!!unknownMemoryDates(memories) && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{unknownMemoryDates(memories)} 张照片没有可核对的日期，暂未纳入回看。</Text>}
     </View>}
     {loading ? <ActivityIndicator accessibilityLabel="正在读取相册" /> : !page.items.length ? <EmptyState
       title={scope === 'memories' ? offset ? '这一页暂时没有照片' : '还没有往年同日的照片' : scope === 'mine' ? '把想回看的照片留下' : '还没有家人共享的照片'}
-      description={scope === 'memories' ? offset ? '照片可能已变化，回到第一页查看最新内容。' : '回看只使用已记录的来源日期，不会用导入日期补齐。' : scope === 'mine' ? '先选择照片，预览后再确认保存。默认只有你能看见。' : '家人明确共享后，照片才会出现在这里。'}
+      description={scope === 'memories' ? offset ? '照片可能已变化，回到第一页查看最新内容。' : '回看使用本人确认日期或已记录的来源日期，不会用导入日期补齐。' : scope === 'mine' ? '先选择照片，预览后再确认保存。默认只有你能看见。' : '家人明确共享后，照片才会出现在这里。'}
       action={scope === 'memories' && offset ? <Button onPress={() => setOffset(0)}>返回第一页</Button> : scope === 'mine' ? <Button onPress={() => { setImportSource('device'); setImportOpen(true); }}>从设备选择照片</Button> : undefined} />
       : <View style={styles.grid}>{page.items.map((item, index) => {
         const memory = scope === 'memories' ? memories?.items[index] : undefined;
-        const year = memory?.sourceLocalDate.slice(0, 4);
+        const year = memory ? memoryDisplayDate(memory).slice(0, 4) : undefined;
         return <React.Fragment key={item.id}>
-          {memory && (!index || memories?.items[index - 1].sourceLocalDate.slice(0, 4) !== year) && <Text variant="titleMedium" accessibilityRole="header" style={{ width: '100%' }}>{year} 年 · {memory.yearsAgo} 年前</Text>}
+          {memory && (!index || memoryDisplayDate(memories!.items[index - 1]).slice(0, 4) !== year) && <Text variant="titleMedium" accessibilityRole="header" style={{ width: '100%' }}>{year} 年 · {memory.yearsAgo} 年前</Text>}
           <Card mode="outlined" accessibilityLabel={(item.mediaType === 'video' ? '查看视频：' : '查看照片：') + (item.caption || '未添加说明')} onPress={() => { if (!busy) void readAction(() => readEditor(item.id)); }} style={[styles.photoCard, { width: cardWidth }]}>
             {renderPhoto(item, item.caption || (item.mediaType === 'video' ? '视频封面' : '已保存的照片'))}<Card.Content style={styles.photoCopy}>
               {item.mediaType === 'video' && <Text variant="bodySmall">{videoDescription(item)}</Text>}
-              {memory && <Text variant="bodySmall">来源日期：{memory.sourceLocalDate}</Text>}
+              {memory && <Text variant="bodySmall">{memoryDateLabel(memory)}：{memoryDisplayDate(memory)}</Text>}
               <Text variant="bodyMedium">{item.caption || '未添加说明'}</Text><Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.visibility === 'private' ? '仅我自己' : '家庭共享'}{item.journey ? ' · ' + item.journey.title : ''}</Text>
             </Card.Content>
           </Card>
@@ -664,30 +739,37 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
           {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
           {!!editor.message && <Text accessibilityLiveRegion="polite">{editor.message}</Text>}
           {editor.item.canManage ? <>
-            <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} label="照片说明" accessibilityLabel="照片说明" multiline maxLength={500} value={editor.caption} disabled={busy || editor.suggestionReview} onChangeText={caption => update({ caption })} />
-            <Text variant="titleSmall">谁能查看</Text><SegmentedButtons value={editor.visibility} onValueChange={visibility => update({ visibility: visibility as 'private' | 'shared', tvConsent: false })} buttons={[{ value: 'private', label: '仅我自己', disabled: busy || editor.suggestionReview }, { value: 'shared', label: '家庭成员', disabled: busy || editor.suggestionReview }]} />
+            {canConfirmPhotoDate(editor.item) && <PhotoConfirmedDate value={editor.dateDraft} saved={editor.item.userConfirmedDate ?? null}
+              busy={busy} blocked={editor.blocked} otherDraft={settingsDraft(editor)} needsCheck={editor.dateReview} message={editor.dateMessage}
+              change={dateDraft => update({ dateDraft, dateMessage: '' })} save={value => void saveDate(value)} recheck={() => void reviewDate()}
+              cancel={() => update({ dateDraft: editor.item.userConfirmedDate || '', dateMessage: '' })}
+              discardOther={() => { if (!locked.current && current() && !editor.blocked) update({ caption: editor.item.caption, visibility: editor.item.visibility,
+                journeyId: editor.item.journey?.id || '', grants: [...editor.savedGrants], tvConsent: false }); }} />}
+
+            <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} label="照片说明" accessibilityLabel="照片说明" multiline maxLength={500} value={editor.caption} disabled={busy || editor.suggestionReview || editor.dateReview} onChangeText={caption => update({ caption })} />
+            <Text variant="titleSmall">谁能查看</Text><SegmentedButtons value={editor.visibility} onValueChange={visibility => update({ visibility: visibility as 'private' | 'shared', tvConsent: false })} buttons={[{ value: 'private', label: '仅我自己', disabled: busy || editor.suggestionReview || editor.dateReview }, { value: 'shared', label: '家庭成员', disabled: busy || editor.suggestionReview || editor.dateReview }]} />
             <Text variant="bodySmall">家庭共享包括所选照片或视频及说明。改回私密会同时收回全部电视展示。</Text>
-            <Menu theme={{ animation: { scale: 0 } }} visible={journeyMenu} onDismiss={() => setJourneyMenu(false)} anchor={<Button mode="outlined" disabled={busy || editor.suggestionReview} onPress={() => setJourneyMenu(true)}>{editor.journeyId ? journeys.find(j => j.id === editor.journeyId)?.trip?.title || journeys.find(j => j.id === editor.journeyId)?.plan?.title || editor.item.journey?.title || '已关联旅行' : '关联旅行（可选）'}</Button>}>
+            <Menu theme={{ animation: { scale: 0 } }} visible={journeyMenu} onDismiss={() => setJourneyMenu(false)} anchor={<Button mode="outlined" disabled={busy || editor.suggestionReview || editor.dateReview} onPress={() => setJourneyMenu(true)}>{editor.journeyId ? journeys.find(j => j.id === editor.journeyId)?.trip?.title || journeys.find(j => j.id === editor.journeyId)?.plan?.title || editor.item.journey?.title || '已关联旅行' : '关联旅行（可选）'}</Button>}>
               <Menu.Item title="不关联旅行" onPress={() => { update({ journeyId: '' }); setJourneyMenu(false); }} />
               {journeys.map(journey => <Menu.Item key={journey.id} title={journey.trip?.title || journey.plan?.title || '旅行'} onPress={() => { update({ journeyId: journey.id }); setJourneyMenu(false); }} />)}
             </Menu>
             <Text variant="bodySmall">解除已有旅行关联会自动转为私密并收回电视许可；关联照片不会标记地点到访。</Text>
-            {editor.suggestionReview ? <Button contentStyle={{ minHeight: 44 }} disabled={busy} onPress={() => void reviewSuggestion()}>核对当前旅行关联</Button>
-              : editor.blocked ? <Button disabled={busy} onPress={() => void readAction(() => readEditor(editor.item.id, true))}>读取当前版本，保留我的修改</Button> : <Button mode="contained" disabled={busy || !dirty(editor)} onPress={saveEditor}>保存照片设置</Button>}
+            {editor.dateReview ? null : editor.suggestionReview ? <Button contentStyle={{ minHeight: 44 }} disabled={busy} onPress={() => void reviewSuggestion()}>核对当前旅行关联</Button>
+              : editor.blocked ? <Button disabled={busy} onPress={() => void readAction(() => readEditor(editor.item.id, true))}>读取当前版本，保留我的修改</Button> : <Button mode="contained" disabled={busy || !dirty(editor) || dateDirty(editor)} onPress={saveEditor}>保存照片设置</Button>}
             {editor.item.mediaType !== 'video' && !duplicateReturn && <PhotoDuplicateHints
               data={duplicates?.page || null} busy={busy} dirty={anyDraft(editor)} blocked={editor.blocked}
               load={nextOffset => void loadDuplicates(nextOffset)} open={item => void openDuplicate(item)} thumbnail={renderPhoto} />}
             <PhotoJourneySuggestions key={JSON.stringify([scope, offset, suggestionVersion, draftKey(editor)])} busy={busy} dirty={anyDraft(editor)} blocked={editor.blocked}
               load={loadSuggestions} confirm={confirmSuggestion} cancelDraft={() => {
                 if (locked.current || !current()) return;
-                const value = editorRef.current; if (value) update({ caption: value.item.caption, visibility: value.item.visibility, journeyId: value.item.journey?.id || '', grants: [...value.savedGrants], tvConsent: false });
+                const value = editorRef.current; if (value) update({ caption: value.item.caption, visibility: value.item.visibility, dateDraft: value.item.userConfirmedDate || '', dateMessage: '', journeyId: value.item.journey?.id || '', grants: [...value.savedGrants], tvConsent: false });
               }} />
             <Divider /><List.Accordion title="电视展示" description="家庭共享后，再选择具体电视">
               <Text variant="bodySmall">先保存上方设置。只有勾选并确认的电视可以展示此照片或视频；电视配对不等于获得全部相册。</Text>
-              {devices.length ? devices.map(device => <React.Fragment key={device.id}>{checkbox(device.name || '家庭电视', editor.grants.includes(device.id), () => update({ grants: toggle(editor.grants, device.id), tvConsent: false }), busy || editor.blocked || dirty(editor) || editor.item.visibility !== 'shared')}</React.Fragment>) : <Text>尚未配对电视，可在设备设置中添加。</Text>}
-              {checkbox('允许选中的电视展示此照片或视频。', editor.tvConsent, () => update({ tvConsent: !editor.tvConsent }), busy || editor.blocked || dirty(editor) || editor.item.visibility !== 'shared')}
-              <Button mode="outlined" disabled={busy || editor.blocked || dirty(editor) || editor.item.visibility !== 'shared' || !!editor.grants.length && !editor.tvConsent} onPress={() => saveGrants()}>保存电视范围</Button>
-              <Button disabled={busy || editor.blocked || dirty(editor)} onPress={() => saveGrants(true)}>收回全部电视展示</Button>
+              {devices.length ? devices.map(device => <React.Fragment key={device.id}>{checkbox(device.name || '家庭电视', editor.grants.includes(device.id), () => update({ grants: toggle(editor.grants, device.id), tvConsent: false }), busy || editor.blocked || dirty(editor) || dateDirty(editor) || editor.item.visibility !== 'shared')}</React.Fragment>) : <Text>尚未配对电视，可在设备设置中添加。</Text>}
+              {checkbox('允许选中的电视展示此照片或视频。', editor.tvConsent, () => update({ tvConsent: !editor.tvConsent }), busy || editor.blocked || dirty(editor) || dateDirty(editor) || editor.item.visibility !== 'shared')}
+              <Button mode="outlined" disabled={busy || editor.blocked || dirty(editor) || dateDirty(editor) || editor.item.visibility !== 'shared' || !!editor.grants.length && !editor.tvConsent} onPress={() => saveGrants()}>保存电视范围</Button>
+              <Button disabled={busy || editor.blocked || dirty(editor) || dateDirty(editor)} onPress={() => saveGrants(true)}>收回全部电视展示</Button>
             </List.Accordion>
             <Button textColor={theme.colors.error} disabled={busy || editor.blocked} onPress={() => setDecision('delete')}>移除看板副本</Button><Text variant="bodySmall">{photoSourceLabel(editor.item.source)} · {photoOriginalNotice(editor.item.source)}</Text>
           </> : <><Text variant="titleMedium">{editor.item.caption || '家庭共享照片'}</Text><Text>由上传者管理，你可以查看当前共享的照片。</Text>{!!editor.item.journey && <Text>关联旅行：{editor.item.journey.title}</Text>}</>}

@@ -44,11 +44,12 @@ export default function PhotoJourneySuggestions(props: Props) {
       <Text>请先保存或取消未保存的修改，再查看旅行建议。</Text>
       <Button contentStyle={touch} disabled={props.busy} onPress={props.cancelDraft}>取消未保存的修改</Button>
     </> : <>
-      <Text variant="bodyMedium">按已记录的来源时间，找一找日期相符的旅行。</Text>
+      <Text variant="bodyMedium">按本人确认日期或已记录的来源时间，找一找日期相符的旅行。</Text>
       <Button contentStyle={touch} mode="outlined" disabled={props.busy} onPress={() => void load()}>查看旅行建议</Button>
       {data && <View style={{ gap: density.tripGap }}>
-        {data.sourceTimeState === 'unknown' ? <Text>这张照片没有已记录的来源时间。你仍可在上方手动关联旅行。</Text> : <>
-          <Text selectable variant="bodySmall" style={styles.wrap}>来源时间：{data.sourceCreatedAt}</Text>
+        {(data.version === 2 ? data.dateBasis === 'unknown' : data.sourceTimeState === 'unknown') ? <Text>这张照片没有可核对的日期。你仍可在上方手动关联旅行。</Text> : <>
+          {data.dateBasis === 'userConfirmedDate' ? <><Text>按本人确认日期匹配，未换算时区</Text><Text>本人确认日期：{data.userConfirmedDate}</Text></>
+            : <Text selectable variant="bodySmall" style={styles.wrap}>来源时间：{data.sourceCreatedAt}</Text>}
           {!data.suggestions.length && <Text>暂无日期相符的旅行。你仍可在上方手动关联。</Text>}
         </>}
         <View accessibilityRole="radiogroup" accessibilityLabel="日期相符的旅行" style={{ gap: density.tripGap }}>
@@ -58,8 +59,9 @@ export default function PhotoJourneySuggestions(props: Props) {
             checked={selected === item.journeyId} disabled={props.busy || item.alreadyLinked} onPress={() => setSelected(item.journeyId)} />
           <View style={styles.copy}>
             <Text>{item.start} 至 {item.end}</Text>
-            <Text style={styles.wrap}>来源日期：{item.sourceDate} · {item.referenceTimezone}</Text>
-            {item.referenceTimezoneSource === 'legacy_default' && <Text variant="bodySmall">旧旅行按上海时区核对。</Text>}
+            <Text style={styles.wrap}>{data.dateBasis === 'userConfirmedDate' ? '本人确认日期' : '来源日期'}：{item.matchDate ?? item.sourceDate}</Text>
+            <Text variant="bodySmall">旅行参考时区：{item.referenceTimezone}</Text>
+            {data.dateBasis !== 'userConfirmedDate' && item.referenceTimezoneSource === 'legacy_default' && <Text variant="bodySmall">旧旅行按上海时区核对。</Text>}
             {item.alreadyLinked && <Text>当前已关联</Text>}
           </View>
         </View>)}

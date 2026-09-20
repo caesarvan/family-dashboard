@@ -4,7 +4,7 @@ No provider HTTP or file storage. All provider/decoder work happens outside this
 engine's SQLite transactions, using the public claim/complete protocol.
 """
 from contextlib import contextmanager
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 import hashlib
 import json
 import math
@@ -307,6 +307,16 @@ def _source_time(value):
         return None
 
 
+def _confirmed_date(value):
+    """A user-entered calendar day, never a timezone or a source instant."""
+    if type(value) is not str or not re.fullmatch(r'[0-9]{4}-[0-9]{2}-[0-9]{2}', value):
+        return None
+    try:
+        return date.fromisoformat(value).isoformat()
+    except ValueError:
+        return None
+
+
 def _duration(value):
     if type(value) is not str or not re.fullmatch(r'\d+(?:\.\d{1,9})?s', value):
         raise MediaError('bad_response')
@@ -467,7 +477,7 @@ class MediaLibrary:
 
     @contextmanager
     def _suggestion_transaction(self, write=False):
-        """Fence only owner suggestions/confirmation to the request's session."""
+        """Fence member photo reads and explicit metadata writes to this session."""
         actor = dict(getattr(g, 'actor', None) or {})
         original = dict(getattr(g, 'member_session', None) or {})
         if actor.get('role') != 'member':
@@ -908,6 +918,19 @@ class MediaLibrary:
             raise MediaError('unavailable')
         return value
 
+    def _can_confirm_date(self, con, row, meta):
+        return (row['account_id'] is None and row['state'] == 'ready'
+                and row['confirmed_at'] is not None and meta.get('mediaType', 'photo') == 'photo'
+                and self._media_authority(con, row))
+
+    def _photo_dates(self, con, row, meta):
+        confirmed = _confirmed_date(meta.get('userConfirmedDate'))
+        if confirmed is not None and not self._can_confirm_date(con, row, meta):
+            confirmed = None
+        instant = _source_time(meta.get('sourceCreatedAt'))
+        basis = 'userConfirmedDate' if confirmed is not None else 'sourceCreatedAt' if instant else 'unknown'
+        return confirmed, instant, basis
+
     def _item(self, con, uid, owner=None, *, manage=False, device=None):
         row = con.execute('SELECT * FROM media_items WHERE id=?',(_id(uid),)).fetchone()
         if not row or row['state']=='deleted' and row['owner'] != owner:
@@ -947,7 +970,8 @@ class MediaLibrary:
             source_time = meta.get('sourceCreatedAt')
             known = _source_time(source_time) is not None
             result.update(accountId=row['account_id'],displayFilename=meta['displayFilename'],source=meta.get('source','google-photos'),
-                          sourceCreatedAt=source_time if known else None,sourceTimeState='known' if known else 'unknown')
+                          sourceCreatedAt=source_time if known else None,sourceTimeState='known' if known else 'unknown',
+                          userConfirmedDate=self._photo_dates(con, row, meta)[0])
         return result
 
     @staticmethod
@@ -1030,7 +1054,7 @@ class MediaLibrary:
             # session again, including household/platform membership changes.
         return result
 
-    def on_this_day(self, limit, offset):
+    def on_this_day(self, limit, offset, *, confirmed_dates=False):
         """Read confirmed owner photos by source date without touching media bytes."""
         with self._suggestion_transaction() as con:
             owner = g.actor['id']
@@ -1038,7 +1062,7 @@ class MediaLibrary:
             reference_date = datetime.fromtimestamp(self.clock(), reference_zone).date()
             rows = con.execute('SELECT '+ITEM_VIEW+" FROM media_items WHERE owner=? "
                 "AND state='ready' AND confirmed_at IS NOT NULL ORDER BY id", (owner,))
-            matches, unknown = [], 0
+            matches, unknown, unknown_effective = [], 0, 0
             for row in rows:
                 meta = self._metadata(row)
                 if meta.get('mediaType', 'photo') != 'photo':
@@ -1051,22 +1075,30 @@ class MediaLibrary:
                     source_date = None
                 if source_date is None:
                     unknown += 1
+                confirmed, _, basis = self._photo_dates(con, row, meta) if confirmed_dates else (None, instant, 'sourceCreatedAt')
+                effective_date = date.fromisoformat(confirmed) if confirmed is not None else source_date
+                if effective_date is None:
+                    unknown_effective += 1
                     continue
-                if (source_date.year >= reference_date.year or
-                    (source_date.month, source_date.day) != (reference_date.month, reference_date.day)):
+                if (effective_date.year >= reference_date.year or
+                    (effective_date.month, effective_date.day) != (reference_date.month, reference_date.day)):
                     continue
-                matches.append((source_date, row))
+                matches.append((effective_date, row, basis))
             matches.sort(key=lambda value: (-value[0].toordinal(), value[1]['id']))
             items = [{'item': self._item_dto(con, row, owner),
-                      'sourceLocalDate': source_date.isoformat(),
+                      **({'displayDate': source_date.isoformat(), 'dateBasis': basis} if confirmed_dates
+                         else {'sourceLocalDate': source_date.isoformat()}),
                       'yearsAgo': reference_date.year-source_date.year}
-                     for source_date, row in matches[offset:offset+limit]]
-            return dict(referenceDate=reference_date.isoformat(), referenceTimezone='Asia/Shanghai',
-                dateBasis='sourceCreatedAt', scope='mine', items=items, total=len(matches),
+                     for source_date, row, basis in matches[offset:offset+limit]]
+            result = dict(referenceDate=reference_date.isoformat(), referenceTimezone='Asia/Shanghai',
+                scope='mine', items=items, total=len(matches),
                 limit=limit, offset=offset, hasMore=offset+limit<len(matches),
                 unknownSourceTimeCount=unknown)
+            result.update(dict(version=2, datePolicy='confirmed-or-source', unknownEffectiveDateCount=unknown_effective)
+                          if confirmed_dates else dict(dateBasis='sourceCreatedAt'))
+            return result
 
-    def journey_suggestions(self, uid):
+    def journey_suggestions(self, uid, *, confirmed_dates=False):
         """Read a current owner-only date match, never infer a visit or grant access."""
         with self._suggestion_transaction() as con:
             owner = g.actor['id']
@@ -1077,13 +1109,18 @@ class MediaLibrary:
                 raise MediaError('gone')
             if row['state']!='ready' or row['confirmed_at'] is None:
                 raise MediaError('not_ready')
-            source = self._metadata(row).get('sourceCreatedAt')
+            meta = self._metadata(row)
+            source = meta.get('sourceCreatedAt')
             instant = _source_time(source)
             result = dict(photoId=row['id'],photoRevision=row['revision'],
                 sourceTimeState='known' if instant else 'unknown',sourceCreatedAt=source if instant else None,
                 currentJourneyId=row['journey_id'],suggestions=[],limit=20,hasMore=False)
-            if instant is None:
-                result['reason'] = dict(code='source_time_unknown',message='这张照片没有已记录的来源创建时间，无法按日期建议旅行。请手动核对关联。')
+            confirmed, _, basis = self._photo_dates(con, row, meta) if confirmed_dates else (None, instant, 'sourceCreatedAt')
+            if confirmed_dates:
+                result.update(version=2, userConfirmedDate=confirmed, dateBasis=basis)
+            if instant is None and confirmed is None:
+                result['reason'] = (dict(code='date_unknown',message='这张照片没有可用日期，请本人确认照片日期或手动核对关联。')
+                    if confirmed_dates else dict(code='source_time_unknown',message='这张照片没有已记录的来源创建时间，无法按日期建议旅行。请手动核对关联。'))
                 return result
             rows = con.execute("""SELECT j.id,j.revision AS journey_revision,j.plan,
                 e.revision AS trip_revision,e.data FROM journey_workflows j
@@ -1094,7 +1131,7 @@ class MediaLibrary:
                 legacy = plan.get('schemaVersion',1)==1
                 try:
                     tz = zone('Asia/Shanghai' if legacy else plan.get('referenceTimezone'),'referenceTimezone')
-                    source_date = instant.astimezone(tz).date().isoformat()
+                    source_date = confirmed if confirmed is not None else instant.astimezone(tz).date().isoformat()
                     start, end = date_only(trip.get('start'),'start'),date_only(trip.get('end'),'end')
                 except (TimeIssue, ValueError, OverflowError):
                     continue
@@ -1106,14 +1143,16 @@ class MediaLibrary:
                 result['suggestions'].append(dict(journeyId=journey['id'],journeyRevision=journey['journey_revision'],
                     tripRevision=journey['trip_revision'],title=trip.get('title',''),start=start,end=end,
                     referenceTimezone=tz.key,referenceTimezoneSource='legacy_default' if legacy else 'plan',
-                    sourceDate=source_date,alreadyLinked=row['journey_id']==journey['id'],
-                    reason=dict(code='date_overlap',message='来源创建时间在该参考时区的日期落在旅行起止日期内；这不证明拍摄地点或实际到访。')))
-            result['reason'] = (dict(code='date_overlap',message='请核对来源日期和旅行，再明确确认关联。') if result['suggestions']
-                else dict(code='no_matching_journeys',message='来源日期未与当前旅行日期匹配，可手动核对关联。'))
+                    **({'matchDate': source_date} if confirmed_dates else {'sourceDate': source_date}),
+                    alreadyLinked=row['journey_id']==journey['id'],
+                    reason=dict(code='date_overlap',message=('按本人确认日期匹配，未换算时区；这不证明拍摄地点或实际到访。' if confirmed is not None
+                        else '来源创建时间在该参考时区的日期落在旅行起止日期内；这不证明拍摄地点或实际到访。'))))
+            result['reason'] = (dict(code='date_overlap',message='请核对照片日期和旅行，再明确确认关联。' if confirmed_dates else '请核对来源日期和旅行，再明确确认关联。') if result['suggestions']
+                else dict(code='no_matching_journeys',message='照片日期未与当前旅行日期匹配，可手动核对关联。' if confirmed_dates else '来源日期未与当前旅行日期匹配，可手动核对关联。'))
             return result
 
     def import_detail(self, uid):
-        with self.transaction() as con:
+        with self._suggestion_transaction() as con:
             owner = self._member(con)
             row = self._import(con,uid,owner)
             result = {'import':self._import_dto(row),'items':[]}
@@ -1197,6 +1236,26 @@ class MediaLibrary:
             return {'cancelled':True,'cleanupPending':bool(row['session_cipher']),'replayed':False}
 
     def patch_item(self, uid, value):
+        if type(value) is dict and 'userConfirmedDate' in value:
+            _fields(value, {'revision', 'userConfirmedDate'}, {'revision', 'userConfirmedDate'})
+            revision = _revision(value['revision'])
+            confirmed = _confirmed_date(value['userConfirmedDate'])
+            if value['userConfirmedDate'] is not None and confirmed is None:
+                raise MediaError('invalid_input')
+            with self._suggestion_transaction(True) as con:
+                owner = self._member(con)
+                row = self._item(con, uid, owner, manage=True)
+                if row['revision'] != revision:
+                    raise MediaError('conflict')
+                meta = self._metadata(row)
+                if not self._can_confirm_date(con, row, meta):
+                    raise MediaError('forbidden')
+                meta['userConfirmedDate'] = confirmed
+                con.execute('UPDATE media_items SET metadata_cipher=?,revision=revision+1,updated_at=? WHERE id=?',
+                            (self._seal('media-metadata', row, meta), self.clock(), uid))
+                self._quota(con, owner)
+                self._audit(con, owner, 'media_item_update', uid)
+                return {'item': self._item_dto(con, self._item(con, uid, owner), owner)}
         expected = {'expectedJourneyRevision','expectedTripRevision'}
         _fields(value,{'revision','caption','journeyId','visibility'}|expected,{'revision'})
         revision=_revision(value['revision'])
@@ -1460,8 +1519,11 @@ def register_media_library(app, db, Problem, body, require_member, audit):
     @app.get('/api/media/memories/on-this-day')
     def media_on_this_day():
         require_member()
-        query = _query(set(), default=24)
-        return jsonify(engine.on_this_day(query['limit'], query['offset']))
+        query = _query({'dateMode'}, default=24)
+        v2 = 'dateMode' in query
+        if v2 and (query['dateMode'] != 'confirmed-or-source' or query['limit'] != 24):
+            raise MediaError('invalid_input')
+        return jsonify(engine.on_this_day(query['limit'], query['offset'], confirmed_dates=v2))
 
     @app.get('/api/media/items')
     def media_items():
@@ -1470,7 +1532,7 @@ def register_media_library(app, db, Problem, body, require_member, audit):
         scope=query.get('scope','mine')
         if scope not in ('mine','visible','shared'):
             raise MediaError('invalid_input')
-        with engine.transaction() as con:
+        with engine._suggestion_transaction() as con:
             owner=engine._member(con)
             clause={'mine':'owner=?','visible':"(owner=? OR visibility='shared')",'shared':"owner!=? AND visibility='shared'"}[scope]
             params=[owner]
@@ -1489,7 +1551,7 @@ def register_media_library(app, db, Problem, body, require_member, audit):
             return jsonify(engine.patch_item(uid,_request_object()))
         if request.method=='DELETE':
             return jsonify(engine.delete_item(uid,_request_object()))
-        with engine.transaction() as con:
+        with engine._suggestion_transaction() as con:
             owner=engine._member(con)
             return jsonify(item=engine._item_dto(con,engine._item(con,uid,owner),owner))
 
@@ -1506,9 +1568,10 @@ def register_media_library(app, db, Problem, body, require_member, audit):
     @app.get('/api/media/items/<uid>/journey-suggestions')
     def media_journey_suggestions(uid):
         require_member()
-        if request.args:
+        if (set(request.args) - {'dateMode'} or
+                ('dateMode' in request.args and request.args.getlist('dateMode') != ['confirmed-or-source'])):
             raise MediaError('invalid_input')
-        return jsonify(engine.journey_suggestions(uid))
+        return jsonify(engine.journey_suggestions(uid, confirmed_dates='dateMode' in request.args))
 
     @app.get('/api/media/items/<uid>/duplicates')
     def media_duplicate_hints(uid):
