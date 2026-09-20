@@ -1,12 +1,20 @@
 # 联合开发接手说明
 
-## 最新发布：本人站内提醒
+## 最新发布：日程时间重叠
+
+2026-09-20 08:47:27（北京时间）激活，08:49:19 独立生产只读审计通过。首页范围内重叠入口、日程展开详情及原本地安排修改已上线；生产一户两库保持 71/9，无迁移、云写入或新 API。[使用与集中验收](CALENDAR-CONFLICTS-ACCEPTANCE.md#calendar-conflicts-release)。私有仓库 [PR #14](https://github.com/caesarvan/family-dashboard/pull/14) 合入 main `6fdf36e`，与安装 source `ffb0b3c` 同树；后续纯文档提交不改变运行包。
+
+接缝为 `calendar.ts` 的 `calendarConflicts`、`CalendarConflictsPanel.tsx` 与 HomeScreen／CalendarScreen；从当前授权 state 派生，两两计组，全天／首尾相接不计入，原 ID／revision 编辑不创建副本。正式构建、R1 两项＋R2 一项浏览器、Linux 3 项与生产审计分别留证，不累加为一次全量。
+
+下一独立候选为本地日程默认私密及明确共享，后端与界面已通过分支审查，正式新构建已通过；真实浏览器验证尚待完成，未部署。继续独立分支／worktree、非作者审查后合入；A–D 本人完整验收仍 0/4，真实云目标待选，实体电视暂无法验证。
+
+## 此前发布：本人站内提醒
 
 2026-09-20 07:52:22（北京时间）激活，07:56:49 独立生产只读审计通过。首页本人提醒、已读／暂缓、原任务编辑返回及未知结果核对已上线；一户两库完成 69→71／平台 9 表保全。使用、固定包和计划、分段验证与审计边界集中在[提醒验收](TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。已消费计划禁止重放，Git 合入与生产激活分别记录。
 
 开发接缝：task_reminders.py 负责 live 任务投影、本人状态及同请求回执；sync_worker 接入本地阶段，成员撤权同事务清理，个人导出保持本人范围。taskReminders.ts／TaskRemindersPanel.tsx 经首页接入，沿 PlaceFence 复核前后身份；未知结果先查原回执，同标签页保存最小恢复记录。家庭库已增至 71 表，平台注册库仍 9 表；停写／app-only 保全与运行后 worker 的正常写入分别核验。
 
-下一独立功能为日程重叠处理，尚未包含在提醒包。继续独立分支／worktree、非作者审查和组合验收；不覆盖冻结包，不重放发布计划。A–D 本人完整验收仍 0/4，真实云目标待选，实体电视暂无法验证。
+日程重叠不包含在当时的提醒包，其后续发布见文首。历史冻结包和已消费计划保留，不重放。
 
 ## 此前发布：本地待办前置事项
 
