@@ -168,14 +168,20 @@ def build(package_dir, package_sha256, output_dir, *, runner=None, baseline=None
     run = runner or Executor(output)
     parent_image = package.baseline_values(baseline)[1]
     parent = inspect_image(run, parent_image)
+    parent_user = parent.get('Config', {}).get('User')
+    # Restore the inspected parent user verbatim, but accept only a closed
+    # single-line USER name/ID[:group] grammar (no directives or expansion).
+    user_part = r'(?:[a-z_][a-z0-9_-]{0,31}|[0-9]{1,10})'
+    need(isinstance(parent_user, str) and re.fullmatch(user_part + r'(?::' + user_part + r')?', parent_user),
+         'unsafe parent image user')
     context = output / 'context'
     for name in meta['runtimeFiles']:
         save(context / 'runtime' / name, verified['blobs'][name])
     cleanup = ("from pathlib import Path; import shutil; p=Path('/app/static/experience'); "
                "assert p.is_dir() and p.resolve()==Path('/app/static/experience'); "
                "assert not any(v.is_symlink() for v in [p,*p.parents,*p.rglob('*')]); shutil.rmtree(p)")
-    recipe = ('FROM ' + parent_image + '\nRUN python -B -c ' + shlex.quote(cleanup)
-              + '\nCOPY --chown=10001:10001 runtime/ /app/\n')
+    recipe = ('FROM ' + parent_image + '\nUSER 0\nRUN python -B -c ' + shlex.quote(cleanup)
+              + '\nUSER ' + parent_user + '\nCOPY --chown=10001:10001 runtime/ /app/\n')
     save(context / 'Dockerfile', recipe.encode('ascii'))
     need(tree_hashes(context / 'runtime') == meta['runtimeFiles'], 'context runtime differs')
     result = run(['build', '--network=none', '--pull=false', '--iidfile', str(output / 'image-id'), '.'],

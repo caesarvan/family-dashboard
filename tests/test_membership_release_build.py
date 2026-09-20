@@ -41,15 +41,16 @@ def verified(tmp_path, monkeypatch):
 
 
 class Docker:
-    def __init__(self, value, fault=None):
+    def __init__(self, value, fault=None, parent_user='dashboard'):
         self.value, self.fault, self.calls = value, fault, []
+        self.parent_user = parent_user
 
     def __call__(self, args, *, cwd=None, timeout=120):
         self.calls.append(args)
         raw, code = b'', 0
         if args[:2] == ['image', 'inspect']:
             child = args[-1] == IMAGE
-            config = {'User': 'dashboard', 'Env': ['DATA_DIR=/data'], 'Cmd': ['gunicorn'], 'WorkingDir': '/app'}
+            config = {'User': self.parent_user, 'Env': ['DATA_DIR=/data'], 'Cmd': ['gunicorn'], 'WorkingDir': '/app'}
             if child and self.fault == 'config':
                 config['User'] = 'root'
             layers = ['old1', 'old2'] + (['cleanup', 'copy'] if child else [])
@@ -58,7 +59,10 @@ class Docker:
             raw = json.dumps([{'Id': args[-1], 'Config': config, 'RootFS': {'Layers': layers}}]).encode()
         elif args[0] == 'build':
             recipe = (cwd / 'Dockerfile').read_text()
-            assert recipe.startswith('FROM ' + build.package.PARENT_IMAGE + '\nRUN python -B -c ')
+            lines = recipe.splitlines()
+            assert lines[:2] == ['FROM ' + build.package.PARENT_IMAGE, 'USER 0']
+            assert lines[2].startswith('RUN python -B -c ')
+            assert lines[3:] == ['USER ' + self.parent_user, 'COPY --chown=10001:10001 runtime/ /app/']
             assert recipe.count('\nRUN ') == 1 and recipe.count('\nCOPY ') == 1
             assert 'pip install' not in recipe and 'apt-get' not in recipe
             assert '--network=none' in args and '--pull=false' in args
@@ -84,18 +88,31 @@ class Docker:
         return subprocess.CompletedProcess(args, code, raw, b'')
 
 
-def test_build_preserves_parent_and_exact_runtime(verified, tmp_path):
+@pytest.mark.parametrize('parent_user', ['dashboard', '10001:10001', 'dashboard:dashboard'])
+def test_build_preserves_parent_and_exact_runtime(verified, tmp_path, parent_user):
     directory, value = verified
-    docker = Docker(value)
+    docker = Docker(value, parent_user=parent_user)
     output = tmp_path / 'build'
     record = build.build(directory, 'e' * 64, output, runner=docker)
     assert record['imageId'] == IMAGE and record['addedLayers'] == 2
     assert record['runtimeHashes'] == value['metadata']['runtimeFiles']
-    assert record['parentConfig']['User'] == 'dashboard'
+    assert record['parentConfig']['User'] == parent_user
     assert docker.calls[-1] == ['rm', '--force', CONTAINER]
     assert (output / 'build.json').is_file()
     with pytest.raises(ValueError, match='new output'):
         build.build(directory, 'e' * 64, output, runner=docker)
+
+
+@pytest.mark.parametrize('parent_user', [None, '', ' dashboard', 'dashboard:', 'dashboard:group:extra',
+    'dashboard\nRUN touch /unexpected', 'dashboard\r\nUSER root', 'dashboard ${USER}'])
+def test_build_rejects_unexpected_parent_user_before_recipe_or_build(verified, tmp_path, parent_user):
+    directory, value = verified
+    docker = Docker(value, parent_user=parent_user)
+    output = tmp_path / 'attempt'
+    with pytest.raises(ValueError, match='unsafe parent image user'):
+        build.build(directory, 'e' * 64, output, runner=docker)
+    assert docker.calls == [['image', 'inspect', build.package.PARENT_IMAGE]]
+    assert not (output / 'context').exists() and not (output / 'build.json').exists()
 
 
 @pytest.mark.parametrize('fault', ['config', 'layers', 'runtime', 'build', 'probe'])
