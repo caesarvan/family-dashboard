@@ -78,12 +78,7 @@ class MediaPlayback:
             "WHERE t.device_id=? AND m.state='ready' AND m.visibility='shared' ORDER BY m.id LIMIT 2001", (uid,)).fetchall()
         if len(rows)>2000:
             raise MediaError('quota')
-        allowed = {}
-        for row in rows:
-            key = (row['account_id'],row['owner'])
-            if key not in allowed:
-                allowed[key] = self.library._authority(con,*key)
-        return [row for row in rows if allowed[(row['account_id'],row['owner'])]]
+        return [row for row in rows if self.library._media_authority(con, row)]
 
     def _position(self, state, count, now):
         # A decoder's actual completion, never elapsed wall time, advances media.

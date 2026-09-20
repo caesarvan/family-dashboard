@@ -172,7 +172,7 @@ def exported_household_media(con, engine, owner, include_shared=False):
                        (owner, bool(include_shared))).fetchall()
     for row in rows:
         own = row['owner'] == owner
-        if not own and not engine._authority(con,row['account_id'],row['owner']):
+        if not own and not engine._media_authority(con,row):
             continue
         item = engine._item_dto(con,row,owner)
         allowed = fields | ({'source','displayFilename','sourceCreatedAt','sourceTimeState'} if own else set())
