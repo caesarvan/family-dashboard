@@ -42,6 +42,51 @@ def test_parent_fixture_has_only_original_four_services():
     assert set(value['volumes'])=={'household-data'}
 
 
+def test_fixture_https_application_and_http_health_are_separate(tmp_path,monkeypatch):
+    # Exercise the actual adapter and non-testing app/SQLite factory. Only the
+    # package bytes here are minimal synthetic inputs; no Docker/network is used.
+    for module,names in ((rehearsal.controller,('ROOT','RELEASES','VOLUME','PUBLIC_ORIGIN','DATA_PREFIX')),
+                         (rehearsal.lifecycle,('VOLUME','PROJECT','SOCKET_VOLUME','MEMORY','BEFORE_COMPOSE','AFTER_COMPOSE','decoder_contract')),
+                         (rehearsal.activation,('PARENT_MANIFEST',))):
+        for name in names:monkeypatch.setattr(module,name,getattr(module,name))
+    bundle=tmp_path/'bundle';parent=bundle/'parent';parent.mkdir(parents=True)
+    (parent/'app.py').write_bytes(b'# synthetic parent source fixture\n')
+    (parent/'requirements.txt').write_bytes(b'# synthetic dependency fixture\n')
+    scenario=tmp_path/'scenario';scenario.mkdir()
+    verified={'blobs':{'compose.yaml':b'synthetic compose','deploy/nginx.conf':b'synthetic nginx'},'manifest':{}}
+    installed,_,_,_,health=rehearsal.adapt(bundle,{},verified,scenario,PROJECT,38127)
+    env=dict(line.split('=',1) for line in (installed/'.env').read_text().splitlines())
+    public=env['PUBLIC_ORIGIN']
+    assert public==rehearsal.seed.SYNTHETIC_ENV['PUBLIC_ORIGIN'] and public.startswith('https://')
+    assert health==rehearsal.controller.PUBLIC_ORIGIN=='http://127.0.0.1:38127'
+    assert env['COOKIE_SECURE']=='1' and env['TRUST_PROXY']=='0'
+    adaptation=json.loads((scenario/'adaptations.json').read_bytes())
+    assert adaptation['publicOrigin']==public and adaptation['healthOrigin']==health
+    assert adaptation['cookieSecure'] and adaptation['actualTLS'] is False
+    for key,value in env.items():monkeypatch.setenv(key,value)
+    monkeypatch.setenv('DATA_DIR',str(tmp_path/'data'))
+    monkeypatch.setattr(rehearsal.socket.socket,'connect',lambda *a:pytest.fail('no network permitted'))
+    from app import create_app
+    application=create_app({'TESTING':False})
+    assert not application.testing and application.config['SESSION_COOKIE_SECURE'] is True
+    assert application.extensions['cloud_accounts'].origin==public
+    client=application.test_client()
+    assert client.get('/healthz',base_url=health).json=={'status':'ok'}
+    login=client.post('/api/login',base_url=public,headers={'Origin':public},
+                      json={'username':'member1','password':env['MEMBER1_PASSWORD']})
+    assert login.status_code==200 and any('; Secure;' in v for v in login.headers.getlist('Set-Cookie'))
+    identity=client.get('/api/me',base_url=public).json
+    created=client.post('/api/items/tasks',base_url=public,
+                        headers={'Origin':public,'X-CSRF-Token':identity['csrf']},json={'title':'Synthetic origin check'})
+    assert created.status_code==201
+    with rehearsal.closing(sqlite3.connect(tmp_path/'data/household.sqlite3')) as con:
+        assert con.execute("SELECT count(*) FROM entities WHERE kind='tasks'").fetchone()[0]==1
+    # A loopback HTTP PUBLIC_ORIGIN must still fail the real application guard.
+    monkeypatch.setenv('PUBLIC_ORIGIN',health)
+    with pytest.raises(RuntimeError,match='PUBLIC_ORIGIN must be an HTTPS origin'):
+        create_app({'TESTING':False,'DATA_DIR':str(tmp_path/'invalid-data')})
+
+
 def test_admission_samples_all_three_and_never_polls_for_a_high_point():
     values=iter([1088*1024,1088*1024-1,2048*1024]);slept=[]
     result=rehearsal.preflight(reader=lambda:next(values),sleeper=slept.append)

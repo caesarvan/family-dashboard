@@ -408,7 +408,9 @@ def adapt(bundle, meta, verified, scenario_root, project, port):
     materialize(root, parent)
     old = {'sourceHead': activation.PARENT_SOURCE, 'files': {n: sha(b) for n, b in parent.items()}}
     save(root/'RELEASE-MANIFEST.json', old, 0o644)
-    env = {**seed.SYNTHETIC_ENV, 'PUBLIC_ORIGIN': origin, 'COOKIE_SECURE': '0', 'TRUST_PROXY': '0', 'MEDIA_VIDEO_SOCKET': ''}
+    # Application/seed requests keep the valid synthetic HTTPS origin and secure
+    # cookies. The separate HTTP loopback transport is only for /healthz.
+    env = {**seed.SYNTHETIC_ENV, 'TRUST_PROXY': '0', 'MEDIA_VIDEO_SOCKET': ''}
     save(root/'.env', ''.join(k+'='+v+'\n' for k, v in env.items()).encode())
     candidate = scenario_root/'candidate'; candidate.mkdir(mode=0o700)
     source = dict(verified['blobs']); source.update({'compose.yaml': encoded(composition(project, True, port)), 'deploy/nginx.conf': nginx})
@@ -443,7 +445,8 @@ def adapt(bundle, meta, verified, scenario_root, project, port):
     save(scenario_root/'adaptations.json', {
         'syntheticOnly': True, 'productionPlanAdmissionExercised': False, 'actualDocker': True,
         'actualMigration': True, 'actualDocumentedRestore': True, 'actualSystemd': False, 'actualTLS': False,
-        'project': project, 'volumes': [controller.VOLUME, lifecycle.SOCKET_VOLUME], 'origin': origin,
+        'project': project, 'volumes': [controller.VOLUME, lifecycle.SOCKET_VOLUME],
+        'healthOrigin': origin, 'publicOrigin': env['PUBLIC_ORIGIN'], 'cookieSecure': env['COOKIE_SECURE']=='1',
         'fixtureLimitsMiB': LIMITS, 'productionLimitsMiB': {'app': 384, 'media': 384, 'sync': 192, 'web': 96, 'decoder': 768},
         'helperLimitMiB': 384, 'maximumRunningServiceContainers': 5, 'resourceCapacityClaim': False,
         'parentManifest': {'production': ORIGINAL_PARENT_MANIFEST, 'fixture': plan['parentManifest']},

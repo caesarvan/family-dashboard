@@ -16,6 +16,7 @@
 - `Controller.stage/activate/data_call/helper_state/stop_data_helper/verify_rollback` 与真实迁移代码保持原文件字节，`FixtureController` 仅覆盖 `evidence` 为演练来源核验。它核真实 b8 包、双镜像构建原件、固定工具源码与完整 fixture hash；不制造资源或独审 PASS。报告固定 `productionPlanAdmissionExercised=false`，正式 `prepare` 的实际准入另验。
 - 镜像固定 app `75d2cf…`、decoder `005cc3…`、旧 app `a783c5…`、web `1ae82d…`，不构建镜像。只创建 `fd-vcr-<随机16位>-success|failure` 项目及其卷；不读取生产 `.env`／数据库，不使用生产项目、端口或路径。
 - 私有合成环境、marker、部署根目录、manifest、compose、nginx 配置、loopback HTTP 和镜像标签前缀是显式 fixture 适配。旧安装目录是完整声明的最小源码 fixture，包含原 Git app／requirements 和独立旧 Expo 哨兵，不冒充完整生产安装树。候选源除 compose/nginx 外逐字节保留真实包。真实数据库由旧 app 的登录／邀请／加入／待办 API 生成；保留虚构个人财务和 audit 行。
+- 应用 `PUBLIC_ORIGIN` 保留种子的 `https://steady-rehearsal.invalid`，`COOKIE_SECURE=1`；种子通过 Flask 本地请求使用该 HTTPS 来源，不解析或连接这个域名。控制器仅用另一个 `http://127.0.0.1:<端口>/healthz` 做无认证健康检查；两者分别记录为 `publicOrigin`／`healthOrigin`，不放宽应用的 HTTPS 校验，也不据此声称实际 TLS 已验证。
 - app／media 各 192 MiB、sync 128 MiB、web 64 MiB、decoder 384 MiB，总 960 MiB；无 swap，实际迁移 helper 单独 384 MiB。decoder 检查先核实际 384 MiB，再仅映射限额字段调用原 768 MiB 合同检查；其余用户、命令、socket、权限和隔离条件不放宽。最多五个服务同时运行，旧服务先全停再启动新服务。
 - 备份 timer 使用独占 fixture 状态，不调用 systemd；不模拟 Docker 成功结果、迁移或恢复算法。此处验证控制流程，不证明真实 timer 调度／备份竞态、生产 TLS 或生产峰值容量。生产 384／768 MiB 大媒体资源实验必须单独报告，不能相加成并发证明。
 - app、sync、media 和 web 仅接入合成内部网络，网络标记 `internal`；decoder 和 setup／migration／restore helper 无网络。没有真实账户、云凭据或外部媒体。
@@ -39,3 +40,5 @@ python3 -B <准备目录>/operator/deploy/media_video_controller_rehearsal.py ru
 首次或后续准入读取异常保留已采样记录及 `preflight_failed`、零容器终态；监控线程无法启动时保留原异常，不 join 未启动线程，也不进入任何场景。旧 a767 本机准备包留作历史证据；审查后的最终提交须由协调者重新准备，不能沿用旧输入 SHA。
 
 `input.json` 绑定原始依赖，`adaptations.json` 逐项记录差异，`result.json` 分开记录两场景、fixture 限额、失败／收停、生产准入未覆盖边界。实际 Linux `passed=true` 仅能在两场景及全部收停证据通过后形成；本页不预先声明运行通过。
+
+首次 Linux 演练在种子 helper 启动应用时因把 HTTP 健康地址误作 `PUBLIC_ORIGIN` 而失败；尚未启动旧四服务或执行 stage／activate，第二场景未运行。该轮失败原件保留；本次来源拆分需重新独审，并由协调者使用新的输入和输出目录执行，不能将旧轮记为通过。
