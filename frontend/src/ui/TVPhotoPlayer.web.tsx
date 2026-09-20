@@ -6,10 +6,11 @@ import { isTVPhotoId, readTVPlayback, TVPhotoIdentityChanged, TVPhotoLease, TV_P
   type TVPlayback, type TVProgressEvent, type TVProgressIntent, type TVPhotoPlayerProps } from './TVPhotoPlayer.model';
 export type { TVPhotoPlayerProps } from './TVPhotoPlayer.model';
 
-type Display = { deviceId: string; mode: 'unknown' | 'dashboard' | 'photos'; status: 'loading' | 'image' | 'empty' | 'error' | 'expired' | 'blocked' | 'pending'; position: number; count: number; paused: boolean };
+type Display = { deviceId: string; mode: 'unknown' | 'dashboard' | 'photos'; status: 'loading' | 'image' | 'empty' | 'error' | 'expired' | 'blocked' | 'pending' | 'busy'; position: number; count: number; paused: boolean };
 type Request = { controller: AbortController; ticket: number };
 const blank = (deviceId: string): Display => ({ deviceId, mode: 'unknown', status: 'loading', position: 0, count: 0, paused: false });
 class DisplayHttpError extends Error { status: number; constructor(status: number) { super('Display unavailable'); this.status = status; } }
+class DisplayVideoBusy extends Error {}
 
 async function bytes(response: Response, limit: number, signal: AbortSignal) {
   const declared = response.headers.get('Content-Length');
@@ -26,7 +27,7 @@ async function bytes(response: Response, limit: number, signal: AbortSignal) {
       if (total > limit) throw new Error('Oversized display response');
       chunks.push(result.value);
     }
-    if (!total) throw new Error('Empty display response');
+    if (!total || declared !== null && total !== Number(declared)) throw new Error('Incomplete display response');
     const body = new Uint8Array(total); let offset = 0;
     for (const chunk of chunks) { body.set(chunk, offset); offset += chunk.byteLength; }
     return body;
@@ -38,7 +39,14 @@ async function displayResponse(path: string, type: string, signal: AbortSignal) 
   const response = await fetch(path, { method: 'GET', mode: 'same-origin', credentials: 'same-origin', cache: 'no-store', redirect: 'error', signal,
     headers: { 'X-Display-Mode': 'tv', Accept: type } });
   if (response.status === 401 || response.status === 403) throw new DisplayHttpError(response.status);
-  if (!response.ok || response.redirected || response.url !== new URL(path, window.location.origin).href
+  if (type === 'video/mp4' && response.status === 503 && !response.redirected
+    && response.url === new URL(path, window.location.origin).href
+    && response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() === 'application/json'
+    && response.headers.get('Retry-After') === '1') {
+    const data = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await bytes(response, 1024, signal)));
+    if (data?.code === 'video_busy') throw new DisplayVideoBusy('Video read busy');
+  }
+  if (response.status !== 200 || response.redirected || response.url !== new URL(path, window.location.origin).href
     || response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() !== type) throw new Error('Invalid display response');
   return response;
 }
@@ -69,6 +77,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
     let mounted = true, pageVisible = true, state: TVPlayback | null = null, nextPoll = 0, lastCheckpoint = 0, acceptedStarted = -1;
     let polling: Promise<void> | null = null, pollRequest: Request | null = null, assetRequest: Request | null = null;
     let reportRequest: Request | null = null, assetKey = '', failedKey = '', unknown: TVProgressIntent | null = null;
+    let failedStatus: 'error' | 'busy' = 'error';
     let sending: TVProgressIntent | null = null;
     type Frame = { url: string; key: string; ticket: number; kind: 'photo' | 'video'; ready: boolean; preparing: boolean;
       blocked: boolean; playPending: boolean; positioned: boolean; pauseRevision: number };
@@ -135,7 +144,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
       if (value.mode === 'dashboard') { cancelAsset(); clearFrame(); setView({ ...blank(deviceId), mode: 'dashboard' }); return; }
       const key = keyOf(value);
       setView({ deviceId, mode: 'photos', status: unknown ? 'pending' : !value.item ? 'empty' : frame?.key === key
-        ? frame.blocked ? 'blocked' : 'image' : failedKey === key ? 'error' : 'loading',
+        ? frame.blocked ? 'blocked' : 'image' : failedKey === key ? failedStatus : 'loading',
         position: value.position, count: value.photoCount, paused: value.paused });
       if (unknown || !value.item) { cancelAsset(); clearFrame(); return; }
       if (frame?.key === key) {
@@ -212,7 +221,8 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
         objectUrl = null; clock.reset(state!.progress!.positionMs); setView(view => ({ ...view, status: 'image' })); paintFrame();
       } catch (error) {
         if (assetRequest === operation && available() && state && keyOf(state) === key) {
-          failedKey = key; clearFrame(); setView(view => ({ ...view, status: 'error' }));
+          failedKey = key; failedStatus = error instanceof DisplayVideoBusy ? 'busy' : 'error';
+          clearFrame(); setView(view => ({ ...view, status: failedStatus }));
         }
       } finally {
         candidate?.removeAttribute('src'); if (candidate instanceof HTMLVideoElement) candidate.load();
@@ -257,7 +267,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
     ended.current = () => { if (frame?.kind === 'video' && frame.ready && !state?.paused && video.current?.ended) void send('ended', actualPosition()); };
     mediaError.current = () => {
       if (!frame || (frame.kind === 'photo' ? image.current?.src : video.current?.src) !== frame.url) return;
-      if (state) failedKey = keyOf(state); clearFrame(); cancelAsset(); setView(value => ({ ...value, status: 'error' }));
+      if (state) failedKey = keyOf(state); failedStatus = 'error'; clearFrame(); cancelAsset(); setView(value => ({ ...value, status: 'error' }));
     };
     retry.current = () => {
       if (frame?.blocked) { frame.blocked = false; paintFrame(); return; }
@@ -295,7 +305,8 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
     : view.status === 'expired' ? '显示授权已到期，正在重新核对。'
       : view.status === 'pending' ? '播放进度的提交结果尚未核对，已停止播放。可在手机暂停或继续后重新核对。'
         : view.status === 'blocked' ? '浏览器尚未允许静音播放，请在电视上确认。手机操作不能开启电视声音。'
-          : view.status === 'error' ? '连接、媒体或许可暂不可用，画面已清除。'
+          : view.status === 'busy' ? '视频正在读取，请稍后重试。当前项目已保留，显示权限仍会持续核对。'
+            : view.status === 'error' ? '连接、媒体或许可暂不可用，画面已清除。'
             : view.status === 'loading' ? '正在核对媒体并加载…' : '';
   return <View testID="tv-photo-player" accessibilityLabel="已授权家庭媒体播放" style={styles.overlay}>
     <img ref={image} data-testid="tv-photo-image" alt="已授权的家庭照片" hidden onError={() => mediaError.current?.()}
@@ -306,7 +317,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
     {!!message && <View style={[styles.message, { gap: 20 * scale, maxWidth: 840 * scale, padding: 32 * scale }]}>
       {view.status === 'loading' && <ActivityIndicator color="#fff" size={36 * scale} />}
       <Text testID="tv-photo-status" accessibilityLiveRegion="polite" style={[styles.text, { fontSize: 28 * scale, lineHeight: 40 * scale }]}>{message}</Text>
-      {['blocked', 'error', 'pending'].includes(view.status) && <Button mode="contained" onPress={() => retry.current?.()}>
+      {['blocked', 'error', 'pending', 'busy'].includes(view.status) && <Button mode="contained" onPress={() => retry.current?.()}>
         {view.status === 'blocked' ? '重试静音播放' : '重新核对播放'}</Button>}
     </View>}
     {view.count > 0 && <Text testID="tv-photo-position" style={[styles.position, { bottom: 24 * scale, right: 24 * scale,

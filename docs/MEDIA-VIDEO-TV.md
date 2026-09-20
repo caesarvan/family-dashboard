@@ -1,0 +1,52 @@
+# 电视混合媒体播放候选
+
+基线 `7436084170728bfeed9f229c67a87f113b8e1a29`。本批是独立候选，尚未部署，也未声称实际电视、浏览器解码或真实 Google 素材验收完成。视频导入、缓存和成员相册分别由其他分支维护；集成人必须合入它们经过审查的最终补丁。本批不修改 codec、worker、Docker 或发布工具。
+
+## 播放与手机控制
+
+Expo 电视播放器支持授权 JPEG 和已确认的视频 MP4，继续逐台 TV 明确许可。视频默认静音、内联播放；浏览器拒绝自动播放时显示“重试静音播放”，不会假装手机点击已经解锁电视声音。手机操作仍使用原 `start / dashboard / pause / resume / previous / next / interval` 及 revision CAS，字段和路径保持。中文入口改为相册播放、上一项、下一项；间隔只指照片间隔。
+
+照片只累计成功展示、页面可见、未暂停且租约有效的时间；视频使用真实 `currentTime` 与 `ended`。下载、解码和缓冲不占用照片展示时间，也不会按照片间隔截断视频。暂停时 TV 保存实际位置，继续沿原位置播放；前后项重新从零开始。服务器重启恢复最近成功提交的检查点。TV 未收到暂停或最后回报丢失时，手机状态代表控制意图，不证明最后一帧已精确落盘。
+
+视频完整下载不超过 64 MiB，不提供 Range。授权轮询与下载使用独立请求；同一素材 revision 和 playId 的已校验 Blob 在有效租约内复用，不每两秒重复下载。视频解码元数据与服务端尺寸、时长核对，下载之后再次读播放状态才挂载画面。局部响应、截断响应、非同源地址及错误 MIME 被拒绝。视频读取许可忙时，只有明确的同源 `503 / video_busy / Retry-After:1` 显示稍后重试，保留当前项；不会误判撤权、跳项或自动重复大文件请求。成员可在电视上明确重新核对；等待期间继续独立核权，不延长 15 秒租约。
+
+## 状态与接口
+
+原 `media_playback` 八列 DDL、手机控制路径不改。新 `media_playback_progress` 表一台设备一行：
+
+| 字段 | 用途 |
+|---|---|
+| `device_id` | 原播放记录外键，设备删除通过父表级联 |
+| `item_id / item_revision` | 当前原始素材及版本，只来自服务器当前授权集合 |
+| `play_id` | 本次进入素材的代次；单素材重复播放也更换 |
+| `position_ms` | 最近实际回报位置，整数 0–600250 |
+| `report_seq` | 当前代次单调递增序号，拒绝重复及旧回报 |
+| `reported_at` | 服务端接收时间，不以此推断真实播放进度 |
+
+`GET /api/media-tv/playback` 增加 `protocol:2`、`playbackCsrf`、`progress:{playId,positionMs,sequence,durationMs}|null`。`item` 沿视频 DTO 的 `mediaType / videoUrl / durationMs / hasAudio`，仍不含账号、文件名或来源地址。GET 不新建或修复数据；当前素材被撤权或删除时，只投影当前可授权集合，并产生不同播放代次。
+
+唯一新增 TV 写路径为 `POST /api/media-tv/playback/progress`，精确 JSON：
+
+```json
+{"revision":3,"playId":"cccccccccccccccccccccccc","itemId":"bbbbbbbbbbbbbbbbbbbbbbbb","itemRevision":7,"sequence":2,"positionMs":3200,"event":"checkpoint"}
+```
+
+event 仅 `ready / checkpoint / paused / ended`。设备只能来自当前有效 `household_tv` cookie；不接受设备 ID、家庭 ID、媒体 URL 或共享配置。必须带精确 `X-Display-Mode: tv`、同源 Origin、JSON 以及 GET 下发的 `X-TV-Playback-CSRF`。令牌绑定用途、家庭、设备、真实 cookie 摘要、签发与到期，最长 15 秒且不晚于设备到期。不向 `/me` 提供电视通用 CSRF，不放行其他 TV 写接口；同时有成员 cookie 也不替代 TV 凭据。
+
+写事务内再次检查 TV、CSRF、当前媒体许可、代次、原素材版本、控制 revision 和回报序号。进度不能后退或越过素材时长；暂停时不能 ended。真实结束推进父表 revision，故手机下一项与 TV ended 同时发生时只有一个 CAS 成功。重复结束不再次跳页。进度操作只写播放状态，不更改媒体、共享、grant 或成员审计/meta。
+
+HTTP/响应结果未知时播放器停止显示，随后只 GET 核对。只有已提交序号、新控制 revision 或新播放代次能解除未知状态；没有证据时提示用手机暂停／继续后重新核对，不自动重放原 POST。
+
+## 授权与清理
+
+15 秒显示租约使用请求开始时的单调时钟，网络与解码耗时扣除，暂停同样续期。断网、隐藏、卸载、设备／家庭变化、拒绝响应或过期会暂停 video、移除 src、取消读取并释放 Blob URL；迟到响应不能恢复旧画面。已撤销许可的后续字节请求由服务器拒绝，已发送到浏览器的字节无法远程收回；本批不宣称 DRM 或在途 TCP 字节逐段撤销。
+
+CSP 仅增加 `media-src 'self' blob:`，原 script 限制和附件 sandbox 策略保持。视频渲染不能自行增加家庭共享或 TV 许可。
+
+## 迁移与验证边界
+
+连同视频 cache，家庭库从当前 71 表变为 73 表，平台保持 9；若 cache 独立先发布则为 72→73。新进度表不重写旧八列播放表。生产停写、完整组备份、空表迁移及旧表保全、实际 Linux 和恢复演练由后续迁移工具执行；不能仅切换旧运行镜像或删除进度表宣称完成回退。
+
+作者实际本地验证：后端 21 项通过，包括真实 Flask/SQLite、真实合成视频处理与读取、混合控制、并发 CAS、TV 专用令牌/权限、旧表保全和 SQLite 副本可读取。这里的副本检查不等同生产多库组恢复。两组 TypeScript 检查和首轮 19 项 Node 检查通过；Node 执行真实 TSX，但 HTTP、DOM、媒体元数据为合成边界，不能代替浏览器实际解码与布局。后续窄检查及最终源码身份在 ignored 作者报告单独记录。
+
+经典 `static/media-tv.js` 停止相册播放和播放定时器，清理旧请求／图片／Blob，仅显示同源 `/app/tv` 升级入口；其他经典看板模块及成员控制 API 保持。默认 `/tv` 已由现有路由进入新版；缓存中的旧页面须刷新。不能把 Expo 候选的混合播放结论套用于旧脚本或缓存页面。

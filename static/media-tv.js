@@ -1,4 +1,4 @@
-/* Photo-only display. Every visible image requires a current short server lease. */
+/* Classic controls and explicit modern-TV upgrade entry; no classic media playback. */
 (() => {
   'use strict';
   const ID=/^[0-9a-f]{24}$/;
@@ -104,84 +104,29 @@
     return ()=>dispose();
   }
 
-  function clearImage(d,message='正在重新核对照片权限…') {
-    d.epoch++;d.request?.abort();d.request=null;d.deadline=0;d.imageKey='';
-    d.image.removeAttribute('src');d.image.hidden=true;
-    if(d.url)URL.revokeObjectURL(d.url);d.url=null;
-    d.message.textContent=message;
-  }
+  // Classic display does not implement the acknowledged media-time protocol.
+  // Keep its dashboard usable and offer the same-origin modern TV entry.
   function stopDisplay() {
     if(!display)return;
-    const d=display;display=null;clearImage(d);clearInterval(d.watch);d.node.remove();
-    document.body.classList.remove('media-tv-playing');
+    const d=display;display=null;d.request?.abort();clearInterval(d.watch);
+    d.image?.removeAttribute('src');if(d.url)URL.revokeObjectURL(d.url);
+    d.node.remove();document.body.classList.remove('media-tv-playing');
   }
   function ensureDisplay() {
     const current=identity();
-    if(!television(current)){stopDisplay();return;}
+    if(!television(current)||document.hidden){stopDisplay();return;}
     if(display&&display.identity===key(current))return;
     stopDisplay();
-    const node=document.createElement('section');node.className='media-tv-screen';node.hidden=true;
-    node.setAttribute('aria-label','已授权照片轮播');
-    node.innerHTML='<img alt="已授权的精选照片" hidden><p role="status" aria-live="polite">正在核对照片权限…</p><span class="media-tv-progress"></span>';
-    document.body.append(node);
-    const d=display={node,image:node.querySelector('img'),message:node.querySelector('p'),progress:node.querySelector('span'),
-      identity:key(current),deviceId:current.user.id,epoch:0,deadline:0,url:null,imageKey:'',busy:false,next:0,request:null};
-    const active=()=>display===d&&television(identity())&&key(identity())===d.identity&&!document.hidden;
-    async function poll() {
-      if(d.busy||!active()||navigator.onLine===false)return;
-      d.busy=true;const epoch=d.epoch,started=performance.now();
-      d.request=new AbortController();const requestController=d.request;
-      const timer=setTimeout(()=>requestController.abort(),5000);
-      let pendingUrl=null;
-      try {
-        const value=await json('/api/media-tv/playback',{tv:true,signal:requestController.signal});
-        if(!active()||epoch!==d.epoch)return;
-        if(!validState(value,d.deviceId))throw new Error('invalid_state');
-        const duration=Date.parse(value.validUntil)-Date.parse(value.serverTime);
-        if(!Number.isFinite(duration)||duration<=0||duration>15000)throw new Error('invalid_lease');
-        const deadline=started+duration;
-        if(performance.now()>=deadline)throw new Error('expired');
-        d.deadline=deadline;
-        node.hidden=value.mode==='dashboard';document.body.classList.toggle('media-tv-playing',!node.hidden);
-        if(node.hidden){clearImage(d);return;}
-        d.progress.textContent=value.photoCount?`${value.position+1} / ${value.photoCount}${value.paused?' · 已暂停':''}`:'';
-        const item=value.item;
-        if(!item){clearImage(d,'没有可播放的已授权照片，请在手机上核对电视许可。');return;}
-        if(!ID.test(item.id)||item.previewUrl!=='/api/media-tv/items/'+item.id+'/preview'||!Number.isSafeInteger(item.revision))throw new Error('invalid_item');
-        const imageKey=item.id+':'+item.revision;
-        if(imageKey===d.imageKey&&!d.image.hidden){d.message.textContent='';return;}
-        d.image.removeAttribute('src');d.image.hidden=true;
-        if(d.url)URL.revokeObjectURL(d.url);d.url=null;d.imageKey='';
-        const response=await fetch(item.previewUrl,{credentials:'same-origin',cache:'no-store',redirect:'error',
-          signal:requestController.signal,headers:{'X-Display-Mode':'tv'}});
-        if(!response.ok||response.headers.get('Content-Type')?.split(';')[0]!=='image/jpeg')throw new Error('preview_unavailable');
-        const blob=await response.blob();if(!blob.size||blob.size>2*1024*1024)throw new Error('invalid_image');
-        if(!active()||epoch!==d.epoch||performance.now()>=d.deadline)return;
-        pendingUrl=URL.createObjectURL(blob);const candidate=new Image();candidate.src=pendingUrl;
-        await candidate.decode();
-        if(!active()||epoch!==d.epoch||performance.now()>=d.deadline)return;
-        d.image.src=pendingUrl;d.url=pendingUrl;pendingUrl=null;d.imageKey=imageKey;d.image.hidden=false;d.message.textContent='';
-      } catch(_error) {
-        if(display===d&&epoch===d.epoch)clearImage(d,'连接或照片许可暂不可用；旧照片已清除，恢复后重新核对。');
-      } finally {
-        if(pendingUrl)URL.revokeObjectURL(pendingUrl);
-        clearTimeout(timer);d.busy=false;d.next=performance.now()+2000;
-      }
-    }
-    d.watch=setInterval(()=>{
-      if(display!==d)return;
-      if(!television(identity())||key(identity())!==d.identity){stopDisplay();return;}
-      if(document.hidden)return;
-      if(d.deadline&&performance.now()>=d.deadline)clearImage(d,'照片许可已到期，正在重新核对。');
-      if(performance.now()>=d.next)void poll();
-    },100);
-    void poll();
+    const node=document.createElement('aside');node.setAttribute('aria-label','相册播放升级提示');
+    node.style.cssText='position:fixed;bottom:16px;left:16px;right:16px;z-index:50;padding:12px 18px;background:#18212d;color:#fff;border-radius:12px;font-size:16px;line-height:1.5';
+    node.append(document.createTextNode('经典电视页不再播放相册。照片和视频请使用新版电视页：'));
+    const link=document.createElement('a');link.href='/app/tv';link.textContent='打开新版电视页';link.style.color='#9dd8ff';node.append(link);
+    document.body.append(node);display={node,identity:key(current)};
   }
-  function clearForLifecycle() {if(display)clearImage(display,'画面已清除，返回后重新核对。');}
-  window.addEventListener('offline',clearForLifecycle);
-  window.addEventListener('pagehide',clearForLifecycle);
-  document.addEventListener('visibilitychange',()=>{if(document.hidden)clearForLifecycle();else if(display)display.next=0;});
-  window.addEventListener('online',()=>{if(display)display.next=0;});
-  window.addEventListener('pageshow',()=>{clearForLifecycle();if(display)display.next=0;});
+  window.addEventListener('offline',stopDisplay);
+  window.addEventListener('pagehide',stopDisplay);
+  document.addEventListener('visibilitychange',()=>document.hidden?stopDisplay():ensureDisplay());
+  window.addEventListener('online',ensureDisplay);
+  window.addEventListener('pageshow',ensureDisplay);
   window.MediaTV={mountControls,ensureDisplay,notifyIdentityChanged(){for(const c of controls)c.dispose();stopDisplay();}};
 })();

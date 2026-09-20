@@ -60,12 +60,13 @@ function harness(options={}) {
   class ObjectURL extends URL {static createObjectURL(){const url='blob:synthetic-'+(created.length+1);created.push(url);return url;}static revokeObjectURL(url){revoked.push(url);}}
   const timerApi={setTimeout(fn,ms){const id=++timerId;timers.set(id,{fn,at:now+ms,ms,repeat:false});return id;},
     setInterval(fn,ms){const id=++timerId;timers.set(id,{fn,at:now+ms,ms,repeat:true});return id;},clearTimeout(id){timers.delete(id);},clearInterval(id){timers.delete(id);}};
-  function response(path,body,type='application/json',status=200){const r=new Response(type==='application/json'?JSON.stringify(body):body,{status,headers:{'Content-Type':type}});Object.defineProperty(r,'url',{value:'http://localhost'+path});return r;}
+  function response(path,body,type='application/json',status=200){const headers={'Content-Type':type};if(status===503&&options.busy)headers['Retry-After']='1';if(type==='video/mp4'&&options.contentLength)headers['Content-Length']=options.contentLength;
+    const r=new Response(type==='application/json'?JSON.stringify(body):body,{status,headers});Object.defineProperty(r,'url',{value:'http://localhost'+path});return r;}
   const raw=()=>({...copy(state),serverTime:new Date(base+now).toISOString(),validUntil:new Date(base+now+15000).toISOString()});
   const fetch=async(path,init)=>{
     calls.push({path,method:init.method,body:init.body?JSON.parse(init.body):null,init});
     if(path==='/api/media-tv/playback')return response(path,denied?{}:raw(),'application/json',denied?401:200);
-    if(path===video().videoUrl){if(assetGate)await assetGate.promise;return response(path,new Uint8Array([0,0,0,24,102,116,121,112]),'video/mp4');}
+    if(path===video().videoUrl){if(assetGate)await assetGate.promise;if(options.busy)return response(path,{error:'private upstream message',code:'video_busy'},'application/json',503);return response(path,new Uint8Array([0,0,0,24,102,116,121,112]),'video/mp4',options.videoStatus||200);}
     if(path==='/api/media-tv/playback/progress'){
       const body=JSON.parse(init.body);assert.equal(init.headers['X-Display-Mode'],'tv');assert(init.headers['X-TV-Playback-CSRF']);
       if(body.revision!==state.revision||body.playId!==state.progress.playId||body.sequence<=state.progress.sequence)return response(path,{},'application/json',409);
@@ -90,6 +91,7 @@ function harness(options={}) {
   const close=()=>{dead=true;cleanups.forEach(fn=>fn?.());};
   return{calls,created,revoked,movie,flush,advance,close,text,get state(){return state;},pause(){state.paused=true;state.revision++;},resume(){state.paused=false;state.revision++;},
     gate(){let release;assetGate={promise:new Promise(r=>release=r)};return()=>{release();assetGate=null;};},unknown(){unknownPost=true;},deny(){denied=true;},
+    async retry(){options.busy=false;nodes().find(n=>n.type==='Button').props.onPress();await flush();},
     async event(name){if(name==='offline')navigator.onLine=false;if(name==='visibilitychange')document.hidden=true;for(const f of listeners.get(name)||[])f();await flush();}};
 }
 test('actual TV component renews independently while video bytes wait; cached Blob is not re-downloaded',async t=>{
@@ -125,4 +127,41 @@ test('actual committed response loss reads state to recover without replaying th
 test('actual revoked lease clears cached video and stops further byte reads',async t=>{
   const h=harness();t.after(h.close);await h.flush();h.deny();await h.advance(2200);
   assert(h.movie.paused&&h.movie.src==='');assert.equal(h.calls.filter(c=>c.path.endsWith('/video')).length,1);
+});
+for(const options of [{videoStatus:206},{contentLength:'9'}])test('actual TV refuses partial/truncated video '+JSON.stringify(options),async t=>{
+  const h=harness(options);t.after(h.close);await h.flush();await h.advance(2200);
+  assert.equal(h.created.length,0);assert.equal(h.calls.filter(c=>c.path.endsWith('/video')).length,1);
+  assert(!h.calls.some(c=>c.method==='POST'));assert(h.text().includes('画面已清除'));
+});
+test('actual TV late bytes after offline cannot recreate a Blob or send ready',async t=>{
+  const h=harness();t.after(h.close);const release=h.gate();await h.flush();await h.event('offline');release();await h.flush();
+  assert.equal(h.created.length,0);assert(!h.calls.some(c=>c.method==='POST'));assert(h.movie.paused);
+});
+test('actual TV busy video retains item and independent permissions, then explicit retry plays',async t=>{
+  const h=harness({busy:true});t.after(h.close);await h.flush();await h.advance(6000);
+  assert(h.text().includes('视频正在读取'));assert(!h.text().includes('private upstream'));
+  assert.equal(h.state.progress.positionMs,0);assert.equal(h.state.revision,1);
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/video')).length,1);
+  assert(h.calls.filter(c=>c.path==='/api/media-tv/playback').length>=3);
+  assert(!h.calls.some(c=>c.method==='POST'));await h.retry();
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/video')).length,2);assert.equal(h.movie.paused,false);
+});
+test('actual TV busy is not permission: revocation clears waiting state without fetching or advancing',async t=>{
+  const h=harness({busy:true});t.after(h.close);await h.flush();h.deny();await h.advance(2200);
+  assert(!h.text().includes('视频正在读取'));assert(h.movie.paused&&h.movie.src==='');
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/video')).length,1);assert(!h.calls.some(c=>c.method==='POST'));
+});
+test('classic TV offers same-origin modern entry without media fetch or playback timer',()=>{
+  const children=[],listeners={},nodes=[];let timerCalls=0,fetches=0;
+  const node=()=>{const n={style:{},children:[],setAttribute(k,v){this[k]=v;},append(...items){this.children.push(...items);},remove(){this.removed=true;}};nodes.push(n);return n;};
+  const document={hidden:false,createElement:node,createTextNode:text=>({text}),body:{append:n=>children.push(n),classList:{remove(){}}},addEventListener:(k,v)=>listeners[k]=v};
+  const window={addEventListener:(k,v)=>listeners[k]=v};
+  const context={window,document,user:{role:'tv',id:device,householdId:'one'},csrf:'',isTV:true,isDemo:false,
+    clearInterval(){},setInterval(){timerCalls++;},URL,fetch(){fetches++;throw new Error('Unexpected classic media request');}};
+  runInNewContext(readFileSync(new URL('../../static/media-tv.js',import.meta.url),'utf8'),context);
+  window.MediaTV.ensureDisplay();window.MediaTV.ensureDisplay();assert.equal(children.length,1);
+  assert.equal(children[0].children[1].href,'/app/tv');assert.match(children[0].children[0].text,/经典电视页不再播放/);
+  listeners.pagehide();assert(children[0].removed);window.MediaTV.ensureDisplay();
+  context.user={role:'member'};window.MediaTV.notifyIdentityChanged();assert(children[1].removed);
+  window.MediaTV.ensureDisplay();assert.equal(children.length,2);assert.equal(timerCalls,0);assert.equal(fetches,0);
 });
