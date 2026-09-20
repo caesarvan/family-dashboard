@@ -53,6 +53,7 @@ class Run(video_fixture.Run):
 
     def __init__(self, root, bundle, folder, report, out, lifecycle, tools):
         self.serial, self.tv_pages, self.tv_requests = 0, [], []
+        self.progress_responses = []
         super().__init__(root, bundle, folder, report, out, lifecycle, tools)
         self.http_guard = BrowserHttpGuard(self.base, out.name, out, report)
         self.journal, self.journal_lock = [], threading.Lock()
@@ -161,6 +162,20 @@ class Run(video_fixture.Run):
         page = ctx.new_page(); page.set_viewport_size({'width': 1920, 'height': 1080})
         page.on('request', lambda req: self.tv_requests.append(dict(method=req.method, path=urlsplit(req.url).path,
             displayMode=req.headers.get('x-display-mode'))))
+        def observe_progress(response):
+            req = response.request
+            if req.method != 'POST' or response.url != self.base + '/api/media-tv/playback/progress': return
+            # Observe the actual browser request/response, without reading or
+            # replacing the server stream already consumed by _request_object.
+            body = req.post_data_json
+            assert isinstance(body, dict)
+            entry = dict(method=req.method, path=urlsplit(response.url).path, status=response.status,
+                monotonic=time.monotonic(), progress={k:body[k] for k in
+                    ('revision','event','itemId','itemRevision','playId','sequence','positionMs')})
+            self.progress_responses.append(entry)
+            with (self.out / 'browser-progress-responses.jsonl').open('a', encoding='utf-8', newline='\n') as stream:
+                stream.write(json.dumps(entry) + '\n'); stream.flush()
+        page.on('response', observe_progress)
         page.goto(self.base + '/tv'); self.tv_pages.append(page)
         expect(page.get_by_test_id('expo-tv-board')).to_be_visible(timeout=TIMEOUT)
         return page
@@ -315,6 +330,8 @@ class Run(video_fixture.Run):
             screen.wait_for_function("() => document.querySelector('[data-testid=tv-media-video]').paused", timeout=TIMEOUT)
             paused = screen.get_by_test_id('tv-media-video').evaluate('v=>v.currentTime')
             video_url = screen.get_by_test_id('tv-media-video').evaluate('v=>v.currentSrc')
+            paused_identity = self.tv(f['tv1'])
+            assert paused_identity['paused'] and paused_identity['item']['mediaType'] == 'video'
             expect(pager).to_contain_text('翻页已暂停', timeout=TIMEOUT)
             paused_page = pager.inner_text()
             # Observe one complete real 15-second page interval while paused.
@@ -334,9 +351,16 @@ class Run(video_fixture.Run):
             expect(screen.get_by_test_id('tv-photo-image')).to_be_visible(timeout=TIMEOUT)
             screen.wait_for_function("() => {const i=document.querySelector('[data-testid=tv-photo-image]');return i && i.complete && i.naturalWidth>0}", timeout=TIMEOUT)
             video_id = next(i['id'] for i in f['authorized'] if i.get('mediaType') == 'video')
-            accepted = [r for r in self.journal if r.get('progress', {}).get('event') == 'ended'
+            accepted = [r for r in self.progress_responses if r['progress']['event'] == 'ended'
                 and r['progress']['itemId'] == video_id and r['status'] == 200 and r['monotonic'] >= resumed_at]
+            self.evidence('native-ended-response-proof', dict(native=native_ended, accepted=accepted,
+                pausedItem=paused_identity['item']['id'], pausedRevision=paused_identity['item']['revision'],
+                pausedProgress=paused_identity['progress']))
             assert len(accepted) == 1
+            assert accepted[0]['progress']['itemId'] == paused_identity['item']['id']
+            assert accepted[0]['progress']['itemRevision'] == paused_identity['item']['revision']
+            assert accepted[0]['progress']['playId'] == paused_identity['progress']['playId']
+            assert accepted[0]['progress']['sequence'] > paused_identity['progress']['sequence']
             self.control(phone, first, 'next', '下一项')
             assert self.tv(f['tv1'])['scope'] == 'journey'
             self.control(phone, first, 'pause', '暂停回顾')
