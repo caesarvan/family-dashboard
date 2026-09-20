@@ -106,7 +106,7 @@ flowchart LR
 | 财务／来源／投资 | [finance_hub.py](finance_hub.py)、[finance_baseline.py](finance_baseline.py)、[finance_accounts.py](finance_accounts.py)、[investment_import.py](investment_import.py) | [财务 API](docs/FINANCE-API.md)、[来源桥接](docs/FINANCE-SOURCE-BRIDGE.md)、[投资导入](docs/INVESTMENT-IMPORT.md) |
 | 助理 | [home_assistant.py](home_assistant.py)、[assistant_trip_intent.py](assistant_trip_intent.py) | [平台 API](docs/PLATFORM-API.md)、[资料照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-UI.md) |
 | 本人导出 | [data_portability.py](data_portability.py) | [导出格式与权限](docs/PORTABILITY.md) |
-| 打包／发布 | [deploy](deploy) | [当前五服务发布合同](docs/LOCAL-PHOTO-RELEASE.md)、[完整验收索引](docs/VALIDATION.md) |
+| 打包／发布 | [deploy](deploy) | [当前五服务发布合同](docs/FINANCE-FLOW-RELEASE.md)、[完整验收索引](docs/VALIDATION.md) |
 
 常用接口从 `/api/me`、`/api/state`、`/api/items/*`、`/api/accounts/*`、`/api/media/*`、`/api/assistant/*` 和 `/api/portability/*` 进入。精确方法／路径参见 [路由索引](docs/PLATFORM-ROUTES.md)，字段、错误码和可见范围以各模块契约与源码为准。
 
@@ -144,9 +144,9 @@ flowchart LR
 
 ## 部署、备份与故障恢复
 
-当前服务器为 racknerd VPS／Ubuntu，Name.com 管理域名 DNS，Nginx 负责 HTTPS。现有生产使用 app、sync、media、decoder、web 五服务；本批地点入口与重复提示更新没有 DDL，保持73/9。
+当前服务器为 racknerd VPS／Ubuntu，Name.com 管理域名 DNS，Nginx 负责 HTTPS。现有生产使用 app、sync、media、decoder、web 五服务；本批通用账单收支方向列更新没有 DDL，保持73/9。
 
-**现行更新合同是 [DISCOVERY-RELEASE](docs/DISCOVERY-RELEASE.md)。** 本批计划已消费，下次必须绑定实际父版并生成新计划。[DEPLOYMENT](docs/DEPLOYMENT.md)和 [OPERATIONS](docs/OPERATIONS.md)中的旧表数、旧镜像及迁移命令保留历史含义，不能覆盖本页和最新验收所绑定的父版。
+**当前已发布版本的合同是 [FINANCE-FLOW-RELEASE](docs/FINANCE-FLOW-RELEASE.md)。** 该合同记录此前 discovery 父版到 `53ea3fd` 的已完成发布，计划已消费，禁止重放。下次必须以届时实际线上版本为父版重新适配并生成新计划。[DEPLOYMENT](docs/DEPLOYMENT.md)和 [OPERATIONS](docs/OPERATIONS.md)中的旧表数、旧镜像及迁移命令保留历史含义，不能覆盖本页和最新验收所绑定的父版。
 
 | 环节 | 必须保留的核验 |
 |---|---|
@@ -183,16 +183,17 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 
 | 证据入口 | 能确认什么 |
 |---|---|
-| [地点入口与重复提示](docs/DISCOVERY-ACCEPTANCE.md#discovery-release) | 当前 source `63dc634`、manifest `7b77dfb`、app镜像 `b63c1f5`；保留125与新增9项Linux、5＋1分段浏览器、四请求资源及生产回读 |
-| [设备照片与那年今日](docs/LOCAL-PHOTO-ACCEPTANCE.md#local-photo-release) | 父版 `79e5ef9`；191实际Linux、浏览器分段、R3媒体资源、73→73演练和当批生产只读审计 |
+| [通用账单收支方向列](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release) | 当前部署 source `53ea3fd`、manifest `e6898a2`、app镜像 `cdbe470`；22项Node、两组tsc、3/3浏览器、新Linux33项及实际生产保全／回读，继承证据范围单列 |
+| [地点入口与重复提示](docs/DISCOVERY-ACCEPTANCE.md#discovery-release) | 此前 source `63dc634`、manifest `7b77dfb`、app镜像 `b63c1f5`；保留125与新增9项Linux、5＋1分段浏览器、四请求资源及生产回读；当批 main `1d589e6` 仅追加四份后验文档 |
+| [设备照片与那年今日](docs/LOCAL-PHOTO-ACCEPTANCE.md#local-photo-release) | 该批 source `79e5ef9`；191实际Linux、浏览器分段、R3媒体资源、73→73演练和当批生产只读审计 |
 | [视频与混合播放](docs/MEDIA-VIDEO-ACCEPTANCE.md#media-video-release) | 五服务来源、独立解码与73/9迁移、实际资源和完整恢复演练边界 |
 | [本地日程隐私](docs/CALENDAR-PRIVACY-ACCEPTANCE.md#calendar-privacy-release) | 私密默认、共享／撤权、身份与导出边界 |
 | [日程重叠](docs/CALENDAR-CONFLICTS-ACCEPTANCE.md#calendar-conflicts-release) | 多日范围、原安排编辑、分轮浏览器及生产保全 |
 | [任务依赖](docs/TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)与[本人提醒](docs/TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release) | 完成门禁、私人已读／稍后状态与发布证据 |
-| [资料与照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release) | 早期授权元数据搜索与原详情往返；地点新入口的后续证据见本批验收 |
+| [资料与照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release) | 早期授权元数据搜索与原详情往返；地点新入口的后续证据见此前地点批次验收 |
 | [VALIDATION](docs/VALIDATION.md)与[历史README](docs/README-HISTORY-20260920.md) | 更早模块、分轮成功／失败和固定原件索引，按对应版本解释 |
 
-最近一批生产实际为一户两库：73/9全组保持、1188安装文件、三个应用服务各135运行文件与decoder原4文件核对通过，五服务正常，app／decoder健康，备份timer active。完整SHA和原件集中在最新验收页；本批合入main `1d589e6` 时仅比安装source多四份后验文档，不能替换包内source身份。
+最近一批财务方向列生产发布实际为一户两库：73/9全组保持、1198安装文件、三个应用服务各135运行文件与decoder原4文件核对通过，五服务运行且无OOM／重启，app／decoder健康，备份timer active。完整SHA和原件集中在[最新验收页](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release)；该批代码与文档已合入 main `dc2b54c`，实际安装 source 仍为 `53ea3fd`，后续文档提交不改变该部署身份。
 
 失败也属于交付记录：设备照片浏览器曾因会话预期和无界等待失败；图像资源R1 OOM、R2触限及首次构建权限失败均保留。R3通过不抹去此前失败，也不扩成任意负载保证。
 
