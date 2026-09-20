@@ -6,13 +6,14 @@ import { routeMapLayout } from '../lib/journeyRoutes';
 import type { WorldMapProps } from './WorldMap';
 
 const project = (point: Coordinates) => ({ x: (point.longitude + 180) * 1000 / 360, y: (90 - point.latitude) * 500 / 180 });
-export default function WorldMap({ places, selected, disabled, picking, picked, onSelect, onPick, routeMap, selectedRouteIndex, onRouteSelect }: WorldMapProps) {
+export default function WorldMap({ places, selected, disabled, picking, picked, onSelect, onPick, routeMap, selectedRouteIndex, onRouteSelect, presentation }: WorldMapProps) {
   const theme = useTheme();
   const [paths, setPaths] = useState<string[] | null>(null), [failed, setFailed] = useState(false), [cursor, setCursor] = useState<Coordinates>({ latitude: 30, longitude: 110 });
   const [mapWidth, setMapWidth] = useState(320), [fullWorld, setFullWorld] = useState(false);
   const routeKey = routeMap?.markers.map(marker => `${marker.point.latitude}:${marker.point.longitude}:${marker.indices.join(',')}`).join('|');
   useEffect(() => { setFullWorld(false); }, [routeKey]);
-  const routeHeight = Math.min(360, Math.max(240, mapWidth * 0.6));
+  const tv = presentation === 'tv';
+  const routeHeight = tv ? Math.min(300, Math.max(240, mapWidth * 0.45)) : Math.min(360, Math.max(240, mapWidth * 0.6));
   const layout = routeMap ? routeMapLayout(routeMap, mapWidth, routeHeight, fullWorld) : null;
   const svg = useRef<SVGSVGElement>(null);
   useEffect(() => {
@@ -43,7 +44,7 @@ export default function WorldMap({ places, selected, disabled, picking, picked, 
   };
   const cursorPosition = project(cursor);
   return <View style={{ gap: 10 }} onLayout={routeMap ? event => { const width = event.nativeEvent.layout.width; if (Number.isFinite(width) && width > 112) setMapWidth(width); } : undefined}>
-    {routeMap && <Button compact mode="outlined" style={{ alignSelf: 'flex-start' }} disabled={disabled || !routeMap.markers.length} onPress={() => setFullWorld(!fullWorld)}>{fullWorld ? '聚焦路线' : '查看全图'}</Button>}
+    {routeMap && !tv && <Button compact mode="outlined" style={{ alignSelf: 'flex-start' }} disabled={disabled || !routeMap.markers.length} onPress={() => setFullWorld(!fullWorld)}>{fullWorld ? '聚焦路线' : '查看全图'}</Button>}
     <svg ref={svg} viewBox={layout ? `0 0 ${mapWidth} ${routeHeight}` : '0 0 1000 500'} preserveAspectRatio="none" role={picking ? 'application' : 'group'} aria-label={picking ? '地图选点：方向键移动，Shift 加快，回车确认' : routeMap ? '旅行路线顺序示意；编号对应下方站点列表，不是导航' : '世界足迹地图；所有地点也可在下方列表打开'}
       tabIndex={picking && !disabled ? 0 : -1} onClick={pick} onKeyDown={keyboard}
       style={{ display: 'block', width: '100%', ...(layout ? { height: routeHeight } : { aspectRatio: '2 / 1', minHeight: 145 }), background: theme.colors.surface, borderRadius: 20, overflow: 'hidden', cursor: picking ? 'crosshair' : 'default' }}>
@@ -61,11 +62,11 @@ export default function WorldMap({ places, selected, disabled, picking, picked, 
       {layout?.markers.map((marker, i) => {
         const point = marker.point, active = marker.indices.includes(selectedRouteIndex ?? -1), label = marker.indices.map(n => n + 1).join('、');
         const select = () => { if (!disabled && onRouteSelect) onRouteSelect(marker.indices.includes(selectedRouteIndex ?? -1) ? marker.indices[(marker.indices.indexOf(selectedRouteIndex!) + 1) % marker.indices.length] : marker.indices[0]); };
-        return <g key={'route-marker-' + i} role="button" tabIndex={disabled ? -1 : 0} aria-disabled={!!disabled}
+        return <g key={'route-marker-' + i} role={tv ? undefined : 'button'} tabIndex={disabled || tv ? -1 : 0} aria-disabled={!!disabled}
           aria-label={`第 ${label} 站：${Array.from(new Set(marker.names)).join('、')}${marker.approximate ? '，大致位置' : ''}`} onClick={select}
           onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); select(); } }} style={{ cursor: disabled ? 'default' : 'pointer' }}>
-          <title>{`第 ${label} 站`}</title><rect x={point.x - marker.width / 2} y={point.y - 18} width={marker.width} height="36" rx="18" fill={theme.colors.surface} stroke={theme.colors.primary} strokeWidth={active ? 4 : 2} strokeDasharray={marker.approximate ? '4 3' : undefined} />
-          <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="central" fontSize="14" fontWeight="600" fill={theme.colors.onSurface}>{marker.label}</text>
+          <title>{`第 ${label} 站`}</title><rect x={point.x - marker.width * (tv ? 1.3 : 1) / 2} y={point.y - 18} width={tv ? marker.width * 1.3 : marker.width} height="36" rx="18" fill={theme.colors.surface} stroke={theme.colors.primary} strokeWidth={active ? 4 : 2} strokeDasharray={marker.approximate ? '4 3' : undefined} />
+          <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="central" fontSize={tv ? 20 : 14} fontWeight="600" fill={theme.colors.onSurface}>{marker.label}</text>
         </g>;
       })}
       {!routeMap && places.filter(place => place.coordinates).map(place => {
@@ -81,7 +82,7 @@ export default function WorldMap({ places, selected, disabled, picking, picked, 
       {picking ? <g pointerEvents="none"><circle cx={cursorPosition.x} cy={cursorPosition.y} r="10" fill="none" stroke={theme.colors.primary} strokeWidth="2" /><path d={`M${cursorPosition.x - 18},${cursorPosition.y}h36 M${cursorPosition.x},${cursorPosition.y - 18}v36`} stroke={theme.colors.primary} strokeWidth="2" /></g> : null}
     </svg>
     {failed ? <Text variant="bodySmall">底图暂时无法加载；地点列表和编辑仍可使用。</Text> : !paths ? <Text variant="bodySmall">正在读取世界轮廓…</Text> : null}
-    {picking ? <Text variant="bodySmall" accessibilityLiveRegion="polite">选点仅提供大致位置。光标：{cursor.latitude.toFixed(2)}，{cursor.longitude.toFixed(2)}。方向键移动，回车写入；也可手填经纬度。</Text> : routeMap ? <Text variant="bodySmall">数字对应下方站点；重合或邻近站点合并显示，点按切换。+N 表示另有 N 站。虚线为大致位置，缺少坐标处断开。连线不是导航、实际路径或距离。</Text> : <Text variant="bodySmall">● 已到访　■ 已计划　○ 想去 · 仅显示本页有权查看的坐标</Text>}
+    {picking ? <Text variant="bodySmall" accessibilityLiveRegion="polite">选点仅提供大致位置。光标：{cursor.latitude.toFixed(2)}，{cursor.longitude.toFixed(2)}。方向键移动，回车写入；也可手填经纬度。</Text> : routeMap ? tv ? <Text style={{ fontSize: 18, lineHeight: 26 }}>数字对应站点，虚线为大致位置，缺口不连线；仅顺序示意，不是导航或照片拍摄位置。</Text> : <Text variant="bodySmall">数字对应下方站点；重合或邻近站点合并显示，点按切换。+N 表示另有 N 站。虚线为大致位置，缺少坐标处断开。连线不是导航、实际路径或距离。</Text> : <Text variant="bodySmall">● 已到访　■ 已计划　○ 想去 · 仅显示本页有权查看的坐标</Text>}
     <Text variant="labelSmall" style={{ color: theme.colors.onSurfaceVariant }}>Made with Natural Earth · 世界概览</Text>
   </View>;
 }
