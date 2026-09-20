@@ -259,6 +259,8 @@ def _order_details_signature(row):
 def _import_conflict(old, new):
     return (any(old.get(k) != new.get(k) for k in ('amountCents', 'currency', 'date'))
             or (new.get('source') == 'generic' and new.get('sourceRowKey') and old.get('title') != new.get('title'))
+            or (new.get('source') == 'generic' and new.get('kind') == 'payments'
+                and new.get('sourceRowKey') and old.get('flow') != new.get('flow'))
             or _order_details_signature(old) != _order_details_signature(new)
             or (_is_grouped_order(new) and any(old.get(k) != new.get(k) for k in ('status', 'flow'))))
 
@@ -312,15 +314,25 @@ def _column_controls(payload):
         raise FinanceHubError('工作表、金额列与四字段映射必须分步选择')
     if explicit:
         mapping = payload['mapping']
-        if type(mapping) is not dict or set(mapping) != {'version', 'headerLine', *COLUMN_FIELDS}:
-            raise FinanceHubError('mapping 必须包含 version、headerLine 和四个字段的列索引')
-        if type(mapping['version']) is not int or mapping['version'] != 1:
+        if type(mapping) is not dict:
+            raise FinanceHubError('mapping 必须是字段映射对象')
+        version = mapping.get('version')
+        if type(version) is not int or version not in (1, 2):
             raise FinanceHubError('不支持此字段映射版本')
+        keys = {'version', 'headerLine', *COLUMN_FIELDS} | ({'flow'} if version == 2 else set())
+        if set(mapping) != keys:
+            raise FinanceHubError('mapping 字段不完整或包含不支持的字段')
+        if version == 2 and payload.get('kind', 'payments') != 'payments':
+            raise FinanceHubError('收支方向列映射仅用于通用支付流水')
         if 'headerLine' in payload:
             raise FinanceHubError('映射表头行必须放在 mapping 内')
         indices = [mapping[field] for field in COLUMN_FIELDS]
         if any(type(ix) is not int or not 0 <= ix < 80 for ix in indices) or len(set(indices)) != 4:
             raise FinanceHubError('日期、金额、标题、币种必须各选一个不同的有效列')
+        if version == 2 and mapping['flow'] is not None:
+            flow = mapping['flow']
+            if type(flow) is not int or not 0 <= flow < 80 or flow in indices:
+                raise FinanceHubError('收支方向必须为空或选择一个与四个必填字段不同的有效列')
         line = mapping['headerLine']
     else:
         line = payload.get('headerLine')
@@ -437,6 +449,11 @@ def parse_import(payload, *, _legacy_identity=False):
                    if (matches := [i for alias in aliases for i, label in enumerate(columns)
                                    if header_key(label) == header_key(alias)])}
         mapping.update({field: payload['mapping'][field] for field in COLUMN_FIELDS})
+        flow_column = payload['mapping'].get('flow')
+        if flow_column is not None:
+            if flow_column >= len(columns):
+                raise FinanceHubError('收支方向列超出当前表头范围，请重新选择')
+            mapping['flow'] = flow_column
         start = end - 1
         column_selection['mapping'] = dict(payload['mapping'])
     for index, line in enumerate(lines[:60] if mapping is None else []):

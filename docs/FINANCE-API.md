@@ -508,6 +508,22 @@ HTTP 200 只表示名称列表已生成。列表包括隐藏的普通工作表�
 XLSX 工作表发现与助理旅行简报已于 2026-09-15 06:50:21 合入并发布，详情见 [验收记录](VALIDATION.md)。
 
 
+## 通用支付流水的可选收支方向列（候选，未发布）
+
+仍使用 `/api/finance-hub/imports/preview` 和 `/api/finance-hub/imports/confirm`，不增加路由或表。通用 CSV／XLSX 支付流水可在已选择四个必填列后，明确选择原文件的收支方向列：
+
+```json
+{"source":"generic","kind":"payments","mapping":{"version":2,"headerLine":1,"date":0,"amount":1,"title":2,"currency":3,"flow":4}}
+```
+
+请求同时带原 `csv` 或 `file`。`mapping` v2 只接受示例七个键，`flow` 必须是 `null` 或从 0 开始的整数列索引；索引最多 79、不得越过实际表头，也不得与日期／金额／标题／币种列相同。`null` 表示不覆盖原方向自动识别；不能识别的方向仍为 `unknown`，并显示原待核对提示。空单元格和未知值不按金额正负猜方向。明确选择的列沿用原 `normalized_flow`，包括退款、失败状态和转账的保守处理，不增加方向词义。
+
+v2 仅接受 `source=generic`、`kind=payments`（省略时仍按原默认）。原 v1 六键四列请求保持兼容；已知平台及订单解析不变。`inspectColumns` 的四列 `suggestedMapping` 不变；方向候选从原 `columnSelection.columns` 选择，正常预览在 `columnSelection.mapping` 回显完整映射，`rows[].flow` 沿用原字段。
+
+修改映射（包括 `flow`／版本／null）后必须清除旧预览并重新预览；确认发送同一完整文件、映射和 `previewToken`。未知确认结果沿用原 `requestId` 查询回执或重放原请求，不能以新映射重试旧请求。改完整请求复用旧 requestId 返回原 409；新请求仍须新有效预览。
+
+同一原文件／工作表／行的 v1、v2 和自动识别互相去重；方向不同显示 `duplicate=true, conflict=true`，确认只计重复／冲突，不新建流水、不覆盖已保存方向或首次来源。需要纠正已保存记录时，在原交易核对方向。所有新记录仍默认 `private`；伴侣、其他家庭和电视不得读取本人导入结果。文件大小、金额、行数、工作表安全及幂等配额保持原限制。
+
 ## 导入结果读取与首次来源（已于 2026-09-17 财务版发布）
 
 新增 `GET /api/finance-hub/imports/results/<requestId>`，仅本人、当前家庭可读；TV 403、匿名 401、不存在 404（code 为 `import_result_not_found`），不接受任何查询参数。requestId 为 32–64 位小写十六进制字符串。HTTP 200 返回原导入确认的 imported、duplicates、conflicts、confirmedAt、resultMonths、note，以及 requestId、receiptId（64 位）、batchId（24 位或 null）、replayed:true。没有原文件内容、令牌或内部摘要。它是成功提交时的历史事实，不能用来证明交易现在仍存在；当前状态仍读取 overview／transactions。
