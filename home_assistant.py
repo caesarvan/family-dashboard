@@ -695,6 +695,24 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
             pass
         return context
 
+    def search_media_metadata(con, owner, term):
+        matches = []
+        library = app.extensions.get('household_media')
+        if library is not None:
+            from household_media import ITEM_VIEW
+            library._member(con)
+            rows = con.execute("SELECT " + ITEM_VIEW + " FROM media_items WHERE state='ready' AND (owner=? OR visibility='shared') ORDER BY id", (owner,))
+            for row in rows:
+                if row['owner'] != owner and not library._media_authority(con, row):
+                    continue
+                projected = library._item_dto(con, row, owner)
+                journey = projected.get('journey')
+                caption = projected['caption']
+                if term in (caption + ' ' + (journey['title'] if journey else '')).casefold():
+                    matches.append({'id': projected['id'], 'kind': 'media', 'title': caption or '精选照片',
+                                    'journey': journey, 'visibility': projected['visibility'], 'revision': projected['revision']})
+        return matches
+
     def search_records(query, limit=20, offset=0, *, context=None):
         if not isinstance(query, str) or not 1 <= len(query.strip()) <= 100:
             raise Problem('搜索词须为 1～100 字')
@@ -717,20 +735,7 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
                     matches.append({'kind': 'inventory', **{key: projected[key] for key in
                                     ('id', 'title', 'variant', 'location', 'unit', 'visibility', 'revision',
                                      'onHandQty', 'inTransitQty', 'plannedQty')}})
-            library = app.extensions.get('household_media')
-            if library is not None:
-                from household_media import ITEM_VIEW
-                library._member(con)
-                rows = con.execute("SELECT " + ITEM_VIEW + " FROM media_items WHERE state='ready' AND (owner=? OR visibility='shared') ORDER BY id", (owner,))
-                for row in rows:
-                    if row['owner'] != owner and not library._media_authority(con, row):
-                        continue
-                    projected = library._item_dto(con, row, owner)
-                    journey = projected.get('journey')
-                    caption = projected['caption']
-                    if term in (caption + ' ' + (journey['title'] if journey else '')).casefold():
-                        matches.append({'id': projected['id'], 'kind': 'media', 'title': caption or '精选照片',
-                                        'journey': journey, 'visibility': projected['visibility'], 'revision': projected['revision']})
+            matches.extend(search_media_metadata(con, owner, term))
             # The places route owns coordinate projection. Search deliberately reads
             # no coordinate columns and returns only this smaller text allowlist.
             rows = con.execute("SELECT id,name,country,city,status,journey_id,visibility,revision FROM journey_places WHERE deleted_at IS NULL AND (owner=? OR visibility='shared') ORDER BY id", (owner,))
@@ -745,10 +750,11 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
             matches.extend(search_metadata(con, owner, query))
         # Re-resolve visible metadata after releasing the first read snapshot:
         # sharing withdrawal/deletion during that snapshot must not leave stale
-        # document titles or counts in the result. Both passes use the original
+        # document/media titles or counts in the result. Both passes use the original
         # member/household context and the domain metadata projection; no BLOBs.
         with authorized(context, recheck_read=True) as con:
-            matches = [item for item in matches if item['kind'] not in ('documents', 'events')] + search_metadata(con, owner, query)
+            matches = [item for item in matches if item['kind'] not in ('documents', 'events', 'media')] + search_metadata(con, owner, query)
+            matches.extend(search_media_metadata(con, owner, term))
             # Calendar sharing can also be withdrawn while the first snapshot is open.
             for item in records():
                 if item['kind'] == 'events' and term in (item.get('title', '') + ' ' + item.get('location', '')).casefold():
