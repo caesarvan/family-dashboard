@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { DUPLICATE_LABEL, duplicateCoverageText, fetchPhotoDuplicates, photoDuplicatesQuery, readPhotoDuplicates, verifyDuplicatePhotos } from '../src/lib/photoDuplicates.ts';
+import { DUPLICATE_LABEL, duplicateCoverageText, fetchPhotoDuplicates, photoDuplicatesQuery, readPhotoDuplicates, verifyDuplicatePhotos, withPhotoDuplicateRead } from '../src/lib/photoDuplicates.ts';
 import { PhotoReadFence, PhotoReadDiscarded } from '../src/lib/photos.ts';
 
 const id = n => n.toString(16).padStart(24, '0');
@@ -81,4 +81,61 @@ test('network failure and response-time candidate deletion never produce a succe
   const t = transport(path => { if (path.endsWith(other.id)) throw new Error('404'); });
   await assert.rejects(fetchPhotoDuplicates(target, 0, t.read), /404/);
   await assert.rejects(fetchPhotoDuplicates(target, 0, async () => { throw new Error('offline'); }), /offline/);
+});
+
+
+test('bounded read: at most four concurrent details plus one accounts request', async () => {
+  const items = [target, ...Array.from({ length: 20 }, (_, n) => photo(n + 2, 'google-photos'))];
+  let active = 0, peak = 0, accountReads = 0;
+  const pending = [], calls = [];
+  const operation = withPhotoDuplicateRead(async path => {
+    calls.push(path);
+    if (path === '/accounts') { accountReads++; return accounts; }
+    active++; peak = Math.max(peak, active);
+    await new Promise(resolve => pending.push(resolve)); active--;
+    return { item: items.find(item => path.endsWith(item.id)) };
+  }, () => true, read => verifyDuplicatePhotos(items, read));
+  for (let round = 0; round < 8; round++) {
+    await new Promise(setImmediate); assert.ok(active <= 4); pending.splice(0).forEach(resolve => resolve());
+  }
+  await operation; assert.equal(peak, 4); assert.equal(accountReads, 1); assert.equal(calls.length, 22);
+});
+
+test('bounded read: whole scan expires even if a transport never resolves or ignores abort', async () => {
+  const calls = [], signals = [];
+  await assert.rejects(withPhotoDuplicateRead(async (path, signal) => {
+    calls.push(path); signals.push(signal); return new Promise(() => {});
+  }, () => true, read => fetchPhotoDuplicates(target, 0, read), { deadlineMs: 15 }), /检查超时/);
+  assert.deepEqual(calls, [`/media/items/${target.id}`]); assert.ok(signals.every(signal => signal.aborted));
+});
+
+test('bounded read: a source failure aborts the batch and does not dispatch queued details', async () => {
+  const items = Array.from({ length: 20 }, (_, n) => photo(n + 2, 'google-photos'));
+  const calls = [], signals = [];
+  await assert.rejects(withPhotoDuplicateRead(async (path, signal) => {
+    calls.push(path); signals.push(signal);
+    if (path === '/accounts') return { accounts: [] };
+    return new Promise(() => {});
+  }, () => true, read => verifyDuplicatePhotos(items, read)), /照片或来源已变化/);
+  assert.equal(calls.length, 5); assert.ok(signals.every(signal => signal.aborted));
+});
+
+test('bounded read: identity/lifetime loss never starts another queued read', async () => {
+  const items = Array.from({ length: 20 }, (_, n) => photo(n + 2, 'google-photos'));
+  let current = true; const pending = [], calls = [];
+  const operation = withPhotoDuplicateRead(async path => {
+    calls.push(path); if (path === '/accounts') return accounts;
+    await new Promise(resolve => pending.push(resolve)); return { item: items.find(item => path.endsWith(item.id)) };
+  }, () => current, read => verifyDuplicatePhotos(items, read));
+  await new Promise(setImmediate); current = false; pending.splice(0).forEach(resolve => resolve());
+  await assert.rejects(operation, PhotoReadDiscarded); assert.equal(calls.length, 5);
+});
+
+test('bounded read: external concealment aborts in-flight work and retains no late result', async () => {
+  const controller = new AbortController(); let release; const calls = [], signals = [];
+  const operation = withPhotoDuplicateRead(async (path, signal) => {
+    calls.push(path); signals.push(signal); await new Promise(resolve => { release = resolve; }); return { item: target };
+  }, () => true, read => fetchPhotoDuplicates(target, 0, read), { signal: controller.signal });
+  await new Promise(setImmediate); controller.abort(); await assert.rejects(operation, PhotoReadDiscarded);
+  release(); await new Promise(setImmediate); assert.equal(calls.length, 1); assert.ok(signals.every(signal => signal.aborted));
 });

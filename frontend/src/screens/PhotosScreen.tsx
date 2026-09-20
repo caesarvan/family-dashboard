@@ -7,13 +7,13 @@ import { useHousehold } from '../lib/household';
 import { memberIdentity } from '../lib/sessionIdentity.ts';
 import { openPhotosProvider } from '../lib/navigation';
 import type { ScreenProps } from '../lib/types';
-import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, finishPhotoCreate, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto, videoDescription, photoOriginalNotice, photoSourceLabel } from '../lib/photos';
+import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, photoSignature, finishPhotoCreate, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto, videoDescription, photoOriginalNotice, photoSourceLabel } from '../lib/photos';
 import type { ImportDetail, Photo, PhotoAccount, PhotoDevice, PhotoImport, PhotoJourney, PhotoPage, PhotoSession } from '../lib/photos';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
 import PhotoJourneySuggestions from '../components/PhotoJourneySuggestions';
 import PhotoDuplicateHints from '../components/PhotoDuplicateHints';
-import { duplicatePhotoKey, fetchPhotoDuplicates, verifyDuplicatePhotos, type PhotoDuplicates } from '../lib/photoDuplicates';
+import { duplicatePhotoKey, fetchPhotoDuplicates, verifyDuplicatePhotos, withPhotoDuplicateRead, type PhotoDuplicateRead, type PhotoDuplicates } from '../lib/photoDuplicates';
 import MemberVideoPlayer from '../components/MemberVideoPlayer';
 import LocalPhotoImportPanel from '../components/LocalPhotoImportPanel';
 import { LocalPhotoUpload } from '../lib/localPhotoUpload';
@@ -76,6 +76,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   const [editor, setEditor] = useState<Editor | null>(null); const editorRef = useRef(editor); editorRef.current = editor;
   const [suggestionVersion, setSuggestionVersion] = useState(0);
   const duplicateSerial = useRef(0);
+  const duplicateIdentity = useRef(props.identityKey);
   const [duplicates, setDuplicates] = useState<{ target: Photo; page: PhotoDuplicates } | null>(null);
   const duplicatesRef = useRef(duplicates); duplicatesRef.current = duplicates;
   const [duplicateReturn, setDuplicateReturn] = useState<{ id: string; offset: number } | null>(null);
@@ -98,11 +99,13 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
 
   // This local transport covers identity, source and photo suggestion reads. The URL
   // is fixed to this origin, and both JSON consumption and lifetime are bounded.
-  async function suggestionRequest<T>(path: string, body?: Record<string, unknown>): Promise<T> {
-    if (!(path === '/me' || path === '/accounts' || /^\/media\/items\/[a-f0-9]{24}(?:\/journey-suggestions|\/duplicates\?limit=20&offset=\d{1,4})?$/.test(path))
+  async function suggestionRequest<T>(path: string, body?: Record<string, unknown>, signal?: AbortSignal): Promise<T> {
+    if (!(path === '/me' || path === '/accounts' || /^\/media\/items\/[a-f0-9]{24}(?:\/journey-suggestions|\/tv-grants|\/duplicates\?limit=20&offset=\d{1,4})?$/.test(path))
       || body && !/^\/media\/items\/[a-f0-9]{24}$/.test(path)) throw new Error('照片请求无法核对。');
     const controller = new AbortController(); requests.current.add(controller);
     const timeout = setTimeout(() => controller.abort(), 20000);
+    const abort = () => controller.abort();
+    signal?.addEventListener('abort', abort, { once: true }); if (signal?.aborted) abort();
     try {
       const response = await fetch('/api' + path, { method: body ? 'PATCH' : 'GET', mode: 'same-origin', credentials: 'same-origin',
         cache: 'no-store', redirect: 'error', signal: controller.signal,
@@ -119,7 +122,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
       if (!response.ok) throw new ApiError(response.status === 409 ? '照片或旅行已变化，请重新核对。' : '暂时无法读取或保存照片。', response.status, typeof value?.code === 'string' ? value.code : '');
       return value as T;
     } catch (caught) { if (caught instanceof ApiError) throw caught; throw new ApiError('连接中断或超时，请重新核对。'); }
-    finally { clearTimeout(timeout); requests.current.delete(controller); }
+    finally { clearTimeout(timeout); signal?.removeEventListener('abort', abort); requests.current.delete(controller); }
   }
 
   const clearIdentity = () => {
@@ -190,21 +193,32 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     if (ended) { setSelected([]); setPersist(false);
       if (data.import.state === 'confirmed') { setConfirmReceipt(null); setConfirmReview(false); } }
   }
-  async function readEditor(id: string, keepDraft = false, resuming = false, expected?: Photo) {
+  async function duplicateRead<T>(action: (read: PhotoDuplicateRead) => Promise<T>, valid: () => boolean): Promise<T> {
+    const controller = new AbortController(); requests.current.add(controller);
+    try {
+      return await withPhotoDuplicateRead((path, signal) => suggestionRequest(path, undefined, signal), valid, async read => {
+        let lastSession: PhotoSession | null = null;
+        const guard = new PhotoReadFence(async () => { lastSession = await read<PhotoSession>('/me'); return lastSession; }, props.user, duplicateIdentity.current);
+        const value = await guard.read(() => action(read), valid);
+        if (lastSession && !duplicateIdentity.current) duplicateIdentity.current = photoSignature(lastSession);
+        return value;
+      }, { signal: controller.signal });
+    } finally { requests.current.delete(controller); }
+  }
+  async function editorData(id: string, read: PhotoDuplicateRead = request) {
+    const { item } = await read<{ item: Photo }>(`/media/items/${id}`); validatePhoto(item);
+    if (item.id !== id) throw new Error('照片读取结果与所选内容不一致，请返回后重新查询。');
+    const grants = item.canManage ? await read<{ revision: number; deviceIds: string[] }>(`/media/items/${id}/tv-grants`) : { revision: item.revision, deviceIds: [] };
+    if (grants.revision !== item.revision) throw new Error('照片正在更新，请重新打开核对。');
+    return { item, grants: grants.deviceIds };
+  }
+  async function readEditor(id: string, keepDraft = false, resuming = false) {
     const ticket = ++serial.current.detail;
-    clearDuplicates();
-    setSuggestionVersion(value => value + 1);
-    const data = await checked(async () => {
-      const { item } = await request<{ item: Photo }>(`/media/items/${id}`); validatePhoto(item);
-      if (item.id !== id) throw new Error('照片读取结果与所选内容不一致，请返回后重新查询。');
-      const grants = item.canManage ? await request<{ revision: number; deviceIds: string[] }>(`/media/items/${id}/tv-grants`) : { revision: item.revision, deviceIds: [] };
-      if (grants.revision !== item.revision) throw new Error('照片正在更新，请重新打开核对。');
-      if (expected) {
-        if (duplicatePhotoKey(item) !== duplicatePhotoKey(expected)) throw new ApiError('照片已变化，请重新查找。', 409);
-        await verifyDuplicatePhotos([item], suggestionRequest);
-      }
-      return { item, grants: grants.deviceIds };
-    }, () => ticket === serial.current.detail);
+    clearDuplicates(); setSuggestionVersion(value => value + 1);
+    const data = await checked(() => editorData(id), () => ticket === serial.current.detail);
+    installEditor(data, id, keepDraft, resuming);
+  }
+  function installEditor(data: { item: Photo; grants: string[] }, id: string, keepDraft = false, resuming = false) {
     const previous = editorRef.current?.item.id === id ? editorRef.current : null;
     const retained = keepDraft && previous;
     const blocked = !!(resuming && previous && (previous.blocked || previous.item.revision !== data.item.revision));
@@ -324,7 +338,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
           const hints = duplicatesRef.current;
           if (hints) {
             try {
-              await suggestionFence.current.read(() => verifyDuplicatePhotos([hints.target, ...hints.page.items], suggestionRequest),
+              await duplicateRead(read => verifyDuplicatePhotos([hints.target, ...hints.page.items], read),
                 () => current() && duplicatesRef.current === hints && !locked.current);
             } catch (caught) {
               if (duplicatesRef.current === hints) clearDuplicates();
@@ -369,7 +383,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
       && !!editorRef.current && draftKey(editorRef.current) === key && !editorRef.current.blocked && !anyDraft(editorRef.current);
     locked.current = true; setBusy(true); setError('');
     try {
-      const page = await suggestionFence.current.read(() => fetchPhotoDuplicates(initial.item, nextOffset, suggestionRequest), valid);
+      const page = await duplicateRead(read => fetchPhotoDuplicates(initial.item, nextOffset, read), valid);
       if (valid()) { const value = { target: initial.item, page }; duplicatesRef.current = value; setDuplicates(value); }
     } catch (caught) { if (valid()) suggestionFailure(caught, initial.item.id); }
     finally { locked.current = false; if (alive.current) setBusy(false); }
@@ -379,13 +393,20 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     if (locked.current || !current() || !initial || initial.blocked || anyDraft(initial) || !hints
       || !hints.page.items.some(row => row.id === item.id && duplicatePhotoKey(row) === duplicatePhotoKey(item))) return;
     const generation = epoch.current, key = draftKey(initial);
-    const valid = () => current() && epoch.current === generation && duplicatesRef.current === hints
+    const valid = () => current() && epoch.current === generation
       && !!editorRef.current && draftKey(editorRef.current) === key && !editorRef.current.blocked && !anyDraft(editorRef.current);
     locked.current = true; setBusy(true); setError('');
     try {
-      await suggestionFence.current.read(() => verifyDuplicatePhotos([hints.target, item], suggestionRequest), valid);
-      if (!valid()) return;
-      await readEditor(item.id, false, false, item);
+      clearDuplicates();
+      const ticket = ++serial.current.detail;
+      const data = await duplicateRead(async read => {
+        await verifyDuplicatePhotos([hints.target, item], read);
+        const value = await editorData(item.id, read);
+        if (duplicatePhotoKey(value.item) !== duplicatePhotoKey(item)) throw new ApiError('照片已变化，请重新查找。', 409);
+        await verifyDuplicatePhotos([value.item], read); return value;
+      }, () => valid() && ticket === serial.current.detail);
+      if (!valid() || ticket !== serial.current.detail) return;
+      setSuggestionVersion(value => value + 1); installEditor(data, item.id);
       if (current() && epoch.current === generation && editorRef.current?.item.id === item.id) {
         const anchor = { id: hints.target.id, offset: hints.page.offset };
         duplicateReturnRef.current = anchor; setDuplicateReturn(anchor);
@@ -401,15 +422,22 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     const generation = epoch.current;
     locked.current = true; setBusy(true); setError('');
     try {
-      // Original ID only; no cached editor or stale list is reinstalled.
-      await readEditor(anchor.id);
-      if (current() && epoch.current === generation && editorRef.current?.item.id === anchor.id) resetDuplicateReturn();
+      // Original ID only; the detail and returned page share one deadline.
+      clearDuplicates(); const ticket = ++serial.current.detail;
+      const valid = () => current() && epoch.current === generation && ticket === serial.current.detail;
+      const value = await duplicateRead(async read => {
+        const data = await editorData(anchor.id, read);
+        const page = await fetchPhotoDuplicates(data.item, anchor.offset, read); return { data, page };
+      }, valid);
+      if (valid()) {
+        setSuggestionVersion(value => value + 1); installEditor(value.data, anchor.id); resetDuplicateReturn();
+        const hints = { target: value.data.item, page: value.page }; duplicatesRef.current = hints; setDuplicates(hints);
+      }
     } catch (caught) { if (current() && epoch.current === generation) {
       if (caught instanceof ApiError && [404, 410].includes(caught.status)) resetDuplicateReturn();
       suggestionFailure(caught, anchor.id);
     } }
     finally { locked.current = false; if (alive.current) setBusy(false); }
-    if (current() && epoch.current === generation && editorRef.current?.item.id === anchor.id && !duplicateReturnRef.current) await loadDuplicates(anchor.offset);
   }
   async function loadSuggestions(): Promise<Suggestions | null> {
     const initial = editorRef.current;

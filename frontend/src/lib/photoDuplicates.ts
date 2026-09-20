@@ -1,4 +1,4 @@
-import { isMediaId, validatePhoto, type Photo, type PhotoAccount } from './photos.ts';
+import { isMediaId, validatePhoto, PhotoReadDiscarded, type Photo, type PhotoAccount } from './photos.ts';
 
 export const DUPLICATE_LABEL = '展示副本一致，原图未核验';
 export type PhotoDuplicates = {
@@ -6,7 +6,31 @@ export type PhotoDuplicates = {
   items: Photo[]; total: number; limit: 20; offset: number; hasMore: boolean;
   coverage: { scope: 'mine'; scanLimit: 1000; scanned: number; capped: boolean; unverifiable: number };
 };
-type Read = <T>(path: string) => Promise<T>;
+export type PhotoDuplicateRead = <T>(path: string) => Promise<T>;
+type Read = PhotoDuplicateRead;
+// One deadline includes identity, metadata, JSON consumption and the scan.
+// The shared abort stops in-flight fetches; every dispatch checks lifetime.
+export async function withPhotoDuplicateRead<T>(transport: <R>(path: string, signal: AbortSignal) => Promise<R>,
+  current: () => boolean, action: (read: Read) => Promise<T>, options: { signal?: AbortSignal; deadlineMs?: number } = {}): Promise<T> {
+  const controller = new AbortController(), deadline = options.deadlineMs ?? 20000;
+  if (!Number.isFinite(deadline) || deadline <= 0 || deadline > 20000) throw new Error('照片检查时限无法核对。');
+  let rejectStop!: (error: Error) => void;
+  const stopped = new Promise<never>((_, reject) => { rejectStop = reject; });
+  const stop = (error: Error) => { if (!controller.signal.aborted) { controller.abort(); rejectStop(error); } };
+  const conceal = () => stop(new PhotoReadDiscarded());
+  const check = () => {
+    if (!current() || options.signal?.aborted) conceal();
+    if (controller.signal.aborted) throw new PhotoReadDiscarded();
+  };
+  const timer = setTimeout(() => stop(new Error('照片检查超时，请重新查找。')), deadline);
+  options.signal?.addEventListener('abort', conceal, { once: true });
+  const read: Read = async <R>(path: string): Promise<R> => {
+    try { check(); const result = await Promise.race([transport<R>(path, controller.signal), stopped]); check(); return result; }
+    catch (error) { stop(error instanceof Error ? error : new Error('照片检查失败。')); throw error; }
+  };
+  try { return await Promise.race([Promise.resolve().then(() => { check(); return action(read); }), stopped]); }
+  finally { clearTimeout(timer); options.signal?.removeEventListener('abort', conceal); controller.abort(); }
+}
 export class PhotoDuplicatesChanged extends Error {
   constructor() { super('照片或来源已变化，请读取当前照片后重新查找。'); }
 }
@@ -50,18 +74,24 @@ export function duplicateCoverageText(value: PhotoDuplicates): string {
 // This is an additional UI invalidation check, never an authority grant. The
 // duplicates endpoint and original detail/preview remain the server authority.
 export async function verifyDuplicatePhotos(items: readonly Photo[], read: Read): Promise<void> {
-  for (const expected of items) {
-    const key = duplicatePhotoKey(expected);
-    const result = await read<{ item: Photo }>(`/media/items/${expected.id}`);
-    if (duplicatePhotoKey(result.item) !== key) return invalid();
-  }
-  if (items.some(item => source(item) === 'google-photos')) {
+  let next = 0, failed = false;
+  const details = async () => {
+    while (!failed && next < items.length) {
+      const expected = items[next++], key = duplicatePhotoKey(expected);
+      const result = await read<{ item: Photo }>(`/media/items/${expected.id}`);
+      if (duplicatePhotoKey(result.item) !== key) return invalid();
+    }
+  };
+  const sources = async () => {
+    if (!items.some(item => source(item) === 'google-photos')) return;
     const result = await read<{ accounts: PhotoAccount[] }>('/accounts');
     if (!Array.isArray(result?.accounts)) return invalid();
     for (const item of items) if (source(item) === 'google-photos'
       && !result.accounts.some(account => account.id === item.accountId && account.provider === 'google'
         && account.capabilities?.photos === true && account.needsReauth === false)) return invalid();
-  }
+  };
+  try { await Promise.all([...Array.from({ length: Math.min(4, items.length) }, details), sources()]); }
+  catch (error) { failed = true; throw error; }
 }
 export async function fetchPhotoDuplicates(target: Photo, offset: number, read: Read): Promise<PhotoDuplicates> {
   await verifyDuplicatePhotos([target], read);
