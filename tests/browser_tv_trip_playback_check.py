@@ -203,7 +203,7 @@ class Run(video_fixture.Run):
     def route(self, ctx, journey, title, *, count=9, shared=True):
         points = [self.place(ctx, journey, name=f'合成站点 {i+1}', visibility='shared' if shared else 'private',
             coordinateDisclosure=('coarse' if i == 1 else 'hidden' if i == 2 else 'exact'),
-            coordinates={'latitude': 31.234567 + i / 10, 'longitude': 121.456789 + i / 10}) for i in range(count)]
+            coordinates={'latitude': round(31.234567 + i / 10, 6), 'longitude': round(121.456789 + i / 10, 6)}) for i in range(count)]
         value = self.write(ctx, 'POST', '/api/journey-routes', dict(requestId=secrets.token_hex(16),
             title=title, journeyId=journey['id'], expectedJourneyRevision=journey['revision'],
             visibility='shared' if shared else 'private',
