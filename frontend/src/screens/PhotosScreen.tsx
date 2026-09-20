@@ -24,6 +24,13 @@ import { memoryDisplayDate, memoryDateLabel, unknownMemoryDates, memoryOffsetAft
 
 type Editor = { dateDraft: string; dateReview: boolean; dateMessage: string; item: Photo; caption: string; visibility: 'private' | 'shared'; journeyId: string; grants: string[]; savedGrants: string[]; tvConsent: boolean; blocked: boolean; suggestionReview: boolean; message: string };
 type Receipt = { path: string; body: Record<string, unknown> };
+// A /me or grants 404 is not proof that the original photo disappeared.
+class PhotoDateItemUnavailable extends Error {
+  constructor(readonly responseError: ApiError) { super('照片已移除或不再可见。'); }
+}
+function dateItemError(caught: unknown): unknown {
+  return caught instanceof ApiError && [404, 410].includes(caught.status) ? new PhotoDateItemUnavailable(caught) : caught;
+}
 const origin = (process.env.EXPO_PUBLIC_API_ORIGIN || '').replace(/\/$/, '');
 const imageUri = (item: Photo) => { const path = previewPath(item); return path ? (Platform.OS === 'web' ? path : origin + path) : ''; };
 const dirty = (e: Editor) => e.caption !== e.item.caption || e.visibility !== e.item.visibility || e.journeyId !== (e.item.journey?.id || '');
@@ -449,6 +456,10 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     clearDuplicates(); setSuggestionVersion(value => value + 1); ++serial.current.gallery; setMemories(null);
     if (scope === 'memories') setPage({ items: [], total: 0, hasMore: false });
   }
+  function dateFailure(caught: unknown, id: string) {
+    if (caught instanceof PhotoDateItemUnavailable) suggestionFailure(caught.responseError, id);
+    else failure(caught);
+  }
   async function saveDate(value: string | null) {
     const initial = editorRef.current;
     if (locked.current || !current() || !initial || initial.blocked || settingsDraft(initial) || !canConfirmPhotoDate(initial.item)) return;
@@ -462,7 +473,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
         attempted = true; invalidateDateViews();
         update({ blocked: true, dateReview: true, dateMessage: '结果待核对，不会自动重发。' });
         try { return { result: await suggestionRequest<{ item: Photo }>(`/media/items/${initial.item.id}`, body) }; }
-        catch (error) { return { error }; }
+        catch (error) { return { error: dateItemError(error) }; }
       }, valid);
       if ('error' in outcome) throw outcome.error;
       const saved = validatePhoto(outcome.result.item);
@@ -475,7 +486,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
       if (!current() || ticket !== epoch.current) return;
       if (attempted && editorRef.current?.item.id === initial.item.id) update({ blocked: true, dateReview: true,
         dateMessage: caught instanceof ApiError && caught.status === 409 ? '照片已变化，请核对当前照片日期。输入仍保留，不会自动重发。' : '结果待核对，不会自动重发。' });
-      suggestionFailure(caught, initial.item.id); return;
+      dateFailure(caught, initial.item.id); return;
     } finally { locked.current = false; if (alive.current) setBusy(false); }
     try { await gallery(); } catch (caught) { if (current() && ticket === epoch.current) {
       if (caught instanceof PhotoReadDiscarded || caught instanceof ApiError && [401, 403].includes(caught.status)) failure(caught);
@@ -487,12 +498,18 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     if (locked.current || !current() || !initial?.dateReview) return;
     locked.current = true; setBusy(true); setError(''); const ticket = epoch.current;
     try {
-      await readEditor(initial.item.id, true);
+      const detail = ++serial.current.detail;
+      clearDuplicates(); setSuggestionVersion(value => value + 1);
+      const data = await suggestionFence.current.read(() => editorData(initial.item.id, async <T,>(path: string, signal?: AbortSignal) => {
+        try { return await suggestionRequest<T>(path, undefined, signal); }
+        catch (caught) { throw path === `/media/items/${initial.item.id}` ? dateItemError(caught) : caught; }
+      }), () => current() && ticket === epoch.current && detail === serial.current.detail);
+      installEditor(data, initial.item.id, true);
       if (current() && ticket === epoch.current) {
         update({ dateReview: false, blocked: false, dateMessage: '已读取当前照片日期；这不是上一请求的执行回执。' });
         await gallery();
       }
-    } catch (caught) { if (current() && ticket === epoch.current) suggestionFailure(caught, initial.item.id); }
+    } catch (caught) { if (current() && ticket === epoch.current) dateFailure(caught, initial.item.id); }
     finally { locked.current = false; if (alive.current) setBusy(false); }
   }
   async function loadSuggestions(): Promise<Suggestions | null> {

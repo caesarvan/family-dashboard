@@ -18,7 +18,7 @@ const user = { id: 'member1', role: 'member', householdId: 'household1', auth_ve
 // Execute the real screen date handlers and date panel with synthetic native/React surfaces
 // and transport. These checks are not browser or real API integration proof.
 function harness() {
-  let cursor = 0, values = [], effects = [], tree, tick, held, liveUser = user, mode = 'ok', holdRead = false, postFailure = false;
+  let cursor = 0, values = [], effects = [], tree, tick, held, liveUser = user, mode = 'ok', holdRead = false, postFailure = 0, nextMeFailure = 0, grantsFailure = 0, itemFailure = 0, itemPostMeFailure = 0;
   const calls = [], rows = new Map(Array.from({ length: 22 }, (_, n) => [id(n + 1), photo(n + 1)]));
   const events = {}, context = { online: true, refresh: async () => {},
     mutate: async (path, method, body) => { calls.push({ path, method, body }); const old = rows.get(path.split('/').at(-1));
@@ -32,13 +32,13 @@ function harness() {
   const session = () => ({ user: liveUser, csrf: 'synthetic-only' });
   async function request(path) {
     calls.push({ path, method: 'GET' });
-    if (path === '/me') { if (postFailure) { postFailure = false; throw new api.ApiError('Identity read unavailable', 503); } return session(); }
+    if (path === '/me') { if (postFailure || nextMeFailure) { const status = postFailure || nextMeFailure; postFailure = nextMeFailure = 0; throw new api.ApiError('Identity read unavailable', status); } return session(); }
     if (path === '/accounts') return { accounts: [{ id: sourceId, provider: 'google', needsReauth: false, capabilities: { photos: true } }] };
     if (path === '/devices') return [];
     if (path === '/journeys') return { journeys: [] };
     if (path.startsWith('/media/imports?')) return { items: [] };
     if (path.startsWith('/media/items?')) return { items: [rows.get(targetId)], total: 1, hasMore: false };
-    if (path.endsWith('/tv-grants')) { const row = rows.get(path.split('/').at(-2)); return { revision: row.revision, deviceIds: [] }; }
+    if (path.endsWith('/tv-grants')) { if (grantsFailure) { const status = grantsFailure; grantsFailure = 0; throw new api.ApiError('Grants unavailable', status); } const row = rows.get(path.split('/').at(-2)); return { revision: row.revision, deviceIds: [] }; }
     if (path.includes('/duplicates?')) {
       const offset = Number(new URL('https://fixture.invalid' + path).searchParams.get('offset'));
       const items = [...rows.values()].filter(row => row.id !== targetId).slice(offset, offset + 20);
@@ -46,8 +46,9 @@ function harness() {
         items, total: 21, limit: 20, offset, hasMore: offset + 20 < 21,
         coverage: { scope: 'mine', scanLimit: 1000, scanned: 21, capped: true, unverifiable: 2 } };
     }
-    if (path.startsWith('/media/items/')) { const item = rows.get(path.split('/').at(-1));
+    if (path.startsWith('/media/items/')) { if (itemFailure) { const status = itemFailure; itemFailure = 0; throw new api.ApiError('Original unavailable', status); } const item = rows.get(path.split('/').at(-1));
       if (!item) throw new api.ApiError('Removed', 404); const result = { item: structuredClone(item) };
+      if (itemPostMeFailure) { postFailure = itemPostMeFailure; itemPostMeFailure = 0; }
       if (holdRead) { holdRead = false; await new Promise(resolve => { held = resolve; }); } return result; }
     throw new Error(`Unexpected route ${path}`);
   }
@@ -85,16 +86,18 @@ function harness() {
       if (init.method === 'PATCH') {
         const body = JSON.parse(init.body), old = rows.get(targetId); calls.push({ path, method: 'PATCH', body });
         assert.equal(init.headers['X-CSRF-Token'], 'synthetic-only');
+        if (mode.startsWith('gone')) return new Response(JSON.stringify({ code: 'gone' }), { status: Number(mode.slice(4)), headers: { 'Content-Type': 'application/json' } });
         if (mode === 'conflict') return new Response(JSON.stringify({ code: 'revision_conflict' }), { status: 409, headers: { 'Content-Type': 'application/json' } });
         assert.equal(body.revision, old.revision);
         rows.set(targetId, { ...old, ...body, revision: old.revision + 1 });
         if (mode === 'drop') throw new Error('Synthetic lost response after commit');
-        if (mode === 'postMe') postFailure = true;
+        if (mode.startsWith('postMe')) postFailure = Number(mode.slice(6)) || 503;
         if (mode === 'late') await new Promise(resolve => { held = resolve; });
         return new Response(JSON.stringify({ item: rows.get(targetId) }), { headers: { 'Content-Type': 'application/json' } });
       }
-      assert.equal(init.method, 'GET'); const data = await request(path);
-      return new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } });
+      assert.equal(init.method, 'GET');
+      try { const data = await request(path); return new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } }); }
+      catch (error) { if (error instanceof api.ApiError && error.status) return new Response(JSON.stringify({ code: 'unavailable' }), { status: error.status, headers: { 'Content-Type': 'application/json' } }); throw error; }
     } });
     return exports;
   }
@@ -110,6 +113,7 @@ function harness() {
   const field = () => walk().find(node => node.type === 'TextInput' && node.props.label === '照片说明');
   async function settle() { for (let i = 0; i < 6; i++) { await new Promise(setImmediate); render(); } }
   return { render, settle, panel, field, button, calls, rows, events, poll: () => tick(),
+    failItemPostMe: status => { itemPostMeFailure = status; }, failMe: status => { nextMeFailure = status; }, failGrants: status => { grantsFailure = status; }, failItem: status => { itemFailure = status; },
     hold: () => { holdRead = true; }, mode: next => { mode = next; }, release: () => held(), switchUser: next => { liveUser = next; },
     duplicates: () => walk().find(node => node.type === Duplicates),
     panelTree: () => panel() ? Panel(panel().props) : undefined, walk, text, get context() { return context; } };
@@ -184,3 +188,38 @@ test('Google owner detail has no date controls', async () => {
   h.render(); await h.settle(); assert.equal(h.panel(), undefined);
 
 });
+
+for (const status of [404, 410]) {
+  test(`date preflight /me ${status} preserves draft and sends no PATCH`, async () => {
+    const h = harness(); h.render(); await h.settle(); input(h, '2016-02-29'); h.failMe(status);
+    h.panel().props.save('2016-02-29'); await h.settle();
+    assert.equal(writes(h).length, 0); assert.equal(h.panel().props.value, '2016-02-29'); assert.equal(h.panel().props.needsCheck, false);
+    h.panel().props.save('2016-02-29'); await h.settle(); assert.equal(writes(h).length, 1); assert.equal(h.panel().props.saved, '2016-02-29');
+  });
+  test(`date committed PATCH then /me ${status} keeps original draft and GET-only recovery`, async () => {
+    const h = harness(); h.render(); await h.settle(); input(h, '2016-02-29'); h.mode('postMe' + status);
+    h.panel().props.save('2016-02-29'); await h.settle();
+    assert.equal(writes(h).length, 1); assert.equal(h.rows.get(targetId).userConfirmedDate, '2016-02-29');
+    assert.equal(h.panel().props.needsCheck, true); assert.equal(h.panel().props.value, '2016-02-29');
+    h.mode('ok'); h.panel().props.recheck(); await h.settle();
+    assert.equal(writes(h).length, 1); assert.equal(h.panel().props.needsCheck, false); assert.equal(h.panel().props.saved, '2016-02-29');
+  });
+  for (const stage of ['identity', 'post-identity', 'grants']) test(`date recheck ${stage} ${status} retains pending editor until a healthy original-ID GET`, async () => {
+    const h = harness(); h.render(); await h.settle(); input(h, '2016-02-29'); h.mode('drop');
+    h.panel().props.save('2016-02-29'); await h.settle(); h.mode('ok');
+    if (stage === 'identity') h.failMe(status); else if (stage === 'post-identity') h.failItemPostMe(status); else h.failGrants(status);
+    h.panel().props.recheck(); await h.settle();
+    assert.equal(h.panel().props.needsCheck, true); assert.equal(h.panel().props.value, '2016-02-29'); assert.equal(writes(h).length, 1);
+    h.panel().props.recheck(); await h.settle(); assert.equal(h.panel().props.needsCheck, false); assert.equal(writes(h).length, 1);
+  });
+  test(`date original item PATCH ${status} closes unavailable detail`, async () => {
+    const h = harness(); h.render(); await h.settle(); input(h, '2016-02-29'); h.mode('gone' + status);
+    h.panel().props.save('2016-02-29'); await h.settle(); assert.equal(h.panel(), undefined); assert.equal(h.field(), undefined);
+    assert.equal(writes(h).length, 1); assert.equal(h.rows.get(targetId).userConfirmedDate, null);
+  });
+  test(`date original item GET ${status} closes detail, unlike identity and grants failures`, async () => {
+    const h = harness(); h.render(); await h.settle(); input(h, '2016-02-29'); h.mode('drop');
+    h.panel().props.save('2016-02-29'); await h.settle(); h.failItem(status);
+    h.panel().props.recheck(); await h.settle(); assert.equal(h.panel(), undefined); assert.equal(h.field(), undefined); assert.equal(writes(h).length, 1);
+  });
+}
