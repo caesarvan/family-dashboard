@@ -178,9 +178,11 @@ test('actual delayed checkpoint cannot lose a real video ended; advances exactly
   assert.equal(reports[0].body.playId,playId);assert.equal(reports[0].body.positionMs,8000);assert.equal(h.state.revision,2);
 });
 for(const action of ['pause','deny','next','offline'])test('actual delayed checkpoint ending respects '+action+' before slot is released',async t=>{
-  const h=harness();t.after(h.close);await h.flush();const release=h.gateReport();await h.advance(8200);
+  const h=harness();t.after(h.close);await h.flush();const release=h.gateReport();await h.advance(action==='offline'?8200:6900);
   if(action==='offline')await h.event('offline');else h[action]();
-  await h.advance(900);release();await h.flush();await h.advance(2100);
+  // Allow the independent poll to observe changed controls/permission before
+  // releasing the old response, below its five-second request deadline.
+  await h.advance(action==='offline'?900:2200);release();await h.flush();await h.advance(2100);
   assert(!h.calls.some(c=>c.body?.event==='ended'),'obsolete/paused/unauthorized end must not be sent');
   if(action==='next'){
     assert(h.calls.some(c=>c.body?.event==='ready'&&c.body.playId==='e'.repeat(24)));
