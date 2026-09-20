@@ -2,7 +2,8 @@ export type ImportSource = 'generic' | 'alipay' | 'wechat' | 'taobao' | 'pinduod
 export type ImportKind = 'payments' | 'orders';
 export type ImportFile = { name: string; contentBase64: string; encoding: 'auto' | 'utf-8' | 'gb18030'; sheet?: string };
 export type ImportColumnField = 'date' | 'amount' | 'title' | 'currency';
-export type ImportColumnMapping = { version: 1; headerLine: number } & Record<ImportColumnField, number>;
+export type ImportColumnMapping = ({ version: 1 } | { version: 2; flow: number | null })
+  & { headerLine: number } & Record<ImportColumnField, number>;
 export type ImportColumnSelection = { headerLine: number; lineKind: 'csv_lines' | 'worksheet_rows';
   columns: { index: number; label: string; columnLabel: string }[];
   suggestedMapping: Record<ImportColumnField, number | null>; mapping?: ImportColumnMapping };
@@ -44,10 +45,15 @@ function columnLabel(index: number) {
   return label;
 }
 function readMapping(value: unknown): ImportColumnMapping {
-  if (!object(value) || Object.keys(value).sort().join(',') !== 'amount,currency,date,headerLine,title,version'
-    || value.version !== 1 || !headerLine(value.headerLine) || !columnFields.every(field => columnIndex(value[field]))
+  if (!object(value) || ![1, 2].includes(value.version)
+    || Object.keys(value).sort().join(',') !== (value.version === 2
+      ? 'amount,currency,date,flow,headerLine,title,version' : 'amount,currency,date,headerLine,title,version')
+    || !headerLine(value.headerLine) || !columnFields.every(field => columnIndex(value[field]))
     || new Set(columnFields.map(field => value[field])).size !== 4) throw new Error('请选择四个不同的列，并核对表头所在行。');
-  return { version: 1, headerLine: value.headerLine, date: value.date, amount: value.amount, title: value.title, currency: value.currency };
+  if (value.version === 2 && value.flow !== null && (!columnIndex(value.flow)
+    || columnFields.some(field => value[field] === value.flow))) throw new Error('收支方向须使用其它一列，或选择自动识别。');
+  const fields = { headerLine: value.headerLine, date: value.date, amount: value.amount, title: value.title, currency: value.currency };
+  return value.version === 2 ? { version: 2, ...fields, flow: value.flow } : { version: 1, ...fields };
 }
 export function readImportColumnSelection(value: unknown): ImportColumnSelection {
   if (!object(value) || !headerLine(value.headerLine) || !['csv_lines', 'worksheet_rows'].includes(value.lineKind)
@@ -63,7 +69,8 @@ export function readImportColumnSelection(value: unknown): ImportColumnSelection
     || columnIndex(value.suggestedMapping[field]) && indices.has(value.suggestedMapping[field]))) throw new Error('建议列无法核对，请重新读取表头。');
   const suggestedMapping = Object.fromEntries(columnFields.map(field => [field, value.suggestedMapping[field]])) as ImportColumnSelection['suggestedMapping'];
   const mapping = value.mapping === undefined ? undefined : readMapping(value.mapping);
-  if (mapping && (mapping.headerLine !== value.headerLine || !columnFields.every(field => indices.has(mapping[field])))) throw new Error('所选列与当前表头不一致，请重新读取。');
+  if (mapping && (mapping.headerLine !== value.headerLine || !columnFields.every(field => indices.has(mapping[field]))
+    || mapping.version === 2 && mapping.flow !== null && !indices.has(mapping.flow))) throw new Error('所选列与当前表头不一致，请重新读取。');
   return { headerLine: value.headerLine, lineKind: value.lineKind, columns, suggestedMapping, ...(mapping ? { mapping } : {}) };
 }
 export function inspectImportColumnsPayload(source: ImportSource, kind: ImportKind, file: ImportFile, line?: number): ImportPayload {
@@ -75,7 +82,9 @@ export function inspectImportColumnsPayload(source: ImportSource, kind: ImportKi
 export function manualImportPayload(source: ImportSource, kind: ImportKind, file: ImportFile, selection: ImportColumnSelection, value: unknown): ImportPayload {
   const safe = readImportColumnSelection(selection), mapping = readMapping(value);
   if (source !== 'generic' || /\.xlsx$/i.test(file.name) && !file.sheet) throw new Error('请使用通用表格，并先选择工作表。');
-  if (mapping.headerLine !== safe.headerLine || !columnFields.every(field => safe.columns.some(column => column.index === mapping[field]))) throw new Error('所选列与当前表头不一致，请重新读取。');
+  if (mapping.version === 2 && kind !== 'payments') throw new Error('收支方向列仅适用于通用支付账单。');
+  if (mapping.headerLine !== safe.headerLine || !columnFields.every(field => safe.columns.some(column => column.index === mapping[field]))
+    || mapping.version === 2 && mapping.flow !== null && !safe.columns.some(column => column.index === mapping.flow)) throw new Error('所选列与当前表头不一致，请重新读取。');
   return { ...importPayload(source, kind, file), mapping };
 }
 export function readImportPreview(value: unknown): ImportPreview {
@@ -122,7 +131,8 @@ export function confirmImportPayload(payload: ImportPayload, preview: ImportPrev
   if (!canConfirmImport(preview) || payload.inspectSheets || 'inspectColumns' in payload || 'headerLine' in payload || !isImportRequestId(requestId)) throw new Error('请重新核对文件预览后再保存。');
   if (payload.mapping) {
     const mapping = readMapping(payload.mapping), shown = preview.columnSelection && readImportColumnSelection(preview.columnSelection).mapping;
-    if (payload.source !== 'generic' || 'amountColumn' in payload || !shown || JSON.stringify(mapping) !== JSON.stringify(shown)) throw new Error('所选列已变化，请重新预览。');
+    if (payload.source !== 'generic' || mapping.version === 2 && payload.kind !== 'payments'
+      || 'amountColumn' in payload || !shown || JSON.stringify(mapping) !== JSON.stringify(shown)) throw new Error('所选列已变化，请重新预览。');
   } else if (preview.columnSelection) throw new Error('请重新核对所选列后再保存。');
   return { ...payload, file: { ...payload.file }, ...(payload.mapping ? { mapping: readMapping(payload.mapping) } : {}), previewToken: preview.previewToken!, requestId };
 }
