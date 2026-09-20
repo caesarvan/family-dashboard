@@ -19,6 +19,12 @@ export function photoMemoriesQuery(offset: number): string {
   if (!integer(offset) || offset > 4000 || offset % 24) return invalid();
   return `/media/memories/on-this-day?limit=24&offset=${offset}`;
 }
+// Retain only the last server date across background concealment. A changed
+// day invalidates the old page number even when its photo content was cleared.
+export function memoryOffsetAfterDateChange(previousDate: string | null, page: PhotoMemories): number {
+  if (previousDate !== null) date(previousDate);
+  return previousDate !== null && previousDate !== page.referenceDate ? 0 : page.offset;
+}
 export function readPhotoMemories(raw: unknown, offset: number): PhotoMemories {
   photoMemoriesQuery(offset);
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return invalid();

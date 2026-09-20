@@ -14,7 +14,7 @@ import { SelectionRow } from '../ui/SelectionRow';
 import PhotoJourneySuggestions from '../components/PhotoJourneySuggestions';
 import MemberVideoPlayer from '../components/MemberVideoPlayer';
 import { photoSuggestionBody, readPhotoJourneySuggestions, type PhotoJourneySuggestions as Suggestions } from '../lib/photoJourneySuggestions';
-import { photoMemoriesQuery, readPhotoMemories, type PhotoMemories } from '../lib/photoMemories';
+import { memoryOffsetAfterDateChange, photoMemoriesQuery, readPhotoMemories, type PhotoMemories } from '../lib/photoMemories';
 
 type Editor = { item: Photo; caption: string; visibility: 'private' | 'shared'; journeyId: string; grants: string[]; savedGrants: string[]; tvConsent: boolean; blocked: boolean; suggestionReview: boolean; message: string };
 type Receipt = { path: string; body: Record<string, unknown> };
@@ -56,6 +56,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   const [scope, setScope] = useState('mine'); const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<PhotoPage>({ items: [], total: 0, hasMore: false });
   const [memories, setMemories] = useState<PhotoMemories | null>(null);
+  const memoryDate = useRef<string | null>(null);
   const [accounts, setAccounts] = useState<PhotoAccount[]>([]); const [accountId, setAccountId] = useState('');
   const [devices, setDevices] = useState<PhotoDevice[]>([]); const [journeys, setJourneys] = useState<PhotoJourney[]>([]);
   const [imports, setImports] = useState<PhotoImport[]>([]); const [importDetail, setImportDetail] = useState<ImportDetail | null>(null);
@@ -103,7 +104,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
 
   const clearIdentity = () => {
     deniedRef.current = true; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort()); setDenied(true); setPage({ items: [], total: 0, hasMore: false });
-    setMemories(null); setEditor(null); editorRef.current = null; setImportDetail(null); importRef.current = null;
+    memoryDate.current = null; setMemories(null); setEditor(null); editorRef.current = null; setImportDetail(null); importRef.current = null;
     setAccounts([]); setDevices([]); setJourneys([]); setImports([]); setSelected([]);
     setCreateReceipt(null); setConfirmReceipt(null); setDecision(null); setError('登录身份已变化，正在重新读取。');
     void latest.current.refresh();
@@ -131,6 +132,16 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
       if (!Array.isArray(result.items) || result.items.length > 24) throw new Error('图库数据无法核对。');
       result.items.forEach(validatePhoto); return { ...result, memories: null };
     }, () => ticket === serial.current.gallery);
+    if (data.memories) {
+      const next = memoryOffsetAfterDateChange(memoryDate.current, data.memories);
+      memoryDate.current = data.memories.referenceDate;
+      if (next !== nextOffset) {
+        setPage({ items: [], total: 0, hasMore: false }); setMemories(null); setLoading(true);
+        // The existing focus lifecycle reads offset 0 with a fresh identity
+        // fence. Never briefly install the new day's second page as its start.
+        setOffset(next); return;
+      }
+    }
     setPage({ items: data.items, total: data.total, hasMore: data.hasMore }); setMemories(data.memories); setLoading(false);
   }
   async function support() {

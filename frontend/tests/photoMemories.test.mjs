@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { photoMemoriesQuery, readPhotoMemories } from '../src/lib/photoMemories.ts';
+import { memoryOffsetAfterDateChange, photoMemoriesQuery, readPhotoMemories } from '../src/lib/photoMemories.ts';
 
 const photo = (id = 'a'.repeat(24), year = 2025) => ({
   id, revision: 3, caption: '海边', width: 800, height: 600,
@@ -59,4 +59,19 @@ test('leap day remains February 29 and does not move to another day', () => {
   const input = { ...page([row]), referenceDate: '2028-02-29' };
   assert.deepEqual(readPhotoMemories(input, 0), input);
   assert.throws(() => readPhotoMemories({ ...input, referenceDate: '2028-02-28' }, 0));
+});
+
+test('server day changes reset page two for polling and background return', () => {
+  const old = { ...page([]), offset: 24, total: 1 };
+  const nextDay = readPhotoMemories({ ...old, referenceDate: '2026-09-21' }, 24);
+  assert.equal(memoryOffsetAfterDateChange(old.referenceDate, readPhotoMemories(old, 24)), 24);
+  assert.equal(memoryOffsetAfterDateChange(old.referenceDate, nextDay), 0);
+  // Concealment discards the old photo payload; retaining only its server date
+  // still detects midnight. An empty second page must not hide the first page.
+  const dateRetainedDuringConcealment = old.referenceDate;
+  assert.equal(photoMemoriesQuery(memoryOffsetAfterDateChange(dateRetainedDuringConcealment, nextDay)),
+    '/media/memories/on-this-day?limit=24&offset=0');
+  const firstPage = readPhotoMemories({ ...page([]), referenceDate: nextDay.referenceDate }, 0);
+  assert.equal(memoryOffsetAfterDateChange(nextDay.referenceDate, firstPage), 0);
+  assert.equal(memoryOffsetAfterDateChange(null, firstPage), 0);
 });
