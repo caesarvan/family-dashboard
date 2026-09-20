@@ -4,10 +4,11 @@ import { useFocusEffect } from 'expo-router';
 import { ActivityIndicator, Button, Card, Dialog, Portal, Text, TouchableRipple, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
-import { PhotoReadDiscarded, PhotoReadFence, isMediaId, previewPath } from '../lib/photos';
+import { PhotoReadDiscarded, PhotoReadFence, isMediaId, previewPath, videoDescription } from '../lib/photos';
 import type { Photo, PhotoSession } from '../lib/photos';
 import { readTripPhoto, readTripPhotoJourney, readTripPhotoPage, tripPhotoQuery } from '../lib/tripPhotos';
 import type { TripPhotoJourney, TripPhotoPage, TripPhotoScope } from '../lib/tripPhotos';
+import MemberVideoPlayer from '../components/MemberVideoPlayer';
 import type { ScreenProps } from '../lib/types';
 import { EmptyState, PageHeader } from '../ui/components';
 
@@ -153,16 +154,17 @@ function TripPhotoWorkspace(props: Props & { identityKey: string }) {
       mode={scope === option.value ? 'contained' : 'outlined'} disabled={controlsDisabled}
       accessibilityLabel={option.label + (scope === option.value ? '，当前范围' : '')}
       compact onPress={() => void reload({ scope: option.value, offset: 0, detailId: '' })}>{option.label}</Button>)}</View>
-    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>这里只查看照片。照片与地点关联同一趟旅行，不代表照片拍摄于该地点。</Text>
+    <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>这里只回看照片和视频；关联同一趟旅行不代表拍摄于该地点。</Text>
     {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     {loading && <ActivityIndicator accessibilityLabel="正在读取旅行相册" />}
     {!!page && (page.items.length ? <View style={styles.grid}>{page.items.map(item => <TouchableRipple key={item.id}
-      accessible accessibilityRole="button" accessibilityLabel={'查看照片：' + (item.caption || '未添加说明')}
+      accessible accessibilityRole="button" accessibilityLabel={(item.mediaType === 'video' ? '查看视频：' : '查看照片：') + (item.caption || '未添加说明')}
       accessibilityState={{ disabled: controlsDisabled }} aria-disabled={controlsDisabled} disabled={controlsDisabled}
       onPress={() => { if (!working.current && current()) void reload({ ...view.current, detailId: item.id }); }}
       style={state => [styles.photoControl, { width: cardWidth, borderColor: state.focused ? theme.colors.primary : 'transparent' }]}>
       <Card mode="contained" style={[styles.photoCard, { backgroundColor: theme.colors.surfaceVariant }]}>
       {renderPhoto(item)}<Card.Content style={styles.photoCopy}>
+        {item.mediaType === 'video' && <Text variant="bodySmall">{videoDescription(item)}</Text>}
         <Text variant="bodyMedium">{item.caption || '未添加说明'}</Text>
         <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.visibility === 'private' ? '仅我自己' : '家庭共享'}</Text>
       </Card.Content></Card>
@@ -170,16 +172,17 @@ function TripPhotoWorkspace(props: Props & { identityKey: string }) {
       description={page.total ? '照片列表已变化，可以返回上一页或重新读取第一页。' : '已保存并关联这趟旅行的照片，会按各自的查看权限显示在这里。'}
       action={page.offset ? <Button onPress={() => void reload({ ...view.current, offset: 0, detailId: '' })}>回到第一页</Button> : undefined} />)}
     {!!page && <View style={styles.pagination}>
-      <Text variant="bodySmall" accessibilityLiveRegion="polite">共 {page.total} 张 · 第 {Math.floor(page.offset / 24) + 1} 页</Text>
+      <Text variant="bodySmall" accessibilityLiveRegion="polite">共 {page.total} 项 · 第 {Math.floor(page.offset / 24) + 1} 页</Text>
       <View style={styles.pageButtons}>
         <Button disabled={!page.offset || controlsDisabled} onPress={() => void reload({ ...view.current, offset: Math.max(0, page.offset - 24), detailId: '' })}>上一页</Button>
         <Button disabled={!page.hasMore || page.offset + 24 > 4000 || controlsDisabled} onPress={() => void reload({ ...view.current, offset: page.offset + 24, detailId: '' })}>下一页</Button>
       </View>
     </View>}
     <Portal><Dialog visible={!!detail} onDismiss={closeDetail} style={[styles.dialog, { maxHeight: height - 40 }]}>
-      <Dialog.Title>照片详情</Dialog.Title>
+      <Dialog.Title>{detail?.mediaType === 'video' ? '视频详情' : '照片详情'}</Dialog.Title>
       <Dialog.ScrollArea style={styles.dialogScroll}><ScrollView contentContainerStyle={styles.detailContent}>
-        {!!detail && <>{renderPhoto(detail, true)}<Text variant="titleMedium">{detail.caption || '未添加说明'}</Text>
+        {!!detail && <>{renderPhoto(detail, true)}
+          {detail.mediaType === 'video' && <MemberVideoPlayer key={[props.identityKey, detail.id, detail.revision].join(':')} item={detail} user={props.user} identityKey={props.identityKey} enabled={current()} />}<Text variant="titleMedium">{detail.caption || '未添加说明'}</Text>
           <Text variant="bodyMedium">{detail.visibility === 'private' ? '仅我自己' : '家庭共享'} · {snapshot?.journey.title}</Text>
           <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>此处仅供回看。管理照片请从普通相册入口进入。</Text></>}
       </ScrollView></Dialog.ScrollArea>
