@@ -6,6 +6,7 @@ An engine lease is a fence, never a substitute for current authorization.
 from __future__ import annotations
 
 import logging
+import os
 import random
 import signal
 import time
@@ -14,6 +15,7 @@ from cloud_accounts import AccountBusy
 from cloud_providers import ProviderError
 from google_photos_picker import GooglePhotosPicker, PickerError
 from media_images import MediaImageError, sanitize_media_preview
+from household_media import MediaError, manifest_identity
 
 
 MAX_ITEMS = 20
@@ -34,7 +36,7 @@ def _manifest(items):
                 or 'baseUrl' in item['mediaFile']):
             return None
         result[item['id']] = item
-    return result
+    return manifest_identity(list(result.values()))
 
 
 class MediaImportWorker:
@@ -45,10 +47,11 @@ class MediaImportWorker:
     Every tick obtains a new credential and disposes its Picker capabilities.
     """
     def __init__(self, engine, *, picker_factory=GooglePhotosPicker,
-                 sanitizer=sanitize_media_preview, jitter=None):
+                 sanitizer=sanitize_media_preview, video_tools=None, video_temp_root=None, jitter=None):
         self.engine = engine
         self.picker_factory = picker_factory
         self.sanitizer = sanitizer
+        self.video_tools, self.video_temp_root = video_tools, video_temp_root
         self.jitter = jitter or (lambda: random.uniform(0, 5))
 
     def _fail(self, job, code, *, retryable=False, outcome_unknown=False, reauth=False):
@@ -103,6 +106,8 @@ class MediaImportWorker:
                        outcome_unknown=error.outcome_unknown, reauth=error.reauth)
         except MediaImageError as error:
             self._fail(job, error.code if isinstance(error.code,str) and error.code in IMAGE_ERROR_CODES else 'unsupported_image')
+        except MediaError as error:
+            self._fail(job,error.code)
         except AccountBusy:
             self._fail(job, 'unavailable', retryable=True)
         except ProviderError as error:
@@ -124,9 +129,18 @@ class MediaImportWorker:
             return
         original, observed = _manifest(job['manifest']), _manifest(current)
         media = job['media']
+        media_identity = _manifest([media]) if isinstance(media,dict) else None
         if (original is None or observed != original or not isinstance(media, dict)
-                or observed.get(media.get('id')) != media or media.get('type') != 'PHOTO'):
+                or media_identity is None or observed.get(media.get('id')) != media_identity.get(media.get('id')) or media.get('type') not in ('PHOTO','VIDEO')):
             self._fail(job, 'selection_changed')
+            return
+        if media['type']=='VIDEO':
+            refreshed = next(item for item in current if item['id']==media['id'])
+            status = refreshed['mediaFile']['mediaFileMetadata'].get('videoMetadata',{}).get('processingStatus')
+            if status in ('UNSPECIFIED','PROCESSING','FAILED'):
+                self._fail(job,'video_not_ready')
+                return
+            self._download_video(picker,job,media,current,session_id)
             return
         downloaded = picker.download_media(session_id, media['id'], variant='preview', width=1600, height=1600)
         if not self.engine.validate_job(job):
@@ -137,6 +151,25 @@ class MediaImportWorker:
         # Engine rechecks current session/account/grant/fence and quota in a new
         # transaction and seals Preview + bound metadata into SQLite BLOBs.
         self.engine.complete(job, {'mediaId': media['id'], 'manifest': current, 'preview': preview})
+
+    def _download_video(self,picker,job,media,current,session_id):
+        from media_videos import MediaVideoError, VideoTools, sanitize_media_video
+        config=getattr(getattr(self.engine,'app',None),'config',{})
+        tools=self.video_tools or VideoTools(
+            config.get('MEDIA_VIDEO_FFMPEG') or os.environ.get('MEDIA_VIDEO_FFMPEG',''),
+            config.get('MEDIA_VIDEO_FFPROBE') or os.environ.get('MEDIA_VIDEO_FFPROBE',''))
+        temporary=self.video_temp_root or config.get('MEDIA_VIDEO_TEMP_ROOT') or os.environ.get('MEDIA_VIDEO_TEMP_ROOT')
+        downloaded=picker.download_media(session_id,media['id'],variant='video')
+        if not self.engine.validate_job(job):
+            return
+        try:
+            video=sanitize_media_video(downloaded.data,downloaded.content_type,tools=tools,temp_root=temporary)
+        except MediaVideoError as error:
+            code=error.code if error.code in {'invalid_input','too_large','too_long','unsupported','invalid','timeout','tools_unavailable'} else 'invalid'
+            self._fail(job,'video_'+code)
+            return
+        if self.engine.validate_job(job):
+            self.engine.complete(job,{'mediaId':media['id'],'manifest':current,'preview':video.poster,'video':video})
 
     def _cleanup(self, picker, job):
         session_id = job['session']['id']

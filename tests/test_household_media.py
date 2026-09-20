@@ -383,10 +383,19 @@ def test_duplicate_selection_reuses_private_copy_and_other_owner_does_not(env):
     assert other.get('/api/media/items').json['total']==1
 
 
-def test_video_skipped_not_faked_as_photo(env):
-    c,h,detail,_=stage(env,items=[selected(),selected('synthetic-video','VIDEO')])
+def test_video_not_faked_as_photo_and_per_item_failure_preserves_photo(env):
+    c,h,imp,_=create(env); engine=env[1]
+    items=[selected(),selected('synthetic-video','VIDEO')]
+    engine.complete(engine.claim_next(),session(env));engine.complete(engine.claim_next(),items)
+    work=engine.claim_next();engine.complete(work,{'mediaId':work['media']['id'],'manifest':items,'preview':preview()})
+    work=engine.claim_next()
+    with pytest.raises(media.MediaError) as error:
+        engine.complete(work,{'mediaId':work['media']['id'],'manifest':items,'preview':preview()})
+    assert error.value.code=='video_invalid'
+    assert engine.fail(work,'video_unsupported')
+    detail=c.get('/api/media/imports/'+imp['id']).json
     assert len(detail['items'])==1
-    assert detail['import']['counts']=={'selected':2,'ready':1,'skipped':1,'failed':0,'pending':0,'saved':0,'unselected':None}
+    assert detail['import']['counts']=={'selected':2,'ready':1,'skipped':0,'failed':1,'pending':0,'saved':0,'unselected':None}
 
 
 def test_cross_household_isolation(env,tmp_path,monkeypatch):
@@ -430,6 +439,7 @@ def test_cleanup_unknown_is_readback_only_then_terminal(env):
     engine=env[1]
     engine.complete(engine.claim_next(),session(env))
     engine.complete(engine.claim_next(),[selected('video','VIDEO')])
+    assert engine.fail(engine.claim_next(),'video_unsupported')
     cleanup=engine.claim_next()
     assert cleanup['action']=='cleanup' and not cleanup['cleanupUnknown']
     assert engine.fail(cleanup,'network',outcome_unknown=True)
@@ -444,6 +454,7 @@ def test_cleanup_crash_persists_readback_state(env):
     engine=env[1]
     engine.complete(engine.claim_next(),session(env))
     engine.complete(engine.claim_next(),[selected('video','VIDEO')])
+    assert engine.fail(engine.claim_next(),'video_unsupported')
     first=engine.claim_next()
     assert first['action']=='cleanup' and not first['cleanupUnknown']
     env[2][0]+=media.LEASE_SECONDS+1
@@ -553,7 +564,7 @@ def test_picker_error_preserves_only_disabled_service_existing_authority(env,cod
 def test_factory_media_tables_and_hooks_require_transaction(env):
     with env[1].sessions.db() as con:
         names={r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'media_%'")}
-        assert names=={'media_imports','media_items','media_tv_grants','media_playback'}
+        assert names=={'media_imports','media_items','media_tv_grants','media_playback','media_video_cache'}
         with pytest.raises(RuntimeError):
             env[1].on_account_removed(con,env[3][1])
 
