@@ -1308,7 +1308,7 @@ class MediaLibrary:
             raw=self.cipher.open_bytes('media-preview',blob)
         except MediaCryptoError:
             pass
-        if raw is None or len(raw)!=meta['bytes'] or hashlib.sha256(raw).hexdigest()!=meta['sha256']:
+        if raw is None or len(raw)!=meta.get('bytes') or hashlib.sha256(raw).hexdigest()!=meta.get('sha256'):
             raise MediaError('unavailable')
         with self.transaction() as con:
             current=self._tv(con) if television else self._member(con)
