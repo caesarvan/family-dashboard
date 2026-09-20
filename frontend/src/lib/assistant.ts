@@ -44,14 +44,14 @@ export function readAssistantSearch(value: unknown, expected?: { query: string; 
     if (!item || !['tasks', 'shopping', 'events', 'trips', 'media', 'places', 'inventory', 'documents'].includes(item.kind)
       || typeof item.id !== 'string' || typeof item.title !== 'string' || seen.has(item.kind + ':' + item.id)) return invalid();
     seen.add(item.kind + ':' + item.id);
-    if (item.kind !== 'documents' && item.kind !== 'media') return item;
+    if (item.kind !== 'documents' && item.kind !== 'media' && item.kind !== 'places') return item;
     if (!(item.kind === 'documents' ? /^[a-f0-9]{32}$/ : /^[a-f0-9]{24}$/).test(item.id)
       || !Number.isSafeInteger(item.revision) || item.revision! < 1 || !['private', 'shared'].includes(item.visibility || '')
       || !(item.journey === null || item.journey && /^[a-f0-9]{24}$/.test(item.journey.id)
         && /^[a-f0-9]{24}$/.test(item.journey.tripId) && typeof item.journey.title === 'string')) return invalid();
     const common = { id: item.id, kind: item.kind, title: item.title, revision: item.revision, visibility: item.visibility,
       journey: item.journey ? { id: item.journey.id, tripId: item.journey.tripId, title: item.journey.title } : null };
-    if (item.kind === 'media') return common;
+    if (item.kind === 'media' || item.kind === 'places') return common;
     if (typeof item.filename !== 'string' || !item.filename.trim() || Array.from(item.filename).length > 180 || /[\\/]/.test(item.filename)
       || !['application/pdf', 'image/jpeg'].includes(item.mimeType || '') || item.journey === null && item.visibility !== 'private') return invalid();
     // Search is text metadata only, never a download or sharing authority.
@@ -61,9 +61,9 @@ export function readAssistantSearch(value: unknown, expected?: { query: string; 
 }
 
 export function assistantContentRequest(match: Match, key: number):
-  { kind: 'documents'; key: number; id: string; journeyId?: string } | { kind: 'media'; key: number; id: string } | null {
+  { kind: 'documents'; key: number; id: string; journeyId?: string } | { kind: 'media' | 'places'; key: number; id: string } | null {
   if (!Number.isSafeInteger(key) || key < 1) return null;
-  if (match.kind === 'media' && /^[a-f0-9]{24}$/.test(match.id)) return { kind: 'media', key, id: match.id };
+  if ((match.kind === 'media' || match.kind === 'places') && /^[a-f0-9]{24}$/.test(match.id)) return { kind: match.kind, key, id: match.id };
   if (match.kind === 'documents' && /^[a-f0-9]{32}$/.test(match.id)
     && (match.journey === null || match.journey && /^[a-f0-9]{24}$/.test(match.journey.id)))
     return { kind: 'documents', key, id: match.id, ...(match.journey ? { journeyId: match.journey.id } : {}) };
