@@ -13,7 +13,7 @@
 - `POST /api/media/local-imports`：固定 `requestId`、`media-v1` 临时处理同意和最多十个声明；每个声明含 `clientFileId`、UTF-8 basename、精确 MIME/字节数/SHA-256。先校验整批，逐张计算 SHA，原 File 仅保存在当前页面内存，不放入 localStorage、URL、base64 或日志。
 - `PUT /api/media/local-imports/{id}/files/{slotId}`：同源原始 File 请求体，使用新核验身份的 CSRF 和当前 `X-Import-Revision`。沿固定声明、slot、媒体 ID；串行处理，不自动更换批次重试。
 - `GET /api/media/imports/{id}`：恢复原批次。创建响应丢失时，「核对本次上传」重发同一原始创建 body/requestId；已知批次先 GET，结果不明时禁用上传及结束动作，明确继续后才上传 pending 文件。
-- `POST /api/media/local-imports/{id}/finish`：原 revision/requestId，跳过尚未上传项，只核对成功预览。未知结果保留原 body/key；明确 409 后先 GET，仍可结束才在用户下一次操作中用当前 revision 建立新结束意图。已结束不再发 finish。
+- `POST /api/media/local-imports/{id}/finish`：原 revision/requestId，跳过尚未上传项，只核对成功预览。未知结果保留原 body/key；仅 finish POST 的明确 409 后先 GET，仍可结束才在用户下一次操作中用当前 revision 建立新结束意图。已结束不再发 finish。前后身份读取 `/me` 的 409 不清除原结束意图。
 - 原 `confirmPhotos`、确认回执及保存请求不变。成功写入后的 `/me` 失败不能当成未保存；应读原批次，不另建媒体或确认 ID。
 
 文件选择器离开页面时隐藏内容、使在途响应失效并中止传输（中止不代表服务器取消）。返回后先核验 `/me`，包含身份、家庭、认证代次；选片与每次上传分别使用前后身份围栏。身份变化清空页面文件，晚到响应不得恢复旧预览。同身份恢复保留原意图；刷新页面丢失 File 后，可读取最近批次并重选精确 SHA/字节/MIME 匹配的 pending 原文件，或明确结束本批。终态允许服务端清理 `upload.files` 为 `[]`，不要求保留原文件名或 SHA。

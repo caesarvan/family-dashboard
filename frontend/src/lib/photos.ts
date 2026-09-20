@@ -35,6 +35,7 @@ export const importLabels: Record<string, string> = {
   confirmed: '本次保存结果', cancelled: '已取消', expired: '选择已过期', failed: '导入未完成', create_unknown: '连接结果待确认',
 };
 const errors: Record<string, string> = {
+  local_upload_incomplete: '这张照片尚未上传，已跳过；其他成功照片仍可核对保存。',
   input_too_large: '输入图片超过 8 MiB 上限。', unsupported_format: '当前支持内容与类型一致的 JPEG、PNG 和 WebP。',
   invalid_image: '图片不完整或无法安全解码。', multiple_frames: '暂不支持动图或多帧图片。',
   too_many_pixels: '图片像素超过 2000 万像素上限。', output_too_large: '展示图片超过 2 MiB 上限。',

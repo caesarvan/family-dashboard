@@ -195,3 +195,32 @@ test('source-specific notices do not claim Google owns local photos', () => {
   assert.match(photoOriginalNotice('local-upload'), /设备上的原文件/); assert.doesNotMatch(photoOriginalNotice('local-upload'), /Google/);
   assert.match(photoOriginalNotice(), /Google Photos/); assert.equal(photoSourceLabel('local-upload'), '从设备上传');
 });
+
+test('finish intent survives preflight /me409 and later sends the identical body', async () => {
+  const f = fixture(); await f.controller.select([file()]);
+  f.hook = path => { if (path.endsWith('/finish')) throw new Error('synthetic uncommitted transport loss'); };
+  await f.controller.upload(); const first = f.writes().find(c => c.path.endsWith('/finish')).body;
+  f.hook = null; await f.controller.check();
+  f.hook = path => path === '/api/me' ? json({}, 409) : null;
+  await f.controller.finish(); assert.equal(f.writes().filter(c => c.path.endsWith('/finish')).length, 1);
+  assert.equal(f.controller.view.needsCheck, true);
+  f.hook = null; await f.controller.check(); await f.controller.finish();
+  assert.equal(f.writes().filter(c => c.path.endsWith('/finish'))[1].body, first);
+});
+test('finish200 followed by /me409 keeps original unknown intent until actual result is checked', async () => {
+  const f = fixture(); await f.controller.select([file()]);
+  f.hook = path => path === '/api/me' && f.finished ? json({}, 409) : null;
+  await f.controller.upload(); const writes = f.writes().filter(c => c.path.endsWith('/finish'));
+  assert.equal(writes.length, 1); assert.equal(f.detail.import.state, 'awaiting_confirmation');
+  assert.equal(f.controller.view.detail.import.state, 'staging'); assert.equal(f.controller.view.needsCheck, true); assert.equal(f.reviewed.length, 0);
+  // Inspect only the uncertain request receipt: an acknowledged business response
+  // plus failed identity read must retain the exact original key/revision.
+  assert.equal(JSON.stringify(f.controller.finishIntent), writes[0].body);
+  f.hook = null; await f.controller.check(); await f.controller.finish();
+  assert.equal(f.writes().filter(c => c.path.endsWith('/finish')).length, 1); assert.equal(f.controller.view.detail.import.state, 'awaiting_confirmation');
+});
+test('local_upload_incomplete gives the same truthful skipped reason in slot and original result views', () => {
+  const { photoError } = load(root + '/lib/photos.ts'), { localSlotMessage } = load(root + '/lib/localPhotoUpload.ts');
+  const message = photoError('local_upload_incomplete'); assert.match(message, /尚未上传，已跳过/); assert.doesNotMatch(message, /原因未记录|Google/);
+  assert.equal(localSlotMessage({ status: 'skipped', error: { code: 'local_upload_incomplete' } }), '已跳过 · ' + message);
+});

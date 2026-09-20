@@ -10,7 +10,10 @@ export type LocalUploadView = {
   busy: boolean; selected: Declaration[]; detail: ImportDetail | null; needsCheck: boolean;
   message: string; unavailable: boolean; uploading: string;
 };
-class LocalImportUnavailable extends ApiError {}
+class LocalUploadResponseError extends ApiError {
+  constructor(status: number, code: string, readonly path: string) { super('设备上传暂时未完成。', status, code); }
+}
+class LocalImportUnavailable extends LocalUploadResponseError {}
 const key = (value: unknown): value is string => typeof value === 'string' && /^[A-Za-z0-9_-]{16,100}$/.test(value);
 const filename = (value: unknown): value is string => typeof value === 'string' && !!value.trim()
   && new TextEncoder().encode(value).length <= 255 && !/[\x00-\x1f\x7f/\\]/.test(value) && !['.', '..'].includes(value);
@@ -106,8 +109,8 @@ export class LocalPhotoUpload {
       } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
       let value: any; try { value = JSON.parse(text + decoder.decode()); } catch { throw new ApiError('上传响应无法核对。', response.ok ? 0 : response.status); }
       if (!response.ok) {
-        const Failure = path !== '/me' && [404, 410].includes(response.status) ? LocalImportUnavailable : ApiError;
-        throw new Failure('设备上传暂时未完成。', response.status, typeof value?.code === 'string' ? value.code : '');
+        const Failure = path !== '/me' && [404, 410].includes(response.status) ? LocalImportUnavailable : LocalUploadResponseError;
+        throw new Failure(response.status, typeof value?.code === 'string' ? value.code : '', path);
       }
       return value as T;
     } catch (error) { if (error instanceof ApiError) throw error; throw new ApiError('上传连接中断，请核对状态。'); }
@@ -196,7 +199,8 @@ export class LocalPhotoUpload {
       catch (error) {
         // An explicit revision rejection did not accept this intent. Other errors
         // retain it until the original record is checked, including lost responses.
-        if (error instanceof ApiError && error.status === 409) this.finishIntent = null;
+        if (error instanceof LocalUploadResponseError && error.status === 409
+          && error.path === '/media/local-imports/' + data.import.id + '/finish') this.finishIntent = null;
         throw error;
       }
     }
