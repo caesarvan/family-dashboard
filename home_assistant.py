@@ -9,6 +9,7 @@ from decimal import Decimal
 from http.client import HTTPException
 import json
 import task_dependencies as dependencies
+import calendar_privacy as calendar_acl
 import math
 import re
 import secrets
@@ -747,7 +748,11 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
         # document titles or counts in the result. Both passes use the original
         # member/household context and the domain metadata projection; no BLOBs.
         with authorized(context, recheck_read=True) as con:
-            matches = [item for item in matches if item['kind'] != 'documents'] + search_metadata(con, owner, query)
+            matches = [item for item in matches if item['kind'] not in ('documents', 'events')] + search_metadata(con, owner, query)
+            # Calendar sharing can also be withdrawn while the first snapshot is open.
+            for item in records():
+                if item['kind'] == 'events' and term in (item.get('title', '') + ' ' + item.get('location', '')).casefold():
+                    matches.append({k: item.get(k) for k in ('id', 'kind', 'title', 'start', 'due', 'owner')})
         matches.sort(key=lambda item: (item['kind'], item['id']))
         page = matches[offset:offset + limit]
         return {'query': query, 'matches': page, 'total': len(matches), 'limit': limit, 'offset': offset,
@@ -768,7 +773,8 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
 
     def records():
         return [{**json.loads(row['data']), 'id': row['id'], 'kind': row['kind'], 'revision': row['revision']}
-                for row in db().execute('SELECT * FROM entities ORDER BY updated_at DESC')]
+                for row in db().execute('SELECT * FROM entities ORDER BY updated_at DESC')
+                if row['kind'] != 'events' or calendar_acl.visible(json.loads(row['data']), g.actor)]
 
     def brief():
         current = datetime.fromisoformat(now())
