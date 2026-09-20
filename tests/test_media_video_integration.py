@@ -282,6 +282,9 @@ def test_video_metadata_export_has_no_bytes_urls_or_capabilities(env,clip,tools)
 def test_additive_71_to_72_preserves_all_old_objects_rows_and_restarts(tmp_path,monkeypatch):
     with monkeypatch.context() as before:
         before.setattr(media,'initialize_media_video_storage',lambda con:None)
+        # This storage migration starts at 71; TV progress is a separate migration.
+        import media_playback_progress
+        before.setattr(media_playback_progress,'initialize_progress',lambda con:None)
         env=configured(tmp_path/'migration',before)
     database=Path(env[0].config['DATA_DIR'])/'household.sqlite3'
     with sqlite3.connect(database) as con:
