@@ -87,10 +87,12 @@ def receive_header(connection, deadline):
     try:
         value = json.loads(_receive(connection, length, deadline).decode('ascii'),
                            object_pairs_hook=_unique, parse_constant=lambda _: (_ for _ in ()).throw(ProtocolError()))
-    except (ValueError, UnicodeError):
+    except (ValueError, UnicodeError, RecursionError):
         raise ProtocolError() from None
     if type(value) is not dict or type(value.get('v')) is not int or value['v'] != VERSION:
         raise ProtocolError()
+    if any(type(field) not in (str, int, bool) for field in value.values()):
+        raise ProtocolError()  # v1 has only flat scalar fields, never nested metadata.
     return value
 
 

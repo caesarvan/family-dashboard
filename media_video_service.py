@@ -117,7 +117,8 @@ def _request_guard(connection, deadline):
 
 def serve(socket_path, *, tools, temp_root, timeout=900):
     """One in-flight decode; excess accepted peers receive fixed timeout/busy."""
-    if not sys.platform.startswith('linux') or threading.current_thread() is not threading.main_thread():
+    if (not sys.platform.startswith('linux') or threading.current_thread() is not threading.main_thread()
+            or os.geteuid() == 0):
         raise ProtocolError('tools_unavailable')
     deadline_after(timeout)
     path = private_socket_path(socket_path, existing=False)

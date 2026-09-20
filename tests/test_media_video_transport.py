@@ -154,6 +154,13 @@ def test_total_deadline_is_not_extended_by_slow_header_chunks():
     assert time.monotonic()-started < .5
 
 
+def test_nested_header_cannot_escape_as_recursion_error_or_complex_metadata():
+    for raw in (b'{"v":1,"nested":[]}', b'{"v":1,"nested":'+b'['*980+b'0'+b']'*980+b'}'):
+        assert len(raw) <= wire.HEADER_LIMIT
+        with peer(lambda sock:sock.sendall(struct.pack('!I', len(raw))+raw)) as client, pytest.raises(wire.ProtocolError):
+            wire.receive_header(client, wire.deadline_after(2))
+
+
 def test_public_error_is_fixed_and_platform_capability_is_explicit(tmp_path):
     with pytest.raises(MediaVideoError) as caught:
         wire.sanitize_remote_media_video(b'x','video/mp4',socket_path=tmp_path/'absent.sock',timeout=.1)

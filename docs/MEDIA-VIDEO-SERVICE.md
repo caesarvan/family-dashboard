@@ -18,7 +18,7 @@ sanitize_remote_media_video(raw, mime_type, socket_path="/decoder-private/video.
 
 ## Linux 隔离和生命周期
 
-生产入口 `media_video_service.py` 只允许 Linux 主线程。启动参数仅为可信绝对 socket、临时目录和 FFmpeg／ffprobe 路径；不自动发现或下载工具。socket 目录与临时目录必须预先存在、属当前 UID、权限 0700；socket 新建为 0600。路径及祖先拒绝 symlink。已有 socket（包括 stale）一律拒绝启动，不猜测、不自动删除；退出只清除本进程记录的相同 device/inode socket，不删除替换路径或普通文件。
+生产入口 `media_video_service.py` 只允许非 root 的 Linux 主线程。启动参数仅为可信绝对 socket、临时目录和 FFmpeg／ffprobe 路径；不自动发现或下载工具。socket 目录与临时目录必须预先存在、属当前 UID、权限 0700；socket 新建为 0600。路径及祖先拒绝 symlink。已有 socket（包括 stale）一律拒绝启动，不猜测、不自动删除；退出只清除本进程记录的相同 device/inode socket，不删除替换路径或普通文件。
 
 Linux 主线程的 SIGALRM 覆盖整个请求，包括接收、解码和发送。解码期间监视已完成请求后的连接断开或额外数据，通过取消信号中断主线程；SIGTERM／SIGINT 停止服务。取消使用 `BaseException` 穿透既有 codec 的一般错误包装，触发它原有的进程组终止、wait、临时目录 finally 清理。没有第二套 FFmpeg 参数、解码器或持久缓存。生产应给予足够停止宽限时间；主机 OOM 或 SIGKILL 不能执行 Python finally，因此独立容器退出和 tmpfs 回收仍是最后边界。
 
