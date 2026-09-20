@@ -201,7 +201,7 @@ class Run(calendar.Run):
               const textTop=box.top+box.height/2-line/2;
               return {input:box.toJSON(),textTop,labels,separated:labels.length===1&&labels[0].box.bottom<textTop};
             }'''
-            page.wait_for_function('(' + label_geometry + ')().separated', polling='raf', timeout=5000)
+            page.wait_for_function('() => (' + label_geometry + ')().separated', polling='raf', timeout=5000)
             self.record('location-label-stable', page.evaluate(label_geometry))
             self.capture(page, 'default-private-390', self.scope(page, 'private'))
             created = self.exchange(page, ITEMS, lambda: button(page, '保存').click(), method='POST', status=201)
