@@ -50,6 +50,9 @@ def baseline_values(baseline=None):
     # Explicit audited callers only; defaults keep the original migration contract.
     if baseline is None:
         return 'membership-release-package', PARENT_IMAGE, OLD_MANIFEST
+    if baseline == 'media-video-r1-local-photo':
+        from deploy import build_local_photo_release as photos
+        return photos.KIND, photos.PARENT_IMAGE, photos.OLD_MANIFEST
     if baseline == 'calendar-conflicts-r1-calendar-privacy':
         from deploy import build_calendar_privacy_release as privacy
         return privacy.KIND, privacy.PARENT_IMAGE, privacy.OLD_MANIFEST
@@ -102,6 +105,11 @@ def baseline_values(baseline=None):
 
 def fixed_files(baseline=None):
     baseline_values(baseline)
+    if baseline == 'media-video-r1-local-photo':
+        from deploy import build_local_photo_release as photos
+        return {**FIXED, 'Dockerfile': photos.DOCKER_AFTER,
+                'compose.yaml': photos.COMPOSE_SHA256, 'deploy/nginx.conf': photos.NGINX_AFTER,
+                **photos.DECODER_SOURCE_PINS}
     if baseline == 'calendar-conflicts-r1-calendar-privacy':
         from deploy import build_calendar_privacy_release as privacy
         return {**FIXED, 'Dockerfile': privacy.DOCKER_AFTER}
@@ -272,6 +280,9 @@ def selected_sources(tracked, policy, *, baseline=None):
     required = set(constants['FILES']) | {SELF} | {'frontend/' + n for n in
         ('package.json', 'package-lock.json', 'app.json', 'tsconfig.json', 'README.md', 'LICENSE',
          'tests/journeySegments.test.ts', 'tsconfig.tests.json', 'typecheck.mjs')}
+    if baseline == 'media-video-r1-local-photo':
+        from deploy import build_local_photo_release as photos
+        required |= photos.RUNTIME_ADDITIONS | photos.FRONTEND_TESTS | photos.BROWSER_SCRIPTS | set(photos.DECODER_SOURCE_PINS)
     if baseline == 'calendar-conflicts-r1-calendar-privacy':
         from deploy import build_calendar_privacy_release as privacy
         required |= privacy.RUNTIME_ADDITIONS | privacy.FRONTEND_TESTS | privacy.BROWSER_SCRIPTS | {
@@ -379,9 +390,12 @@ def validate_export_names(names, *, baseline=None):
          'exactly one Expo entry required')
 
 
-def runtime_files(files):
-    return {n: h for n, h in files.items() if n.startswith('static/') or n == 'requirements.txt'
-            or n.endswith('.py') and '/' not in n}
+def runtime_files(files, *, baseline=None):
+    result = {n: h for n, h in files.items() if n.startswith('static/') or n == 'requirements.txt'
+              or n.endswith('.py') and '/' not in n}
+    if baseline == 'media-video-r1-local-photo':
+        result.pop('media_video_service.py', None)  # Fixed decoder-only root module, retained in source.
+    return result
 
 
 def validate_maps(metadata, manifest, evidence, *, baseline=None):
@@ -393,7 +407,16 @@ def validate_maps(metadata, manifest, evidence, *, baseline=None):
     validate_export_names(exports, baseline=baseline)
     need(not any(n.startswith(PREFIX) for n in source), 'source/export overlap')
     need(files == {**source, **{PREFIX + n: h for n, h in exports.items()}}, 'manifest partition differs')
-    need(metadata['runtimeFiles'] == runtime_files(files), 'runtime partition differs')
+    need(metadata['runtimeFiles'] == runtime_files(files, **baseline_kwargs(baseline)), 'runtime partition differs')
+    if baseline == 'media-video-r1-local-photo':
+        from deploy import build_local_photo_release as photos
+        non_expo = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
+        preserved = {n: h for n, h in non_expo.items() if n not in photos.CHANGED_RUNTIME_FILES}
+        need(len(non_expo) == photos.NON_EXPO_RUNTIME_COUNT
+             and photos.CHANGED_RUNTIME_FILES <= non_expo.keys()
+             and len(preserved) == photos.PRESERVED_RUNTIME_COUNT
+             and digest(encoded(preserved)) == photos.PRESERVED_RUNTIME_SHA256,
+             'local-photo runtime differs from installed 105-file preservation baseline')
     if baseline == 'calendar-conflicts-r1-calendar-privacy':
         from deploy import build_calendar_privacy_release as privacy
         non_expo = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
@@ -499,7 +522,7 @@ def inspect_inputs(repo, commit, export_dir, build_evidence, evidence_sha256, *,
     need(len(blobs) <= MAX_FILES and sum(map(len, blobs.values())) <= MAX_TOTAL, 'package limits exceeded')
     files = {n: digest(v) for n, v in blobs.items()}
     metadata = dict(schemaVersion=1, kind=kind, sourceHead=commit, tree=tree,
-        sourceFiles=source_hashes, exportFiles=export_hashes, runtimeFiles=runtime_files(files), fixedFiles=fixed_files(baseline),
+        sourceFiles=source_hashes, exportFiles=export_hashes, runtimeFiles=runtime_files(files, **baseline_kwargs(baseline)), fixedFiles=fixed_files(baseline),
         inputFiles=evidence['inputFiles'], buildSourceHead=build_head, buildSourceTree=evidence['tree'],
         buildEvidenceSha256=evidence_sha256, packagerSha256=digest(blobs[SELF]), parentImage=parent,
         oldManifestSha256=old_manifest, productionOperations=False)

@@ -1,0 +1,52 @@
+# 图片解码内存修订
+
+本分支仅修订 `media_images.py` 的缓冲生命周期。仍接受 JPEG、PNG、WebP，输入上限 8 MiB、20 MP，完整解码后按方向处理，最长边 1600，透明像素合成白底，输出无元数据的 JPEG（不超过 2 MiB）。不改权限、上传协议、并发许可、容器预算或依赖版本。
+
+## 原因与实现
+
+实际 Linux 上传验证中，20 MP WebP 与已持有的 64 MiB 视频响应重叠时，384 MiB 应用容器发生 OOM。仅释放 `verify()` 对象、或完整 `load()` 后再复制并关闭插件，均未充分降低本机峰值；这些试验原件保留，不能作为成功修复证据。
+
+Pillow 12.3.0 的图片上下文退出只关闭文件指针，不释放仍被局部变量引用的插件。WebP 的普通 `load()` 同时保留 libwebp 解码器、完整帧字节和新建的 Pillow 像素副本。修订将验证放入独立作用域；WebP 通过同一个真实 `WebPAnimDecoder.get_next()` 解码完整帧，核对单帧、RGBA/RGBX、尺寸和精确的 `宽 × 高 × 4` 字节数，再释放插件和解码器，才以 `Image.frombuffer` 只读映射完整帧。RGBX 表示不透明填充，不能当成透明通道。
+
+这是对已固定依赖的窄适配，使用 Pillow 私有插件接口。Python 包和二进制核心必须都为 **12.3.0**；版本、插件类型、模式或只读映射合同失配会安全拒绝。升级 Pillow 时必须先重新审查适配和实际资源测试，不可只改版本常量。不存在缩小解码、跳过完整像素、接受动图或截断输入的路径。JPEG/PNG 仍走公共 `load()`；所有后处理图片显式关闭。
+
+源码依据：[Pillow WebP 插件](https://github.com/python-pillow/Pillow/blob/12.3.0/src/PIL/WebPImagePlugin.py)、[原生 WebP 解码器](https://github.com/python-pillow/Pillow/blob/12.3.0/src/_webp.c)、[Image 的关闭与映射实现](https://github.com/python-pillow/Pillow/blob/12.3.0/src/PIL/Image.py)。
+
+## 已验证与待验证
+
+- Windows 定向测试：`test_media_image_memory.py`、`test_media_images.py`、`test_media_jpeg_compat.py` 共 **159 项通过**，含真实完整帧与公开解码器逐像素比较、RGBA/RGBX、8 种 WebP 方向、20 MP、透明白底、压缩数据截断、动画拒绝、合同失配和重复调用的插件释放。
+- 使用固定基线与本次实现分别真实处理 32 种合成 WebP（两种模式、无损/有损、8 种方向、需要缩放）：输出 JPEG 全部逐字节相同。
+- 同一 Windows 子进程一直持有 64 MiB 合成缓冲，依次处理原 Linux 合成的三张 20 MP JPEG/PNG/WebP，重复三轮。最终进程峰值 **334,905,344 B**，原实现单轮峰值 **451,440,640 B**；九次输出与基线对应图片一致，调用后工作集约 95 MB。测量使用操作系统进程计数，不是 Python 对象估算。
+
+Windows 测量不代表 Linux cgroup、Flask/SQLite/加密开销或生产容量已通过。原 Linux 失败与已通过的独立 Nginx 流程分开保留，不重写旧结论。
+
+## R2 资源失败后的 Linux 单帧适配
+
+`8ce1dbe` 的实际 Linux R2 中，三张 20 MP 图片的上传、确认和预览均成功，持有 64 MiB 视频响应的许可检查也全部成功。但 WebP PUT 期间应用 cgroup 仍触及 **402,653,184 B**，`memory.max` 事件累计 **133**（OOM／OOM kill 都为 0），故资源准入依然 **FAIL**。PNG 当轮峰值约 371.39 MiB。HTTP 成功不能代替内存准入通过。
+
+固定 libwebp 1.6.0 的动画解码器为单帧也保留当前及上一帧画布，Pillow `get_next()` 还要复制完整帧字节；这能解释为何只改变后处理对象生命周期仍不足，但 cgroup 采样本身只能定位到 WebP PUT，不能证明某条 C 调用的瞬时分配。
+
+本次增量仅在 Linux 使用同一个已安装 Pillow 扩展所链接的 **libwebp 1.6.0** 公共 `WebPGetInfo`／`WebPDecodeRGBAInto`。应用容器实际只读符号检查已确认这些符号存在；代码只加载 `WebPImagePlugin._webp.__file__`，不搜索其他库或读取自定义库路径。显式设置所有 `argtypes`／`restype`，拒绝 Python 包／二进制核心非 12.3.0、native version 非 `0x010600`、符号缺失或尺寸／返回指针失配，不回退到高内存路径掩盖失败。
+
+原严格容器、完整单帧、20 MP 和格式验证不变。读取元数据的插件在独立作用域内销毁后，才分配一块 `宽 × 高 × 4` 的有界 `bytearray`；完整解码成功且返回原目标地址后才映射像素。透明图映射 RGBA，不透明图保留 RGBX 的原缩放语义；方向、白底和 JPEG 编码流程不变。Windows 保留已经验证的 `get_next()` 路径；不在 Windows 下载或引入新原生依赖。
+
+公共 ABI 依据：[libwebp 1.6.0 decode.h](https://github.com/webmproject/libwebp/blob/v1.6.0/src/webp/decode.h)；画布分配依据：[同版本 anim_decode.c](https://github.com/webmproject/libwebp/blob/v1.6.0/src/demux/anim_decode.c)。未使用私有 C 结构布局。
+
+新增的 12 项本机检查覆盖四种真实 WebP 像素／输出对照、元数据插件释放时序，以及库／版本／符号／尺寸／解码失败／返回地址边界。其 native 调用边界为合成替身，内部使用真实 Pillow 完整解码提供像素，**不证明 Linux C ABI 或资源通过**。现有像素、方向、损坏容器、动画、20 MP 等用例在 Linux 执行时会自然进入真实 native 路径；三个旧 `get_next()` 失配用例明确只验非 Linux 分支。仍需在审查后的固定提交上实际执行 Linux 解码对照和原 **384 MiB / 64 MiB 响应重叠** 验证。本作者未执行 SSH、Docker、生产修改或真实媒体读取。
+
+## 独立 Linux 解码合同检查器
+
+`tests/check_media_image_native_linux.py` 只使用标准库及镜像已有的 Pillow，不依赖 Git／pytest，不联网、不读应用配置。它要求实际 Linux，拒绝覆盖原结果；两个只读模块必须分别匹配原公开 Pillow 路径 `c2cc2b8` 和 native 实现 `1531aed` 的固定 SHA。不修改运行模块，也不替换平台或 C 函数。
+
+```sh
+python -B /proof/check_media_image_native_linux.py \
+  --runtime /proof/native_media_images.py \
+  --runtime-sha256 3a4dc65a11dd996f128c9a8559806a6c8067fb573cf790dcf9c6bacd0c21cbf1 \
+  --baseline /proof/baseline_media_images.py \
+  --baseline-sha256 89e1153805604e1b2dba0ae41778570b4247bffa492dd25327c768e24b3049ef \
+  --output /results/native-contract.json
+```
+
+检查器自行生成 1901×971 的小图：RGB／RGBA × 有损／无损 × 8 种 EXIF 方向，共 **32 项**，逐字节比较旧／新最终 JPEG 和尺寸，并真实读回无元数据 JPEG。另 **7 项**检查容器截断、尾随数据、动图、合法封装但压缩像素截断、透明白底，以及 RGB／RGBA 的完整原始像素对照。记录实际扩展路径／SHA、版本、PID、输入前后哈希、每项结果；任一差异退出非零并保留失败 JSON。它没有 20 MP 旧实现压力用例；资源结论由原 384 MiB 重叠 profile 单独产生。
+
+本次作者仅离线编译和实际 `--help` 校验；实际 Linux 32＋7 项尚待集成人在审查后的无网络隔离容器执行，不能由这份脚本存在推断通过。

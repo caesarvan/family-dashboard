@@ -273,6 +273,14 @@ def create_app(config=None):
         # own file allowlist still applies; every data API takes the normal guard.
         if request.method in {'GET', 'HEAD'} and request.endpoint in {'index', 'expo_frontend', 'asset'}:
             return None
+        local_photo_body = (request.endpoint == 'local_photo_upload' and request.method == 'PUT'
+                            and re.fullmatch(r'/api/media/local-imports/[a-f0-9]{24}/files/[a-f0-9]{24}', request.path) is not None)
+        if local_photo_body:
+            request.max_content_length = 8 * 1024 * 1024
+            if request.content_length is not None and request.content_length > request.max_content_length:
+                raise Problem('照片文件不能超过 8 MiB', 413)
+            if request.headers.get('Content-Encoding') not in (None, 'identity'):
+                raise Problem('不支持压缩上传请求', 415)
         if request.path == '/api/photos' and request.method == 'POST':
             request.max_content_length = 8_000_000
         if request.path == '/api/journey-documents' and request.method == 'POST':
@@ -291,7 +299,7 @@ def create_app(config=None):
                 origin = request.headers.get("Origin")
                 if origin and origin.rstrip("/") != request.host_url.rstrip("/"):
                     raise Problem("请求来源不匹配", 403)
-                if not request.is_json:
+                if not request.is_json and not local_photo_body:
                     raise Problem("仅接受 JSON 请求", 415)
                 if request.path not in {"/api/login", "/api/pair/start", "/api/pair/poll", "/api/spaces/redeem"}:
                     if request.path == '/api/media-tv/playback/progress' and request.method == 'POST':

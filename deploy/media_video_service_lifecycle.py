@@ -86,11 +86,20 @@ def decoder_contract(value):
 
 
 class Lifecycle:
-    def __init__(self, call, app_image, decoder_image, *, root=ROOT):
+    def __init__(self, call, app_image, decoder_image, *, root=ROOT, mode='video-migration'):
         self.call = call
         self.root = Path(root).absolute()
         self.app_image, self.decoder_image = immutable(app_image), immutable(decoder_image)
         need(len({self.app_image, self.decoder_image, PARENT_IMAGE, WEB_IMAGE}) == 4, 'distinct_candidate_images_required')
+        need(mode in ('video-migration', 'local-photo-source-update'), 'unsupported_lifecycle_mode')
+        self.mode = mode
+        self.parent_image, self.before_compose, self.parent_services = PARENT_IMAGE, BEFORE_COMPOSE, OLD_SERVICES
+        if mode == 'local-photo-source-update':
+            from deploy import build_local_photo_release as photos
+            need(self.decoder_image == photos.DECODER_IMAGE and self.app_image != photos.PARENT_IMAGE,
+                 'local_photo_images_changed')
+            self.parent_image, self.before_compose = photos.PARENT_IMAGE, photos.COMPOSE_SHA256
+            self.parent_services = NEW_SERVICES
         self.parent_environments = None
         self.phase, self.recorded = 'unbound', {}
 
@@ -105,15 +114,15 @@ class Lifecycle:
     def compose(self, phase, *args, timeout=180):
         need(phase in ('parent', 'candidate'), 'unknown_service_phase')
         actual = sha(regular(self.root / 'compose.yaml').read_bytes())
-        need(actual == (BEFORE_COMPOSE if phase == 'parent' else AFTER_COMPOSE), 'compose_source_changed')
+        need(actual == (self.before_compose if phase == 'parent' else AFTER_COMPOSE), 'compose_source_changed')
         return self.docker('compose', '--project-name', PROJECT, '--project-directory', str(self.root),
                            '--file', str(self.root / 'compose.yaml'), *args, timeout=timeout)
 
     def check(self, name, value, phase, *, running=True):
-        need(name in (OLD_SERVICES if phase == 'parent' else NEW_SERVICES), 'unknown_service')
+        need(name in (self.parent_services if phase == 'parent' else NEW_SERVICES), 'unknown_service')
         labels(value, name)
-        expected_image = WEB_IMAGE if name == 'web' else (PARENT_IMAGE if phase == 'parent' else
-                         self.decoder_image if name == 'decoder' else self.app_image)
+        expected_image = WEB_IMAGE if name == 'web' else (self.decoder_image if name == 'decoder' else
+                         self.parent_image if phase == 'parent' else self.app_image)
         need(value.get('Image') == expected_image, 'service_image_changed')
         state = value['State']
         need(state.get('Running') is running and not state.get('OOMKilled') and
@@ -128,12 +137,14 @@ class Lifecycle:
                  'application_identity_changed')
             mounts = mount_map(value)
             volume(mounts, '/data', VOLUME)
-            expected = {'/data', '/tmp'} | ({'/decoder-private'} if name == 'media' and phase == 'candidate' else set())
+            expected = {'/data', '/tmp'} | ({'/decoder-private'} if name == 'media' and (phase == 'candidate' or self.mode == 'local-photo-source-update') else set())
             need(set(mounts) <= expected and ('/tmp' not in mounts or mounts['/tmp'].get('Type') == 'tmpfs'),
                  'application_unexpected_mount')
-            if name == 'media' and phase == 'candidate':
+            if name == 'media' and (phase == 'candidate' or self.mode == 'local-photo-source-update'):
                 volume(mounts, '/decoder-private', SOCKET_VOLUME)
-            environment(value['Config'].get('Env'))
+            env = environment(value['Config'].get('Env'))
+            if self.mode == 'local-photo-source-update' and name == 'media':
+                need(env.get('MEDIA_VIDEO_SOCKET') == SOCKET, 'parent_socket_environment_changed')
         elif name == 'decoder':
             decoder_contract(value)
             image_env = self.inspect(self.decoder_image)['Config'].get('Env')
@@ -149,7 +160,7 @@ class Lifecycle:
 
     def capture(self, phase):
         need(phase in ('parent', 'candidate'), 'unknown_service_phase')
-        names = OLD_SERVICES if phase == 'parent' else NEW_SERVICES
+        names = self.parent_services if phase == 'parent' else NEW_SERVICES
         values = {name: self.inspect(PROJECT + '-' + name + '-1') for name in names}
         listed = self.docker('ps', '--all', '--quiet', '--no-trunc', '--filter', 'label=com.docker.compose.project=' + PROJECT)
         ids = listed.decode().splitlines()
@@ -168,7 +179,7 @@ class Lifecycle:
         """Drain workers before decoder; prove no data/socket users remain."""
         need(phase in ('parent', 'candidate'), 'unknown_service_phase')
         need(self.phase == ('parent-bound' if phase == 'parent' else 'live'), 'invalid_drain_phase')
-        names = OLD_SERVICES if phase == 'parent' else NEW_SERVICES
+        names = self.parent_services if phase == 'parent' else NEW_SERVICES
         need(set(captured) == set(names), 'incomplete_service_capture')
         for name in names:
             value = self.inspect(captured[name]['id'])
@@ -178,7 +189,7 @@ class Lifecycle:
                 need(sha(runtime_environment(value['Config']['Env'])) == captured[name]['environmentSha256'],
                      'environment_changed_before_stop')
         sequence = [('web', 30), ('sync', 60), ('media', 1200)]
-        if phase == 'candidate':
+        if phase == 'candidate' or self.mode == 'local-photo-source-update':
             sequence.append(('decoder', 30))
         sequence.append(('app', 60))
         stopped = []
@@ -235,14 +246,23 @@ class Lifecycle:
         need(not self.docker('ps', '--quiet', '--filter', 'volume=' + VOLUME).strip(), 'data_writer_still_running')
         self.phase = 'app-stopped'
 
-    def start_after_preservation(self, migrated, preserved):
+    def start_after_preservation(self, migrated, preserved, *, plan_sha256=None, source_identity_sha256=None):
         """Use the caller's hash-verified migration and stopped-check receipts."""
         need(self.parent_environments is not None, 'parent_environments_unbound')
         need(self.phase == 'app-stopped', 'invalid_preservation_phase')
         for value in (migrated, preserved):
             need(value.get('verified') is True and type(value.get('households')) is int and value['households'] >= 1
                  and value.get('databases') == value['households'] + 1, 'incomplete_preservation_receipt')
-        for key in ('planSha256', 'logicalSha256', 'sourceIdentitySha256'):
+        if self.mode == 'local-photo-source-update':
+            # begin() is an actual backup receipt, never relabelled as migration.
+            for key, expected in (('planSha256', plan_sha256), ('sourceIdentitySha256', source_identity_sha256)):
+                need(isinstance(expected, str) and re.fullmatch('[0-9a-f]{64}', expected)
+                     and preserved.get(key) == expected, 'preservation_identity_changed')
+            keys = ('logicalSha256', 'markerSha256')
+        else:
+            need(plan_sha256 is None and source_identity_sha256 is None, 'unexpected_preservation_binding')
+            keys = ('planSha256', 'logicalSha256', 'sourceIdentitySha256')
+        for key in keys:
             need(re.fullmatch('[0-9a-f]{64}', migrated.get(key, '')) and migrated[key] == preserved.get(key),
                  'preservation_identity_changed')
         need(migrated['households'] == preserved['households'], 'preservation_group_changed')
