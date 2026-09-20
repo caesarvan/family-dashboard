@@ -123,7 +123,7 @@ function harness(options = {}) {
     }
     else if (path.includes('/operations/')) value = { version: 1, requestId: path.split('/').at(-1), found: !!f.receipt && f.found, receipt: f.found ? f.receipt : null };
     else if (u.pathname.endsWith('/payments')) value = { version: 1, journey: j(), payments: [f.payment], focus: u.searchParams.has('allocationId') ? f.payment : null, pageInfo: { page: Number(u.searchParams.get('page')), pageSize: 40, hasMore: false }, readAt: '2026-09-20T00:00:00Z' };
-    else if (u.pathname === '/finance-hub/journey-allocations') { if (f.listFail) throw new api.ApiError('read failed', 503); value = page(copy(f.links.filter(r => u.searchParams.get('status') === 'all' || r.status === 'active')), { journeyId: u.searchParams.get('journeyId'), page: Number(u.searchParams.get('page')) }); }
+    else if (u.pathname === '/finance-hub/journey-allocations') { if (f.listStatus) throw new api.ApiError('旅程不存在', f.listStatus, 'journey_finance_not_found'); if (f.listFail) throw new api.ApiError('read failed', 503); value = page(copy(f.links.filter(r => u.searchParams.get('status') === 'all' || r.status === 'active')), { journeyId: u.searchParams.get('journeyId'), page: Number(u.searchParams.get('page')) }); }
     else if (u.pathname === '/finance-hub/reconciliation') value = { transaction: { ...f.payment, category: '旅行', source: 'generic' } };
     else throw new Error('Unexpected synthetic path ' + path);
     if (f.gate?.test(path)) { f.gate.used = true; await f.gate.promise; }
@@ -228,4 +228,16 @@ test('global orphan revoke confirms original allocation revision and does not re
 test('preflight me404 hides a draft without posting, then same identity can recover the amount', async t => {
   const h = harness(); t.after(h.close); await h.draft(); h.f.meError = 404; await h.click('预览归集'); assert.equal(h.f.writes.length, 0); assert(!h.text().includes('合成原付款')); assert.equal(h.controls('归集金额').length, 0);
   h.f.meError = 0; await h.click('刷新旅行费用'); assert.equal(h.controls('归集金额')[0].props.value, '700.00'); await h.click('预览归集'); assert.equal(h.f.writes.length, 1);
+});
+
+
+test('deleted journey after offline read hides old content but allows explicit local draft discard and return', async t => {
+  const h = harness(); t.after(h.close); await h.draft(); await h.offline(); h.f.listStatus = 404; await h.online();
+  assert(h.nodes().some(n => n.props.testID === 'journey-finance-hidden')); assert(!h.text().includes('合成原付款')); assert(!h.text().includes('合成旅行')); assert.equal(h.controls('归集金额').length, 0); assert.equal(h.f.pendingNavigation, true);
+  await h.click('返回'); assert(h.text().includes('尚未提交的金额草稿将丢弃')); assert(!h.text().includes('合成原付款')); await h.click('放弃草稿并返回'); assert.equal(h.f.back, true); assert.equal(h.f.pendingNavigation, false); assert.equal(h.f.writes.length, 0);
+});
+
+test('unreadable payment is not described as deleted; source-missing alone uses deleted copy', async t => {
+  const h = harness({ links: [link({ payment: null, state: 'needs_review', reasonCodes: ['source_ineligible'] })] }); t.after(h.close); await h.flush(); assert(h.text().includes('原付款当前不可用')); assert(!h.text().includes('原付款已删除')); assert(!h.controls('解除归集')[0].props.disabled);
+  h.f.links = [link({ payment: null, state: 'needs_review', reasonCodes: ['source_missing'] })]; await h.click('刷新旅行费用'); assert(h.text().includes('原付款已删除'));
 });
