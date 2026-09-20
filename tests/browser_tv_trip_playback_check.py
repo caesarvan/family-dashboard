@@ -236,8 +236,9 @@ class Run(video_fixture.Run):
         self.open_panel(page, journey)
         page.get_by_test_id('trip-tv-entry').click()
         expect(page.get_by_test_id('trip-tv-panel')).to_be_visible()
-        page.get_by_test_id('trip-tv-device-' + device['id']).get_by_role('radio').click()
-        page.get_by_test_id('trip-tv-route-' + (route['id'] if route else 'none')).get_by_role('radio').click()
+        page.get_by_test_id('trip-tv-device-' + device['id']).get_by_role('radio', name=device['name'], exact=True).click()
+        route_label = f"{route['title']} · {len(route['stops'])} 站" if route else '不显示路线'
+        page.get_by_test_id('trip-tv-route-' + (route['id'] if route else 'none')).get_by_role('radio', name=route_label, exact=True).click()
         before, operations, bookkeeping = self.facts(), self.operations(), self.bookkeeping()
         expect(page.get_by_test_id('trip-tv-preview')).to_be_enabled(timeout=TIMEOUT)
         result, body = self.completed_json(page, 'preview', 'POST', CONTROL + device['id'] + '/journey-preview',
@@ -397,7 +398,7 @@ class Run(video_fixture.Run):
             # Reload recovery must observe the same scope; never generate another start.
             phone.reload(); self.open_panel(phone, f['journey']); phone.get_by_test_id('trip-tv-entry').click()
             expect(phone.get_by_test_id('trip-tv-panel')).to_be_visible()
-            phone.get_by_test_id('trip-tv-device-' + uid).get_by_role('radio').click()
+            phone.get_by_test_id('trip-tv-device-' + uid).get_by_role('radio', name=f['first']['name'], exact=True).click()
             expect(phone.get_by_test_id('trip-tv-current')).to_be_enabled(timeout=TIMEOUT)
             self.completed_json(phone, 'reload-current-scope', 'GET', CONTROL + uid,
                 lambda: phone.get_by_test_id('trip-tv-current').click())
@@ -561,7 +562,8 @@ class Run(video_fixture.Run):
     def late_member_preview(self, page, fixture, request_id):
         """Release an actual old-owner projection after real login replaces its cookie."""
         uid = fixture['first']['id']; path = CONTROL + uid + '/journey-preview'
-        page.get_by_test_id('trip-tv-route-' + fixture['route']['id']).get_by_role('radio').click()
+        route_label = f"{fixture['route']['title']} · {len(fixture['route']['stops'])} 站"
+        page.get_by_test_id('trip-tv-route-' + fixture['route']['id']).get_by_role('radio', name=route_label, exact=True).click()
         expect(page.get_by_test_id('trip-tv-preview-content')).to_have_count(0)
         expect(page.get_by_test_id('trip-tv-preview')).to_be_enabled(timeout=TIMEOUT)
         page.evaluate("""() => {window.__tripLeaks=[]; window.__tripWatch=new MutationObserver(() => {
