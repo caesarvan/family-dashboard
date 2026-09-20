@@ -5,13 +5,18 @@ These checks do not launch a browser or claim the three user flows passed.
 from contextlib import ExitStack, closing
 from datetime import datetime, timezone
 import hashlib
+import json
+import os
+import re
 import sqlite3
 import subprocess
 from pathlib import Path
 import tempfile
 from unittest.mock import patch
+from types import SimpleNamespace
 
 from PIL import Image
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 import pytest
 from scripts import check_expo_local_photo_browser as wrapper
 from browser_expo_local_photo_check import Run, make_picture, assert_revoked_upload
@@ -204,3 +209,119 @@ def test_real_login_switch_revokes_import_context_but_retains_unconfirmed_origin
               'consentVersion': 'media-v1', 'persistSelected': True})
     assert finish.status_code == confirm.status_code == 410
     assert run.database_proof() == before
+
+
+class CompletionEvents:
+    """Offline event-order contract double; not a browser or real timing test."""
+    def __init__(self):
+        self.events = {}
+        self.registrations = []
+
+    def arm(self, event, predicate, timeout):
+        assert timeout == 15000  # A zero/omitted timeout regresses to an unbounded wait.
+        owner = self
+        class Pending:
+            result = None
+            def __enter__(self):
+                owner.registrations.append(event); owner.events[event] = (predicate, self)
+                return self
+            def __exit__(self, kind, value, tb):
+                if kind is None: self.value
+                return False
+            @property
+            def value(self):
+                if self.result is None: raise PlaywrightTimeoutError('Synthetic missing ' + event)
+                return self.result
+        return Pending()
+
+    def expect_request_finished(self, *, predicate, timeout):
+        return self.arm('requestfinished', predicate, timeout)
+
+    def expect_response(self, predicate, *, timeout):
+        return self.arm('response', predicate, timeout)
+
+    def emit(self, event, value):
+        predicate, pending = self.events[event]
+        if predicate(value): pending.result = value
+
+
+def completion_fixture(tmp_path):
+    run = Run.__new__(Run)
+    run.out = tmp_path / 'case'; run.out.mkdir()
+    run.report = {'httpEvidence': []}
+    page = CompletionEvents()
+    request = SimpleNamespace(method='POST', url='https://127.0.0.1/api/media/local-imports/' + 'a'*24 + '/finish',
+                              post_data_json={'requestId': 'original-request'}, failure=None)
+    response = SimpleNamespace(status=200, url=request.url, request=request)
+    response.json_calls = 0
+    def actual_json():
+        response.json_calls += 1
+        return {'original': 'response-data'}
+    response.json = actual_json
+    def trigger():
+        assert page.registrations == ['requestfinished', 'response']
+        page.emit('response', response); page.emit('requestfinished', request)
+    return run, page, request, response, trigger
+
+
+def test_bounded_completion_catches_fast_original_request_and_flushes_before_json(tmp_path):
+    run, page, request, response, trigger = completion_fixture(tmp_path)
+    original_json = response.json
+    def checked_json():
+        assert (run.out/'operation-headers.json').exists()
+        assert (run.out/'operation-transport-complete.json').exists()
+        return original_json()
+    response.json = checked_json
+    with patch.object(os, 'fsync', wraps=os.fsync) as sync:
+        value, sent = run.completed_json(page, 'operation', 'POST', re.compile(re.escape(request.url)), trigger)
+    assert value == {'original': 'response-data'} and sent == {'requestId': 'original-request'}
+    assert response.json_calls == 1 and sync.call_count == 4
+    assert len(run.report['httpEvidence']) == 4
+    assert not (run.out/'operation-failed.json').exists()
+
+
+@pytest.mark.parametrize('missing', ['response', 'requestfinished'])
+def test_bounded_completion_missing_event_fails_with_durable_progress(tmp_path, missing):
+    run, page, request, response, _ = completion_fixture(tmp_path)
+    def trigger():
+        if missing != 'response': page.emit('response', response)
+        if missing != 'requestfinished': page.emit('requestfinished', request)
+    with pytest.raises(PlaywrightTimeoutError):
+        run.completed_json(page, 'operation', 'POST', request.url, trigger)
+    failure = json.loads((run.out/'operation-failed.json').read_text())
+    assert failure['phase'] == ('before-dispatch' if missing == 'response' else 'headers')
+    assert failure['errorType'] == 'TimeoutError' and failure['timeoutMs'] == 15000
+    assert response.json_calls == 0 and not (run.out/'operation-json.json').exists()
+
+
+@pytest.mark.parametrize('wrong', ['method', 'url', 'same_url_other_request'])
+def test_bounded_completion_other_request_cannot_finish_original(tmp_path, wrong):
+    run, page, request, response, _ = completion_fixture(tmp_path)
+    other = SimpleNamespace(**vars(request))
+    if wrong == 'method': other.method = 'GET'
+    if wrong == 'url': other.url += '?different=1'
+    def trigger():
+        page.emit('response', response); page.emit('requestfinished', other)
+    expected = AssertionError if wrong == 'same_url_other_request' else PlaywrightTimeoutError
+    with pytest.raises(expected): run.completed_json(page, 'operation', 'POST', request.url, trigger)
+    assert response.json_calls == 0
+    assert not (run.out/'operation-transport-complete.json').exists()
+    assert (run.out/'operation-headers.json').exists() and (run.out/'operation-failed.json').exists()
+
+
+def test_bounded_completion_rejected_status_preserves_headers_without_success(tmp_path):
+    run, page, request, response, trigger = completion_fixture(tmp_path)
+    response.status = 503
+    with pytest.raises(AssertionError): run.completed_json(page, 'operation', 'POST', request.url, trigger)
+    assert json.loads((run.out/'operation-headers.json').read_text())['status'] == 503
+    assert response.json_calls == 0 and not (run.out/'operation-json.json').exists()
+
+
+def test_bounded_completion_bad_json_preserves_completed_transport_as_failure(tmp_path):
+    run, page, request, response, trigger = completion_fixture(tmp_path)
+    def invalid(): raise ValueError('Synthetic invalid response JSON')
+    response.json = invalid
+    with pytest.raises(ValueError): run.completed_json(page, 'operation', 'POST', request.url, trigger)
+    assert (run.out/'operation-transport-complete.json').exists()
+    assert json.loads((run.out/'operation-failed.json').read_text())['phase'] == 'transport-complete'
+    assert not (run.out/'operation-json.json').exists()

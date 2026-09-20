@@ -7,6 +7,7 @@ from io import BytesIO
 import hashlib
 import importlib
 import json
+import os
 from pathlib import Path
 import re
 import sqlite3
@@ -25,6 +26,7 @@ HARNESS = 'tests/browser_expo_local_photo_check.py'
 URL = '/api/media/local-imports'
 CASES = ('mobile_private_save', 'lost_responses_partial_skip', 'identity_and_acl')
 CASE_SCREENSHOTS = dict(zip(CASES, (3, 3, 3)))
+HTTP_COMPLETION_TIMEOUT_MS = 15000
 TEMPORARY = '允许临时处理本次设备照片，供我预览确认；未保存内容最迟 24 小时后清理。'
 PERSIST = '同意将勾选照片或视频的展示副本持久保存在私密相册中。之后另行设置家庭共享和电视展示。'
 
@@ -90,7 +92,44 @@ class Run(BaseRun):
         target = self.out / (name + '.json')
         with target.open('x', encoding='utf-8', newline='\n') as stream:
             json.dump(value, stream, ensure_ascii=False, indent=2); stream.write('\n')
+            stream.flush(); os.fsync(stream.fileno())
         self.report[group].append({'path': target.relative_to(self.out.parent).as_posix(), 'sha256': sha(target)})
+
+    def completed_json(self, page, name, method, url, trigger, expected_status=200):
+        """Observe the same real response AND bounded request completion before JSON.
+
+        Both listeners precede the action, including a response that completes
+        during click(). Response.finished() has no timeout and is not used.
+        """
+        def matches(request):
+            return request.method == method and (url.fullmatch(request.url) is not None
+                if isinstance(url, re.Pattern) else request.url == url)
+        phase = 'armed'
+        def progress(next_phase, **details):
+            nonlocal phase
+            phase = next_phase
+            self.record(name + '-' + phase, {'phase': phase, 'timeoutMs': HTTP_COMPLETION_TIMEOUT_MS, **details})
+            print('PHASE ' + name + ' ' + phase, flush=True)
+        try:
+            with page.expect_request_finished(predicate=matches, timeout=HTTP_COMPLETION_TIMEOUT_MS) as completed:
+                with page.expect_response(lambda value: matches(value.request), timeout=HTTP_COMPLETION_TIMEOUT_MS) as pending:
+                    progress('before-dispatch', method=method, url=url.pattern if isinstance(url, re.Pattern) else url)
+                    trigger()
+                response = pending.value
+                progress('headers', status=response.status, method=response.request.method,
+                         url=response.url, request=response.request.post_data_json)
+                assert response.status == expected_status
+            request = completed.value
+            assert request is response.request and request.failure is None, 'Response and completion must be the same successful request'
+            progress('transport-complete', method=request.method, url=request.url)
+            value = response.json()  # Real body, only after requestfinished.
+            progress('json', request=request.post_data_json, response=value)
+            return value, request.post_data_json
+        except Exception as error:
+            self.record(name + '-failed', {'phase': phase, 'errorType': type(error).__name__,
+                                          'timeoutMs': HTTP_COMPLETION_TIMEOUT_MS})
+            print('FAIL-WAIT ' + name + ' ' + phase + ' ' + type(error).__name__, flush=True)
+            raise
 
     def files(self, count=1, prefix='合成设备照片'):
         result, proof = [], []
@@ -139,25 +178,23 @@ class Run(BaseRun):
         expect(button(card, '上传并生成预览')).to_be_enabled()
 
     def upload(self, page):
-        with page.expect_response(lambda r: r.url.startswith(self.base + URL + '/') and r.url.endswith('/finish') and r.request.method == 'POST') as response:
-            button(self.import_card(page), '上传并生成预览').click()
-        assert response.value.status == 200 and response.value.finished() is None
-        detail = response.value.json()
+        detail, _ = self.completed_json(page, 'upload', 'POST',
+            re.compile(re.escape(self.base + URL) + r'/[a-f0-9]{24}/finish'),
+            lambda: button(self.import_card(page), '上传并生成预览').click())
         assert detail['import']['source'] == 'local-upload' and detail['import']['canConfirm']
-        expect(button(self.import_card(page), '保存选中的 ' + str(len(detail['items'])) + ' 项')).to_be_visible(timeout=15000)
         self.record('upload-finish', detail)
+        expect(button(self.import_card(page), '保存选中的 ' + str(len(detail['items'])) + ' 项')).to_be_visible(timeout=15000)
         return detail
 
     def save(self, page, detail):
         card, uid = self.import_card(page), detail['import']['id']
         card.get_by_role('checkbox', name=PERSIST, exact=True).check()
-        with page.expect_response(lambda r: r.url == self.base + '/api/media/imports/' + uid + '/confirm' and r.request.method == 'POST') as response:
-            button(card, '保存选中的 ' + str(len(detail['items'])) + ' 项').click()
-        assert response.value.status == 200 and response.value.finished() is None
-        receipt = response.value.json(); expected = {row['id'] for row in detail['items']}
+        receipt, request = self.completed_json(page, 'save', 'POST', self.base + '/api/media/imports/' + uid + '/confirm',
+            lambda: button(card, '保存选中的 ' + str(len(detail['items'])) + ' 项').click())
+        self.record('original-confirm', {'request': request, 'response': receipt})
+        expected = {row['id'] for row in detail['items']}
         assert set(receipt['itemIds']) == expected
         expect(page.get_by_label('查看照片：未添加说明', exact=True)).to_have_count(len(expected), timeout=15000)
-        self.record('original-confirm', {'request': response.value.request.post_data_json, 'response': receipt})
         return sorted(expected)
 
     def preview_proof(self, ctx, uid):
@@ -226,12 +263,11 @@ class Run(BaseRun):
             expect(button(self.import_card(page), '核对本次上传')).to_be_enabled(timeout=15000)
             self.settle(page, lambda: len(lost_create) == 1)
             uid = lost_create[0]['response']['import']['id']; first_slot = lost_create[0]['response']['upload']['files'][0]['slotId']
-            with page.expect_response(lambda r: r.url == self.base + URL and r.request.method == 'POST') as replay:
-                button(self.import_card(page), '核对本次上传').click()
-            assert replay.value.status == 200 and replay.value.finished() is None
-            assert replay.value.json()['replayed'] and replay.value.json()['import']['id'] == uid
-            assert replay.value.request.post_data_json == lost_create[0]['request']
-            self.record('lost-create-original-replay', {'lost': lost_create, 'replay': replay.value.json()})
+            replay, request = self.completed_json(page, 'create-replay', 'POST', self.base + URL,
+                lambda: button(self.import_card(page), '核对本次上传').click())
+            assert replay['replayed'] and replay['import']['id'] == uid
+            assert request == lost_create[0]['request']
+            self.record('lost-create-original-replay', {'lost': lost_create, 'replay': replay})
             put_path = URL + '/' + uid + '/files/' + first_slot
             lost_put = []; self.drop_after_commit(page, self.base + put_path, lost_put, 200)
             expect(button(self.import_card(page), '继续上传剩余照片')).to_be_enabled()
