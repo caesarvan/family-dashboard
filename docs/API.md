@@ -1,8 +1,22 @@
 # 家庭看板接口文档
 
-## 本人旅行费用归集（实现候选，未发布）
+## 电视单趟旅行回顾（候选，未上线）
 
-只归集本人已有人民币付款净额，不修改原交易、采购或共享旅行金额；五接口与恢复/导出合同见 [JOURNEY-FINANCE](JOURNEY-FINANCE.md)。前缀 `/api/finance-hub/journey-allocations`：GET 根（本人历史/旅行分页）、GET `/payments`（原付款）、POST `/preview`、POST `/confirm`（原requestId+token）、GET `/operations/<requestId>`（200/found=false仍表示未知）。读取需当前成员，电视禁止；写入需Origin/CSRF/事务身份复核。两新表73→75尚待独立迁移和发布，不代表线上schema已变化。
+新增三条成员接口，精确字段见 [播放合同](TV-TRIP-PLAYBACK.md)，操作步骤见 [使用说明](TV-TRIP-USER-GUIDE.md)。沿用当前家庭、成员首尾会话核验、JSON、Origin／CSRF；TV Cookie 不能调用成员写接口。
+
+| 方法与路径 | 请求／结果与边界 |
+|---|---|
+| `POST /api/media-playback/devices/<id>/journey-preview` | 精确 `{revision,journeyId,routeId}`，路线可为 null；只读 TV 安全投影，返回最长5分钟的 token、当前来源摘要、旅行、路线及已获该电视许可的媒体数量 |
+| `POST /api/media-playback/devices/<id>/journey-start` | 精确 `{requestId,previewToken,confirmStart:true}`；事务核验会话、设备、来源及原 revision 后写范围、进度和本人回执，同键同载荷重放不再次开始 |
+| `GET /api/media-playback/operations/<requestId>` | 本人原回执及当前播放；`found:false` 仅表示读取时无回执，不证明在途开始失败；设备不可读时 playback 为 null |
+
+既有成员控制和 TV 播放 DTO 增加 `scope`、`journeyReview`。route-only 可开始但 `photoCount=0,item=null,progress=null`；无媒体不能上一／下一项。只有明确全相册 start 或 dashboard 清除旅行范围，暂停／继续／间隔／切项保留范围。旅行删除后保持 journey 失效状态，绝不回退全相册；路线失效只撤掉路线，仍获准的同旅行媒体可继续。
+
+路线只返回服务端许可的共享地点和相邻线段，尊重隐藏／模糊坐标；不输出 owner、私密坐标或来源 URL，不修改共享和逐台媒体授权。TV 标题、路线和媒体一起受原15秒租约约束。预览／开始成功200；冲突409、过期410、暂不可核验503；未知结果先查原回执，不自动新建或重发开始。
+
+## 本人旅行费用归集（已发布）
+
+只归集本人已有人民币付款净额，不修改原交易、采购或共享旅行金额；五接口与恢复/导出合同见 [JOURNEY-FINANCE](JOURNEY-FINANCE.md)。前缀 `/api/finance-hub/journey-allocations`：GET 根（本人历史/旅行分页）、GET `/payments`（原付款）、POST `/preview`、POST `/confirm`（原requestId+token）、GET `/operations/<requestId>`（200/found=false仍表示未知）。读取需当前成员，电视禁止；写入需Origin/CSRF/事务身份复核。两新表73→75已在此前旅行费用发布完成，现行生产仍75/9，见[旅行费用验收](JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release)。
 
 ## 本人站内提醒（已发布）
 
