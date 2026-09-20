@@ -1,6 +1,6 @@
 # 本人旅行费用：固定 73→75 发布适配
 
-本适配为候选工具，不代表已部署。只接受固定 `journey-finance-73-to-75` 模式，不接收任意模块、schema 或服务策略。
+本固定适配已用于 `302a62d` 的实际73→75发布，结果见[集中验收](JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release)；本次计划已消费，后续部署须基于届时实际父版生成新计划。只接受固定 `journey-finance-73-to-75` 模式，不接收任意模块、schema 或服务策略。
 
 父版固定 source `53ea3fdb571eae69154e61d264f3c3542631cb49`、package `44f8d8c3fd9a5a91e5cfde9e1893c89be345a2d5445b2636c77e3d5733e3466f`、manifest `e6898a234eb21c20a28b08a9bc48241202380c3857210f18b0278ad02a3b0ed9`、应用镜像 `sha256:cdbe4702e9fc1b7557e8cefb84b664b6d8c369fb0d9788e0235ff426f3c18ac2`。父费用批次见 [FINANCE-FLOW-ACCEPTANCE](FINANCE-FLOW-ACCEPTANCE.md)。父计划已经消费，只允许作为继承证据读取。
 
