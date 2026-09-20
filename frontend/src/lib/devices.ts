@@ -1,3 +1,4 @@
+import { readJourneyScope, journeyCanStart, type JourneyReview } from './tvTripRecap.ts';
 import { sessionIdentity } from './sessionIdentity.ts';
 import type { CalendarMode, Member, Person } from './types';
 import { isOwnerId } from './memberId.ts';
@@ -9,7 +10,7 @@ export type DeviceLayout = { order: DeviceCard[]; hidden: DeviceCard[]; theme: '
 export type Device = { id: string; name: string; focus: string; calendarView: CalendarMode; revision: number; created_at: string; layout: DeviceLayout };
 export type DeviceDraft = Pick<Device, 'name' | 'focus' | 'calendarView' | 'layout'>;
 export type PairDraft = { code: string; name: string; focus: string; calendarView: CalendarMode };
-export type Playback = { deviceId: string; revision: number; mode: 'dashboard' | 'photos'; paused: boolean; intervalSeconds: number; position: number; photoCount: number; canStart: boolean; updatedAt: string | null };
+export type Playback = { scope?: 'all' | 'journey'; journeyReview?: JourneyReview | null; deviceId: string; revision: number; mode: 'dashboard' | 'photos'; paused: boolean; intervalSeconds: number; position: number; photoCount: number; canStart: boolean; updatedAt: string | null };
 export type PlaybackAction = 'start' | 'dashboard' | 'pause' | 'resume' | 'previous' | 'next' | 'interval';
 export type DeviceSession = { user: Member | null; csrf?: string | null };
 export type DeviceIntent = { kind: 'pair' | 'settings' | 'revoke' | 'playback'; path: string; method: 'POST' | 'PATCH' | 'DELETE' | 'PUT'; body: Record<string, unknown>; deviceId?: string };
@@ -70,19 +71,20 @@ export function toggleDeviceCard(layout: DeviceLayout, key: DeviceCard): DeviceL
   return readDeviceLayout(result);
 }
 export function readPlayback(raw: unknown, deviceId: string): Playback {
-  const value = object(raw);
+  const value = object(raw), scope = readJourneyScope(value);
   if (!isDeviceId(deviceId) || value.deviceId !== deviceId || !integer(value.revision, 0) || !['dashboard', 'photos'].includes(value.mode)
     || typeof value.paused !== 'boolean' || !integer(value.intervalSeconds, 5, 120) || !integer(value.position, 0, 1000000)
-    || !integer(value.photoCount, 0, 2000) || typeof value.canStart !== 'boolean' || value.canStart !== (value.photoCount > 0)
+    || !integer(value.photoCount, 0, 2000) || typeof value.canStart !== 'boolean' || value.canStart !== journeyCanStart(scope.journeyReview, value.photoCount)
     || value.updatedAt !== null && typeof value.updatedAt !== 'string') throw invalid();
-  return { deviceId, revision: value.revision, mode: value.mode, paused: value.paused, intervalSeconds: value.intervalSeconds,
+  return { ...scope, deviceId, revision: value.revision, mode: value.mode, paused: value.paused, intervalSeconds: value.intervalSeconds,
     position: value.position, photoCount: value.photoCount, canStart: value.canStart, updatedAt: value.updatedAt };
 }
 export function playbackPayload(state: Playback, action: PlaybackAction, interval = ''): Record<string, unknown> {
   readPlayback(state, state.deviceId);
   if (!['start', 'dashboard', 'pause', 'resume', 'previous', 'next', 'interval'].includes(action)) throw invalid();
-  if (action === 'start' && !state.canStart) throw new Error('这台电视还没有可播放的授权照片。');
+  if (action === 'start' && !state.canStart && state.scope !== 'journey') throw new Error('这台电视还没有可播放的授权照片。');
   if (['pause', 'resume', 'previous', 'next'].includes(action) && state.mode !== 'photos') throw new Error('请先开始照片播放。');
+  if (['previous', 'next'].includes(action) && !state.photoCount) throw new Error('当前旅行没有可切换的授权媒体。');
   if (action === 'interval') {
     if (!/^\d{1,3}$/.test(interval.trim()) || !integer(Number(interval.trim()), 5, 120)) throw new Error('轮播间隔请填写 5～120 的整数秒。');
     return { revision: state.revision, action, intervalSeconds: Number(interval.trim()) };
