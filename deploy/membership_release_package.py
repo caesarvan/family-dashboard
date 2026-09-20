@@ -50,6 +50,9 @@ def baseline_values(baseline=None):
     # Explicit audited callers only; defaults keep the original migration contract.
     if baseline is None:
         return 'membership-release-package', PARENT_IMAGE, OLD_MANIFEST
+    if baseline == 'calendar-conflicts-r1-calendar-privacy':
+        from deploy import build_calendar_privacy_release as privacy
+        return privacy.KIND, privacy.PARENT_IMAGE, privacy.OLD_MANIFEST
     if baseline == 'task-reminders-r1-expo-calendar-conflicts':
         from deploy import build_expo_calendar_conflicts_release as calendar
         return calendar.KIND, calendar.PARENT_IMAGE, calendar.OLD_MANIFEST
@@ -99,6 +102,9 @@ def baseline_values(baseline=None):
 
 def fixed_files(baseline=None):
     baseline_values(baseline)
+    if baseline == 'calendar-conflicts-r1-calendar-privacy':
+        from deploy import build_calendar_privacy_release as privacy
+        return {**FIXED, 'Dockerfile': privacy.DOCKER_AFTER}
     if baseline == 'task-reminders-r1-expo-calendar-conflicts':
         from deploy import build_expo_calendar_conflicts_release as calendar
         return {**FIXED, 'Dockerfile': calendar.DOCKER_AFTER}
@@ -266,6 +272,11 @@ def selected_sources(tracked, policy, *, baseline=None):
     required = set(constants['FILES']) | {SELF} | {'frontend/' + n for n in
         ('package.json', 'package-lock.json', 'app.json', 'tsconfig.json', 'README.md', 'LICENSE',
          'tests/journeySegments.test.ts', 'tsconfig.tests.json', 'typecheck.mjs')}
+    if baseline == 'calendar-conflicts-r1-calendar-privacy':
+        from deploy import build_calendar_privacy_release as privacy
+        required |= privacy.RUNTIME_ADDITIONS | privacy.FRONTEND_TESTS | privacy.BROWSER_SCRIPTS | {
+            'deploy/build_calendar_privacy_release.py', 'deploy/activate_calendar_privacy_release.py',
+            'deploy/calendar_privacy_release_data.py'}
     if baseline == 'task-reminders-r1-expo-calendar-conflicts':
         from deploy import build_expo_calendar_conflicts_release as calendar
         required |= calendar.RUNTIME_ADDITIONS | calendar.FRONTEND_TESTS | calendar.BROWSER_SCRIPTS | {
@@ -357,7 +368,7 @@ def validate_export_names(names, *, baseline=None):
                     'journey-routes-r1-assistant-trip-items', 'assistant-trip-items-r1-expo-task-publish',
                     'expo-trip-tasks-r1-shopping-schedule', 'shopping-schedule-r1-assistant-document-search',
                     'assistant-document-search-r1-task-dependencies', 'task-dependencies-r2-task-reminders',
-                    'task-reminders-r1-expo-calendar-conflicts'):
+                    'task-reminders-r1-expo-calendar-conflicts', 'calendar-conflicts-r1-calendar-privacy'):
         from deploy import finance_analysis_release_profile as analysis
         need(3 <= len(names) <= MAX_FILES and 'index.html' in names and 'metadata.json' in names,
              'complete bounded export required')
@@ -383,6 +394,15 @@ def validate_maps(metadata, manifest, evidence, *, baseline=None):
     need(not any(n.startswith(PREFIX) for n in source), 'source/export overlap')
     need(files == {**source, **{PREFIX + n: h for n, h in exports.items()}}, 'manifest partition differs')
     need(metadata['runtimeFiles'] == runtime_files(files), 'runtime partition differs')
+    if baseline == 'calendar-conflicts-r1-calendar-privacy':
+        from deploy import build_calendar_privacy_release as privacy
+        non_expo = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
+        preserved = {n: h for n, h in non_expo.items() if n not in privacy.CHANGED_RUNTIME_FILES}
+        need(len(non_expo) == privacy.NON_EXPO_RUNTIME_COUNT
+             and privacy.CHANGED_RUNTIME_FILES <= non_expo.keys()
+             and len(preserved) == privacy.PRESERVED_RUNTIME_COUNT
+             and digest(encoded(preserved)) == privacy.PRESERVED_RUNTIME_SHA256,
+             'calendar privacy non-Expo runtime differs from installed 103-file preservation baseline')
     if baseline == 'task-reminders-r1-expo-calendar-conflicts':
         from deploy import build_expo_calendar_conflicts_release as calendar
         preserved = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
