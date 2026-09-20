@@ -26,7 +26,10 @@ HOST_BUDGET = {'preflightMiB': 672, 'preflightSamples': 3, 'preflightIntervalSec
 
 def _profile(mode=None):
     # Only these source-controlled policies exist. No JSON-selected import.
-    need(mode in (None, 'discovery-source-update', 'finance-flow-source-update'), 'unsupported_source_update_profile')
+    need(mode in (None, 'discovery-source-update', 'finance-flow-source-update', 'journey-finance-73-to-75'), 'unsupported_source_update_profile')
+    if mode == 'journey-finance-73-to-75':
+        from deploy import prepare_journey_finance_activation
+        return prepare_journey_finance_activation
     if mode == 'finance-flow-source-update':
         from deploy import prepare_finance_flow_activation
         return prepare_finance_flow_activation
@@ -51,7 +54,7 @@ def check_plan(plan, *, mode=None):
     cfg.plan_images(plan)
     need(plan.get('kind') == cfg.KIND and plan.get('parentSource') == cfg.PARENT_SOURCE and
          plan.get('parentManifest') == cfg.PARENT_MANIFEST and plan.get('schemaBefore') == [73, 9] and
-         plan.get('schemaAfter') == [73, 9] and plan.get('productionWritesDuringPreparation') is False and
+         plan.get('schemaAfter') == ([75, 9] if mode == 'journey-finance-73-to-75' else [73, 9]) and plan.get('productionWritesDuringPreparation') is False and
          re.fullmatch('[0-9a-f]{40}', plan.get('sourceHead', '')) and
          re.fullmatch('[0-9a-f]{40}', plan.get('tree', '')), 'local_photo_plan_changed')
 
@@ -172,7 +175,8 @@ def verify_evidence(inputs, *, mode=None):
     cfg = _profile(mode); package = cfg.package
     need(set(inputs) == {'package', 'build', 'validation', 'selection', 'parentAudit',
                          'image_overlap', 'nginx_raw', 'reviews'} | ({'duplicates'} if mode else set())
-         | ({'retainedDiscovery'} if mode == 'finance-flow-source-update' else set()), 'release_inputs_incomplete')
+         | ({'retainedDiscovery'} if mode == 'finance-flow-source-update' else set())
+         | ({'retainedFinance', 'retainedDiscovery', 'migrationRehearsal'} if mode == 'journey-finance-73-to-75' else set()), 'release_inputs_incomplete')
     p = inputs['package']; need(set(p) == {'root', 'sha256'} and Path(p['root']).is_absolute(), 'package_descriptor')
     value = package.verify_package(p['root'], p['sha256']); meta = value['metadata']
     folder, built = record(inputs['build'], 'build.json')
@@ -238,7 +242,8 @@ def prepare(inputs_file, env_sha256, output, *, mode=None):
             'sourceHead': meta['sourceHead'], 'tree': meta['tree'],
             'images': {'app': built['imageId'], 'decoder': package.DECODER_IMAGE},
             'envSha256': env_sha256, 'inputs': inputs, 'verifiedEvidence': verified,
-            'operatorSha256': sha(encoded(operator)), 'schemaBefore': [73, 9], 'schemaAfter': [73, 9],
+            'operatorSha256': sha(encoded(operator)), 'schemaBefore': [73, 9],
+            'schemaAfter': [75, 9] if mode == 'journey-finance-73-to-75' else [73, 9],
             'productionWritesDuringPreparation': False}
     cfg.check_plan(plan)
     need(cfg.verify_evidence(inputs)[2] == verified, 'evidence_changed_during_prepare')

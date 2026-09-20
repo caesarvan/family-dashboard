@@ -53,10 +53,12 @@ DATA_ACTIONS = {
 
 
 def verify_operator(candidate, expected, *, mode='video-migration'):
-    need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update'), 'unsupported_release_mode')
+    need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update', 'journey-finance-73-to-75'), 'unsupported_release_mode')
     policy = prepare
     if mode == 'local-photo-source-update':
         from deploy import prepare_local_photo_activation as policy
+    elif mode == 'journey-finance-73-to-75':
+        from deploy import prepare_journey_finance_activation as policy
     elif mode == 'finance-flow-source-update':
         from deploy import prepare_finance_flow_activation as policy
     elif mode == 'discovery-source-update':
@@ -81,14 +83,18 @@ class Controller:
         self.plan = read(self.candidate / 'plan.json', plan_sha256)
         self.runner = runner
         self.source = self.candidate / 'source'
-        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update'), 'unsupported_release_mode')
+        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update', 'journey-finance-73-to-75'), 'unsupported_release_mode')
         self.mode, self.policy = mode, prepare
         self.source_update = mode != 'video-migration'
+        self.needs_migration = mode in ('video-migration', 'journey-finance-73-to-75')
+        self.after_schema = [75, 9] if mode == 'journey-finance-73-to-75' else [73, 9]
         self.images, self.parent_image, self.before_schema = prepare.IMAGES, services.PARENT_IMAGE, [71, 9]
         self.release_prefix = 'media-video-73-'
         self.data_prefix, self.data_actions = DATA_PREFIX, DATA_ACTIONS
         if self.source_update:
-            if mode == 'finance-flow-source-update':
+            if mode == 'journey-finance-73-to-75':
+                from deploy import prepare_journey_finance_activation as policy
+            elif mode == 'finance-flow-source-update':
                 from deploy import prepare_finance_flow_activation as policy
             elif mode == 'discovery-source-update':
                 from deploy import prepare_discovery_activation as policy
@@ -101,13 +107,17 @@ class Controller:
             self.data_prefix = DATA_PREFIX.replace('check_media_video_migration', 'media_video_release_data')
             self.data_actions = {'backup': DATA_ACTIONS['backup'], 'check': DATA_ACTIONS['check'],
                 'verify-rollback': 'from deploy.activate_local_photo_release import verify_restored_group; value=verify_restored_group(root,proof,**kwargs)'}
+            if mode == 'journey-finance-73-to-75':
+                self.release_prefix = 'journey-finance-75-'
+                self.data_prefix = DATA_PREFIX.replace('check_media_video_migration', 'check_journey_finance_migration')
+                self.data_actions = DATA_ACTIONS
             policy.check_plan(self.plan)
         need(self.plan.get('kind') == (self.policy.KIND if self.source_update
                                       else 'media-video-five-service-activation-v1') and
              self.plan.get('parentSource') == self.policy.PARENT_SOURCE and
              self.plan.get('parentManifest') == self.policy.PARENT_MANIFEST and
              (self.source_update or self.plan.get('sourceHead') == prepare.APP_SOURCE) and self.plan.get('images') == self.images and
-             self.plan.get('schemaBefore') == self.before_schema and self.plan.get('schemaAfter') == [73, 9], 'plan_contract_changed')
+             self.plan.get('schemaBefore') == self.before_schema and self.plan.get('schemaAfter') == self.after_schema, 'plan_contract_changed')
         self.lifecycle = services.Lifecycle(self.call, **dict(app_image=self.images['app'],
                                                              decoder_image=self.images['decoder']), root=self.root, mode=mode)
         self.release = None
@@ -172,7 +182,7 @@ class Controller:
         old, captured = self.baseline()
         result = {'planSha256': self.plan_sha, 'services': captured, 'parentManifest': self.policy.PARENT_MANIFEST,
                   'parentFilesSha256': sha(encoded(old['files'])), 'images': self.images,
-                  'schemaBefore': self.before_schema, 'schemaAfter': [73, 9], 'productionWrites': False}
+                  'schemaBefore': self.before_schema, 'schemaAfter': self.after_schema, 'productionWrites': False}
         put(self.candidate / 'stage.json', result)
         return result
 
@@ -360,7 +370,7 @@ class Controller:
             self.proof_init()
             backup = self.data_call('backup'); self.record('complete_group_backup_verified', result=backup)
             migrated = backup
-            if self.mode == 'video-migration':
+            if self.needs_migration:
                 migrated = self.data_call('migrate'); self.record('complete_group_migrated', result=migrated)
             self.install(old); self.record('candidate_source_installed')
             self.socket_ready()
@@ -392,9 +402,9 @@ print(json.dumps({'initialized':True,'households':len(hs)}))
             need(self.call(['systemctl', 'is-active', TIMER]).strip() == b'active', 'backup_timer_not_restarted')
             result = {'completed': True, 'planSha256': self.plan_sha, 'releaseDirectory': str(self.release),
                       'completedAt': datetime.now(timezone.utc).isoformat(), 'services': current,
-                      'backup': backup, **({'migration': migrated} if self.mode == 'video-migration' else {}),
+                      'backup': backup, **({'migration': migrated} if self.needs_migration else {}),
                       'preservation': preserved,
-                      'images': self.images, 'schema': [73, 9]}
+                      'images': self.images, 'schema': self.after_schema}
             put(self.candidate/'activation.json', result)
             self.record('activation_complete')
             return result
