@@ -1,6 +1,6 @@
 # 电视单趟旅行回顾：候选使用说明
 
-**候选未上线。** 本文对应组合 `add881ed6a7d455e2743ce2affa6cf8b931b47d2`，不是当前正式站点已具备的功能。生产仍为[助理清单版](ASSISTANT-LIST-ACCEPTANCE.md#assistant-list-release) `e8f0427`／75张户内表＋9张平台表；本候选新安装为77/9。接口以 [TV-TRIP-PLAYBACK](TV-TRIP-PLAYBACK.md)为准。
+**候选未上线。** 本文描述已审候选组合的使用路径，不是当前正式站点已具备的功能；构建、分轮浏览器及后续读取优化的不同源码身份见[候选验收](TV-TRIP-ACCEPTANCE.md#tv-trip-candidate)。生产仍为[助理清单版](ASSISTANT-LIST-ACCEPTANCE.md#assistant-list-release) `e8f0427`／75张户内表＋9张平台表；本候选新安装为77/9。接口以 [TV-TRIP-PLAYBACK](TV-TRIP-PLAYBACK.md)为准。
 
 ## 在本地候选开始回顾
 
@@ -35,14 +35,6 @@
 
 ## 验证范围与交接
 
-以下是分段证据，不能相加为一次全量检查：
+两条真实本地双浏览器流程已分轮通过并独审：R3第二场景核对未知开始、刷新恢复及撤权；R4第一场景核对明确开始、真实视频ended、手机控制和独立route-only电视。390／1280／1920均为本地浏览器视口，不能替代实体设备验收。
 
-| 固定范围 | 已观察结果 | 限制 |
-|---|---|---|
-| API `3794a8a` | 94唯一用例分轮最终通过；非作者报告 `tv-trip-ui/test-results/tv-trip-api-independent-r1.json` | 临时Flask／SQLite、合成来源和真实短视频处理；旧fixture失败保留，无Linux／生产声明 |
-| UI `6fd938d` | 40唯一Node用例分轮最终通过，两组tsc通过；非作者报告 `tv-trip-api/test-results/tv-trip-ui-review-r1/review.json` | 受控请求与实际TSX处理器，不替代真实双浏览器／实体TV |
-| 组合 `add881ed` | fresh npm ci、双tsc、23文件Expo导出均退出0 | build原件 `tv-trip-combination/test-results/expo-tv-trip-combination/build-evidence.json`，SHA `987b147be34065aeeba544001125db3227cfbb7d768fb90e61b2eeecfdd88336` |
-| 迁移与初始化 | schema专项32、完整API接缝5、本地演练初版10分别通过 | 原件分别位于 `tv-trip-release/test-results/tv-trip-migration-schema-r1`、`tv-trip-migration-full-api-r2` 和 `tv-trip-linux/test-results/tv-trip-linux-local-r1`；不是实际Linux演练 |
-| 当前源索引 | 217个Flask方法／路径、77张户内表、9张平台表 | `tests/inspect_contract.py` 在本次独立临时数据库实际生成，仅含结构，见[路由与表索引](PLATFORM-ROUTES.md) |
-
-原件路径相对私有工作树根目录，未提交截图、数据库、凭据或测试结果到Git。真实组合浏览器尚待终态及独审，后续Linux镜像、75→77迁移／部分失败／完整组恢复、发布计划和生产回读须分别完成。本人完整A–D验收仍0/4，真实云账号及实体电视另验；本地390手机／1920电视浏览器不是物理设备验收。
+完整证据集中在[候选验收](TV-TRIP-ACCEPTANCE.md#tv-trip-candidate)。浏览器运行代码仍为 `add881ed`；之后不读BLOB的TV元数据优化另有24项真实Flask／SQLite检查，未冒充浏览器同头执行。Linux镜像、75→77迁移／部分失败／完整组恢复、容量、发布计划与生产回读仍须分别完成；本人完整A–D验收仍0/4。
