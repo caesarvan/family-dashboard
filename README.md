@@ -1,6 +1,8 @@
 # 家庭中枢 · Family Dashboard
 
-**最新上线：本人站内提醒，2026-09-20 07:52:22（北京时间）激活，07:56:49 独立生产只读审计通过。** 从「首页 → 我的提醒」查看分配给本人或共同处理的到期待办，支持已读、稍后提醒和打开原待办。只在看板内显示，电视不展示；不会自动完成事项或写入云端。[使用与集中验收](docs/TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。日程重叠另行开发，不计入本批。
+**最新上线：日程时间重叠，2026-09-20 08:47:27（北京时间）激活，08:49:19 独立生产只读审计通过。** 在首页按「今日／本周／前后 3 天」查看重叠提示，进入日程展开完整标题、地点和重叠时段，直接调整原本地安排。同步日程保持只读，需在原应用调整。[使用与集中验收](docs/CALENDAR-CONFLICTS-ACCEPTANCE.md#calendar-conflicts-release)。
+
+**此前上线：本人站内提醒，2026-09-20 07:52:22（北京时间）激活，07:56:49 独立生产只读审计通过。** 从「首页 → 我的提醒」查看分配给本人或共同处理的到期待办，支持已读、稍后提醒和打开原待办。只在看板内显示，电视不展示；不会自动完成事项或写入云端。[使用与集中验收](docs/TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。日程重叠后续发布见文首。
 
 源码仓库：[caesarvan/family-dashboard](https://github.com/caesarvan/family-dashboard)（私有，访问与 clone 需要获授权的 GitHub 账号）。`main` 为稳定源码，`codex/integration` 为集成候选；各任务在独立分支／worktree 开发，经 PR 独立审查后合入。`git push` 或 PR 合并不代表上线，生产仍按[既有发布流程](docs/DEPLOYMENT.md)执行。
 
