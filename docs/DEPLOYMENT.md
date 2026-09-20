@@ -1,6 +1,14 @@
 # 部署、更新与恢复交接
 
-**当前结构与运行基线：69 张户内表、9 张平台表。** 本地任务依赖于 2026-09-20 06:28:25（北京时间）激活，06:35:47 独立只读审计通过。正式 source `456585bc1a4f820ca238b3308f09a8d591628f41`、镜像 `sha256:fbb221027f4542cbfb3f9dc66b26d38314bfbbf2df00e43744936b8288fea547`；真实一户两库停写备份及 app 启动前后完整 schema／行／列／序列保持，69→69／9→9，无 DDL。固定包、已消费计划、回执、实际 Linux 354 项和恢复边界见[集中验收](TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)，工具合同见[任务依赖发布适配](TASK-DEPENDENCIES-RELEASE.md)。不得重放本次 stage／activate 或下方历史迁移；后续必须绑定新的真实安装基线、manifest、镜像及完整库组。站内提醒及其 69→71 迁移尚未部署。
+## 当前提醒版本：71/9
+
+2026-09-20 07:52:22（北京时间）激活，07:56:49 独立生产只读审计通过；生产一户两库已完成 69/9→71/9。正式身份、已消费计划和原件集中在[提醒验收](TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。发布工具为 build_task_reminders_release.py／activate_task_reminders_release.py，合同见[发布](TASK-REMINDERS-RELEASE.md)、[迁移检查器](TASK-REMINDERS-MIGRATION.md)与[隔离 Linux 演练](TASK-REMINDERS-LINUX-REHEARSAL.md)；本次 stage／activate 及首次迁移不得重放。
+
+停写后备份完整注册库及所有家庭库，只新增两张空提醒表；先仅启动 app，再严格核对原 69 表、平台 9 表、全部 settings、序列及新空表。通过后才恢复全部服务，worker 正常生成提醒与 heartbeat；不能因此豁免 app-only 保全。失败保留现场并停止候选写入者；跨户部分失败须恢复同一完整库组并验证，不自动重跑 migrate 或仅恢复一个家庭。
+
+本次隔离两户三库已验证旧 69 表整组回退及有提醒状态／回执的 71 表完整恢复；这是合成演练，不是生产恢复。后续部署必须重新固定实际安装身份、完整组备份和新计划，详见集中验收。
+
+**历史父版：任务依赖，69/9。** 2026-09-20 06:28:25（北京时间）发布并独立审计，其结构随后由文首提醒版本升级。父包及原 354 项 Linux 验证见[任务依赖验收](TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)；下方更早版本均仅供追溯，不可作为当前安装身份。
 
 **历史账户分析基线：66 张户内表、9 张平台表。** 本人账户分析于 2026-09-19 16:20:25（北京时间）激活，16:20:57 独立只读审计通过。生产实际一户两库从 61/9 迁至 66/9；固定 source `f25357f935d64774922efa68d42a2ba41bb18037`、镜像 `sha256:21625d6e2d9768ba48cca35100bb8bf02c1c4146afa6b7ad25b9b72cb559c1d2` 及完整身份见[分析发布验收](FINANCE-ANALYSIS-ACCEPTANCE.md#finance-analysis-release)，数据保全与恢复合同见[本批发布](FINANCE-ANALYSIS-RELEASE.md)。不得重放本批、成员迁移或下面的固定历史算子；后续更新必须绑定实际 manifest、镜像及全组数据库。下方旧基线与代码块仅供历史追溯。
 
