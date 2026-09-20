@@ -2,11 +2,11 @@
 
 面向伴侣共同管理的家庭看板：手机和电脑负责安排与维护，两块电视按各自侧重成员展示日程、公共资金和已授权影像。个人财务、私人资料与家庭共享分别授权。
 
-**当前已发布：设备照片手动导入与「那年今日」；此前视频导入与混合轮播也已上线。** 最近一批于 2026-09-20 20:04:27（北京时间）激活，20:05:10只读回读通过，非作者审计通过。当前为 **73 张户内表、9 张平台表、五个服务**。
+**当前已发布：助理地点搜索往返与重复照片展示副本提示。** 最近一批于 2026-09-20 23:06:47（北京时间）激活，23:07:24只读回读通过；非作者生产审计已通过。设备照片、那年今日及视频混合轮播继续可用。当前为 **73 张户内表、9 张平台表、五个服务**。
 
-[日常管理](https://home.caesarcharles.world/) · [电视配对](https://home.caesarcharles.world/tv) · [私有 GitHub 仓库](https://github.com/caesarvan/family-dashboard) · [最新发布证据](docs/LOCAL-PHOTO-ACCEPTANCE.md#local-photo-release)
+[日常管理](https://home.caesarcharles.world/) · [电视配对](https://home.caesarcharles.world/tv) · [私有 GitHub 仓库](https://github.com/caesarvan/family-dashboard) · [最新发布证据](docs/DISCOVERY-ACCEPTANCE.md#discovery-release)
 
-重复照片提示与助理地点搜索的新页面往返入口已完成分段浏览器、Linux功能检查及四并发元数据资源独审，仍是**未发布候选，不属于当前线上版本**。下一步为固定发布计划与生产准入；各轮证据和未验边界见[候选集中验收](docs/DISCOVERY-ACCEPTANCE.md#discovery-candidate)。
+相册原照片详情可主动「查找重复照片」，结果仅说明「展示副本一致，原图未核验」；助理地点结果可打开原地图／旅行／照片再返回查询。本人实际操作与实体电视仍待验收，分段验证和本次生产边界见[集中验收](docs/DISCOVERY-ACCEPTANCE.md#discovery-release)。
 
 ## 从这里开始
 
@@ -15,10 +15,12 @@
 | 使用家庭看板 | [成员使用手册](docs/USER-GUIDE.md)；日程、待办、采购、旅行从主导航进入 |
 | 导入设备照片 | 相册 → 选择照片 → 设备照片 → 上传并生成预览 → 明确私密保存 |
 | 看往年同日照片 | 相册 → 那年今日；只读取本人有可靠来源日期的往年静态照片 |
+| 查重复展示副本 | 相册 → 本人已保存照片详情 → 查找重复照片；分页打开原照片，可返回提示 |
+| 找回原地点 | 家庭助理 → 搜索：地点名称 → 整理并预览 → 在地图查看；返回保留查询和页码 |
 | 分享照片或视频 | 原详情明确家庭共享；电视另按每台设备授权，二者不互相代替 |
 | 绑定日历和清单 | 设置中的账户与自动同步；注册和权限说明见 [Microsoft / Google 接入](docs/ACCOUNT-SYNC.md) |
 | 新 agent 接手 | 本 README → [HANDOFF](docs/HANDOFF.md) → 模块契约 → [开发指南](docs/DEVELOPMENT.md) |
-| 更新已有服务器 | 先核 [当前发布合同](docs/LOCAL-PHOTO-RELEASE.md)，再读部署与恢复文档；不要重放历史计划 |
+| 更新已有服务器 | 先核 [当前发布合同](docs/DISCOVERY-RELEASE.md)，再读部署与恢复文档；不要重放历史计划 |
 
 原 README 的 515 行发布历史和全部链接保存在 [2026-09-20 历史快照](docs/README-HISTORY-20260920.md)。历史段落中的“当前”不再作为现行架构或部署依据。
 
@@ -34,8 +36,8 @@
 | 待办与提醒 | 本地及云任务、前置依赖、完成门禁、例行计划；本人已读／稍后提醒 | 站内提醒不会替用户完成任务；新云发布写入仍需真实账号验收 |
 | 采购与库存 | 数量、负责人、截止、优先级、预算、实付和参考图；批次、收货、消耗、售后关联待办 | 私人订单来源不公开；不自动购物、付款、扣减公共余额 |
 | 旅行 | 可编辑计划、准备清单、采购／日程联动、当地时区分段、改期、JSON 导入、路线与回顾 | 保存前核对并确认；预订状态手工维护，不连接航司／酒店下单 |
-| 地图与资料 | 已发布地点管理、到访、授权坐标及旅行／照片往返；私有资料与明确共享 | 地图不做街道导航或自动地理编码；资料不自动下载、验票或查毒 |
-| 相册 | Google Picker 明确选片；设备照片上传；净化加密、私密确认、原详情、共享和逐台电视授权 | 保存展示副本，不是原图库备份；真实 Google 视频、手机选择器与实体电视另验 |
+| 地图与资料 | 地点管理、到访、授权坐标及助理查询→地图／旅行／照片往返；私有资料与明确共享 | 返回保留原查询页；地图不做街道导航或自动地理编码，资料不自动下载、验票或查毒 |
+| 相册 | Google Picker 明确选片；设备照片上传；净化加密、私密确认、原详情、共享和逐台电视授权；本人主动查询跨来源重复展示副本 | 不核验原图，不自动合并／删除；真实 Google 视频、手机选择器与实体电视另验 |
 | 视频 | Google 来源视频导入流程、独立解码、成员播放及电视照片／视频混合播放 | 本地视频上传尚未实现；视频缓存限额与硬件播放兼容仍有边界 |
 | 那年今日 | 本人往年同日静态照片、年份分组、分页、原详情编辑返回、跨午夜回到首页 | 日期未知单独统计；本地上传首版日期均未知，不虚构回忆 |
 | 公共财务 | 荷包手工快照、预算、旅行准备金、储蓄、出资比例及批准的资产／负债汇总 | 小荷包和银行未自动连接，不执行转账、理财或交易 |
@@ -140,9 +142,9 @@ flowchart LR
 
 ## 部署、备份与故障恢复
 
-当前服务器为 racknerd VPS／Ubuntu，Name.com 管理域名 DNS，Nginx 负责 HTTPS。现有生产使用 app、sync、media、decoder、web 五服务；设备照片更新没有 DDL，保持73/9。
+当前服务器为 racknerd VPS／Ubuntu，Name.com 管理域名 DNS，Nginx 负责 HTTPS。现有生产使用 app、sync、media、decoder、web 五服务；本批地点入口与重复提示更新没有 DDL，保持73/9。
 
-**现行更新入口是 [LOCAL-PHOTO-RELEASE](docs/LOCAL-PHOTO-RELEASE.md)。** [DEPLOYMENT](docs/DEPLOYMENT.md)和 [OPERATIONS](docs/OPERATIONS.md)中的旧表数、旧镜像及迁移命令保留历史含义，不能覆盖本页和最新验收所绑定的父版。
+**现行更新合同是 [DISCOVERY-RELEASE](docs/DISCOVERY-RELEASE.md)。** 本批计划已消费，下次必须绑定实际父版并生成新计划。[DEPLOYMENT](docs/DEPLOYMENT.md)和 [OPERATIONS](docs/OPERATIONS.md)中的旧表数、旧镜像及迁移命令保留历史含义，不能覆盖本页和最新验收所绑定的父版。
 
 | 环节 | 必须保留的核验 |
 |---|---|
@@ -179,21 +181,22 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 
 | 证据入口 | 能确认什么 |
 |---|---|
-| [设备照片与那年今日](docs/LOCAL-PHOTO-ACCEPTANCE.md#local-photo-release) | 当前 source `79e5ef9`、manifest `c9723cf`、app镜像 `ede2e6f`；191实际Linux、浏览器分段、R3资源、73→73演练和生产只读审计 |
+| [地点入口与重复提示](docs/DISCOVERY-ACCEPTANCE.md#discovery-release) | 当前 source `63dc634`、manifest `7b77dfb`、app镜像 `b63c1f5`；保留125与新增9项Linux、5＋1分段浏览器、四请求资源及生产回读 |
+| [设备照片与那年今日](docs/LOCAL-PHOTO-ACCEPTANCE.md#local-photo-release) | 父版 `79e5ef9`；191实际Linux、浏览器分段、R3媒体资源、73→73演练和当批生产只读审计 |
 | [视频与混合播放](docs/MEDIA-VIDEO-ACCEPTANCE.md#media-video-release) | 五服务来源、独立解码与73/9迁移、实际资源和完整恢复演练边界 |
 | [本地日程隐私](docs/CALENDAR-PRIVACY-ACCEPTANCE.md#calendar-privacy-release) | 私密默认、共享／撤权、身份与导出边界 |
 | [日程重叠](docs/CALENDAR-CONFLICTS-ACCEPTANCE.md#calendar-conflicts-release) | 多日范围、原安排编辑、分轮浏览器及生产保全 |
 | [任务依赖](docs/TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)与[本人提醒](docs/TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release) | 完成门禁、私人已读／稍后状态与发布证据 |
-| [资料与照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release) | 已发布的授权元数据搜索与原详情往返；不涵盖后续候选入口 |
+| [资料与照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release) | 早期授权元数据搜索与原详情往返；地点新入口的后续证据见本批验收 |
 | [VALIDATION](docs/VALIDATION.md)与[历史README](docs/README-HISTORY-20260920.md) | 更早模块、分轮成功／失败和固定原件索引，按对应版本解释 |
 
-最近一批生产实际为一户两库：73/9全组保持、1156安装文件、三个应用服务各135运行文件与decoder原4文件核对通过，五服务正常，app／decoder健康，备份timer active。完整SHA和原件集中在最新验收页，避免在多个入口维护不同副本。
+最近一批生产实际为一户两库：73/9全组保持、1188安装文件、三个应用服务各135运行文件与decoder原4文件核对通过，五服务正常，app／decoder健康，备份timer active。完整SHA和原件集中在最新验收页；本批合入main `1d589e6` 时仅比安装source多四份后验文档，不能替换包内source身份。
 
 失败也属于交付记录：设备照片浏览器曾因会话预期和无界等待失败；图像资源R1 OOM、R2触限及首次构建权限失败均保留。R3通过不抹去此前失败，也不扩成任意负载保证。
 
 待继续处理的范围：
 
-- **集成候选：** 重复照片展示副本提示、助理地点搜索的新页面往返入口已完成构建、分段浏览器、Linux与四并发元数据资源独审；尚无本批发布计划或上线，见[集中验收与下一步](docs/DISCOVERY-ACCEPTANCE.md#discovery-candidate)。
+- **独立候选：** 通用账单导入可选收支方向（[PR #47](https://github.com/caesarvan/family-dashboard/pull/47)）仍是独立分支候选，尚未发布，不属于本次线上包。
 - **本人验收：** A–D完整本人场景仍为0/4；真实Google视频、云日历／待办新写入、实际手机选择器和两块实体电视分别验收。
 - **影像来源：** iCloud／NAS实时连接、本地视频上传、更多格式和原图备份没有随设备照片入口交付。
 - **财务与连接：** 小荷包／银行／券商自动连接、真实来源映射持续刷新及Apple提醒事项桥接仍待接入。

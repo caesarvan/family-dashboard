@@ -1,10 +1,10 @@
 # 地点检索与照片重复提示发布
 
-当前仍是未发布候选：63dc工具窄修保持455源的135运行文件、完整前端及165构建输入，沿用原R3 Expo、分段浏览器及125项Linux证据；新源实际9项Linux和四并发资源R2均通过独审。资源R1的请求前失败仍保留，旧125项未在新源重跑。R2只证明固定384／64MiB下四个元数据请求，不代表图片／视频混合峰值。尚未组装本批真实计划、stage或上线。用户入口、固定身份和失败历史集中见 [候选验收](DISCOVERY-ACCEPTANCE.md#discovery-candidate)。业务是助理打开原地点，以及本人主动核对 Google／设备照片的展示副本一致性；不改变照片原图、共享或电视许可。
+本批已于2026-09-20 23:06:47（北京时间）激活，23:07:24生产只读回读通过；非作者生产审计已通过。实际source63dc／manifest7b77／应用镜像b63，保持73/9与五服务；完整组备份、app-only停止态严格保全已通过；五服务运行，app／decoder健康。固定计划已消费，禁止重放。用户入口、固定身份、分段验证和失败历史见 [集中验收](DISCOVERY-ACCEPTANCE.md#discovery-release)。业务是助理打开原地点，以及本人主动核对Google／设备照片的展示副本一致性；不改变照片原图、共享或电视许可。
 
-## 固定范围
+## 本批固定范围与下次发布
 
-`build_discovery_release.py` 的静态 profile 固定实际父 source `79e5ef9`、manifest `c9723cf4`、应用镜像 `ede2e6f`，沿用 decoder `005cc30` 和 web `1ae82dc`。73/9、五服务；112 个非 Expo 运行输入中保持110个字节不变，仅允许固定审查过的 `home_assistant.py` 和 `household_media.py`。Dockerfile、Compose、Nginx、依赖和 decoder 原件保持。任意 JSON 不可选择模块或策略。
+`build_discovery_release.py` 的静态 profile 描述本批从父source `79e5ef9`／manifest `c9723cf4`／应用镜像 `ede2e6f` 更新到63dc的合同，沿用decoder `005cc30`和web `1ae82dc`。112个非Expo运行输入中保持110个字节不变，仅两个固定审查过的模块改变；Dockerfile、Compose、Nginx、依赖和decoder原件保持。当前生产父版已变为63dc／7b77／b63；下次须另行适配并审查，不能直接复用此旧父版profile或已消费计划。任意JSON不可选择模块或策略。
 
 新源码仍须完整 Git／前后工作区／新 Expo 导出输入验证。23 项导出可复用的唯一条件是实际完整前端及构建输入逐字节一致；不能因为提交属于祖先或同一分支而直接使用旧包。
 
@@ -24,4 +24,4 @@ Linux测试选择必须零skip，至少包含真实1000扫描上限与锁竞争�
 
 `activate_discovery_release.py` 仅选择静态 discovery 模式，其 stage／activate／verify-rollback 沿用既有控制器与五服务生命周期。保留双历史锁、备份timer排空、整组73/9备份、app-only启动后停止态全表／行／序列／设置／非空媒体和提醒收据保全、decoder→workers→web启动及真实健康检查。不存在 migrate 动作。失败只停止本次已核CID并保留现场，不能自动回退或重放；显式完整库组恢复后仍用原 `verify_restored_group` 核验，恢复程序与生产授权边界不变。
 
-本工具的单元测试采用真实临时Git打包、固定源码AST和明确合成证据／RecordingDocker；不是实际Expo、Docker、Linux资源或生产验收。实际运行与上线需另行独立审查。
+本工具的单元测试采用真实临时Git打包、固定源码AST和明确合成证据／RecordingDocker；不把它们写成实际Docker或生产结果。本批另有原125＋新9项Linux、5＋1分段浏览器及四元数据请求资源原件，父版真实73→73恢复演练通过固定实现审查后继承；本次生产未做恢复。非作者生产审计已通过，具体范围见集中验收。

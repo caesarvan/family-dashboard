@@ -62,6 +62,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
   const [column, setColumn] = useState<number | undefined>(), [preview, setPreview] = useState<ImportPreview | null>(null);
   const [manual, setManual] = useState(false), [header, setHeader] = useState('');
   const [columns, setColumns] = useState<ImportColumnSelection | null>(null), [mapping, setMapping] = useState(emptyMapping);
+  const [flowColumn, setFlowColumn] = useState<number | null>(null);
   const previewRef = useRef<{ value: ImportPreview; payload: ImportPayload } | null>(null);
   const [pending, setPendingState] = useState<Pending | null>(null), [receipt, setReceipt] = useState<FinanceImportReceipt | null>(null);
   const [notFound, setNotFound] = useState(false), [menu, setMenu] = useState(''), [page, setPage] = useState(0), [errorPage, setErrorPage] = useState(0), [leaving, setLeaving] = useState(false);
@@ -69,7 +70,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
     && latest.current.identityKey === identityKey && latest.current.online && front() && connected();
   const setPending = (value: Pending | null) => { pendingRef.current = value; setPendingState(value); };
   function invalidatePreview() { ++draftEpoch.current; previewRef.current = null; setPreview(null); setPage(0); setErrorPage(0); setError(''); }
-  function clearColumns() { setColumns(null); setMapping(emptyMapping()); setHeader(''); }
+  function clearColumns() { setColumns(null); setMapping(emptyMapping()); setFlowColumn(null); setHeader(''); }
   function resetAll() { clearColumns(); setManual(false); invalidatePreview(); setFile(null); setSheets([]); setSheet(''); setColumn(undefined); setPending(null); setReceipt(null); setNotFound(false); }
   function conceal(clear = false) {
     active.current = false; ++generation.current; ++draftEpoch.current; fence.current.invalidate(); setVisible(false); setBusy(false); setMenu(''); setLeaving(false);
@@ -129,13 +130,14 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
       const input = { ...file, ...(sheet ? { sheet } : {}) };
       if (mode === 'columns' && header !== '' && !/^(?:[1-9]|[1-5][0-9]|60)$/.test(header)) throw new Error('表头所在行须为 1 至 60 的整数。');
       const payload = mode === 'columns' ? inspectImportColumnsPayload(source, kind, input, header === '' ? undefined : Number(header))
-        : mode === 'mapped' ? manualImportPayload(source, kind, input, columns!, { version: 1, headerLine: columns?.headerLine, ...mapping })
+        : mode === 'mapped' ? manualImportPayload(source, kind, input, columns!, { headerLine: columns?.headerLine, ...mapping,
+          ...(kind === 'payments' ? { version: 2, flow: flowColumn } : { version: 1 }) })
         : importPayload(source, kind, input, column, /\.xlsx$/i.test(file.name) && !sheet);
       const result = readImportPreview(await guarded(() => latest.current.mutate<unknown>('/finance-hub/imports/preview', 'POST', payload), ticket));
       if (!current() || epoch !== draftEpoch.current || ticket !== generation.current) return;
       if (mode === 'columns') {
         if (!result.requiresColumnSelection || !result.columnSelection) throw new Error('未能读取表头，请重试或使用自动识别。');
-        setColumns(result.columnSelection); setHeader(String(result.columnSelection.headerLine)); setMapping({ ...result.columnSelection.suggestedMapping });
+        setColumns(result.columnSelection); setHeader(String(result.columnSelection.headerLine)); setMapping({ ...result.columnSelection.suggestedMapping }); setFlowColumn(null);
       } else {
         // Only a preview tied to the same explicit selection can be confirmed.
         if (mode === 'mapped' && JSON.stringify(result.columnSelection?.mapping) !== JSON.stringify(payload.mapping)) throw new Error('所选列与预览不一致，请重新读取表头。');
@@ -239,7 +241,7 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
           <TextInput mode="outlined" label="表头所在行" accessibilityLabel="表头所在行" value={header} keyboardType="number-pad" disabled={disabled}
             placeholder="留空自动查找，或填写 1–60" outlineStyle={{ borderRadius: 8 }} onChangeText={value => {
               if (!current() || reading.current || writing.current || pendingRef.current) return;
-              invalidatePreview(); setColumns(null); setMapping(emptyMapping()); setHeader(value);
+              invalidatePreview(); setColumns(null); setMapping(emptyMapping()); setFlowColumn(null); setHeader(value);
             }} />
           {file && /\.xlsx$/i.test(file.name) && !sheet && <Text>请先预览文件并选择工作表，再读取表头。</Text>}
           <Button mode="outlined" contentStyle={styles.buttonContent} disabled={disabled || !file || /\.xlsx$/i.test(file.name) && !sheet}
@@ -255,9 +257,19 @@ function ImportWorkspace({ onClose, onImported, identityKey, user }: Props & { i
                 <Text>{chosen ? chosen.columnLabel + ' 列 · ' + (chosen.label || '无标题') : '请选择'}</Text>
               </View>;
             })}
+            {kind === 'payments' && <View testID="finance-flow-mapping" style={styles.row}>
+              {dropdown('mapping-flow', '收支方向（可选）', [{ key: 'auto', title: '自动识别' },
+                ...columns.columns.filter(item => !Object.values(mapping).includes(item.index)).map(item => ({ key: String(item.index), title: item.columnLabel + ' 列 · ' + (item.label || '无标题') }))], value => {
+                  invalidatePreview(); setFlowColumn(value === 'auto' ? null : Number(value));
+                }, '收支方向（可选）')}
+              <Text>{flowColumn === null ? '自动识别' : (() => { const chosen = columns.columns.find(item => item.index === flowColumn); return chosen ? chosen.columnLabel + ' 列 · ' + (chosen.label || '无标题') : '请重新选择'; })()}</Text>
+              <Text variant="bodySmall">留在自动识别即可继续；无法识别的收支会标为「待核对」，不会按收入处理。</Text>
+              {flowColumn !== null && Object.values(mapping).includes(flowColumn) && <Text>收支方向不能与日期、金额、标题或币种使用同一列。</Text>}
+            </View>}
             {Object.values(mapping).some(value => value === null) ? <Text>请选择全部四列，币种列也必须指定。</Text>
               : new Set(Object.values(mapping)).size !== 4 && <Text>四个字段需要选择不同的列。</Text>}
-            <Button mode="contained" contentStyle={styles.buttonContent} disabled={disabled || Object.values(mapping).some(value => value === null) || new Set(Object.values(mapping)).size !== 4}
+            <Button mode="contained" contentStyle={styles.buttonContent} disabled={disabled || Object.values(mapping).some(value => value === null) || new Set(Object.values(mapping)).size !== 4
+              || kind === 'payments' && flowColumn !== null && Object.values(mapping).includes(flowColumn)}
               onPress={() => void inspect('mapped')}>按所选列预览</Button>
           </>}
         </View>}
