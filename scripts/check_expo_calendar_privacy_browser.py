@@ -91,6 +91,17 @@ class Run(calendar.Run):
             lifecycle.enter_context(patch.object(sys.modules['home_assistant'], name, self.forbidden_provider))
         lifecycle.enter_context(patch.object(self.application.extensions['cloud_accounts'], 'active_provider', self.forbidden_provider))
 
+    def open(self, page, route='calendar'):
+        super().open(page, route)
+        # RN Web Animated interpolates with Date.now(). Keep the synthetic
+        # calendar date but release the inherited fixed clock for animations.
+        page.clock.set_system_time(NOW)
+        before = page.evaluate('Date.now()')
+        page.wait_for_function('before => Date.now() > before + 32', arg=before, polling='raf', timeout=5000)
+        clock = page.evaluate('() => ({now: Date.now(), day: new Date().toISOString().slice(0, 10)})')
+        assert clock['day'] == DAY and 0 < clock['now'] - before < 5000
+        self.report.setdefault('clockEvidence', []).append({'before': before, **clock})
+
     def seed_event(self, ctx, title, **fields):
         created = self.write(ctx, 'POST', ITEMS, dict(title=title, owner='member1', start=DAY + 'T09:00:00+08:00',
             end=DAY + 'T11:00:00+08:00', location=title + '地点', **fields), 201)
@@ -178,6 +189,20 @@ class Run(calendar.Run):
                                  ('开始时间（HH:mm）', '09:00'), ('结束时间（HH:mm）', '11:00'), ('地点（可选）', '合成私密地点一')]:
                 page.get_by_role('textbox', name=label, exact=True).fill(value)
             expect(self.scope(page, 'private')).to_be_checked()
+            # A real converged label, rather than a timer delay or changed CSS.
+            label_geometry = '''() => {
+              const input=document.querySelector('input[aria-label="地点（可选）"]');
+              if(!input)return {separated:false};
+              const box=input.getBoundingClientRect(), line=parseFloat(getComputedStyle(input).lineHeight);
+              const visible=node=>{for(let n=node;n;n=n.parentElement){const s=getComputedStyle(n);
+                if(s.display==='none'||s.visibility==='hidden'||Number(s.opacity)===0)return false;}return true;};
+              const labels=[...document.querySelectorAll('*')].filter(n=>visible(n)&&[...n.childNodes].some(c=>c.nodeType===3&&c.textContent.trim()==='地点（可选）'))
+                .map(n=>{const r=document.createRange();r.selectNodeContents(n);return {box:r.getBoundingClientRect().toJSON(),transform:getComputedStyle(n).transform};});
+              const textTop=box.top+box.height/2-line/2;
+              return {input:box.toJSON(),textTop,labels,separated:labels.length===1&&labels[0].box.bottom<textTop};
+            }'''
+            page.wait_for_function('(' + label_geometry + ')().separated', polling='raf', timeout=5000)
+            self.record('location-label-stable', page.evaluate(label_geometry))
             self.capture(page, 'default-private-390', self.scope(page, 'private'))
             created = self.exchange(page, ITEMS, lambda: button(page, '保存').click(), method='POST', status=201)
             assert created['payload']['owner'] == 'member1' and created['payload']['visibility'] == 'private'
