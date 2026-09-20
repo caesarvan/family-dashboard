@@ -1,0 +1,327 @@
+"""Offline source-reuse boundaries and genuine file/SQLite evidence helpers.
+
+These checks do not launch a browser or claim the three user flows passed.
+"""
+from contextlib import ExitStack, closing
+from datetime import datetime, timezone
+import hashlib
+import json
+import os
+import re
+import sqlite3
+import subprocess
+from pathlib import Path
+import tempfile
+from unittest.mock import patch
+from types import SimpleNamespace
+
+from PIL import Image
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
+import pytest
+from scripts import check_expo_local_photo_browser as wrapper
+from browser_expo_local_photo_check import Run, make_picture, assert_revoked_upload
+
+
+@pytest.fixture
+def repo(tmp_path):
+    def git(*args):
+        return subprocess.check_output(['git', '-c', 'user.name=Synthetic Harness Test',
+            '-c', 'user.email=synthetic@example.invalid', *args], cwd=tmp_path).decode().strip()
+    git('init', '--quiet')
+    path = tmp_path / 'frontend' / 'app.tsx'; path.parent.mkdir(); path.write_text('synthetic input\n')
+    git('add', '--', 'frontend/app.tsx'); git('commit', '--quiet', '-m', 'Synthetic source')
+    head = git('rev-parse', 'HEAD')
+    evidence = {'sourceHead': head, 'sourceTree': git('rev-parse', head + '^{tree}')}
+    def change(name, text='synthetic changed input\n'):
+        target = tmp_path / name; target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(text)
+        git('add', '--', name); git('commit', '--quiet', '-m', 'Synthetic delta')
+        return git('rev-parse', 'HEAD')
+    return git, head, evidence, change
+
+
+def test_cases_exact_and_repeated_selection_deduplicated():
+    assert wrapper.selected_cases(None) == wrapper.CASES
+    assert len(wrapper.CASES) == 3 and list(wrapper.CASE_SCREENSHOTS.values()) == [3, 3, 3]
+    assert wrapper.selected_cases([wrapper.CASES[2], wrapper.CASES[0], wrapper.CASES[2]]) == (wrapper.CASES[2], wrapper.CASES[0])
+    for value in ([], ['unknown'], [wrapper.CASES[0], 'unknown']):
+        with pytest.raises(ValueError): wrapper.selected_cases(value)
+
+
+def test_output_keeps_original_failure(tmp_path):
+    with patch.object(wrapper, 'datetime') as clock:
+        clock.now.return_value = datetime(2027, 10, 13, tzinfo=timezone.utc)
+        out = wrapper.exclusive_output(tmp_path)
+        original = out / 'failure.txt'; original.write_text('original failure')
+        with pytest.raises(FileExistsError): wrapper.exclusive_output(tmp_path)
+        assert original.read_text() == 'original failure'
+
+
+def test_build_reuse_accepts_only_exact_own_paths(repo):
+    git, head, evidence, change = repo
+    assert wrapper.build_source_delta(git, head, evidence, head) == []
+    assert len(wrapper.BUILD_REUSE_PATHS) == 4
+    for path in sorted(wrapper.BUILD_REUSE_PATHS):
+        assert path in wrapper.build_source_delta(git, change(path), evidence, head)
+
+
+@pytest.mark.parametrize('path', ['frontend/app.tsx', 'frontend/new.tsx', 'household_media.py', 'app.py', 'docs/OTHER.md'])
+def test_build_reuse_rejects_unrelated_or_business_changes(repo, path):
+    git, head, evidence, change = repo
+    with pytest.raises(AssertionError): wrapper.build_source_delta(git, change(path), evidence, head)
+
+
+def test_build_reuse_requires_original_head_tree_ancestry(repo):
+    git, head, evidence, change = repo
+    with pytest.raises(AssertionError): wrapper.build_source_delta(git, head, {**evidence, 'sourceTree': '0' * 40}, head)
+    with pytest.raises(AssertionError): wrapper.build_source_delta(git, head, evidence, '0' * 40)
+    later = change(wrapper.HARNESS)
+    later_evidence = {'sourceHead': later, 'sourceTree': git('rev-parse', later + '^{tree}')}
+    with pytest.raises(AssertionError, match='ancestor'): wrapper.build_source_delta(git, head, later_evidence, later)
+
+
+def reviewed_change(repo):
+    git, head, evidence, change = repo
+    for name in sorted(wrapper.REVIEWED_BACKEND_PATHS):
+        reviewed = change(name, 'reviewed backend ' + name + '\n')
+    return reviewed
+
+
+def test_exact_reviewed_backend_ancestor_and_blobs_accept(repo):
+    git, head, evidence, change = repo
+    reviewed = reviewed_change(repo)
+    candidate = change(wrapper.HARNESS)
+    with patch.object(wrapper, 'REVIEWED_BACKEND_HEAD', reviewed):
+        assert set(wrapper.build_source_delta(git, candidate, evidence, head)) == wrapper.REVIEWED_BACKEND_PATHS | {wrapper.HARNESS}
+
+
+def test_changed_reviewed_backend_blob_rejected(repo):
+    git, head, evidence, change = repo
+    reviewed = reviewed_change(repo)
+    candidate = change('home_assistant.py', 'unreviewed change\n')
+    with patch.object(wrapper, 'REVIEWED_BACKEND_HEAD', reviewed), pytest.raises(AssertionError, match='bytes changed'):
+        wrapper.build_source_delta(git, candidate, evidence, head)
+
+
+def test_copying_reviewed_bytes_without_reviewed_ancestor_rejected(repo):
+    git, head, evidence, change = repo
+    reviewed = reviewed_change(repo)
+    git('checkout', '--quiet', '-b', 'synthetic-independent-copy', head)
+    # Exact same blobs, but without the reviewed commit in history.
+    git('checkout', reviewed, '--', *sorted(wrapper.REVIEWED_BACKEND_PATHS))
+    git('commit', '--quiet', '-m', 'Independent copy')
+    candidate = git('rev-parse', 'HEAD')
+    with patch.object(wrapper, 'REVIEWED_BACKEND_HEAD', reviewed), pytest.raises(AssertionError, match='ancestor'):
+        wrapper.build_source_delta(git, candidate, evidence, head)
+
+
+@pytest.mark.parametrize('kind', ['JPEG', 'PNG', 'WEBP'])
+def test_picture_is_real_decodable_file_with_hash_and_exclusive_destination(tmp_path, kind):
+    path = tmp_path / ('synthetic.' + kind.lower())
+    proof = make_picture(path, kind, '#437562'); original = path.read_bytes()
+    assert proof['bytes'] == len(original) and proof['sha256'] == hashlib.sha256(original).hexdigest()
+    with Image.open(path) as image:
+        image.load(); assert image.format == kind and image.size == (96, 64)
+    with pytest.raises(AssertionError): make_picture(path, kind, '#000000')
+    assert path.read_bytes() == original
+
+
+@pytest.mark.parametrize('invalid_cipher', [False, True])
+def test_database_evidence_closes_actual_sqlite_on_pass_and_assertion(tmp_path, invalid_cipher):
+    database = tmp_path / 'synthetic.sqlite3'
+    with closing(sqlite3.connect(database)) as con:
+        con.executescript('''CREATE TABLE media_items(id TEXT,owner TEXT,account_id TEXT,state TEXT,
+            revision INTEGER,visibility TEXT,confirmed_at INTEGER,preview_cipher BLOB,metadata_cipher BLOB);
+            CREATE TABLE media_imports(id TEXT,owner TEXT,state TEXT,revision INTEGER);
+            CREATE TABLE audit(action TEXT); CREATE TABLE cloud_accounts(id TEXT);''')
+        con.execute('INSERT INTO media_items VALUES(?,?,?,?,?,?,?,?,?)', ('original-id', 'member1', None,
+            'staged', 1, 'private', None, b'' if invalid_cipher else b'encrypted-preview', b'encrypted-metadata'))
+        con.execute('INSERT INTO media_imports VALUES(?,?,?,?)', ('original-import', 'member1', 'staging', 1))
+        con.execute('INSERT INTO audit VALUES(?)', ('media_local_import_start',)); con.commit()
+    run = Run.__new__(Run); run.database, run.folder = database, tmp_path
+    connect, held = sqlite3.connect, []
+    def actual_connection(*args, **kwargs):
+        con = connect(*args, **kwargs); held.append(con); return con
+    with patch.object(sqlite3, 'connect', actual_connection):
+        if invalid_cipher:
+            with pytest.raises(AssertionError): run.database_proof()
+        else:
+            proof = run.database_proof()
+            assert proof['items'][0]['id'] == 'original-id' and proof['accounts'] == 0
+            assert proof['audit'] == {'media_local_import_start': 1}
+            assert 'preview_cipher' not in proof['items'][0]
+    assert len(held) == 1
+    with pytest.raises(sqlite3.ProgrammingError, match='closed'): held[0].execute('SELECT 1')
+    database.unlink()  # Real Windows handle closure, no GC/sleep/retry.
+
+
+def test_actual_fixture_initialization_and_thread_cleanup_without_browser(tmp_path):
+    bundle = tmp_path / 'synthetic-unused-export'; bundle.mkdir()
+    (bundle / 'index.html').write_text('<!doctype html><title>Not browser acceptance</title>')
+    out = tmp_path / 'output'; out.mkdir()
+    report = {'unexpectedProviderAttempts': []}
+    with ExitStack() as lifecycle:
+        folder = Path(lifecycle.enter_context(tempfile.TemporaryDirectory(prefix='lp-init-', dir=tmp_path)))
+        run = Run(wrapper.ROOT, bundle, folder, report, out, lifecycle)
+        assert run.database_proof()['items'] == [] and run.database_proof()['accounts'] == 0
+        assert run.server is not None and run.thread.is_alive()
+        assert len(report['fixtureHashes']) >= 14 and not report['unexpectedProviderAttempts']
+    assert run.server is None and not run.thread.is_alive() and not folder.exists()
+
+
+def test_real_login_switch_revokes_import_context_but_retains_unconfirmed_original(tmp_path, monkeypatch):
+    from app import create_app
+    monkeypatch.setenv('MEMBER1_PASSWORD', 'testing-password-one')
+    monkeypatch.setenv('MEMBER2_PASSWORD', 'testing-password-two')
+    app = create_app({'TESTING': True, 'SECRET_KEY': 'synthetic-local-upload-context-only',
+                      'DATA_DIR': str(tmp_path), 'SESSION_COOKIE_SECURE': False})
+    client = app.test_client()
+    def login(target, number):
+        response = target.post('/api/login', json={'username': 'member' + str(number),
+            'password': 'testing-password-' + ('one' if number == 1 else 'two')})
+        assert response.status_code == 200
+        return {'X-CSRF-Token': target.get('/api/me').json['csrf']}
+    headers = login(client, 1)
+    path = tmp_path / 'synthetic-late-upload.jpg'
+    declared = make_picture(path, 'JPEG', '#754394'); raw = path.read_bytes()
+    created = client.post('/api/media/local-imports', headers=headers, json={
+        'requestId': 'synthetic-create-0001', 'consentVersion': 'media-v1', 'allowTemporaryProcessing': True,
+        'files': [{'clientFileId': 'synthetic-file-000001', 'filename': path.name,
+                   'contentType': 'image/jpeg', 'bytes': declared['bytes'], 'sha256': declared['sha256']}]})
+    assert created.status_code == 201
+    uid = created.json['import']['id']; slot = created.json['upload']['files'][0]['slotId']
+    uploaded = client.put('/api/media/local-imports/' + uid + '/files/' + slot, data=raw,
+        content_type='image/jpeg', headers={**headers, 'X-Import-Revision': str(created.json['import']['revision'])})
+    assert uploaded.status_code == 200
+    committed = uploaded.json
+    login(client, 2)  # Real login revokes the previous browser generation.
+    assert client.get('/api/media/imports/' + uid).status_code == 404
+    original_owner = app.test_client(); fresh_headers = login(original_owner, 1)
+    response = original_owner.get('/api/media/imports/' + uid); assert response.status_code == 200
+    run = Run.__new__(Run); run.database, run.folder = tmp_path / 'household.sqlite3', tmp_path
+    before = run.database_proof()
+    original_id = assert_revoked_upload(committed, response.json, before)
+    revision = response.json['import']['revision']
+    finish = original_owner.post('/api/media/local-imports/' + uid + '/finish', headers=fresh_headers,
+        json={'revision': revision, 'requestId': 'synthetic-rejected-finish'})
+    confirm = original_owner.post('/api/media/imports/' + uid + '/confirm', headers=fresh_headers,
+        json={'revision': revision, 'confirmRequestId': 'synthetic-rejected-confirm', 'itemIds': [original_id],
+              'consentVersion': 'media-v1', 'persistSelected': True})
+    assert finish.status_code == confirm.status_code == 410
+    assert run.database_proof() == before
+
+
+class CompletionEvents:
+    """Offline event-order contract double; not a browser or real timing test."""
+    def __init__(self):
+        self.events = {}
+        self.registrations = []
+
+    def arm(self, event, predicate, timeout):
+        assert timeout == 15000  # A zero/omitted timeout regresses to an unbounded wait.
+        owner = self
+        class Pending:
+            result = None
+            def __enter__(self):
+                owner.registrations.append(event); owner.events[event] = (predicate, self)
+                return self
+            def __exit__(self, kind, value, tb):
+                if kind is None: self.value
+                return False
+            @property
+            def value(self):
+                if self.result is None: raise PlaywrightTimeoutError('Synthetic missing ' + event)
+                return self.result
+        return Pending()
+
+    def expect_request_finished(self, *, predicate, timeout):
+        return self.arm('requestfinished', predicate, timeout)
+
+    def expect_response(self, predicate, *, timeout):
+        return self.arm('response', predicate, timeout)
+
+    def emit(self, event, value):
+        predicate, pending = self.events[event]
+        if predicate(value): pending.result = value
+
+
+def completion_fixture(tmp_path):
+    run = Run.__new__(Run)
+    run.out = tmp_path / 'case'; run.out.mkdir()
+    run.report = {'httpEvidence': []}
+    page = CompletionEvents()
+    request = SimpleNamespace(method='POST', url='https://127.0.0.1/api/media/local-imports/' + 'a'*24 + '/finish',
+                              post_data_json={'requestId': 'original-request'}, failure=None)
+    response = SimpleNamespace(status=200, url=request.url, request=request)
+    response.json_calls = 0
+    def actual_json():
+        response.json_calls += 1
+        return {'original': 'response-data'}
+    response.json = actual_json
+    def trigger():
+        assert page.registrations == ['requestfinished', 'response']
+        page.emit('response', response); page.emit('requestfinished', request)
+    return run, page, request, response, trigger
+
+
+def test_bounded_completion_catches_fast_original_request_and_flushes_before_json(tmp_path):
+    run, page, request, response, trigger = completion_fixture(tmp_path)
+    original_json = response.json
+    def checked_json():
+        assert (run.out/'operation-headers.json').exists()
+        assert (run.out/'operation-transport-complete.json').exists()
+        return original_json()
+    response.json = checked_json
+    with patch.object(os, 'fsync', wraps=os.fsync) as sync:
+        value, sent = run.completed_json(page, 'operation', 'POST', re.compile(re.escape(request.url)), trigger)
+    assert value == {'original': 'response-data'} and sent == {'requestId': 'original-request'}
+    assert response.json_calls == 1 and sync.call_count == 4
+    assert len(run.report['httpEvidence']) == 4
+    assert not (run.out/'operation-failed.json').exists()
+
+
+@pytest.mark.parametrize('missing', ['response', 'requestfinished'])
+def test_bounded_completion_missing_event_fails_with_durable_progress(tmp_path, missing):
+    run, page, request, response, _ = completion_fixture(tmp_path)
+    def trigger():
+        if missing != 'response': page.emit('response', response)
+        if missing != 'requestfinished': page.emit('requestfinished', request)
+    with pytest.raises(PlaywrightTimeoutError):
+        run.completed_json(page, 'operation', 'POST', request.url, trigger)
+    failure = json.loads((run.out/'operation-failed.json').read_text())
+    assert failure['phase'] == ('before-dispatch' if missing == 'response' else 'headers')
+    assert failure['errorType'] == 'TimeoutError' and failure['timeoutMs'] == 15000
+    assert response.json_calls == 0 and not (run.out/'operation-json.json').exists()
+
+
+@pytest.mark.parametrize('wrong', ['method', 'url', 'same_url_other_request'])
+def test_bounded_completion_other_request_cannot_finish_original(tmp_path, wrong):
+    run, page, request, response, _ = completion_fixture(tmp_path)
+    other = SimpleNamespace(**vars(request))
+    if wrong == 'method': other.method = 'GET'
+    if wrong == 'url': other.url += '?different=1'
+    def trigger():
+        page.emit('response', response); page.emit('requestfinished', other)
+    expected = AssertionError if wrong == 'same_url_other_request' else PlaywrightTimeoutError
+    with pytest.raises(expected): run.completed_json(page, 'operation', 'POST', request.url, trigger)
+    assert response.json_calls == 0
+    assert not (run.out/'operation-transport-complete.json').exists()
+    assert (run.out/'operation-headers.json').exists() and (run.out/'operation-failed.json').exists()
+
+
+def test_bounded_completion_rejected_status_preserves_headers_without_success(tmp_path):
+    run, page, request, response, trigger = completion_fixture(tmp_path)
+    response.status = 503
+    with pytest.raises(AssertionError): run.completed_json(page, 'operation', 'POST', request.url, trigger)
+    assert json.loads((run.out/'operation-headers.json').read_text())['status'] == 503
+    assert response.json_calls == 0 and not (run.out/'operation-json.json').exists()
+
+
+def test_bounded_completion_bad_json_preserves_completed_transport_as_failure(tmp_path):
+    run, page, request, response, trigger = completion_fixture(tmp_path)
+    def invalid(): raise ValueError('Synthetic invalid response JSON')
+    response.json = invalid
+    with pytest.raises(ValueError): run.completed_json(page, 'operation', 'POST', request.url, trigger)
+    assert (run.out/'operation-transport-complete.json').exists()
+    assert json.loads((run.out/'operation-failed.json').read_text())['phase'] == 'transport-complete'
+    assert not (run.out/'operation-json.json').exists()
