@@ -71,6 +71,7 @@ IMAGE_FAILURES = {
     'unsafe_decoder_configuration': '当前解码配置无法安全处理图片。',
 }
 VIDEO_FAILURES = {
+    'video_not_ready': 'Google 尚未完成此视频处理或处理失败；其他照片可正常保存，请稍后重新选择此视频。',
     'video_invalid_input': '视频字节或媒体类型无效。',
     'video_too_large': '视频源文件超过 100 MiB，或展示副本超过 64 MiB 上限。',
     'video_too_long': '视频不能超过十分钟。',
@@ -276,6 +277,20 @@ def manifest_map(value):
         _text(file['filename'], 1024)
         _text(file['mimeType'], 100)
         result[item['id']] = item
+    return result
+
+
+def manifest_identity(value):
+    """Only a validated VIDEO processing state is transient; all other fields bind selection."""
+    result = manifest_map(value)
+    result = json.loads(_canonical(result))
+    for item in result.values():
+        if item['type'] != 'VIDEO':
+            continue
+        metadata = item['mediaFile'].get('mediaFileMetadata')
+        video = metadata.get('videoMetadata') if type(metadata) is dict else None
+        if type(video) is dict and video.get('processingStatus') in ('UNSPECIFIED','PROCESSING','READY','FAILED'):
+            video['processingStatus'] = '<validated-video-processing-state>'
     return result
 
 
@@ -720,7 +735,7 @@ class MediaLibrary:
                 self._finish_staging(con, row, {'media':list(media.values()), 'slots':slots})
             elif action == 'download':
                 manifest = self._manifest(row)
-                if manifest_map(result.get('manifest')) != manifest_map(manifest['media']):
+                if manifest_identity(result.get('manifest')) != manifest_identity(manifest['media']):
                     raise MediaError('selection_changed')
                 slot = next((s for s in manifest['slots'] if s['status']=='pending'), None)
                 if not slot or slot['mediaId'] != result.get('mediaId'):

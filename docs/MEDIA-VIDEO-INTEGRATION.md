@@ -8,7 +8,7 @@ Google Picker 仍只下载本次明确选择的内容；PHOTO 保留原图片路
 
 ## 数据与 API
 
-原 `media_items` ID、revision、导入记录和明确保存回执不变。原 `preview_cipher` 保存 JPEG 封面；新表 `media_video_cache(media_id, cache_key, cipher, created_at)` 通过 FK 关联原媒体。视频采用独立的 `media-video` purpose 派生密钥，明文字节上限 64 MiB，加密后限 89,478,628 字节；原图片 purpose 和密钥保持兼容。加密元数据绑定原媒体、家庭、拥有者、cache key、视频长度和摘要。
+原 `media_items` ID、revision、导入记录和明确保存回执不变。原 `preview_cipher` 保存 JPEG 封面；新表 `media_video_cache(media_id, cache_key, cipher, created_at)` 通过 FK 关联原媒体。视频对外仍使用 `media-video` purpose，内部采用独立 `media-video/aesgcm/v1` 密钥域的 AES-256-GCM；明文字节上限 64 MiB，加密后限 67,108,940 字节。原图片与 JSON 的 Fernet 格式及密钥保持兼容。格式、内存实测与尚待完成的 Linux 验证见 [MEDIA-VIDEO-CIPHER](MEDIA-VIDEO-CIPHER.md)。加密元数据绑定原媒体、家庭、拥有者、cache key、视频长度和摘要。
 
 列表、详情、待确认项和电视项在原字段外增加 `mediaType: 'photo' | 'video'`；旧照片缺少该字段时按 photo 读取。video 项增加 `durationMs`、`hasAudio`、同源 `videoUrl`；成员项 `contentType` 为 `video/mp4`，`previewUrl` 始终是 JPEG。不会向客户端暴露 Google 下载 URL、token 或本地文件路径。
 
@@ -34,3 +34,5 @@ Google Picker 仍只下载本次明确选择的内容；PHOTO 保留原图片路
 专项使用真实临时 Flask／SQLite、Fernet、实际 FFmpeg 生成与处理的合成视频，只有 Google 网络 transport 为模拟边界。覆盖完整 worker→staged→确认→回执重放／重启、伙伴与各 TV grant、解密期间撤权、取消／过期／原 tombstone 清理、配额、长处理 lease、元数据导出及 71→72 原数据保全；实际执行计数与失败记录由作者报告分别列出，不把代码存在当作测试通过。
 
 本地作者验证已实际结束：首轮 253 项中 250 通过、3 失败；三项失败分别是撤销设备测试缺少 JSON 请求体、成员移除测试未先开启事务，以及旧表集合断言未包含新表。只修正这些测试后，第二轮仅复测这三项并全部通过；253 个唯一用例共执行 256 次，最终无遗留失败／跳过，原首轮失败记录保留。没有重跑纯处理器的已审 16 项，也没有运行 Linux、浏览器、真实账号或生产验收。原件与哈希见本分支 ignored `test-results/media-video-integration-author-verification-r1.json`。
+
+Google VIDEO 的 PROCESSING／FAILED／UNSPECIFIED 记为本项 `video_not_ready`，不进行下载或无限等待，其他已成功照片仍可使用原确认回执保存。处理状态若在本轮准备阶段从 PROCESSING 变为 READY，可继续真实转换；仅合法 VIDEO `processingStatus` 被视为暂态，媒体 ID、类型、创建时间、文件名、MIME、尺寸及其余字段仍严格核对。会话尚未完成选择、选择变化、过期或撤权仍沿原导入整体失败／取消边界，不伪装成单个视频未就绪。
