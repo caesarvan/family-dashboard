@@ -152,10 +152,11 @@ def test_video_rechecks_after_decryption_no_stale_bytes(env,clip,tools,monkeypat
             elif revoke=='delete':
                 assert c.delete('/api/media/items/'+value['id'],json={'revision':latest['revision']},headers=h).status_code==200
             elif revoke=='device':
-                manager,mh=login(env[0]);assert manager.delete('/api/devices/'+did,headers=mh).status_code==200
+                manager,mh=login(env[0]);assert manager.delete('/api/devices/'+did,json={},headers=mh).status_code==200
             else:
                 from household_memberships import remove_membership
                 with env[1].sessions.db() as con:
+                    con.execute('BEGIN IMMEDIATE')
                     remove_membership(con,household_id='default',actor_member_id='member1',member_id='member2',
                         expected_auth_version=1,expected_revision=1,request_id=secrets.token_hex(16),intent_digest='a'*64)
         return raw

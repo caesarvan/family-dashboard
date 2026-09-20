@@ -564,7 +564,7 @@ def test_picker_error_preserves_only_disabled_service_existing_authority(env,cod
 def test_factory_media_tables_and_hooks_require_transaction(env):
     with env[1].sessions.db() as con:
         names={r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'media_%'")}
-        assert names=={'media_imports','media_items','media_tv_grants','media_playback'}
+        assert names=={'media_imports','media_items','media_tv_grants','media_playback','media_video_cache'}
         with pytest.raises(RuntimeError):
             env[1].on_account_removed(con,env[3][1])
 
