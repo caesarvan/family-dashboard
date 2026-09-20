@@ -53,10 +53,13 @@ DATA_ACTIONS = {
 
 
 def verify_operator(candidate, expected, *, mode='video-migration'):
-    need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update', 'journey-finance-73-to-75'), 'unsupported_release_mode')
+    need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update',
+                  'finance-flow-source-update', 'journey-finance-73-to-75', 'media-date-source-update'), 'unsupported_release_mode')
     policy = prepare
     if mode == 'local-photo-source-update':
         from deploy import prepare_local_photo_activation as policy
+    elif mode == 'media-date-source-update':
+        from deploy import prepare_media_date_activation as policy
     elif mode == 'journey-finance-73-to-75':
         from deploy import prepare_journey_finance_activation as policy
     elif mode == 'finance-flow-source-update':
@@ -83,16 +86,19 @@ class Controller:
         self.plan = read(self.candidate / 'plan.json', plan_sha256)
         self.runner = runner
         self.source = self.candidate / 'source'
-        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update', 'journey-finance-73-to-75'), 'unsupported_release_mode')
+        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update',
+                      'finance-flow-source-update', 'journey-finance-73-to-75', 'media-date-source-update'), 'unsupported_release_mode')
         self.mode, self.policy = mode, prepare
         self.source_update = mode != 'video-migration'
         self.needs_migration = mode in ('video-migration', 'journey-finance-73-to-75')
-        self.after_schema = [75, 9] if mode == 'journey-finance-73-to-75' else [73, 9]
+        self.after_schema = [75, 9] if mode in ('journey-finance-73-to-75', 'media-date-source-update') else [73, 9]
         self.images, self.parent_image, self.before_schema = prepare.IMAGES, services.PARENT_IMAGE, [71, 9]
         self.release_prefix = 'media-video-73-'
         self.data_prefix, self.data_actions = DATA_PREFIX, DATA_ACTIONS
         if self.source_update:
-            if mode == 'journey-finance-73-to-75':
+            if mode == 'media-date-source-update':
+                from deploy import prepare_media_date_activation as policy
+            elif mode == 'journey-finance-73-to-75':
                 from deploy import prepare_journey_finance_activation as policy
             elif mode == 'finance-flow-source-update':
                 from deploy import prepare_finance_flow_activation as policy
@@ -111,6 +117,12 @@ class Controller:
                 self.release_prefix = 'journey-finance-75-'
                 self.data_prefix = DATA_PREFIX.replace('check_media_video_migration', 'check_journey_finance_migration')
                 self.data_actions = DATA_ACTIONS
+            elif mode == 'media-date-source-update':
+                self.before_schema = [75, 9]
+                self.release_prefix = 'media-date-75-'
+                self.data_prefix = DATA_PREFIX.replace('check_media_video_migration', 'journey_finance_release_data')
+                self.data_actions = {'backup': DATA_ACTIONS['backup'], 'check': DATA_ACTIONS['check'],
+                    'verify-rollback': 'from deploy.activate_media_date_release import verify_restored_group; value=verify_restored_group(root,proof,**kwargs)'}
             policy.check_plan(self.plan)
         need(self.plan.get('kind') == (self.policy.KIND if self.source_update
                                       else 'media-video-five-service-activation-v1') and

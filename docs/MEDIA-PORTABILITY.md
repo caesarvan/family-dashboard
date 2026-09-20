@@ -1,5 +1,7 @@
 # 相册导出与备份
 
+本轮[照片日期确认扩展](MEDIA-CONFIRMED-DATE.md)在 `personal.householdMedia` 增加 `userConfirmedDate`（`YYYY-MM-DD` 或 `null`），只表达本人确认的日历日期；原 `sourceCreatedAt/sourceTimeState` 保持原义。伙伴共享导出不含新字段，不能由它推断拍摄时刻或地点。此扩展的实际发布状态以 [HANDOFF](HANDOFF.md) 为准。
+
 「设置 → 导出我的数据」包含已确认保存照片的说明与旅行关联。`personal.householdMedia` 包含本人照片；仅勾选附带共同记录时，`shared.householdMedia` 才包含伙伴仍获授权的共享照片。未确认、已删除或已撤回的照片不进入下载副本。
 
 本人字段包括 ID、版本、说明、尺寸、图片类型、可见范围、旅行关联、本地导入时间、来源名称及文件名；另含 `sourceCreatedAt` 与 `sourceTimeState`，表示已记录的来源创建时间或明确的 `unknown/null`。旧照片没有来源时间时不会用导入时间补填。伙伴投影不含来源时间、来源名称、账户和文件名。两者都不包含照片文件、下载地址、令牌、选片清单、加密内容、请求标识或电视许可。导出覆盖声明为 `householdMedia: saved_metadata_only`，不能把个人 ZIP 当作原图备份或数据库恢复包。

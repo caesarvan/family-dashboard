@@ -1,6 +1,8 @@
 # 本人照片 · 那年今日 API
 
-独立候选，尚未进行组合界面、正式浏览器、Linux 或生产验收。本批只增加一个成员只读查询；不新增表、媒体副本、任务、依赖或云调用。原照片 ID、revision、共享及电视许可均保持。
+本轮日期确认扩展采用显式 `dateMode=confirmed-or-source` 的 v2 响应，完整字段、日期优先级和未知日期计数见[照片日期确认契约](MEDIA-CONFIRMED-DATE.md)。下文是未传该参数时继续保留的 v1 协议；v2 不用本人确认日期改写 `sourceCreatedAt`。本轮扩展的上线状态以交接记录为准。
+
+该成员只读查询已随[设备照片与那年今日批次](LOCAL-PHOTO-ACCEPTANCE.md#local-photo-release)发布；本文保留 v1 协议，日期确认扩展的状态见[本批验收](MEDIA-CONFIRMED-DATE-ACCEPTANCE.md#media-date-release)。查询不新增表、媒体副本、任务、依赖或云调用，原照片 ID、revision、共享及电视许可保持。
 
 ## 查询
 
