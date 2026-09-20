@@ -12,6 +12,7 @@ import re
 import secrets
 from threading import BoundedSemaphore, Lock
 import time
+import traceback
 import weakref
 
 from flask import Response, g, jsonify, request
@@ -98,6 +99,22 @@ class MediaError(Exception):
         self.code = code if code in ERRORS else 'worker_error'
         self.status, self.message = ERRORS[self.code]
         super().__init__(self.message)
+
+
+def _clear_video_error_frames(error):
+    # Retain exception identity, messages and stack locations, but not buffers in
+    # completed decoder/response frames. The active video frame is cleared by
+    # its caller before releasing admission; clear_frames skips active frames.
+    pending, visited = [error], set()
+    while pending:
+        current = pending.pop()
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        traceback.clear_frames(current.__traceback__)
+        for chained in (current.__cause__, current.__context__):
+            if chained is not None:
+                pending.append(chained)
 
 
 class _VideoReadPermit:
@@ -1166,6 +1183,7 @@ class MediaLibrary:
             initial_actor, initial_revision, initial_meta = self._video_identity(con,uid,television)
         permit = _VideoReadPermit()
         transferred = False
+        raw = blob = cache = response = None
         try:
             with self.transaction() as con:
                 actor, revision, meta = self._video_identity(con,uid,television)
@@ -1178,8 +1196,8 @@ class MediaLibrary:
             raw=None
             try:
                 raw=self.cipher.open_bytes('media-video',blob)
-            except MediaCryptoError:
-                pass
+            except MediaCryptoError as error:
+                _clear_video_error_frames(error)
             del blob, cache
             if (raw is None or not 0<len(raw)<=MAX_VIDEO_BYTES or len(raw)!=meta.get('videoBytes')
                 or hashlib.sha256(raw).hexdigest()!=meta.get('videoSha256')):
@@ -1193,6 +1211,13 @@ class MediaLibrary:
             response = permit.response(raw)
             transferred = True
             return response
+        except BaseException as error:
+            # An error handler may retain this traceback after admission is
+            # released. Drop our references before clearing completed inner
+            # frames (which can finalize a partially constructed response).
+            raw = blob = cache = response = None
+            _clear_video_error_frames(error)
+            raise
         finally:
             # Successful responses release only on WSGI close (or finalization).
             if not transferred:

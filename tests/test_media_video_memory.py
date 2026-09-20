@@ -4,9 +4,11 @@ This suite tests admission and object ownership, not codec or peak-memory limits
 No Google, FFmpeg, Linux or production requests are made.
 """
 from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
 import gc
 import hashlib
 import secrets
+import sqlite3
 from threading import Event
 import weakref
 
@@ -53,8 +55,10 @@ def staged_video(env):
     return c, h, imp, job, record, video
 
 
-def saved_video(env):
+def saved_video(env, raw=None):
     c, h, imp, job, record, video = staged_video(env)
+    if raw is not None:
+        video = replace(video, data=raw, sha256=hashlib.sha256(raw).hexdigest())
     assert env[1].complete(job, {'mediaId':record['id'], 'manifest':[record], 'preview':video.poster, 'video':video})
     detail = c.get('/api/media/imports/'+imp['id']).json
     confirm(c, h, detail)
@@ -265,3 +269,111 @@ def test_worker_drops_download_object_before_real_seal_and_commit(env, monkeypat
     detail = c.get('/api/media/imports/'+imp['id']).json
     assert detail['import']['state'] == 'awaiting_confirmation'
     assert len(detail['items']) == 1
+
+
+def video_error_buffers(error, response_type):
+    """Inspect only the video call and completed callees, never test/caller state."""
+    found, pending, visited = [], [error], set()
+
+    def large(value, seen):
+        if id(value) in seen:
+            return False
+        seen.add(id(value))
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            return len(value) >= 1024 * 1024
+        if isinstance(value, response_type):
+            return large(value.response, seen)
+        if isinstance(value, sqlite3.Row):
+            return any(large(part, seen) for part in value)
+        if isinstance(value, dict):
+            return any(large(part, seen) for part in value.values())
+        if isinstance(value, (list, tuple)):
+            return any(large(part, seen) for part in value)
+        return False
+
+    while pending:
+        current = pending.pop()
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        trace, within_video = current.__traceback__, False
+        while trace:
+            frame = trace.tb_frame
+            within_video |= frame.f_code is media.MediaLibrary.video.__code__
+            # Chained exceptions begin inside a completed callee and need the
+            # same check; the outer error's Flask/test prefixes are excluded.
+            if within_video or current is not error:
+                for name, value in frame.f_locals.items():
+                    if large(value, set()):
+                        found.append((frame.f_code.co_name, name))
+            trace = trace.tb_next
+        pending.extend(value for value in (current.__cause__, current.__context__) if value is not None)
+    return found
+
+
+@pytest.mark.parametrize('failure', ['metadata', 'decrypt', 'constructor', 'close_registration'])
+def test_failure_tracebacks_drop_video_buffers_before_error_handoff(env, monkeypatch, failure):
+    raw = b'x' * (1024 * 1024)
+    c, _, item, _ = saved_video(env, raw)
+    real_response = media.Response
+    original_open = MediaCipher.open_bytes
+    observed = []
+    with env[1].transaction() as con:
+        original_cipher = bytes(con.execute('SELECT cipher FROM media_video_cache WHERE media_id=?', (item['id'],)).fetchone()[0])
+
+    def inspect(error):
+        assert_free()  # Check inside the actual Flask error handler/catcher.
+        assert video_error_buffers(error, real_response) == []
+        observed.append(error)
+
+    if failure == 'metadata':
+        with env[1].transaction(True) as con:
+            con.execute('UPDATE media_video_cache SET cipher=? WHERE media_id=?',
+                        (env[1].cipher.seal_bytes('media-video', raw + b'changed'), item['id']))
+        handlers = env[0].error_handler_spec[None][None]
+        original_handler = handlers[media.MediaError]
+
+        def handler(error):
+            inspect(error)
+            return original_handler(error)
+
+        monkeypatch.setitem(handlers, media.MediaError, handler)
+        response = c.get(item['videoUrl'])
+        assert response.status_code == 503 and response.json['code'] == 'unavailable'
+        with env[1].transaction(True) as con:
+            con.execute('UPDATE media_video_cache SET cipher=? WHERE media_id=?', (original_cipher, item['id']))
+    else:
+        if failure == 'decrypt':
+            def broken(cipher, purpose, blob):
+                if purpose != 'media-video':
+                    return original_open(cipher, purpose, blob)
+                try:
+                    raise ValueError('inner decoder failure')
+                except ValueError as cause:
+                    raise RuntimeError('synthetic decrypt failure') from cause
+            monkeypatch.setattr(MediaCipher, 'open_bytes', broken)
+        else:
+            class BrokenResponse(real_response):
+                def __init__(self, data, *args, **kwargs):
+                    super().__init__(data, *args, **kwargs)
+                    if failure == 'constructor':
+                        raise RuntimeError('synthetic constructor failure')
+
+                def call_on_close(self, function):
+                    raise RuntimeError('synthetic close registration failure')
+            monkeypatch.setattr(media, 'Response', BrokenResponse)
+        with pytest.raises(RuntimeError, match='synthetic') as caught:
+            c.get(item['videoUrl'])
+        inspect(caught.value)
+        if failure == 'decrypt':
+            assert isinstance(caught.value.__cause__, ValueError)
+            assert str(caught.value.__cause__) == 'inner decoder failure'
+        monkeypatch.setattr(MediaCipher, 'open_bytes', original_open)
+        monkeypatch.setattr(media, 'Response', real_response)
+    assert len(observed) == 1 and len(raw) == 1024 * 1024 and len(original_cipher) > len(raw)
+    # Holding the exception and caller-owned fixtures must not block a new read;
+    # cleanup clears callee references, never the caller's objects or exception.
+    with c.get(item['videoUrl']) as recovered:
+        assert recovered.status_code == 200 and recovered.data == raw
+        assert not media._VIDEO_READ_SLOT.acquire(blocking=False)
+    assert_free()
