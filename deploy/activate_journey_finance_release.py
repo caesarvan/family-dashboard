@@ -1,4 +1,4 @@
-"""Fixed finance flow entry into the reviewed five-service 73/9 73-to-75 migrationr."""
+"""Fixed journey-finance entry into the reviewed five-service 73-to-75 migration."""
 from pathlib import Path
 import sys
 if __package__ in (None, ''):

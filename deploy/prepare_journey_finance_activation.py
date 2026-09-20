@@ -10,7 +10,7 @@ if __package__ in (None, ''):
 from deploy import build_journey_finance_release as package
 from deploy import prepare_finance_flow_activation as parent
 from deploy import prepare_local_photo_activation as shared
-from deploy.membership_release_archive import read_archive
+from deploy.media_video_release_package import read_archive
 from deploy.membership_release_controller import need, regular, read, sha
 
 MODE = 'journey-finance-73-to-75'
@@ -109,10 +109,10 @@ def retained_parent(inputs, value):
     manifest = read(proot/'release-manifest.json', package.OLD_MANIFEST)
     # Never execute retained Python or weaken the current packager's self check.
     need(shared.previous.file_map(proot) == plan['verifiedEvidence']['package'] and
-         sha(regular(proot/'source.tar.gz').read_bytes()) == metadata['archiveSha256'] and
+         sha(regular(proot/'release.tar.gz').read_bytes()) == metadata['archiveSha256'] and
          sha(regular(proot/'build-evidence.json').read_bytes()) == metadata['buildEvidenceSha256'],
          'retained_finance_package_changed')
-    blobs = read_archive(proot/'source.tar.gz')
+    blobs = read_archive(package.package.plain(proot/'release.tar.gz', package.package.MAX_TOTAL))
     need(blobs.pop('RELEASE-MANIFEST.json') == regular(proot/'release-manifest.json').read_bytes() and
          {n: sha(raw) for n, raw in blobs.items()} == manifest['files'], 'retained_finance_archive_changed')
     package.package.validate_maps(metadata, manifest, read(proot/'build-evidence.json'), baseline=package.parent.BASELINE)

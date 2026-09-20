@@ -200,3 +200,77 @@ def test_missing_new_rehearsal_or_review_never_admits():
     with pytest.raises(ReleaseError, match='migration_descriptor'): prepare.verify_migration({}, {}, {})
     assert 'migration' in prepare.REVIEW_ROLES
 
+
+NODES = ['tests/test_data_portability.py::test_export_is_owner_scoped_and_shared_is_explicit', 'tests/test_journey_finance.py::test_amount_is_strict_integer_cents[-1]', 'tests/test_journey_finance.py::test_amount_is_strict_integer_cents[0]', 'tests/test_journey_finance.py::test_amount_is_strict_integer_cents[1.5]', 'tests/test_journey_finance.py::test_amount_is_strict_integer_cents[100000000001]', 'tests/test_journey_finance.py::test_amount_is_strict_integer_cents[100]', 'tests/test_journey_finance.py::test_amount_is_strict_integer_cents[True]', 'tests/test_journey_finance.py::test_bad_source_is_reviewable_and_revocable_without_blocking_other_history[boolean_amount]', 'tests/test_journey_finance.py::test_bad_source_is_reviewable_and_revocable_without_blocking_other_history[negative_net]', 'tests/test_journey_finance.py::test_bad_source_is_reviewable_and_revocable_without_blocking_other_history[string_amount]', 'tests/test_journey_finance.py::test_broken_trip_backreference_does_not_attach_other_journey_budget', 'tests/test_journey_finance.py::test_duplicate_drift_and_deleted_target_can_be_revoked_without_recreating', 'tests/test_journey_finance.py::test_expired_saved_receipt_replays_but_unsaved_preview_rejects', 'tests/test_journey_finance.py::test_noneligible_payment_reason_and_no_write[expense-USD-unsupported_currency]', 'tests/test_journey_finance.py::test_noneligible_payment_reason_and_no_write[income-CNY-not_expense]', 'tests/test_journey_finance.py::test_noneligible_payment_reason_and_no_write[refund-CNY-not_expense]', 'tests/test_journey_finance.py::test_noneligible_payment_reason_and_no_write[transfer-CNY-not_expense]', 'tests/test_journey_finance.py::test_noneligible_payment_reason_and_no_write[unknown-CNY-not_expense]', 'tests/test_journey_finance.py::test_order_and_shopping_are_not_added_or_deducted_from_travel_net', 'tests/test_journey_finance.py::test_pagination_summary_all_pages_and_focus_not_appended', 'tests/test_journey_finance.py::test_parallel_different_journeys_cannot_overallocate_same_payment', 'tests/test_journey_finance.py::test_parallel_same_request_commits_once_and_duplicate_pair_rejects', 'tests/test_journey_finance.py::test_previews_bind_versions_source_and_reservations_but_revoke_ignores_source', 'tests/test_journey_finance.py::test_real_preview_confirmation_receipt_restart_and_no_original_mutation', 'tests/test_journey_finance.py::test_receipt_byte_capacity_keeps_reserved_revoke_space', 'tests/test_journey_finance.py::test_receipt_capacity_reserves_revoke_and_replay_survives_capacity', 'tests/test_journey_finance.py::test_refund_drift_preserves_reservation_until_explicit_update', 'tests/test_journey_finance.py::test_request_fields_and_legacy_trip_are_not_silently_accepted', 'tests/test_journey_finance.py::test_schema_exact_new_tables_and_atomic_initialization', 'tests/test_journey_finance.py::test_source_deleted_and_new_token_replay_conflict', 'tests/test_journey_finance_portability.py::test_export_allocation_and_receipt_allowlists_and_other_owner_absence[False]', 'tests/test_journey_finance_portability.py::test_export_allocation_and_receipt_allowlists_and_other_owner_absence[True]', 'tests/test_journey_finance_sessions.py::test_expiry_after_audit_rolls_back_allocation_receipt_and_audit', 'tests/test_journey_finance_sessions.py::test_owner_tv_and_other_household_cannot_read_private_history', 'tests/test_journey_finance_sessions.py::test_post_commit_revocation_returns_unknown_but_minimal_receipt_is_durable', 'tests/test_journey_finance_sessions.py::test_revoked_after_global_guard_never_reads_or_writes[confirm]', 'tests/test_journey_finance_sessions.py::test_revoked_after_global_guard_never_reads_or_writes[list]', 'tests/test_journey_finance_sessions.py::test_revoked_after_global_guard_never_reads_or_writes[payments]', 'tests/test_journey_finance_sessions.py::test_revoked_after_global_guard_never_reads_or_writes[preview]', 'tests/test_journey_finance_sessions.py::test_revoked_after_global_guard_never_reads_or_writes[receipt]', 'tests/test_journey_finance_sessions.py::test_revoked_during_snapshot_is_rechecked_after_release[list]', 'tests/test_journey_finance_sessions.py::test_revoked_during_snapshot_is_rechecked_after_release[payments]', 'tests/test_journey_finance_sessions.py::test_revoked_during_snapshot_is_rechecked_after_release[preview]', 'tests/test_journey_finance_sessions.py::test_same_owner_cookie_swap_after_guard_rejected', 'tests/test_journey_finance_sessions.py::test_write_lock_contention_is_recoverable_without_receipt_or_partial_write', 'tests/test_shopping_settlement.py::test_partial_refund_uses_only_confirmed_allocation_and_does_not_double_count_orders']
+
+
+@pytest.mark.parametrize('fault', [None, 'missing', 'extra', 'skip', 'module-bytes'])
+def test_exact46_api_nodes_modules_and_zero_skip(packaged, fault):
+    value, *_ = packaged
+    selection = {'nodeids': list(NODES), 'allowedSkips': {}, 'modules': sorted(prepare.TEST_MODULES)}
+    meta = deepcopy(value['metadata'])
+    if fault == 'missing': selection['nodeids'].pop()
+    if fault == 'extra': selection['nodeids'].append('tests/test_journey_finance.py::unreviewed')
+    if fault == 'skip': selection['allowedSkips'][NODES[0]] = 'not approved'
+    if fault == 'module-bytes': meta['sourceFiles']['tests/test_journey_finance.py'] = '0'*64
+    if fault:
+        with pytest.raises(ReleaseError): prepare.verify_selection(selection, meta)
+    else: prepare.verify_selection(selection, meta)
+
+
+@pytest.fixture
+def migration_record(tmp_path, packaged):
+    value = deepcopy(packaged[0]); inputs_root = tmp_path/'input'; run = tmp_path/'run'
+    meta = value['metadata']; tool = 'deploy/journey_finance_migration_linux_probe.py'
+    sources = {n: (ROOT/n).read_bytes() for n in prepare.MIGRATION_CLOSURE}
+    sources[tool] = b'# Synthetic migration-probe source for receipt validator tests only.'
+    meta['sourceFiles'][tool] = sha(sources[tool])
+    files = {'release/'+n: previous.old.write(inputs_root/'release'/n, raw) for n, raw in sources.items()}
+    modules = {n:h for n,h in meta['runtimeFiles'].items() if '/' not in n}
+    inputs = {'kind':'journey-finance-migration-linux-input-v1', 'sourceHead':'b'*40, 'tree':'c'*40,
+        'runtimeSourceHead':prepare.MIGRATION_RUNTIME_SOURCE, 'historicalHead':package.INSTALLED_SOURCE,
+        'productionOperations':False, 'runtimeFiles':modules, 'sourceFiles':{n:sha(raw) for n,raw in sources.items()}, 'files':files}
+    ihash = previous.old.write(inputs_root/'input.json', inputs)
+    group = {'verified':True,'households':2,'databases':3,'logicalSha256':'d'*64}
+    stages = {n:dict(group) for n in prepare.MIGRATION_STAGES}
+    stages['verify'].update(uid=10001,runtime=modules)
+    for n in ('rollback73','partial','restore75'): stages[n]['completeGroupRestored']=True
+    stages['partial'].update(replayRejected=True,partialTableCounts={'household.sqlite3':75,'child.sqlite3':73})
+    for n in ('startup','restart'): stages[n]['initialized']=True
+    stages['populate75'].update(populated=True,rowsPerNewTable=dict(prepare.POPULATED_ROWS))
+    original = previous.old.write(run/'proof/synthetic-original.json', stages)
+    built = {'imageId':'sha256:'+'e'*64}
+    result = {'passed':True,'syntheticOnly':True,'productionAccess':False,'imageId':built['imageId'],
+        'inputSha256':ihash,'stages':stages,'proofHashes':{'synthetic-original.json':original},'commands':[{'exitCode':0}]}
+    rhash = previous.old.write(run/'result.json', result)
+    spec = {'input':{'root':str(inputs_root),'sha256':ihash},'run':{'root':str(run),'sha256':rhash}}
+    return spec,value,built,inputs,result
+
+
+@pytest.mark.parametrize('fault', [None,'image','runtime','historical','source-closure','missing-stage','one-household',
+    'partial','replay','incomplete-restore','empty75','logical','no-startup','command','original'])
+def test_new_migration_requires_bound_actual_runtime_and_complete75_contract(migration_record, fault):
+    spec,value,built,inputs,result = migration_record
+    if fault == 'image': result['imageId']='sha256:'+'f'*64
+    if fault == 'runtime': inputs['runtimeFiles']['journey_finance.py']='0'*64
+    if fault == 'historical': inputs['historicalHead']='0'*40
+    if fault == 'source-closure': inputs['sourceFiles']['deploy/check_journey_finance_migration.py']='0'*64
+    if fault == 'missing-stage': del result['stages']['partial']
+    if fault == 'one-household': result['stages']['seed']['households']=1
+    if fault == 'partial': result['stages']['partial']['partialTableCounts']['child.sqlite3']=71
+    if fault == 'replay': result['stages']['partial']['replayRejected']=False
+    if fault == 'incomplete-restore': result['stages']['restore75']['completeGroupRestored']=False
+    if fault == 'empty75': result['stages']['populate75']['rowsPerNewTable']['hub_journey_allocations']=0
+    if fault == 'logical': result['stages']['check']['logicalSha256']='0'*64
+    if fault == 'no-startup': result['stages']['restart']['initialized']=False
+    if fault == 'command': result['commands'][0]['exitCode']=1
+    if fault == 'original': (Path(spec['run']['root'])/'proof/synthetic-original.json').write_bytes(b'changed')
+    spec['input']['sha256']=previous.old.write(Path(spec['input']['root'])/'input.json', inputs)
+    result['inputSha256']=spec['input']['sha256']
+    spec['run']['sha256']=previous.old.write(Path(spec['run']['root'])/'result.json', result)
+    if fault:
+        with pytest.raises(ReleaseError): prepare.verify_migration(spec,value,built)
+    else:
+        proof=prepare.verify_migration(spec,value,built)
+        assert proof['operatorHead']=='b'*40 and proof['candidateSourceHead']==value['metadata']['sourceHead']
+        assert proof['runtimeBytesEquivalent'] and proof['runtimeSourceHead']==prepare.MIGRATION_RUNTIME_SOURCE
