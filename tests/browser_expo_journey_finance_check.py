@@ -284,14 +284,18 @@ class Run(fixture.Run):
             original_rows = self.allocation_rows()
             assert len(original_rows['hub_journey_allocations']) == len(original_rows['hub_journey_allocation_operations']) == 1
             self.capture(page, 'unknown-actual-commit', 1280, page.get_by_test_id('journey-finance-unknown'))
-            page.reload()
-            # The source screen must rediscover its own pending operation, with
-            # no title or amount retained outside the identity-scoped request.
-            if not page.get_by_test_id('journey-finance-panel').count():
-                button(page, '我的旅行费用').click()
-            expect(page.get_by_test_id('journey-finance-unknown')).to_be_visible(timeout=15000)
-            button(page, '核对原请求').click()
+            # Re-entering the panel automatically queries the original receipt.
+            # Observe that actual GET, rather than requiring an extra user click
+            # or an unknown state that can already have resolved by this point.
+            with page.expect_response(lambda response: urlsplit(response.url).path == PREFIX + '/operations/' + request_id
+                                      and response.request.method == 'GET' and response.status == 200) as recovery:
+                page.reload()
+                if not page.get_by_test_id('journey-finance-panel').count():
+                    button(page, '我的旅行费用').click()
+            automatic = recovery.value.json()
+            assert automatic['found'] and automatic['receipt'] == saved['result']['receipt']
             expect(page.get_by_test_id('journey-finance-unknown')).to_have_count(0, timeout=15000)
+            expect(page.get_by_test_id('journey-finance-summary')).to_be_visible(timeout=15000)
             result = self.get(ctx, PREFIX + '/operations/' + request_id)
             assert result['found'] and result['receipt'] == saved['result']['receipt']
             assert self.allocation_rows() == original_rows and self.protected() == protected
@@ -299,7 +303,7 @@ class Run(fixture.Run):
             assert self.count_requests('POST', PREFIX + '/confirm') == 1
             assert self.count_requests('GET', PREFIX + '/operations/' + request_id) >= 1
             self.capture(page, 'recovered-original-request', 1280, page.get_by_test_id('journey-finance-summary'))
-            self.proof('same-original-request', {'requestId': request_id, 'receipt': result,
+            self.proof('same-original-request', {'requestId': request_id, 'receipt': result, 'automaticPageReceipt': automatic,
                 'beforeRecovery': original_rows, 'afterRecovery': self.allocation_rows()})
             self.passed('Actual confirmed response is dropped, page reload restores the original request, GET recovery proves one persistent allocation and one operation with no second confirmation')
 
@@ -319,9 +323,9 @@ class Run(fixture.Run):
             allocation_id = saved['allocationId']
             self.capture(page, 'owner-private-record', 390, page.get_by_test_id('journey-allocation-' + allocation_id))
             before = self.allocation_rows()
-            held, url = [], self.base + PREFIX + '*'
+            held, url, holding = [], self.base + PREFIX + '*', True
             def hold(route):
-                if route.request.method != 'GET' or urlsplit(route.request.url).path != PREFIX:
+                if not holding or route.request.method != 'GET' or urlsplit(route.request.url).path != PREFIX:
                     route.continue_(); return
                 response = route.fetch(max_redirects=0)
                 assert response.status == 200 and 'set-cookie' not in response.headers
@@ -349,17 +353,20 @@ class Run(fixture.Run):
                 self.write(ctx, 'POST', '/api/logout', {})
                 self.login(ctx, 2)
                 pending = list(held)
-                held.clear()
-                page.unroute(url, hold)
-                self.proof('held-real-owner-response', {'responses': [json.loads(raw) for _, _, _, raw in pending],
-                    'deliveredAfterMemberSwitch': True})
+                holding = False
+                # Keep the interception registered until these captured routes
+                # are fulfilled; removing it first can resume/handle a route.
                 with page.expect_response(lambda response: urlsplit(response.url).path == '/api/me'
                     and response.request.method == 'GET' and response.status == 200
                     and response.json().get('user', {}).get('id') == 'member2') as fresh:
-                    for route, status, headers, raw in pending:
+                    for entry in pending:
+                        route, status, headers, raw = entry
                         route.fulfill(status=status, headers=headers, body=raw)
+                        held.remove(entry)
                 page_session = fresh.value.json()
                 assert page_session['user']['id'] == 'member2'
+                self.proof('held-real-owner-response', {'responses': [json.loads(raw) for _, _, _, raw in pending],
+                    'deliveredAfterMemberSwitch': True})
                 # Positive rendered completion: AppShell receives the new
                 # provider identity, rather than treating an already-empty
                 # loading panel as proof that the stale response was handled.
@@ -387,9 +394,9 @@ class Run(fixture.Run):
                 self.proof('owner-boundary', {'otherMemberList': own, 'otherMemberReceipt': receipt,
                     'before': before, 'after': self.allocation_rows()})
             finally:
-                page.unroute(url, hold)
                 for route, *_ in held:
                     route.abort('failed')
+                page.unroute(url, hold)
             self.passed('Offline conceals private draft and same identity recovers it; delayed actual reads after real member switch cannot reveal another owner allocation or receipt')
 
 
