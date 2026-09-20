@@ -12,6 +12,8 @@ import type { ImportDetail, Photo, PhotoAccount, PhotoDevice, PhotoImport, Photo
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
 import PhotoJourneySuggestions from '../components/PhotoJourneySuggestions';
+import PhotoDuplicateHints from '../components/PhotoDuplicateHints';
+import { duplicatePhotoKey, fetchPhotoDuplicates, verifyDuplicatePhotos, type PhotoDuplicates } from '../lib/photoDuplicates';
 import MemberVideoPlayer from '../components/MemberVideoPlayer';
 import LocalPhotoImportPanel from '../components/LocalPhotoImportPanel';
 import { LocalPhotoUpload } from '../lib/localPhotoUpload';
@@ -73,6 +75,13 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   const [confirmReview, setConfirmReview] = useState(false);
   const [editor, setEditor] = useState<Editor | null>(null); const editorRef = useRef(editor); editorRef.current = editor;
   const [suggestionVersion, setSuggestionVersion] = useState(0);
+  const duplicateSerial = useRef(0);
+  const [duplicates, setDuplicates] = useState<{ target: Photo; page: PhotoDuplicates } | null>(null);
+  const duplicatesRef = useRef(duplicates); duplicatesRef.current = duplicates;
+  const [duplicateReturn, setDuplicateReturn] = useState<{ id: string; offset: number } | null>(null);
+  const duplicateReturnRef = useRef(duplicateReturn); duplicateReturnRef.current = duplicateReturn;
+  function clearDuplicates() { ++duplicateSerial.current; duplicatesRef.current = null; setDuplicates(null); }
+  function resetDuplicateReturn() { duplicateReturnRef.current = null; setDuplicateReturn(null); }
   const [journeyMenu, setJourneyMenu] = useState(false);
   const [decision, setDecision] = useState<'discard' | 'delete' | 'cancel' | null>(null);
   const [clock, setClock] = useState(Date.now());
@@ -87,10 +96,10 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   });
   useEffect(() => localUpload.current!.subscribe(() => setLocalBusy(localUpload.current!.view.busy)), []);
 
-  // This local transport covers identity and suggestion requests only. The URL
+  // This local transport covers identity, source and photo suggestion reads. The URL
   // is fixed to this origin, and both JSON consumption and lifetime are bounded.
   async function suggestionRequest<T>(path: string, body?: Record<string, unknown>): Promise<T> {
-    if (!(path === '/me' || /^\/media\/items\/[a-f0-9]{24}(?:\/journey-suggestions)?$/.test(path))
+    if (!(path === '/me' || path === '/accounts' || /^\/media\/items\/[a-f0-9]{24}(?:\/journey-suggestions|\/duplicates\?limit=20&offset=\d{1,4})?$/.test(path))
       || body && !/^\/media\/items\/[a-f0-9]{24}$/.test(path)) throw new Error('照片请求无法核对。');
     const controller = new AbortController(); requests.current.add(controller);
     const timeout = setTimeout(() => controller.abort(), 20000);
@@ -114,6 +123,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   }
 
   const clearIdentity = () => {
+    clearDuplicates(); resetDuplicateReturn();
     deniedRef.current = true; localUpload.current?.dispose(); fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort()); setDenied(true); setPage({ items: [], total: 0, hasMore: false });
     memoryDate.current = null; setMemories(null); setEditor(null); editorRef.current = null; setImportDetail(null); importRef.current = null;
     setAccounts([]); setDevices([]); setJourneys([]); setImports([]); setSelected([]);
@@ -180,14 +190,19 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     if (ended) { setSelected([]); setPersist(false);
       if (data.import.state === 'confirmed') { setConfirmReceipt(null); setConfirmReview(false); } }
   }
-  async function readEditor(id: string, keepDraft = false, resuming = false) {
+  async function readEditor(id: string, keepDraft = false, resuming = false, expected?: Photo) {
     const ticket = ++serial.current.detail;
+    clearDuplicates();
     setSuggestionVersion(value => value + 1);
     const data = await checked(async () => {
       const { item } = await request<{ item: Photo }>(`/media/items/${id}`); validatePhoto(item);
       if (item.id !== id) throw new Error('照片读取结果与所选内容不一致，请返回后重新查询。');
       const grants = item.canManage ? await request<{ revision: number; deviceIds: string[] }>(`/media/items/${id}/tv-grants`) : { revision: item.revision, deviceIds: [] };
       if (grants.revision !== item.revision) throw new Error('照片正在更新，请重新打开核对。');
+      if (expected) {
+        if (duplicatePhotoKey(item) !== duplicatePhotoKey(expected)) throw new ApiError('照片已变化，请重新查找。', 409);
+        await verifyDuplicatePhotos([item], suggestionRequest);
+      }
       return { item, grants: grants.deviceIds };
     }, () => ticket === serial.current.detail);
     const previous = editorRef.current?.item.id === id ? editorRef.current : null;
@@ -209,6 +224,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   }
   async function write(path: string, method: string, body: Record<string, unknown>, done: (data: any) => Promise<void>, category: 'create' | 'confirm' | 'editor' | 'other' = 'other') {
     if (locked.current || localUpload.current?.view.busy || !current()) return;
+    clearDuplicates();
     locked.current = true; setBusy(true); setError(''); setNotice('');
     const ticket = epoch.current; let writeReturned = false;
     try {
@@ -230,6 +246,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   }
 
   function conceal() {
+    clearDuplicates();
     active.current = false; localUpload.current?.suspend(); ++epoch.current; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort());
     setFocused(false); setPage({ items: [], total: 0, hasMore: false }); setMemories(null); setJourneyMenu(false); setAccountMenu(false); setDecision(null);
   }
@@ -303,6 +320,17 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
       running = true;
       void (async () => {
         try {
+          // Metadata/source checks invalidate visible hints, without another scan.
+          const hints = duplicatesRef.current;
+          if (hints) {
+            try {
+              await suggestionFence.current.read(() => verifyDuplicatePhotos([hints.target, ...hints.page.items], suggestionRequest),
+                () => current() && duplicatesRef.current === hints && !locked.current);
+            } catch (caught) {
+              if (duplicatesRef.current === hints) clearDuplicates();
+              throw caught;
+            }
+          }
           // Recheck permissions while the page is visible. Never replace a draft.
           await gallery();
           const row = importRef.current?.import;
@@ -323,7 +351,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     return () => clearInterval(timer);
   }, [focused, scope, offset, denied]);
 
-  const update = (patch: Partial<Editor>) => { const value = editorRef.current; if (value) { editorRef.current = { ...value, ...patch }; setEditor(editorRef.current); } };
+  const update = (patch: Partial<Editor>) => { clearDuplicates(); const value = editorRef.current; if (value) { editorRef.current = { ...value, ...patch }; setEditor(editorRef.current); } };
   function suggestionFailure(caught: unknown, id: string) {
     if (!current()) return;
     if (caught instanceof ApiError && [404, 410].includes(caught.status)) {
@@ -331,6 +359,57 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
       setError('照片已移除或不再可见。'); return;
     }
     failure(caught);
+  }
+  // A scan is explicit. Background checks only discard stale displayed rows.
+  async function loadDuplicates(nextOffset = 0) {
+    const initial = editorRef.current;
+    if (locked.current || !current() || !initial?.item.canManage || initial.item.mediaType === 'video' || initial.blocked || anyDraft(initial)) return;
+    clearDuplicates(); const ticket = duplicateSerial.current, key = draftKey(initial), generation = epoch.current;
+    const valid = () => current() && epoch.current === generation && ticket === duplicateSerial.current
+      && !!editorRef.current && draftKey(editorRef.current) === key && !editorRef.current.blocked && !anyDraft(editorRef.current);
+    locked.current = true; setBusy(true); setError('');
+    try {
+      const page = await suggestionFence.current.read(() => fetchPhotoDuplicates(initial.item, nextOffset, suggestionRequest), valid);
+      if (valid()) { const value = { target: initial.item, page }; duplicatesRef.current = value; setDuplicates(value); }
+    } catch (caught) { if (valid()) suggestionFailure(caught, initial.item.id); }
+    finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
+  async function openDuplicate(item: Photo) {
+    const initial = editorRef.current, hints = duplicatesRef.current;
+    if (locked.current || !current() || !initial || initial.blocked || anyDraft(initial) || !hints
+      || !hints.page.items.some(row => row.id === item.id && duplicatePhotoKey(row) === duplicatePhotoKey(item))) return;
+    const generation = epoch.current, key = draftKey(initial);
+    const valid = () => current() && epoch.current === generation && duplicatesRef.current === hints
+      && !!editorRef.current && draftKey(editorRef.current) === key && !editorRef.current.blocked && !anyDraft(editorRef.current);
+    locked.current = true; setBusy(true); setError('');
+    try {
+      await suggestionFence.current.read(() => verifyDuplicatePhotos([hints.target, item], suggestionRequest), valid);
+      if (!valid()) return;
+      await readEditor(item.id, false, false, item);
+      if (current() && epoch.current === generation && editorRef.current?.item.id === item.id) {
+        const anchor = { id: hints.target.id, offset: hints.page.offset };
+        duplicateReturnRef.current = anchor; setDuplicateReturn(anchor);
+      }
+    } catch (caught) {
+      if (current() && epoch.current === generation) { clearDuplicates(); suggestionFailure(caught, initial.item.id); }
+    } finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
+  async function returnToDuplicates(discard = false) {
+    const anchor = duplicateReturnRef.current, initial = editorRef.current;
+    if (!anchor || locked.current || !current()) return;
+    if (!discard && initial && (anyDraft(initial) || initial.blocked)) { setDecision('discard'); return; }
+    const generation = epoch.current;
+    locked.current = true; setBusy(true); setError('');
+    try {
+      // Original ID only; no cached editor or stale list is reinstalled.
+      await readEditor(anchor.id);
+      if (current() && epoch.current === generation && editorRef.current?.item.id === anchor.id) resetDuplicateReturn();
+    } catch (caught) { if (current() && epoch.current === generation) {
+      if (caught instanceof ApiError && [404, 410].includes(caught.status)) resetDuplicateReturn();
+      suggestionFailure(caught, anchor.id);
+    } }
+    finally { locked.current = false; if (alive.current) setBusy(false); }
+    if (current() && epoch.current === generation && editorRef.current?.item.id === anchor.id && !duplicateReturnRef.current) await loadDuplicates(anchor.offset);
   }
   async function loadSuggestions(): Promise<Suggestions | null> {
     const initial = editorRef.current;
@@ -436,8 +515,8 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   }
   function decide() {
     const action = decision; setDecision(null);
-    if (action === 'discard') { serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); }
-    if (action === 'delete' && editor) void write(`/media/items/${editor.item.id}`, 'DELETE', { revision: editor.item.revision }, async () => { setEditor(null); await gallery(); setNotice('已移除看板副本。' + photoOriginalNotice(editor.item.source)); }, 'editor');
+    if (action === 'discard') { if (duplicateReturnRef.current) void returnToDuplicates(true); else { clearDuplicates(); serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); } }
+    if (action === 'delete' && editor) void write(`/media/items/${editor.item.id}`, 'DELETE', { revision: editor.item.revision }, async () => { resetDuplicateReturn(); setEditor(null); editorRef.current = null; await gallery(); setNotice('已移除看板副本。' + photoOriginalNotice(editor.item.source)); }, 'editor');
     if (action === 'cancel' && importDetail) void write(`/media/imports/${importDetail.import.id}`, 'DELETE', { revision: importDetail.import.revision }, async () => {
       setConfirmReceipt(null); setConfirmReview(false); setPersist(false); await readImport(importDetail.import.id); await support();
     });
@@ -450,7 +529,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   const activeImport = localPending || imports.some(item => !terminalImport(item.state)) || !!row && !terminalImport(row.state);
   const columns = width < 540 ? 2 : width < 960 ? 3 : 4;
   const cardWidth = `${100 / columns - 1.7}%` as `${number}%`;
-  const closeEditor = () => { if (busy) return; if (editor && (anyDraft(editor) || editor.blocked)) setDecision('discard'); else { serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); } };
+  const closeEditor = () => { if (busy) return; if (duplicateReturnRef.current) { void returnToDuplicates(); return; } clearDuplicates(); if (editor && (anyDraft(editor) || editor.blocked)) setDecision('discard'); else { serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); } };
   const renderPhoto = (item: Photo, label: string, large = false) => <Image accessibilityLabel={label} source={{ uri: imageUri(item) }} style={large ? styles.detailImage : styles.thumbnail} resizeMode={large ? 'contain' : 'cover'} />;
   const checkbox = (label: string, checked: boolean, change: () => void, disabled = false) => <SelectionRow label={label} checked={checked} onPress={change} disabled={disabled} />;
   const backToSearch = props.onBack ? <Button contentStyle={{ minHeight: 44 }} disabled={busy || !!editor || !!createReceipt || !!confirmReceipt || !available()} onPress={props.onBack}>返回搜索</Button> : undefined;
@@ -567,6 +646,9 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
             <Text variant="bodySmall">解除已有旅行关联会自动转为私密并收回电视许可；关联照片不会标记地点到访。</Text>
             {editor.suggestionReview ? <Button contentStyle={{ minHeight: 44 }} disabled={busy} onPress={() => void reviewSuggestion()}>核对当前旅行关联</Button>
               : editor.blocked ? <Button disabled={busy} onPress={() => void readAction(() => readEditor(editor.item.id, true))}>读取当前版本，保留我的修改</Button> : <Button mode="contained" disabled={busy || !dirty(editor)} onPress={saveEditor}>保存照片设置</Button>}
+            {editor.item.mediaType !== 'video' && !duplicateReturn && <PhotoDuplicateHints
+              data={duplicates?.page || null} busy={busy} dirty={anyDraft(editor)} blocked={editor.blocked}
+              load={nextOffset => void loadDuplicates(nextOffset)} open={item => void openDuplicate(item)} thumbnail={renderPhoto} />}
             <PhotoJourneySuggestions key={JSON.stringify([scope, offset, suggestionVersion, draftKey(editor)])} busy={busy} dirty={anyDraft(editor)} blocked={editor.blocked}
               load={loadSuggestions} confirm={confirmSuggestion} cancelDraft={() => {
                 if (locked.current || !current()) return;
@@ -582,7 +664,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
             <Button textColor={theme.colors.error} disabled={busy || editor.blocked} onPress={() => setDecision('delete')}>移除看板副本</Button><Text variant="bodySmall">{photoSourceLabel(editor.item.source)} · {photoOriginalNotice(editor.item.source)}</Text>
           </> : <><Text variant="titleMedium">{editor.item.caption || '家庭共享照片'}</Text><Text>由上传者管理，你可以查看当前共享的照片。</Text>{!!editor.item.journey && <Text>关联旅行：{editor.item.journey.title}</Text>}</>}
         </>}
-      </ScrollView></Dialog.ScrollArea><Dialog.Actions><Button disabled={busy} onPress={closeEditor}>{props.onBack ? '返回搜索' : '关闭'}</Button></Dialog.Actions>
+      </ScrollView></Dialog.ScrollArea><Dialog.Actions><Button disabled={busy} onPress={closeEditor}>{duplicateReturn ? '返回重复提示' : props.onBack ? '返回搜索' : '关闭'}</Button></Dialog.Actions>
     </Dialog>
     <Dialog visible={!!decision} onDismiss={() => setDecision(null)} style={styles.dialog}><Dialog.Title>{decision === 'discard' ? '离开照片详情？' : decision === 'delete' ? '移除这张照片？' : '取消本次选择？'}</Dialog.Title><Dialog.Content><Text>{decision === 'discard' ? '未保存的输入将丢弃。关闭页面不会撤销已经提交的操作。' : decision === 'delete' ? '将删除看板副本，并收回家庭共享及电视展示。' + photoOriginalNotice(editor?.item.source) : '清理未确认的临时预览。' + photoOriginalNotice(row?.source) + '已经发出的请求仍会由服务器处理。'}</Text></Dialog.Content><Dialog.Actions><Button onPress={() => setDecision(null)}>返回</Button><Button onPress={decide}>确认</Button></Dialog.Actions></Dialog></Portal>
   </View>;
