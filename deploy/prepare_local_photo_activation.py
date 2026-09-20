@@ -25,8 +25,11 @@ HOST_BUDGET = {'preflightMiB': 672, 'preflightSamples': 3, 'preflightIntervalSec
 
 
 def _profile(mode=None):
-    # Only these two source-controlled policies exist. No JSON-selected import.
-    need(mode in (None, 'discovery-source-update'), 'unsupported_source_update_profile')
+    # Only these source-controlled policies exist. No JSON-selected import.
+    need(mode in (None, 'discovery-source-update', 'finance-flow-source-update'), 'unsupported_source_update_profile')
+    if mode == 'finance-flow-source-update':
+        from deploy import prepare_finance_flow_activation
+        return prepare_finance_flow_activation
     if mode == 'discovery-source-update':
         from deploy import prepare_discovery_activation
         return prepare_discovery_activation
@@ -168,7 +171,8 @@ def resources(spec, profile, meta):
 def verify_evidence(inputs, *, mode=None):
     cfg = _profile(mode); package = cfg.package
     need(set(inputs) == {'package', 'build', 'validation', 'selection', 'parentAudit',
-                         'image_overlap', 'nginx_raw', 'reviews'} | ({'duplicates'} if mode else set()), 'release_inputs_incomplete')
+                         'image_overlap', 'nginx_raw', 'reviews'} | ({'duplicates'} if mode else set())
+         | ({'retainedDiscovery'} if mode == 'finance-flow-source-update' else set()), 'release_inputs_incomplete')
     p = inputs['package']; need(set(p) == {'root', 'sha256'} and Path(p['root']).is_absolute(), 'package_descriptor')
     value = package.verify_package(p['root'], p['sha256']); meta = value['metadata']
     folder, built = record(inputs['build'], 'build.json')

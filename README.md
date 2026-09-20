@@ -2,11 +2,13 @@
 
 面向伴侣共同管理的家庭看板：手机和电脑负责安排与维护，两块电视按各自侧重成员展示日程、公共资金和已授权影像。个人财务、私人资料与家庭共享分别授权。
 
-**当前已发布：助理地点搜索往返与重复照片展示副本提示。** 最近一批于 2026-09-20 23:06:47（北京时间）激活，23:07:24只读回读通过；非作者生产审计已通过。设备照片、那年今日及视频混合轮播继续可用。当前为 **73 张户内表、9 张平台表、五个服务**。
+**当前已发布：通用账单可选收支方向列。** 本批于 2026-09-21 00:26:30（北京时间）激活，00:27:04只读回读通过；非作者生产审计已通过。地点搜索、重复照片提示、设备照片及视频轮播继续可用。保持 **73 张户内表、9 张平台表、五个服务**。
 
-[日常管理](https://home.caesarcharles.world/) · [电视配对](https://home.caesarcharles.world/tv) · [私有 GitHub 仓库](https://github.com/caesarvan/family-dashboard) · [最新发布证据](docs/DISCOVERY-ACCEPTANCE.md#discovery-release)
+[日常管理](https://home.caesarcharles.world/) · [电视配对](https://home.caesarcharles.world/tv) · [私有 GitHub 仓库](https://github.com/caesarvan/family-dashboard) · [最新发布证据](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release)
 
-相册原照片详情可主动「查找重复照片」，结果仅说明「展示副本一致，原图未核验」；助理地点结果可打开原地图／旅行／照片再返回查询。本人实际操作与实体电视仍待验收，分段验证和本次生产边界见[集中验收](docs/DISCOVERY-ACCEPTANCE.md#discovery-release)。
+相册原照片详情可主动「查找重复照片」，结果仅说明「展示副本一致，原图未核验」；助理地点结果可打开原地图／旅行／照片再返回查询。本人实际操作与实体电视仍待验收，此前discovery批次的分段验证与生产边界见[对应验收](docs/DISCOVERY-ACCEPTANCE.md#discovery-release)。
+
+通用账单可在「收支方向（可选）」选择原文件方向列，重新预览后「确认导入 · 仅本人」。若保存结果不明，点击「核对保存结果」；不要重新发起同一导入。同文件不双记，方向冲突不覆盖已保存交易；[使用与验收](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release)。
 
 ## 从这里开始
 
@@ -20,7 +22,7 @@
 | 分享照片或视频 | 原详情明确家庭共享；电视另按每台设备授权，二者不互相代替 |
 | 绑定日历和清单 | 设置中的账户与自动同步；注册和权限说明见 [Microsoft / Google 接入](docs/ACCOUNT-SYNC.md) |
 | 新 agent 接手 | 本 README → [HANDOFF](docs/HANDOFF.md) → 模块契约 → [开发指南](docs/DEVELOPMENT.md) |
-| 更新已有服务器 | 先核 [当前发布合同](docs/DISCOVERY-RELEASE.md)，再读部署与恢复文档；不要重放历史计划 |
+| 更新已有服务器 | 先核 [当前发布合同](docs/FINANCE-FLOW-RELEASE.md)，再读部署与恢复文档；不要重放历史计划 |
 
 原 README 的 515 行发布历史和全部链接保存在 [2026-09-20 历史快照](docs/README-HISTORY-20260920.md)。历史段落中的“当前”不再作为现行架构或部署依据。
 
@@ -196,7 +198,6 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 
 待继续处理的范围：
 
-- **独立候选：** 通用账单导入可选收支方向（[PR #47](https://github.com/caesarvan/family-dashboard/pull/47)）仍是独立分支候选，尚未发布，不属于本次线上包。
 - **本人验收：** A–D完整本人场景仍为0/4；真实Google视频、云日历／待办新写入、实际手机选择器和两块实体电视分别验收。
 - **影像来源：** iCloud／NAS实时连接、本地视频上传、更多格式和原图备份没有随设备照片入口交付。
 - **财务与连接：** 小荷包／银行／券商自动连接、真实来源映射持续刷新及Apple提醒事项桥接仍待接入。
