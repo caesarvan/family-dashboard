@@ -1,6 +1,6 @@
 # 本人站内提醒：71 表发布适配
 
-本页为独立候选工具合同，不是发布回执。功能、个人导出和精确建表分别见 [TASK-REMINDERS](TASK-REMINDERS.md)、[TASK-REMINDERS-PORTABILITY](TASK-REMINDERS-PORTABILITY.md)、[TASK-REMINDERS-MIGRATION](TASK-REMINDERS-MIGRATION.md)。仅集成人在源码、正式包、浏览器、Linux、完整组演练和发布计划分别审查后执行生产动作。
+**当前已发布：2026-09-20 07:52:22（北京时间）激活，07:56:49 独立生产只读审计通过。** 使用、固定身份与实际分段结果统一见[提醒集中验收](TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。下文保留本模块作者阶段的合同及测试范围，其中“后续／未验”描述不代替当前集中回执。 本次计划已消费，不得重放；后续发布须重新固定当前生产父版、包、镜像和完整库组，不能复用下文历史父版常量。
 
 ## 父版与固定输入
 

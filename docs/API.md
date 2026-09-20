@@ -1,6 +1,18 @@
 # 家庭看板接口文档
 
-当前部署身份见 [HANDOFF](HANDOFF.md)。个人账户与多家庭成员协作此前完成 58/2→61/9 迁移；本人账户分析完成 61/9→66/9，旅行路线随后完成 66→69；当前为 **69 张户内表与 9 张平台表**。最新本地任务依赖发布保持结构不变，见[最新发布验收](TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)。本人手动账户六个操作及三表已发布，见[账户验收](EXPO-FINANCE-ACCOUNTS-ACCEPTANCE.md#finance-accounts-release)；此前家庭角色的单列迁移另见[成员验收](EXPO-HOUSEHOLD-MEMBERS-ACCEPTANCE.md#household-members-release)。下面基础接口和历史旅行资料段落保留当时契约与计数，不代表当前总数。已发布 Expo 旅行资料复用现有五个操作，不新增 API 或表；客户端契约见 [新版旅行资料 API](EXPO-JOURNEY-DOCUMENTS-API.md)。
+## 本人站内提醒（已发布）
+
+完整 DTO、错误和权限见[提醒 API](TASK-REMINDERS.md)，当前交付状态见[集中验收](TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。以下三个接口只服务当前有效成员，匿名／电视／其他家庭不能读取；写入沿原 Origin、CSRF 与身份边界。
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/task-reminders?filter=unread\|all&page=0` | 当前本人提醒，每页 40 条；服务端时钟决定到期及暂缓状态 |
+| POST | `/api/task-reminders/<taskId>/actions` | 使用原 requestId、occurrence、提醒 revision 明确标为已读或保存绝对暂缓时间 |
+| GET | `/api/task-reminders/operations/<requestId>` | 核对本人原操作；404 后只能明确重试同一请求 |
+
+提醒 revision 与 task.revision 分开。已读／暂缓不改任务、依赖或云端；未知结果保留原 intent，身份复核失败不能误报未保存。成员撤权隐藏并清理本人历史。个人导出仅含本人最小状态与操作时间，不导出请求编号或扩大共享，见[导出合同](TASK-REMINDERS-PORTABILITY.md)。本次已完成两张空表的首次迁移，无回填；后续更新与恢复须按[发布合同](TASK-REMINDERS-RELEASE.md)绑定实际版本，不能重放。
+
+当前为 **71 张户内表与 9 张平台表**，本人站内提醒新增两表，旧 69 表和平台表保全；实际发布与独立审计见[提醒验收](TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。本地任务依赖继续使用原 CRUD。下方基础接口与历史段落保留原契约和当时计数，不代表当前总数；字段、权限与恢复规则以对应模块文档为准。
 
 ## 本地待办前置事项（已发布）
 
@@ -11,7 +23,7 @@
 - 已完成后续不会因前置重新打开而自动重开；旅行重建保留当前实体依赖。已发布到云的本地任务遇远端完成与本地阻塞时保留冲突，不自动撤销远端完成。
 - 明确 `includeShared:true` 的数据导出保留已存 `dependsOn`，不导出派生阻塞状态；个人导出不因此增加共享记录。当前角色、家庭、Origin／CSRF 和 revision 边界保持。
 
-站内提醒 `/api/task-reminders` 与 69→71 表迁移仍是后续候选，不属于本次已发布接口。
+该任务依赖历史版本未包含提醒接口；提醒当前状态以文首及集中验收为准。
 
 ## 旅行路线（已上线）
 
