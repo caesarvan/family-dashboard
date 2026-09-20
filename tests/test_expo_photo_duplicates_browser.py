@@ -13,7 +13,7 @@ from urllib.parse import urlsplit
 
 import pytest
 from scripts import check_expo_photo_duplicates_browser as wrapper
-from browser_expo_photo_duplicates_check import Run, picture
+from browser_expo_photo_duplicates_check import Run, picture, BrowserHttpGuard, LEGACY_PREVIEW
 
 
 @pytest.fixture
@@ -153,3 +153,93 @@ def test_real_fixture_listener_and_thread_cleanup_without_browser(tmp_path):
         assert len(run.synthetic_accounts) == 2 and all(len(a) == 32 for a in run.synthetic_accounts.values())
         assert len(report['fixtureHashes']) >= 14 and not report['unexpectedProviderAttempts']
     assert run.server is None and not run.thread.is_alive() and not folder.exists()
+
+
+class ResponseContext:
+    """Offline event seam only; it is not an actual browser or HTTP server."""
+    def on(self, event, callback):
+        assert event == 'response'
+        self.callback = callback
+
+    def emit(self, status, path='/api/media/items/owner/duplicates', method='GET', origin='https://127.0.0.1:8443'):
+        self.callback(SimpleNamespace(status=status, url=origin + path, request=SimpleNamespace(method=method)))
+
+
+def http_guard(tmp_path, case='coverage_and_draft'):
+    report = {}
+    guard = BrowserHttpGuard('https://127.0.0.1:8443', case, tmp_path, report)
+    context = ResponseContext(); guard.attach(context)
+    return guard, context, report
+
+
+@pytest.mark.parametrize('status,path,method,origin', [
+    (500, LEGACY_PREVIEW, 'GET', 'https://127.0.0.1:8443'),
+    (500, '/api/media/items/owner/duplicates', 'GET', 'https://127.0.0.1:8443'),
+    (503, '/api/media/items/another/preview', 'GET', 'https://127.0.0.1:8443'),
+    (503, LEGACY_PREVIEW, 'POST', 'https://127.0.0.1:8443'),
+    (503, LEGACY_PREVIEW, 'GET', 'https://other.invalid'),
+    (503, LEGACY_PREVIEW + '?other=1', 'GET', 'https://127.0.0.1:8443'),
+])
+def test_http_guard_rejects_unexpected_server_errors(tmp_path, status, path, method, origin):
+    guard, context, report = http_guard(tmp_path)
+    guard.permit_legacy_fixture()
+    context.emit(status, path, method, origin)
+    with pytest.raises(AssertionError): guard.assert_clean()
+    entry = report['unexpectedHttpServerErrors'][0]
+    assert (entry['method'], entry['path'], entry['status']) == (method, urlsplit(path).path, status)
+    assert entry['expectedErrorReason'] is None
+    assert json.loads(guard.path.read_text()) == entry  # flushed before any final assertion
+
+
+def test_http_guard_exact_seeded_503_records_reason_and_all_context_pages(tmp_path):
+    guard, first, report = http_guard(tmp_path)
+    guard.permit_legacy_fixture()
+    second = ResponseContext(); guard.attach(second)
+    first.emit(200)
+    second.emit(503, LEGACY_PREVIEW)
+    second.emit(404, '/api/media/items/revoked')  # existing business assertions own expected 4xx
+    guard.assert_clean()
+    entries = [json.loads(line) for line in guard.path.read_text().splitlines()]
+    assert [r['context'] for r in entries] == [1, 2, 2]
+    assert entries[1]['expectedErrorReason'].startswith('Deliberately seeded legacy photo')
+    assert len(report['browserHttpResponses']) == 3 and not report['unexpectedHttpServerErrors']
+
+
+def test_http_guard_exception_requires_actual_fixture_opt_in(tmp_path):
+    guard, context, report = http_guard(tmp_path)
+    context.emit(503, LEGACY_PREVIEW)
+    with pytest.raises(AssertionError): guard.assert_clean()
+    other = tmp_path/'other'; other.mkdir()
+    guard, _, _ = http_guard(other, 'cross_source_pages')
+    with pytest.raises(AssertionError): guard.permit_legacy_fixture()
+
+
+def test_http_guard_capture_error_and_missing_responses_fail_closed(tmp_path):
+    guard, context, report = http_guard(tmp_path)
+    with pytest.raises(AssertionError): guard.assert_clean()
+    context.callback(SimpleNamespace(status=500))  # listener must latch malformed observations
+    context.emit(200)
+    assert report['httpCaptureErrors'] == [{'case': 'coverage_and_draft', 'error': 'AttributeError'}]
+    with pytest.raises(AssertionError): guard.assert_clean()
+
+
+def test_http_guard_case_failure_overrides_prior_business_pass(tmp_path):
+    report = dict(checks=[], screenshots=[], scenarioFailures=[], scenarioResults=[])
+    class ObservedRun(Run):
+        def __init__(self, root, bundle, folder, report, out, lifecycle):
+            self.report = report
+            self.http_guard = BrowserHttpGuard('https://127.0.0.1:8443', out.name, out, report)
+            self.server = None; self.thread = SimpleNamespace(is_alive=lambda: False)
+
+        def coverage_and_draft(self, browser):
+            context = ResponseContext(); self.http_guard.attach(context)
+            context.emit(500, LEGACY_PREVIEW)
+            self.report['checks'].append('business assertions passed')
+            self.report['screenshots'].extend(['offline-placeholder'] * 3)
+
+    ObservedRun.run_scenarios(tmp_path, tmp_path, report, tmp_path, None, tmp_path, ('coverage_and_draft',))
+    assert not report['checks'] and len(report['scenarioFailures']) == 1
+    case = report['scenarioResults'][0]
+    assert case['passed'] is False and case['temporaryFixtureRemoved'] and case['listenerStopped']
+    assert case['browserHttpEvidence']['responses'] == 1
+    assert not case.get('httpGuardPassed')
