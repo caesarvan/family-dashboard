@@ -46,7 +46,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
     return ()=>{consumed=true;unsubscribe();};
   },[route,params.auth,params.reason,router,navigation]);
   const household=useHousehold(); const {user,state,loading,online,error,refresh,preferences,notice,setNotice}=household;
-  const [editor,setEditor]=useState<{kind:ItemKind;item?:Entity;key:number}|null>(null);
+  const [editor,setEditor]=useState<{kind:ItemKind;item?:Entity;key:number;identity:string}|null>(null);
   const [pendingId,setPendingId]=useState('');
   const requestKey=typeof params.request==='string'?Number(params.request):0;
   const tripRequest=route==='trips'&&Number.isSafeInteger(requestKey)&&requestKey>0
@@ -149,7 +149,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
   if(!user)return <LoginScreen authError={authResult?.status==='error'?syncAuthMessage(authResult):''} onPendingChange={onAccountPending}/>;
   if(user.role==='tv')return <View><Text>正在打开电视看板…</Text><Button onPress={()=>openLocal('/tv')}>打开电视</Button></View>;
   if(!state)return <View style={{padding:32,gap:16}}><Text>{error||'正在读取家庭数据…'}</Text><Button onPress={()=>void refresh()}>重新加载</Button><Button onPress={()=>handle(household.logout)}>退出登录</Button></View>;
-  const props:ScreenProps={state,user,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:async mode=>{
+  const props:ScreenProps={state,user,calendarVerified:household.stateVerified,focus:household.focus,mode:preferences.homeView,layout:household.layout,setFocus:household.setFocus,setMode:async mode=>{
     try{await household.savePreferences({homeView:mode});}catch(failure){if(activeActor.current===actor)setNotice(failure instanceof Error?failure.message:'暂时无法保存显示范围');throw failure;}
   },onNavigate,onLegacy,pendingId,tripRequest,inventoryRequest,onReschedulePending,onDevicePending,onHomeLayoutPending,onAppearancePending,onDocumentsPending,onRoutinesPending,onMembersPending,onAccountPending,onSegmentsPending,onTripImportPending,onFinanceSourcePending,onFinanceAccountsPending,onShoppingSettlementPending,onInventoryPending,
     onInventory:(id)=>{
@@ -161,8 +161,9 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
       if(holdNavigation())return;
       if(kind==='trips'){router.push({pathname:'/trips',params:{request:String(Date.now()),...(item?.id?{item:item.id}:{})}} as never);return;}
       if(item?.sync){setNotice('同步内容请在原应用修改');return;}
+      if(kind==='events'&&!household.stateVerified){setNotice('请先联网并刷新，核对当前日程身份。');return;}
       if(kind==='events'&&(item as any)?.travelTiming){onNavigate('trips');return;}
-      setEditor({kind,item,key:Date.now()});
+      setEditor({kind,item,key:Date.now(),identity:actor});
     },
     onToggle:async(kind,item)=>{
       if(pendingId||item.sync?.readOnly)return;
@@ -179,7 +180,7 @@ export default function HouseholdApp({screen='home'}:{screen?:string}) {
       </View>}
       {route==='home'?<HomeScreen {...props}/>:route==='calendar'?<CalendarScreen {...props}/>:route==='tasks'||route==='shopping'?<ListScreen key={route} kind={route} {...props}/>:route==='finance'?<FinanceScreen {...props}/>:route==='investments'?<InvestmentsScreen {...props}/>:route==='trips'?<TripsScreen {...props} onReschedulePending={onReschedulePending}/>:route==='photos'?<PhotosScreen {...props}/>:route==='assistant'?<AssistantScreen {...props}/>:route==='inventory'?<InventoryScreen {...props}/>:route==='map'?<MapWorkspace {...props}/>:route==='connections'?<AccountsScreen {...props} authResult={authResult}/>:route==='devices'?<DevicesScreen {...props}/>:<MoreScreen {...props}/>}
     </View>
-  </AppShell>{editor&&<ItemEditor key={actor+':'+editor.key} kind={editor.kind} item={editor.item} onDismiss={()=>setEditor(current=>current?.key===editor.key?null:current)}/>}
+  </AppShell>{editor&&editor.identity===actor&&<ItemEditor key={actor+':'+editor.key} kind={editor.kind} item={editor.item} onDismiss={()=>setEditor(current=>current?.key===editor.key?null:current)}/>}
     {/* Unmount dismissed notices so Paper's previous hide animation cannot hide the next one. */}
     {!!notice&&<Snackbar key={actor+':'+notice} visible onDismiss={()=>setNotice(current=>current===notice?'':current)} duration={5000}
       action={{label:'知道了',onPress:()=>setNotice(current=>current===notice?'':current)}}>{notice}</Snackbar>}

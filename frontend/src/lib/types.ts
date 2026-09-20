@@ -7,7 +7,7 @@ export type Person = { id: string; name: string };
 export type Member = Person & { role: 'member' | 'tv'; householdId?: string; auth_version?: number; membershipRevision?: number; accountId?: string; accountAuthVersion?: number; authenticationGeneration?: number };
 export type SyncInfo = { readOnly?: boolean; provider?: string; sourceId?: string };
 export type BaseItem = { id: string; revision: number; title: string; owner: string; note?: string; sync?: SyncInfo };
-export type CalendarEvent = BaseItem & { start: string; end: string; location?: string; allDay?: boolean; source?: string; journeyId?: string; travelTiming?: unknown };
+export type CalendarEvent = BaseItem & { visibility?: 'private' | 'shared'; createdBy?: string; start: string; end: string; location?: string; allDay?: boolean; source?: string; journeyId?: string; travelTiming?: unknown };
 export type ShoppingPriority = 'low' | 'normal' | 'high';
 export type ListItem = BaseItem & { done: boolean; dependsOn?: string[]; blockedBy?: string[]; dependencyStatus?: 'ready' | 'blocked' | 'done'; due?: string; priority?: ShoppingPriority; quantity?: string; budget?: number | null; tripId?: string; actual?: number | null; photoIds?: string[] };
 export type Trip = BaseItem & { start: string; end: string; destination?: string; budget: number; paid: number; saved: number };
@@ -33,6 +33,7 @@ export type ScreenProps = {
   onFinanceAccountsPending?: (pending: boolean) => void;
   onShoppingSettlementPending?: (pending: boolean) => void;
   onInventoryPending?: (message: string | null) => void;
+  calendarVerified?: boolean;
   state: FamilyState; user: Member; focus: string; mode: CalendarMode; layout: HomeLayout;
   setFocus: (id: string) => void; setMode: (mode: CalendarMode) => Promise<void>;
   onNavigate: (route: RouteName) => void; onEdit: (kind: ItemKind, item?: Entity) => void;
