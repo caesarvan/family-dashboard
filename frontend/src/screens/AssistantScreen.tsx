@@ -10,6 +10,7 @@ import TripsScreen from './TripsScreen';
 import { AssistantFlow, AssistantState, assistantContentRequest, memberKey, type Match } from '../lib/assistant';
 import JourneyDocumentsPanel from './JourneyDocumentsPanel';
 import PhotosScreen from './PhotosScreen';
+import MapWorkspace from './MapWorkspace';
 import { useHousehold } from '../lib/household';
 import type { ScreenProps } from '../lib/types';
 import { PageHeader, SectionCard } from '../ui/components';
@@ -30,7 +31,7 @@ type JourneyPanel = { kind: 'brief'; key: number; prompt: string; useModel: bool
   | { kind: 'planning'; key: number; draft: Draft }
   | { kind: 'existing'; key: number; id: string }
   | { kind: 'documents'; key: number; id: string; journeyId?: string }
-  | { kind: 'media'; key: number; id: string };
+  | { kind: 'media' | 'places'; key: number; id: string };
 type SearchReturn = { query: string; offset: number };
 
 export function AssistantScreen(props: ScreenProps) {
@@ -132,6 +133,8 @@ function AssistantEntry(props: ScreenProps) {
     onBack={() => { if (available() && panelRef.current?.key === panel.key && !documentsPending.current) { panelRef.current = null; setPanel(null); } }} />;
   if (panel.kind === 'media') return <PhotosScreen {...props} key={panel.key} initialPhotoId={panel.id}
     onBack={() => { if (available() && panelRef.current?.key === panel.key) { panelRef.current = null; setPanel(null); } }} />;
+  if (panel.kind === 'places') return <MapWorkspace {...props} key={panel.key} initialPlaceId={panel.id}
+    onBack={() => { if (available() && panelRef.current?.key === panel.key) { panelRef.current = null; setPanel(null); } }} />;
   const allowed = visible && household.online;
   return <View>
     {!allowed && <SectionCard title="旅行草稿暂时隐藏">
@@ -221,7 +224,7 @@ function AssistantWorkspace(props: ScreenProps & {
   const changedPrompt = !!draft && prompt.trim() !== view?.planPrompt;
   const people = props.state.people;
   return <View style={styles.page}>
-    <PageHeader title="家庭助理" description="查询预算支出、找资料照片、整理清单或规划旅行。" />
+    <PageHeader title="家庭助理" description="查询预算支出、找地点和资料照片、整理清单或规划旅行。" />
     <SectionCard title="今天想处理什么？">
       <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} multiline label="告诉助理你的需求" accessibilityLabel="告诉助理你的需求" value={prompt}
         onChangeText={setPrompt} disabled={editingLocked} maxLength={2000} style={styles.input}
@@ -280,16 +283,16 @@ function AssistantWorkspace(props: ScreenProps & {
       {!view.search.matches.length && <Text>没有找到当前可见的匹配记录。</Text>}
       {view.search.matches.map(item => <View key={item.kind + ':' + item.id} testID={'assistant-search-' + item.kind + '-' + item.id} style={styles.result}>
         <Text variant="titleMedium">{item.title}</Text><Text variant="bodySmall">{({ tasks: '待办', shopping: '采购', events: '日程', trips: '旅行', media: '照片', places: '地点', inventory: '家庭物品', documents: '资料' })[item.kind]}</Text>
-        {(item.kind === 'documents' || item.kind === 'media') && <>
+        {(item.kind === 'documents' || item.kind === 'media' || item.kind === 'places') && <>
           {item.kind === 'documents' && <Text variant="bodySmall">{item.filename}</Text>}
           <Text variant="bodySmall">{item.visibility === 'shared' ? '家庭共享' : '仅本人'} · {item.journey?.title || '未关联旅行'}</Text>
           {!!assistantContentRequest(item, 1) && <Button mode="outlined" contentStyle={{ minHeight: 44 }} disabled={editingLocked}
-            accessibilityLabel={(item.kind === 'documents' ? '查看资料 ' : '查看照片 ') + item.title} onPress={() => {
+            accessibilityLabel={(item.kind === 'documents' ? '查看资料 ' : item.kind === 'places' ? '查看地点 ' : '查看照片 ') + item.title} onPress={() => {
               const current = flow?.state;
               if (editingLocked || !current?.ready || current.busy || current.expired || current.pending || !current.search) return;
               const latestMatch = current.search.matches.find(match => match.kind === item.kind && match.id === item.id);
               if (latestMatch) props.onContent(latestMatch, prompt, { query: current.search.query, offset: current.search.offset });
-            }}>{item.kind === 'documents' ? '查看资料' : '查看照片'}</Button>}
+            }}>{item.kind === 'documents' ? '查看资料' : item.kind === 'places' ? '在地图查看' : '查看照片'}</Button>}
         </>}
         {item.kind === 'inventory' && <>
           <Text variant="bodySmall">{inventorySummary(item)}</Text>

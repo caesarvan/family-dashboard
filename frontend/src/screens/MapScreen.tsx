@@ -12,7 +12,7 @@ import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import WorldMap from '../ui/WorldMap';
 
 type JourneyLink = { id: string; tripId: string };
-type Props = ScreenProps & { initialView?: MapView; onBack?: () => void; onOpenTrip: (journey: JourneyLink, view: MapView) => void; onOpenPhotos: (journey: JourneyLink, view: MapView) => void };
+type Props = ScreenProps & { initialView?: MapView; onBack?: () => void; backLabel?: string; onOpenTrip: (journey: JourneyLink, view: MapView) => void; onOpenPhotos: (journey: JourneyLink, view: MapView) => void };
 type JourneyOption = JourneyLink & { title: string };
 type Intent = { method: 'POST' | 'PATCH' | 'DELETE'; path: string; body: Record<string, unknown>; id?: string; state: 'unknown' | 'rejected' };
 type Choice = { title: string; options: { value: string; label: string }[]; selected: string; choose: (value: string) => void };
@@ -95,9 +95,11 @@ function MapWorkspace(props: Props & { identityKey: string }) {
     if (!value || !Array.isArray(value.journeys) || value.journeys.some(row => !isPlaceId(row.id) || !isPlaceId(row.tripId) || typeof (row.trip?.title || row.plan?.title) !== 'string')) throw new Error('旅行列表暂时无法核对。');
     return value.journeys.map(row => ({ id: row.id, tripId: row.tripId, title: row.trip?.title || row.plan?.title || '' }));
   }
-  async function refreshView(nextFilters = state.current.filters, offset = state.current.page.offset, target = state.current.selected) {
+  async function refreshView(nextFilters = state.current.filters, offset = state.current.page.offset, target: string | null | undefined = state.current.selected) {
     const values = await readPage(nextFilters, offset), options = await readJourneys();
-    const id = target && values.items.some(row => row.id === target) ? target : undefined;
+    // A search/deep-link target may be outside this page. Only the freshly
+    // authorized original-ID endpoint decides whether its detail is visible.
+    const id = isPlaceId(target) ? target : undefined;
     const detail = id ? await readPlace(id) : null;
     if (!current()) return;
     setPage(values); setFilters(nextFilters);
@@ -247,9 +249,12 @@ function MapWorkspace(props: Props & { identityKey: string }) {
   const field = (label: string, key: keyof PlaceDraft, extra: object = {}) => <TextInput mode="outlined" label={label} accessibilityLabel={label} value={String(draft?.[key] || '')} disabled={locked} onChangeText={value => change({ [key]: value })} style={styles.field} {...extra} />;
   const disclosure = place?.coordinatePrecision === 'approximate' ? '大致位置，已按 0.1° 网格粗化' : place?.coordinatePrecision === 'hidden' ? '创建者已隐藏坐标' : place?.coordinates ? '已记录位置' : '未填写坐标';
 
-  if (!visible) return <View style={styles.loading}><ActivityIndicator animating={busy} /><Text>{denied ? '登录身份或权限已变化，请重新打开地图。' : error || '正在核对身份和地点访问权限…'}</Text><Button disabled={busy || !household.online} onPress={enter}>重新读取地图</Button></View>;
+  const back = props.onBack ? <Button icon="arrow-left" disabled={busy || !!draft || !!pending} onPress={() => {
+    if (alive.current && focused.current && !draft && !pending && !working.current) props.onBack?.();
+  }}>{props.backLabel || '返回旅行'}</Button> : null;
+  if (!visible) return <View style={styles.loading}>{back}<ActivityIndicator animating={busy} /><Text>{denied ? '登录身份或权限已变化，请重新打开地图。' : error || '正在核对身份和地点访问权限…'}</Text><Button disabled={busy || !household.online} onPress={enter}>重新读取地图</Button></View>;
   return <>
-    {props.onBack ? <Button icon="arrow-left" disabled={navigationLocked} onPress={() => { if (current() && !navigationLocked && !working.current) props.onBack?.(); }}>返回旅行</Button> : null}
+    {back}
     <PageHeader title="足迹地图" description="想去哪里，去过哪里。把地点、旅行和照片放在一起。" action={<Button mode="contained" icon="plus" disabled={navigationLocked} onPress={() => begin()}>添加地点</Button>} />
     {error ? <Text accessibilityRole="alert" style={{ color: theme.colors.error, marginBottom: 14 }}>{error}</Text> : null}
     {notice ? <Text accessibilityLiveRegion="polite" style={styles.notice}>{notice}</Text> : null}
@@ -288,15 +293,15 @@ function MapWorkspace(props: Props & { identityKey: string }) {
         <Button mode="outlined" disabled={navigationLocked} onPress={() => options('按旅行筛选', [{ value: '', label: '全部旅行' }, ...journeys.map(journey => ({ value: journey.id, label: journey.title }))], filterDraft.journeyId, value => setFilterDraft(previous => ({ ...previous, journeyId: value })))}>旅行：{journeys.find(journey => journey.id === filterDraft.journeyId)?.title || '全部旅行'}</Button>
         <View style={styles.actions}><Button mode="contained" disabled={navigationLocked} onPress={() => {
           if (filterDraft.year && (!/^\d{4}$/.test(filterDraft.year) || Number(filterDraft.year) < 1)) { setError('年份请填四位数字，或留空。'); return; }
-          void runRead(() => refreshView({ ...filterDraft }, 0, undefined));
-        }}>应用筛选</Button><Button disabled={navigationLocked} onPress={() => void runRead(() => refreshView(emptyFilters(), 0, undefined))}>重置筛选</Button></View>
+          void runRead(() => refreshView({ ...filterDraft }, 0, null));
+        }}>应用筛选</Button><Button disabled={navigationLocked} onPress={() => void runRead(() => refreshView(emptyFilters(), 0, null))}>重置筛选</Button></View>
       </View></SectionCard> : null}
-      <SectionCard title="世界概览" style={styles.bottom}><WorldMap places={page.items} selected={selected} disabled={navigationLocked} onSelect={id => void openPlace(id)} onPick={() => {}} /><Text variant="bodySmall" style={styles.top}>共 {page.total} 个地点 · 本页 {page.items.length} 个 · {page.items.filter(row => !row.coordinates).length} 个无可显示坐标</Text></SectionCard>
+      <SectionCard title="世界概览" style={styles.bottom}><WorldMap places={place && !page.items.some(row => row.id === place.id) ? [...page.items, place] : page.items} selected={selected} disabled={navigationLocked} onSelect={id => void openPlace(id)} onPick={() => {}} /><Text variant="bodySmall" style={styles.top}>共 {page.total} 个地点 · 本页 {page.items.length} 个 · {page.items.filter(row => !row.coordinates).length} 个无可显示坐标</Text></SectionCard>
       <View style={[styles.panels, wide && styles.panelsWide]}>
         <SectionCard title="地点" style={[styles.panel, wide && styles.widePanel, wide && styles.listPanel]}>
           {page.items.length ? page.items.map(row => <List.Item key={row.id} title={row.name} titleNumberOfLines={2} description={`${placeLabels[row.status]} · ${[row.country, row.city].filter(Boolean).join(' / ') || '未填城市'} · ${row.visibility === 'private' ? '仅本人' : '共享'}`} descriptionNumberOfLines={2} accessible accessibilityRole="button" accessibilityLabel={`打开地点：${row.name}`} onPress={() => void openPlace(row.id)} disabled={navigationLocked}
             left={iconProps => <List.Icon {...iconProps} icon={row.status === 'visited' ? 'map-marker-check-outline' : row.status === 'planned' ? 'calendar-outline' : 'heart-outline'} />} style={row.id === selected ? { backgroundColor: theme.colors.surface, borderRadius: 16 } : undefined} />) : <EmptyState title="这里还没有地点" description="添加一个想去的地方，或调整筛选。" />}
-          <View style={[styles.actions, styles.top]}><Button disabled={navigationLocked || page.offset === 0} onPress={() => void runRead(() => refreshView(filters, Math.max(0, page.offset - 24), undefined))}>上一页</Button><Text>第 {Math.floor(page.offset / 24) + 1} 页</Text><Button disabled={navigationLocked || !page.hasMore} onPress={() => void runRead(() => refreshView(filters, page.offset + 24, undefined))}>下一页</Button></View>
+          <View style={[styles.actions, styles.top]}><Button disabled={navigationLocked || page.offset === 0} onPress={() => void runRead(() => refreshView(filters, Math.max(0, page.offset - 24), null))}>上一页</Button><Text>第 {Math.floor(page.offset / 24) + 1} 页</Text><Button disabled={navigationLocked || !page.hasMore} onPress={() => void runRead(() => refreshView(filters, page.offset + 24, null))}>下一页</Button></View>
         </SectionCard>
         <SectionCard title={place?.name || '地点详情'} style={[styles.panel, wide && styles.widePanel]}>
           {place ? <View style={styles.form}>
