@@ -20,6 +20,7 @@ Flask HTTP 方法与路径组合：**197**；另有 `GET /space/<slug>`。HEAD/O
 | POST | `/api/assistant/finance-query` | [assistant_finance_query.py](../assistant_finance_query.py) · `assistant_finance_query` |
 | POST | `/api/assistant/journey-brief` | [home_assistant.py](../home_assistant.py) · `journey_brief` |
 | POST | `/api/assistant/plan` | [home_assistant.py](../home_assistant.py) · `plan` |
+| GET | `/api/assistant/plans/<uid>` | [home_assistant.py](../home_assistant.py) · 本人原计划与回执（本轮候选） |
 | POST | `/api/assistant/plans/<uid>/apply` | [home_assistant.py](../home_assistant.py) · `apply_plan` |
 | GET | `/api/assistant/search` | [home_assistant.py](../home_assistant.py) · `search` |
 | POST | `/api/assistant/trip-change` | [assistant_trip_change_api.py](../assistant_trip_change_api.py) · `assistant_trip_change` |
