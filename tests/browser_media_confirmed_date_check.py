@@ -396,7 +396,7 @@ class Run(LocalRun):
             leaks = page.evaluate('() => {window.__dateObserver.disconnect(); return window.__dateLeaks;}')
             assert leaks == []
             item = self.current(ctx, uid); assert 'userConfirmedDate' not in item
-            self.write(ctx, 'PATCH', self.item_path(uid), {'revision': item['revision'], 'userConfirmedDate': None}, 404)
+            self.write(ctx, 'PATCH', self.item_path(uid), {'revision': item['revision'], 'userConfirmedDate': None}, 403)
             self.evidence('actual-late-owner-response', dict(deliveredAfterRealMemberSwitch=True,
                 heldResponses=[json.loads(raw) for _, _, _, raw in pending], currentPageUser=me['user']['id'],
                 sharedProjection=item, leaks=leaks, secondHouseholdReadWriteStatus=404, tvWriteStatus=403))
@@ -419,6 +419,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('source-root', 'bundle', 'temp-root'): parser.add_argument('--' + name, required=True, type=Path)
     parser.add_argument('--expected-head', required=True)
+    parser.add_argument('--build-source-head')
     parser.add_argument('--expected-build-evidence', required=True)
     parser.add_argument('--case', action='append', choices=CASES, dest='cases')
     args = parser.parse_args()
@@ -431,11 +432,18 @@ def main():
     head, tree = git('rev-parse', 'HEAD'), git('rev-parse', 'HEAD^{tree}')
     assert head == args.expected_head and not git('status', '--porcelain=v1')
     assert Path(__file__).resolve() == (root / HARNESS).resolve()
+    build_head = args.build_source_head or head
+    assert re.fullmatch('[a-f0-9]{40}', build_head)
+    build_changes = []
+    if build_head != head:
+        git('merge-base', '--is-ancestor', build_head, head)
+        build_changes = git('diff', '--no-renames', '--name-only', '-z', build_head, head, '--').rstrip('\0').split('\0')
+        assert set(build_changes) <= {HARNESS, 'docs/MEDIA-CONFIRMED-DATE-BROWSER.md'}, 'Only this harness and its documentation may differ from the build commit'
     evidence_path = bundle.parent / 'build-evidence.json'
     assert sha(evidence_path) == args.expected_build_evidence
     evidence = json.loads(evidence_path.read_text(encoding='utf-8'))
     names = git('ls-files', '-z').rstrip('\0').split('\0')
-    build_fixture.validate_build(git, root, head, evidence, names)
+    build_fixture.validate_build(git, root, build_head, evidence, names)
     for name, digest in evidence.get('additionalTestInputs', {}).items():
         assert name in names and sha(root / name) == digest
     assert build_fixture.exports(bundle) == evidence['files']
@@ -445,7 +453,8 @@ def main():
     out.mkdir(parents=True, exist_ok=False); shutil.copyfile(__file__, out / 'executed-harness.py')
     report = dict(passed=False, checks=[], screenshots=[], pageErrors=[], externalRequests=[], unexpectedProviderAttempts=[],
         httpEvidence=[], databaseEvidence=[], scenarioResults=[], scenarioFailures=[], requestedCases=list(cases),
-        head=head, tree=tree, buildSourceHead=head, buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(Path(__file__)),
+        head=head, sourceHead=head, tree=tree, buildSourceHead=build_head, buildSourceTree=evidence['sourceTree'],
+        buildReusePaths=build_changes, buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(Path(__file__)),
         sourceHashesBefore=hashes(), bundleHashesBefore=build_fixture.exports(bundle), productionWrites=0,
         realCloud=False, realModel=False, physicalTelevision=False,
         scope='Two selected real local HTTPS/Flask/SQLite/Edge flows with synthetic device bytes/two households. '
