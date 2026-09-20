@@ -1,12 +1,13 @@
-# 地点入口与重复照片提示：候选集中验收
+# 地点入口与重复照片提示：使用与发布验收
 
 <a id="discovery-candidate"></a>
+<a id="discovery-release"></a>
 
-本页记录 source `63dc63476b046856bf9893c19595e2971ebc13c7` 的集成候选，**尚未生成本批发布计划、stage 或上线，也未完成本人验收**。新源仅收口资源观察工具，135个运行文件、完整前端及165项构建输入与已验455源逐字节相同；沿用原125项Linux与分段浏览器证据，另完成新源9项Linux检查及资源R2独立复核。当前线上仍是 [设备照片与那年今日](LOCAL-PHOTO-ACCEPTANCE.md#local-photo-release)。
+本批已于 **2026-09-20 23:06:47（北京时间）激活，23:07:24生产只读回读通过**；非作者生产审计已通过。实际安装source为 `63dc63476b046856bf9893c19595e2971ebc13c7`，没有DDL，保持73/9和五服务。135个运行文件、完整前端及165项构建输入与已验455源逐字节相同；沿用原125项Linux与分段浏览器证据，另完成新源9项Linux检查及资源R2独立复核。本人验收仍未完成。
 
 ## 最短操作路径
 
-| 要做的事 | 候选中的操作 | 保持的边界 |
+| 要做的事 | 已发布操作 | 保持的边界 |
 |---|---|---|
 | 从助理找回地点 | 「家庭助理」输入 `搜索：地点名称` →「整理并预览」→「在地图查看」。可进入当前可见的原旅行／旅行相册，再「返回地点搜索」。 | 按原 ID 重新读取；保留原查询与页码。主动筛选或翻页清除地图选择。地点共享不额外共享照片，不把坐标或点击当成到访证明。 |
 | 核对重复展示副本 | 「相册」打开本人已保存静态照片 →「查找重复照片」→分页查看→「打开原照片」→「返回重复提示」。 | 显示「展示副本一致，原图未核验」。仅 Google／设备上传不同来源间比较净化 JPEG 指纹；不会删除、合并、共享或授权电视。有草稿时沿原离开确认，可取消并保留草稿。 |
@@ -15,7 +16,7 @@
 
 实现与接口：[地点入口](ASSISTANT-PLACES.md) · [重复提示 API](MEDIA-DUPLICATE-HINTS.md) · [重复提示 UI](EXPO-PHOTO-DUPLICATES.md)。这些模块文档保留各作者阶段的历史状态；本批组合状态以本页为准。
 
-## 已有实际证据与待完成项
+## 实际证据与验收边界
 
 | 阶段 | 实际结果 | 不能据此推断 |
 |---|---|---|
@@ -28,7 +29,8 @@
 | 新63dc源 Linux 检查 | 9 passed，0失败／错误／跳过／deselected／xfail：2个扫描上限／锁竞争合同节点＋7个新快照回归。1214执行原件独审通过，运行文件前后不变；旧四模块测试文件也与455源相同。 | 2项为复验，不与旧125相加声称134项唯一用例；1024MiB功能测试不代替资源实测。 |
 | 重复提示资源 R1 | 实际失败。客户端只读数据库观察报 `OperationalError`，四个重复请求尚未开始；外层又因缺失 `database.json` 报 `FileNotFoundError`。110件原件保留，收尾无错误、没有未知创建结果。 | 本轮未测得四请求负载；不能用后续R2成功覆盖或改写R1。 |
 | 重复提示资源 R2 | 63dc源实际四请求均200，独立恢复请求200；服务端四路重叠约1.505秒，扫描SQL计数8／恢复2，覆盖截断，测量期间图片／视频BLOB读取0。数据库摘要一致，123件原件及执行终态独审通过。 | 固定1002条合成记录、1001候选、1000扫描上限；不是实际Google导入、任意图库规模或混合图片／视频峰值。 |
-| 发布与本人验收 | 本批尚无生产stage／activate／读回；本人手机、真实账号及实体电视未验。 | Git、构建或隔离测试通过不代表上线或本人验收完成。 |
+| 本次生产发布 | 实际stage无生产写入，activate终态成功；一户两库73/9完整备份和app-only停止态保全，随后五服务恢复及只读回读通过。 | 生产未恢复数据库；回读不读取活库、用户行或备份SQLite字节，不证明worker业务tick。 |
+| 本人验收 | 本人手机、真实账号及实体电视未验，A–D完整场景仍0/4。 | 部署与合成验证不代替本人验收。 |
 
 ### 保留的失败与修正
 
@@ -46,7 +48,7 @@
 
 ## 固定身份
 
-### 当前63dc候选与新增实际结果
+### 当前安装63dc源码与新增实际结果
 
 | 输入 | 固定值 |
 |---|---|
@@ -75,9 +77,27 @@
 
 旧455包有1187安装文件（1164源码＋23导出）；archive另含manifest本身。新旧候选均为135运行文件＝112非Expo＋23导出，110个非Expo文件相对已发布父版保持，仅两个固定审查过的模块改变。父manifest为 `c9723cf4df9a2e2ee36f2300d4374cfd6a0358e91ebd5d5a9392151f20da8f76`，父应用镜像为 `sha256:ede2e6f716a75e5d245ed6d90c485d39fd0847108abb6e24e42de8e4f272a1c2`。继续73/9、五服务，decoder／Compose／Nginx／依赖不变。
 
+## 本次生产原件
+
+实际完成时间取自 `activation.completedAt`：`2026-09-20T15:06:47.758024+00:00`；回读观察时间为北京时间23:07:24。激活原件中的一户两库before／after记录字节相同，逻辑摘要均为 `83793c266f1f2e428758acd5ab4ec2e8e840e4c220ec57e39de52fe95a6e76d6`；全部表、settings、序列及原marker保持。回读核对安装1188文件，app／sync／media各135运行文件、decoder原4文件与固定清单一致；五服务运行、零重启／OOM，app和decoder健康，HTTPS200且TLS校验开启，环境摘要与0600权限保持，备份timer active。
+
+| 本批输入／回执 | 固定值 |
+|---|---|
+| Plan（已消费） | `542b77bd046f3cc853cb6ca3b70234464142a688611c0bf5c2f1a6782498bbd2` |
+| Operator | `9e9584712dacbc536181a5570256572e055653502e309d04e23b7c19bb67b721` |
+| Stage | `2ed3979f544572ae07de1ece1932664606d2ac3e15365163e9c29c3a8098696c` |
+| Activation | `b221f62bdae75ad478cd4e78763290f417a8541dc19b94ff1838f73a464a7423` |
+| Readback stdout | `af0b011c2ec55ff159f9f6bc563fa5e4d0464cd8470f53f9cc381e04cc878611` |
+| Release目录 | `/opt/family-dashboard-releases/discovery-73-20260920T150450426955Z` |
+| 安全JSON原件下载 | 25件；`43a0d27f7b8eee427a91ade74b30045a2b23b95522023ae9bc3f1fba639800df` |
+
+原件保存在协调者本地 `family-dashboard-access/discovery-production-r1/`：`readback.stdout`、对应执行回执及 `retained-receipts/`，不提交Git。非作者生产审计已通过，核验25件安全回执与49份原件，报告路径和SHA见下表。回读只核安全发布回执、源码／运行字节、镜像、健康和配置摘要；不重新读取活库内容、备份SQLite字节或worker业务tick，不声称真实云、手机或实体电视已验。
+
+源码合入main `1d589e6d401d2d760f7361a2cab36839841a7208` 时比安装source仅多README及三份discovery后验文档；包内source仍是63dc，不能换写为main提交。财务收支方向[PR #47](https://github.com/caesarvan/family-dashboard/pull/47)属于独立分支候选，尚未发布，不在本批包内。
+
 ## 独立审查索引
 
-下列为协调者保留的本地忽略目录报告名称与完整SHA，不将报告、截图、日志或数据库提交Git。`U` 指 `worktrees/media-video-usability/test-results`；`HBG` 指 `worktrees/duplicate-browser-http-guard/test-results`。
+下列为协调者保留的本地忽略目录报告名称与完整SHA，不将报告、截图、日志或数据库提交Git。`U` 指 `worktrees/media-video-usability/test-results`；`HBG` 指 `worktrees/duplicate-browser-http-guard/test-results`。`FC` 指 `worktrees/finance-flow-combination/test-results`。
 
 | 报告 | SHA-256 |
 |---|---|
@@ -92,9 +112,10 @@
 | HBG/discovery-probe-snapshot-independent-r1.json | `ded46f1a347977431fa9e469a823b905cb04d0fc10c83d3c5b8c60e2ab7a8213` |
 | U/discovery-linux-candidate-independent-r3.json | `d018c60436ddd2c3c4a789598cbd17a7dee80ff3fc2d60318c657f1ddbb9388f` |
 | U/discovery-duplicate-linux-execution-independent-r2.json | `83780317769a53fd341981320ff91fb7c3e4efb4ac3e1f067c95a58c7c7cc757` |
+| FC/discovery-production-independent-r1.json | `0d77aeaf6be26223ef8f9aec069f4ccb2b27960c482beb6a4de7e33c807a2a8c` |
 
-## 下一道准入与限制
+## 已消费计划与后续限制
 
-原125项、新9项及资源R2执行独审均已通过；下一步按 [发布合同](DISCOVERY-RELEASE.md) 绑定各轮实际原件与审查，生成**全新**不可重放计划，目前尚未生成或执行。仍需完整组备份、app-only启动后停止态严格保全、五服务健康和独立生产读回；不能套用旧71→73迁移或重放任何已消费计划。实际故障恢复与当前73→73合同沿既有已审生命周期，不能把历史隔离恢复写成此次生产恢复。
+本批已按 [发布合同](DISCOVERY-RELEASE.md) 完成固定计划的stage、activate及生产回读；计划已消费，**禁止重放**。下次更新须绑定当前source／manifest／五服务身份，生成全新计划并重新准入；不能套用旧71→73迁移。此前父版两户三库73→73正常／注入失败及完整恢复的真实演练，经相同保全与恢复实现审查后继承；本次生产只执行完整备份与停止态保全，没有重新演练恢复，也没有恢复生产数据库。
 
 [资源工具合同](DISCOVERY-DUPLICATE-LINUX.md) 本次只验证四个重复元数据请求，不代表与图片净化／64MiB视频响应混合时的峰值、任意并发、真实Google账号或实体电视通过。两块电视、本人操作以及外部来源的真实授权继续单独验收。
