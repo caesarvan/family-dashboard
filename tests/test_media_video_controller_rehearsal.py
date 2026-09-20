@@ -1,5 +1,6 @@
 """Offline fixture/selector/handle checks. Never starts Docker or Linux services."""
 import json
+import copy
 from pathlib import Path
 import subprocess
 import sqlite3
@@ -160,6 +161,70 @@ class Healthy:
 @pytest.fixture
 def transport(tmp_path):
     return rehearsal.Transport(tmp_path,tmp_path/'bundle',PROJECT,'http://127.0.0.1:38127',Healthy(),'success')
+
+
+def health_fixture():
+    cid,nid,eid='a'*64,'b'*64,'c'*64;name=PROJECT+'_default'
+    endpoint={'NetworkID':nid,'EndpointID':eid,'IPAddress':'172.29.0.5','IPPrefixLen':16}
+    web={'Id':cid,'Name':'/'+PROJECT+'-web-1','Image':rehearsal.IMAGES['web'],
+         'Config':{'Labels':{rehearsal.LABEL:PROJECT,'com.docker.compose.project':PROJECT,'com.docker.compose.service':'web'}},
+         'State':{'Running':True,'Pid':12345,'OOMKilled':False},'RestartCount':0,
+         'HostConfig':{'NetworkMode':name},'NetworkSettings':{'Networks':{name:endpoint},'Ports':{'80/tcp':None}}}
+    network={'Id':nid,'Name':name,'Driver':'bridge','Scope':'local','Internal':True,
+             'Labels':{'com.docker.compose.project':PROJECT,'com.docker.compose.network':'default'},
+             'IPAM':{'Config':[{'Subnet':'172.29.0.0/16'}]},
+             'Containers':{cid:{'Name':PROJECT+'-web-1','EndpointID':eid,'IPv4Address':'172.29.0.5/16'}}}
+    return web,network
+
+
+@pytest.mark.parametrize('fault',['external_ip','outside_subnet','wrong_cid','wrong_endpoint','wrong_project','external_network','extra_network'])
+def test_health_binding_rejects_unowned_address_or_identity(fault):
+    web,network=health_fixture();endpoint=web['NetworkSettings']['Networks'][PROJECT+'_default']
+    if fault in ('external_ip','outside_subnet'):
+        ip='8.8.8.8' if fault=='external_ip' else '172.30.0.5'
+        endpoint['IPAddress']=ip;network['Containers'][web['Id']]['IPv4Address']=ip+'/16'
+        if fault=='external_ip':network['IPAM']['Config']=[{'Subnet':'8.8.0.0/16'}]
+    elif fault=='wrong_cid':web['Id']='d'*64
+    elif fault=='wrong_endpoint':network['Containers'][web['Id']]['EndpointID']='d'*64
+    elif fault=='wrong_project':network['Labels']['com.docker.compose.project']='family-dashboard'
+    elif fault=='external_network':network['Internal']=False
+    elif fault=='extra_network':web['NetworkSettings']['Networks']['other']=copy.deepcopy(endpoint)
+    with pytest.raises(rehearsal.controller.ReleaseError):rehearsal.web_health_binding(PROJECT,web,network)
+
+
+@pytest.mark.parametrize('status,changed',[('200',False),('302',False),('200',True)])
+def test_health_transport_uses_actual_nginx_curl_and_retains_outcome(transport,monkeypatch,status,changed):
+    web,network=health_fixture();calls=[];transport.discovery_admitted=True
+    def execute(argv,timeout=240):
+        calls.append((argv,timeout));transport.records.append({'argv':argv})
+        if argv[:4]==[*rehearsal.lifecycle.DOCKER,'inspect']:
+            value=copy.deepcopy(web)
+            if changed and argv[-1]==web['Id']:value['State']['Pid']+=1
+            return json.dumps([value]).encode()
+        if argv[:5]==[*rehearsal.lifecycle.DOCKER,'network','inspect']:return json.dumps([network]).encode()
+        assert argv==['curl','--fail','--silent','--show-error','--noproxy','*','--proto','=http',
+                      '--max-time','30','--max-redirs','0','--max-filesize','65536','--write-out','\n%{http_code}',
+                      'http://172.29.0.5/healthz']
+        assert timeout==35
+        return b'{"status":"ok"}\n'+status.encode()
+    monkeypatch.setattr(transport,'execute',execute)
+    requested=['curl','--fail','--silent','--show-error','--max-time','30',transport.origin+'/healthz']
+    if status=='200' and not changed:assert json.loads(transport(requested))=={'status':'ok'}
+    else:
+        with pytest.raises(rehearsal.controller.ReleaseError):transport(requested)
+    proof=json.loads((transport.root/'health-transport-0002.json').read_bytes())
+    assert proof['requestedArgv']==requested and proof['requestedUrl']==transport.origin+'/healthz'
+    assert proof['actualUrl']=='http://172.29.0.5/healthz' and proof['containerId']==web['Id']
+    assert proof['completed']==(status=='200' and not changed) and proof['hostPortPublishingVerified'] is False
+    assert sum(argv[0]=='curl' for argv,_ in calls)==1
+
+
+def test_health_transport_refuses_external_request_and_foreign_network_before_process(transport,monkeypatch):
+    monkeypatch.setattr(transport,'execute',lambda *a,**k:pytest.fail('no process for foreign target'))
+    with pytest.raises(rehearsal.controller.ReleaseError,match='external_health_forbidden'):
+        transport(['curl','--fail','--silent','--show-error','--max-time','30','https://example.com/healthz'])
+    with pytest.raises(rehearsal.controller.ReleaseError,match='foreign_network_operation'):
+        transport([*rehearsal.lifecycle.DOCKER,'network','inspect','family-dashboard_default'])
 
 
 @pytest.mark.parametrize('args',[

@@ -6,7 +6,7 @@
 
 使用固定 `d0c8362` 控制器、真实不可变镜像与虚构两户三库，顺序完成两个独立项目：
 
-1. `success`：真实旧四服务运行 → 原 `stage` → 原 `activate` → 真实完整组 71→73／平台 9 表迁移、app-only 停止保全 → 实际新五服务与 loopback HTTP 健康 → 全部停止 → 文档中的完整组恢复程序 → 原 `verify_rollback` 核对 71／9。
+1. `success`：真实旧四服务运行 → 原 `stage` → 原 `activate` → 真实完整组 71→73／平台 9 表迁移、app-only 停止保全 → 实际新五服务与 Nginx HTTP 健康 → 全部停止 → 文档中的完整组恢复程序 → 原 `verify_rollback` 核对 71／9。
 2. `failure`：新建另一套两户三库；真实备份后将第二户数据库设为不可写，使非 root 迁移实际失败。停写读取必须实证第一户已到 73 表、第二户仍 71 表、平台仍 9 表。核对原控制器已收停本次 helper、没有重试／自动恢复，保留失败回执；再单独执行完整组恢复及原回退核验入口。
 
 第二项不会在第一项失败后继续。每项均保留实际 argv、PID、stdout／stderr、终态、原始阶段回执、已确认 CID 及最后收停证据。开始时同时拒绝已存在的 Compose 项目与独立演练标签；数据卷和 socket 卷任一已存在都会在创建卷前拒绝。完成空项目／新卷准入前，不发现并接管同名旧容器用于清理。创建结果不明不按名称猜测清理，不返回成功；不删除容器、卷或失败数据，后续清理须另行审核。
@@ -17,6 +17,7 @@
 - 镜像固定 app `75d2cf…`、decoder `005cc3…`、旧 app `a783c5…`、web `1ae82d…`，不构建镜像。只创建 `fd-vcr-<随机16位>-success|failure` 项目及其卷；不读取生产 `.env`／数据库，不使用生产项目、端口或路径。
 - 私有合成环境、marker、部署根目录、manifest、compose、nginx 配置、loopback HTTP 和镜像标签前缀是显式 fixture 适配。旧安装目录是完整声明的最小源码 fixture，包含原 Git app／requirements 和独立旧 Expo 哨兵，不冒充完整生产安装树。候选源除 compose/nginx 外逐字节保留真实包。真实数据库由旧 app 的登录／邀请／加入／待办 API 生成；保留虚构个人财务和 audit 行。
 - 应用 `PUBLIC_ORIGIN` 保留种子的 `https://steady-rehearsal.invalid`，`COOKIE_SECURE=1`；种子通过 Flask 本地请求使用该 HTTPS 来源，不解析或连接这个域名。控制器仅用另一个 `http://127.0.0.1:<端口>/healthz` 做无认证健康检查；两者分别记录为 `publicOrigin`／`healthOrigin`，不放宽应用的 HTTPS 校验，也不据此声称实际 TLS 已验证。
+- 第二轮实际 Docker 内部网络没有发布该主机端口。因此演练传输层只将上述精确健康请求映射为主机 curl → 已核 Nginx 的内部 bridge IPv4:80 → app；不改原控制器或 compose，不关闭 `internal`，不直接检查 app。读取前交叉核 web CID／固定镜像／项目标签／运行态、唯一内部网络 ID／endpoint／IPAM 子网；HTTP 200 后再核同 CID／PID／endpoint。禁代理、重定向和非 HTTP，保留 30 秒上限。`health-transport-*.json` 与命令原件明确记录请求和实际 URL、归属、状态及失败；不再宣称验证了主机端口发布。依据 [Docker internal 说明](https://docs.docker.com/reference/compose-file/networks/#internal) 和 [bridge 主机访问说明](https://docs.docker.com/engine/network/drivers/bridge/)，实际可达性仍须后续 Linux 新轮证明。
 - app／media 各 192 MiB、sync 128 MiB、web 64 MiB、decoder 384 MiB，总 960 MiB；无 swap，实际迁移 helper 单独 384 MiB。decoder 检查先核实际 384 MiB，再仅映射限额字段调用原 768 MiB 合同检查；其余用户、命令、socket、权限和隔离条件不放宽。最多五个服务同时运行，旧服务先全停再启动新服务。
 - 备份 timer 使用独占 fixture 状态，不调用 systemd；不模拟 Docker 成功结果、迁移或恢复算法。此处验证控制流程，不证明真实 timer 调度／备份竞态、生产 TLS 或生产峰值容量。生产 384／768 MiB 大媒体资源实验必须单独报告，不能相加成并发证明。
 - app、sync、media 和 web 仅接入合成内部网络，网络标记 `internal`；decoder 和 setup／migration／restore helper 无网络。没有真实账户、云凭据或外部媒体。
@@ -42,3 +43,5 @@ python3 -B <准备目录>/operator/deploy/media_video_controller_rehearsal.py ru
 `input.json` 绑定原始依赖，`adaptations.json` 逐项记录差异，`result.json` 分开记录两场景、fixture 限额、失败／收停、生产准入未覆盖边界。实际 Linux `passed=true` 仅能在两场景及全部收停证据通过后形成；本页不预先声明运行通过。
 
 首次 Linux 演练在种子 helper 启动应用时因把 HTTP 健康地址误作 `PUBLIC_ORIGIN` 而失败；尚未启动旧四服务或执行 stage／activate，第二场景未运行。该轮失败原件保留；本次来源拆分需重新独审，并由协调者使用新的输入和输出目录执行，不能将旧轮记为通过。
+
+第二轮已到真实迁移／app-only 保全／新五服务，最后主机端口健康连接被拒绝而整轮失败；候选和 helper 已收停，数据库已迁移到 73，未自动回退，第二场景仍未运行。其原件及现场保持；本次健康传输修正只能在新的准备与运行目录验证，不重放旧 attempt。

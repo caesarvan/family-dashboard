@@ -7,6 +7,7 @@ the controller lifecycle methods, the migration or the documented restore.
 import argparse
 import copy
 from contextlib import closing
+import ipaddress
 import json
 import os
 from pathlib import Path
@@ -208,6 +209,41 @@ class Monitor:
                 'threadStopped': not self.thread_started or not self.thread.is_alive()}
 
 
+def web_health_binding(project, web, network):
+    """Bind only the running fixture Nginx endpoint on its internal bridge."""
+    name = project+'_default'; cid = web.get('Id', '')
+    need(re.fullmatch('[a-f0-9]{64}', cid) and web.get('Name') == '/'+project+'-web-1'
+         and web.get('Image') == IMAGES['web'], 'health_web_identity_changed')
+    labels = web.get('Config', {}).get('Labels') or {}
+    need(labels.get(LABEL) == project and labels.get('com.docker.compose.project') == project
+         and labels.get('com.docker.compose.service') == 'web', 'health_web_labels_changed')
+    state = web.get('State', {})
+    need(state.get('Running') is True and type(state.get('Pid')) is int and state['Pid'] > 0
+         and not state.get('OOMKilled') and web.get('RestartCount') == 0, 'health_web_not_running')
+    attached = web.get('NetworkSettings', {}).get('Networks') or {}
+    need(set(attached) == {name} and web.get('HostConfig', {}).get('NetworkMode') == name,
+         'health_web_network_changed')
+    labels = network.get('Labels') or {}; nid = network.get('Id', '')
+    need(re.fullmatch('[a-f0-9]{64}', nid) and network.get('Name') == name
+         and network.get('Driver') == 'bridge' and network.get('Scope') == 'local'
+         and network.get('Internal') is True and labels.get('com.docker.compose.project') == project
+         and labels.get('com.docker.compose.network') == 'default', 'health_network_not_private_fixture')
+    endpoint = attached[name]; listed = (network.get('Containers') or {}).get(cid, {})
+    need(endpoint.get('NetworkID') == nid and listed.get('Name') == project+'-web-1'
+         and re.fullmatch('[a-f0-9]{64}', endpoint.get('EndpointID', ''))
+         and listed.get('EndpointID') == endpoint['EndpointID'], 'health_endpoint_identity_changed')
+    try:
+        address = ipaddress.IPv4Address(endpoint['IPAddress'])
+        interface = ipaddress.IPv4Interface(listed['IPv4Address'])
+        subnets = [ipaddress.IPv4Network(v['Subnet']) for v in network['IPAM']['Config'] if ':' not in v.get('Subnet', '')]
+    except (KeyError, TypeError, ValueError): raise controller.ReleaseError('health_endpoint_address_invalid')
+    need(address.is_private and not any((address.is_loopback, address.is_link_local, address.is_multicast, address.is_unspecified))
+         and interface.ip == address and interface.network.prefixlen == endpoint.get('IPPrefixLen')
+         and any(address in subnet and interface.network == subnet for subnet in subnets), 'health_endpoint_address_unowned')
+    return {'containerId': cid, 'pid': state['Pid'], 'networkId': nid, 'endpointId': endpoint['EndpointID'],
+            'networkName': name, 'actualUrl': 'http://'+str(address)+'/healthz'}
+
+
 class Transport:
     """Actual Docker transport, with fixture-only selectors and retained handles."""
     def __init__(self, root, bundle, project, origin, monitor, scenario):
@@ -282,6 +318,8 @@ class Transport:
         elif action == 'volume':
             need(args[1:] in (['ls', '--quiet', '--filter', 'name=^'+self.project+'_decoder-socket$'],
                              ['inspect', self.project+'_decoder-socket']), 'foreign_volume_operation')
+        elif action == 'network':
+            need(args[1:] == ['inspect', self.project+'_default'], 'foreign_network_operation')
         elif action == 'compose':
             need(args[1:7] == ['--project-name', self.project, '--project-directory', str(self.root/'installed'),
                               '--file', str(self.root/'installed/compose.yaml')], 'foreign_compose_project')
@@ -309,6 +347,30 @@ class Transport:
             self.intents[name] = {'name': name, 'at': time.time()}
         else: need(False, 'unapproved_docker_command')
 
+    def web_health(self, argv, timeout):
+        need(argv == ['curl', '--fail', '--silent', '--show-error', '--max-time', '30', self.origin+'/healthz'],
+             'external_health_forbidden')
+        need(self.discovery_admitted, 'fixture_discovery_not_admitted')
+        web = self.remember(self.project+'-web-1')
+        networks = json.loads(self([*lifecycle.DOCKER, 'network', 'inspect', self.project+'_default']))
+        need(isinstance(networks, list) and len(networks) == 1, 'ambiguous_health_network')
+        binding = web_health_binding(self.project, web, networks[0])
+        actual = ['curl', '--fail', '--silent', '--show-error', '--noproxy', '*', '--proto', '=http',
+                  '--max-time', '30', '--max-redirs', '0', '--max-filesize', '65536',
+                  '--write-out', '\n%{http_code}', binding['actualUrl']]
+        proof = {**binding, 'requestedUrl': argv[-1], 'requestedArgv': argv, 'actualArgv': actual,
+                 'transport': 'host-to-verified-internal-nginx', 'hostPortPublishingVerified': False, 'completed': False}
+        target = self.root/('health-transport-%04d.json' % len(self.records)); save(target.with_suffix('.started.json'), proof)
+        try:
+            raw = self.execute(actual, min(timeout, 35)); body, delimiter, status = raw.rpartition(b'\n')
+            need(delimiter and status == b'200' and len(body) <= 65536, 'nginx_health_http_failed')
+            need(web_health_binding(self.project, self.remember(binding['containerId']), networks[0]) == binding,
+                 'health_endpoint_changed_during_read')
+            proof.update(completed=True, httpStatus=200, bodySha256=sha(body)); return body
+        except BaseException as error:
+            proof['failure'] = type(error).__name__+':'+str(error); raise
+        finally: save(target, proof)
+
     def __call__(self, argv, *, cwd=None, timeout=240):
         if argv[0]=='systemctl':
             need(argv[-1] in (controller.TIMER, 'family-dashboard-backup.service'), 'unexpected_timer')
@@ -318,8 +380,7 @@ class Transport:
                  {'argv': argv, 'active': self.timer, 'systemdExecuted': False})
             return (b'active' if self.timer else b'inactive') if argv[-1]==controller.TIMER else b'inactive'
         if argv[0]=='curl':
-            need(argv[-1]==self.origin+'/healthz', 'external_health_forbidden')
-            return self.execute(argv, timeout)
+            return self.web_health(argv, timeout)
         need(argv[:3]==list(lifecycle.DOCKER), 'explicit_docker_socket_required')
         args = list(argv[3:])
         if args[0]=='tag':
@@ -447,6 +508,7 @@ def adapt(bundle, meta, verified, scenario_root, project, port):
         'actualMigration': True, 'actualDocumentedRestore': True, 'actualSystemd': False, 'actualTLS': False,
         'project': project, 'volumes': [controller.VOLUME, lifecycle.SOCKET_VOLUME],
         'healthOrigin': origin, 'publicOrigin': env['PUBLIC_ORIGIN'], 'cookieSecure': env['COOKIE_SECURE']=='1',
+        'healthTransport': 'host curl to verified internal Nginx bridge endpoint; not host published-port validation',
         'fixtureLimitsMiB': LIMITS, 'productionLimitsMiB': {'app': 384, 'media': 384, 'sync': 192, 'web': 96, 'decoder': 768},
         'helperLimitMiB': 384, 'maximumRunningServiceContainers': 5, 'resourceCapacityClaim': False,
         'parentManifest': {'production': ORIGINAL_PARENT_MANIFEST, 'fixture': plan['parentManifest']},
