@@ -66,7 +66,7 @@ function harness() {
     const exports = {}; cache.set(path, exports);
     let source = readFileSync(path, 'utf8');
     if (path.endsWith('PhotosScreen.tsx')) source = source.replace('function PhotoWorkspace(', 'export function PhotoWorkspace(');
-    const js = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
+    const js = ts.transpileModule(source, { fileName: path, compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true } }).outputText;
     runInNewContext(js, { exports, require: name => {
       if (name in mocks) return mocks[name];
       if (name === '../lib/household') return { useHousehold: () => context };
