@@ -1,10 +1,12 @@
 # A–D 家庭使用与验收索引
 
+**本地日程隐私已发布：**2026-09-20 10:11:17（北京时间）激活，10:18:48 独立生产只读审计通过。 新建私人安排→明确共享→创建者收回、身份失败暂藏与恢复已有分段验证；[使用与集中验收](CALENDAR-PRIVACY-ACCEPTANCE.md#calendar-privacy-release)。这些结果不代替完整场景 D，A–D 本人完整验收仍 0/4。
+
 **日程时间重叠已发布：**2026-09-20 08:47:27（北京时间）激活，08:49:19 独立生产只读审计通过。从首页提示进入日程，展开详情并调整原本地安排；[使用与集中验收](CALENDAR-CONFLICTS-ACCEPTANCE.md#calendar-conflicts-release)。本地分段浏览器及生产检查不改变 A–D 本人完整验收 0/4。
 
 **本人站内提醒已发布：**「首页 → 我的提醒」；2026-09-20 07:52:22（北京时间）激活，07:56:49 独立生产只读审计通过。本人／共同到期、已读／暂缓、打开原任务返回及未知结果恢复见[提醒集中验收](TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。这些模块结果不改变本人 A–D 0/4；真实云目标待选，实体电视暂无法验证。
 
-**2026-09-20 当前状态：A–D 本人真实完整端到端验收仍为 0/4。** 本地待办前置事项于 06:28:25（北京时间）发布，06:35:47 独立只读审计通过；[使用与分段验收](TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)。资料／照片搜索及采购提示修正此前于 05:15:29 发布，见[对应验收](ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release)。提醒及日程重叠已按文首发布，本地日程默认私密为下一独立候选；真实云写入待明确目的地，实体电视暂无法验证。以下历史场景证据不重写，实际当前运行身份以 [README](../README.md) 和[交接](HANDOFF.md)为准。
+**2026-09-20 当前状态：A–D 本人真实完整端到端验收仍为 0/4。** 本地待办前置事项于 06:28:25（北京时间）发布，06:35:47 独立只读审计通过；[使用与分段验收](TASK-DEPENDENCIES-ACCEPTANCE.md#task-dependencies-release)。资料／照片搜索及采购提示修正此前于 05:15:29 发布，见[对应验收](ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release)。提醒、日程重叠及本地日程默认私密已按文首发布；真实云写入待明确目的地，实体电视暂无法验证。以下历史场景证据不重写，实际当前运行身份以 [README](../README.md) 和[交接](HANDOFF.md)为准。
 
 截至 2026-09-18，本页按原始目标的四个必验场景整理入口、既有证据与剩余步骤。
 已发布基线新增家庭与成员，并包含旅行 JSON 导入、单趟旅行回顾与照片旅行建议；具体运行身份以 [README](../README.md)、[交接](HANDOFF.md)和各发布验收页为准。
