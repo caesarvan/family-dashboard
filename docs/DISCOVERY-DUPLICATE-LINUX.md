@@ -1,6 +1,6 @@
 # 重复照片提示：四请求 Linux 资源验证
 
-工具候选，尚未执行 Linux，不表示资源验收通过。`deploy/discovery_duplicate_linux_probe.py` 只运行一次隔离 profile，不构建镜像、不访问生产、不降低限额、不自动重试；沿用已审 Docker 命令原件、主机内存监控和 cgroup 读取 helper。
+本批固定工具及执行器已经独审，实际R1绑定455源／b63镜像运行，但客户端只读数据库观察失败，四个重复请求未开始；外层缺失 `database.json` 的错误和客户端原始错误均保留。收尾无错误不代表资源通过，工具窄修及新的实际验收待完成。当前状态和证据见 [候选验收](DISCOVERY-ACCEPTANCE.md#discovery-candidate)。`deploy/discovery_duplicate_linux_probe.py` 只运行一次隔离 profile，不构建镜像、不访问生产、不降低限额、不自动重试；沿用已审 Docker 命令原件、主机内存监控和 cgroup 读取 helper。
 
 ## 固定输入与执行
 
