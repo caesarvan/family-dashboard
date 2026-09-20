@@ -1,4 +1,4 @@
-"""Real backend contract exercised by the compiled Expo assistant flow, without external AI."""
+"""Actual Expo flow: original-plan GET resolves committed writes without replay or external AI."""
 import json
 import os
 from pathlib import Path
@@ -48,3 +48,4 @@ def test_real_expo_assistant_flow(app, tmp_path):
         server.shutdown()
         server.server_close()
         worker.join(timeout=5)
+        assert not worker.is_alive(), 'Synthetic assistant server must close'

@@ -9,6 +9,7 @@ import { useDisplayDensity } from '../ui/theme';
 import { EventRow, RangeControls, WorkloadStrip } from './CalendarScreen';
 import HomeLayoutPanel from './HomeLayoutPanel';
 import TaskRemindersPanel from '../ui/TaskRemindersPanel';
+import { compareShoppingItems, shoppingScheduleText } from '../lib/trips';
 
 const cardKeys = ['calendar', 'finance', 'tasks', 'shopping', 'trips'];
 const money = (value: number) => Number.isSafeInteger(value) ? '¥' + new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 }).format(value / 100) : '待核对';
@@ -50,7 +51,7 @@ export default function HomeScreen(props: ScreenProps) {
   const tasks = state.tasks.filter(item => !item.done && (!item.due || item.due <= days.at(-1)!))
     .sort((a, b) => Number(dependencyState.get(a.id)!.blocked)-Number(dependencyState.get(b.id)!.blocked) || (a.due || '9999').localeCompare(b.due || '9999') || a.id.localeCompare(b.id));
   const due = tasks.filter(item => item.due).length, overdue = tasks.filter(item => item.due && item.due < today).length;
-  const shopping = state.shopping.filter(item => !item.done);
+  const shopping = state.shopping.filter(item => !item.done).sort(compareShoppingItems);
   const trip = state.trips.filter(item => item.end >= today).sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id))[0];
   const focusName = state.people.find(person => person.id === props.focus)?.name || '所选成员';
   const owner = (id: string) => state.people.find(person => person.id === id)?.name || '共同';
@@ -101,8 +102,9 @@ export default function HomeScreen(props: ScreenProps) {
       {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     </SectionCard>,
     shopping: <SectionCard style={[styles.bento, bento]} title="需要添置" action={<Button contentStyle={styles.primaryContent} compact onPress={() => props.onNavigate('shopping')}>采购清单</Button>}>
-      {shopping.length ? shopping.slice(0, 3).map(item => <View key={item.id} style={[styles.task, { paddingVertical: density.rowPadding }]}><View style={styles.flex}>
-        <Text variant="titleSmall">{item.title}</Text><Text variant="bodySmall" style={muted}>{item.quantity || '未填数量'}</Text></View>
+      {shopping.length ? shopping.slice(0, 3).map(item => <View key={item.id} testID={'home-shopping-' + item.id} style={[styles.task, { paddingVertical: density.rowPadding }]}><View style={styles.flex}>
+        <Text variant="titleSmall">{item.title}</Text><Text variant="bodySmall" style={muted}>{item.quantity || '未填数量'} · {owner(item.owner)}</Text>
+        <Text variant="bodySmall" style={muted}>{shoppingScheduleText(item, today, true)}</Text></View>
         <Button contentStyle={styles.primaryContent} compact onPress={() => props.onEdit('shopping', item)}>查看</Button></View>)
         : <EmptyState title="暂时没有待采购的物品" action={<Button contentStyle={styles.primaryContent} onPress={() => props.onEdit('shopping')}>添加采购</Button>} />}
       {shopping.length > 3 && <Text variant="bodySmall" style={muted}>还有 {shopping.length - 3} 件待采购</Text>}

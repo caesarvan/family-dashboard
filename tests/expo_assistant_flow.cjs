@@ -15,7 +15,10 @@ function load(name, imports = {}) {
   return module.exports;
 }
 const api = load('api');
-const { AssistantFlow } = load('assistant', { './api': api });
+const identity = load('sessionIdentity');
+const trips = load('trips', { './sessionIdentity.ts': identity });
+const list = load('assistantList', { './trips': trips });
+const { AssistantFlow } = load('assistant', { './api': api, './sessionIdentity.ts': identity, './assistantList': list });
 const origin = process.env.ASSISTANT_TEST_ORIGIN;
 assert.match(origin, /^http:\/\/127\.0\.0\.1:\d+$/);
 const cookie1 = process.env.ASSISTANT_TEST_COOKIE1, cookie2 = process.env.ASSISTANT_TEST_COOKIE2;
@@ -34,11 +37,12 @@ async function raw(route, method = 'GET', payload, csrf) {
 async function fixture() {
   cookie = cookie1;
   const session = await raw('/me');
-  const h = { live: true, calls: [], mode: '', after: null, stateReads: 0 };
+  const h = { live: true, calls: [], mode: '', after: null, stateReads: 0, planReads: [] };
   const flow = new AssistantFlow(session.user, {
     current: () => h.live,
     read: async route => {
       if (route === '/state') h.stateReads++;
+      if (/^\/assistant\/plans\/[a-f0-9]{32}$/.test(route)) h.planReads.push(route);
       const result = await raw(route);
       if (h.after && route.startsWith('/assistant/search')) await h.after();
       return result;
@@ -78,11 +82,14 @@ const ok = label => { checks.push(label); console.log('PASS ' + label); };
     assert.deepEqual(plain(flow.state.selected), [0]);
     const beforeCalls = h.calls.length; await flow.apply(); assert.equal(h.calls.length, beforeCalls);
     await flow.plan('待办：must not replace', false, false); assert.equal(h.calls.length, beforeCalls);
-    await flow.checkOutcome(); assert.equal(flow.state.checkedAfterUnknown, true); assert.ok(h.stateReads >= 2);
+    await flow.checkOutcome(); assert.equal(h.planReads.at(-1), '/assistant/plans/' + intent.id);
+    assert.equal(flow.state.checkedAfterUnknown, mode === 'before');
     assert.equal(await count(title), mode === 'before' ? 0 : 1);
     await flow.apply(); assert.equal(await count(title), 1); assert.equal(flow.state.receipt.created.length, 1);
     const writes = h.calls.filter(x => x.route.endsWith('/apply'));
-    assert.equal(writes.length, 2); assert.deepEqual(writes[0], writes[1]); assert.equal(writes[1].route, '/assistant/plans/' + intent.id + '/apply');
+    assert.equal(writes.length, mode === 'before' ? 2 : 1);
+    if (mode === 'before') { assert.deepEqual(writes[0], writes[1]); assert.equal(writes[1].route, '/assistant/plans/' + intent.id + '/apply'); }
+    else assert.equal(flow.state.pending, null); // GET applied receipt closes uncertainty without a second POST.
     ok('real_' + mode + '_unknown_readback_then_same_intent');
   }
 

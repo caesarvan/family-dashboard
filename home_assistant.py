@@ -677,6 +677,8 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
                     sessions.validate_context(con, context, member=True)
             current_member()
             yield con
+            if write:
+                current_member()
             con.commit()
             if recheck_read:
                 # A read snapshot can predate logout in a concurrent connection.
@@ -934,7 +936,9 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
                 kind = action['kind']
                 # Do not carry hidden model fields, identifiers or remote write targets.
                 clean = {'title': action.get('title'), 'owner': action.get('owner', g.actor['id']), 'done': False}
-                clean.update({'due': action.get('due', '')} if kind == 'tasks' else {'quantity': action.get('quantity', '1 件')})
+                clean['due'] = action.get('due', '')
+                if kind == 'shopping':
+                    clean['quantity'] = action.get('quantity', '1 件')
                 normalized.append({'kind': kind, 'data': validate(kind, clean, db)})
             uid = secrets.token_hex(16)
             result = {'id': uid, 'summary': summary, 'actions': normalized, 'mode': mode, 'matches': []}
@@ -945,38 +949,97 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
             con.execute('INSERT INTO assistant_plans VALUES(?,?,?,?,NULL,NULL)', (uid, g.actor['id'], json.dumps(result), time.time()))
             return jsonify(result)
 
+    def confirmation_payload(incoming, actions):
+        if not isinstance(incoming, dict) or set(incoming) - {'selected', 'overrides'}:
+            raise Problem('确认字段不正确')
+        selected = incoming.get('selected')
+        if (not isinstance(selected, list) or not 1 <= len(selected) <= 12
+                or any(type(i) is not int for i in selected) or len(set(selected)) != len(selected)
+                or any(i < 0 or i >= len(actions) for i in selected)):
+            raise Problem('请选择有效且不重复的事项')
+        overrides = incoming.get('overrides', [])
+        if not isinstance(overrides, list) or len(overrides) > 12:
+            raise Problem('调整内容不正确')
+        normalized, seen = [], set()
+        for override in overrides:
+            if not isinstance(override, dict) or set(override) != {'index', 'data'}:
+                raise Problem('调整字段不正确')
+            index, data = override['index'], override['data']
+            if type(index) is not int or index not in selected or index in seen:
+                raise Problem('只能调整已选且不重复的事项')
+            seen.add(index)
+            kind = actions[index]['kind']
+            allowed = {'title', 'owner', 'due', 'note'}
+            if kind == 'shopping':
+                allowed |= {'quantity', 'budget', 'priority'}
+            if not isinstance(data, dict) or set(data) - allowed:
+                raise Problem('包含不允许调整的字段')
+            for key, value in data.items():
+                if key == 'budget':
+                    if value is not None and type(value) is not int:
+                        raise Problem('采购预算必须是整数分或未设置')
+                elif not isinstance(value, str):
+                    raise Problem('调整字段格式不正确')
+            # Normalize domain scalars without depending on a former assignee's
+            # current membership. Completed confirmations must remain readable.
+            scalars = validate(kind, {'title': '计划事项', **data, 'owner': 'shared'}, db)
+            clean = {key: data[key] if key == 'owner' else scalars[key] for key in data}
+            if clean:
+                normalized.append({'index': index, 'data': clean})
+        return {'selected': sorted(selected), 'overrides': sorted(normalized, key=lambda row: row['index'])}
+
+    @app.get('/api/assistant/plans/<uid>')
+    def read_plan(uid):
+        require_member()
+        if request.args:
+            raise Problem('读取原计划不接受查询参数')
+        context = capture_context()
+        with authorized(context, recheck_read=True) as con:
+            row = con.execute('SELECT * FROM assistant_plans WHERE id=? AND owner=?', (uid, g.actor['id'])).fetchone()
+            if not row:
+                raise Problem('计划不存在', 404)
+            data = json.loads(row['data'])
+            public = {key: data[key] for key in ('id', 'mode', 'summary', 'actions', 'matches')}
+            status = 'applied' if row['applied_at'] else 'expired' if row['created_at'] < time.time() - 86400 else 'pending'
+            result = {'id': uid, 'status': status, 'plan': public,
+                      'receipt': json.loads(row['result']) if status == 'applied' else None}
+        return jsonify(result)
+
     @app.post('/api/assistant/plans/<uid>/apply')
     def apply_plan(uid):
         require_member()
         incoming = body()
-        selected = incoming.get('selected')
-        if not isinstance(selected, list) or not selected or len(selected) > 12 or any(type(i) is not int for i in selected) or len(set(selected)) != len(selected):
-            raise Problem('请选择要创建的事项')
         context_snapshot = capture_context()
         with authorized(context_snapshot, write=True) as con:
             row = con.execute('SELECT * FROM assistant_plans WHERE id=? AND owner=?', (uid, g.actor['id'])).fetchone()
             if not row:
                 raise Problem('计划不存在', 404)
+            plan_data = json.loads(row['data'])
+            actions = plan_data['actions']
+            confirmation = confirmation_payload(incoming, actions)
             if row['applied_at']:
+                if '_confirmation' in plan_data and plan_data['_confirmation'] != confirmation:
+                    raise Problem('这份计划已按原确认保存，请读取原回执，不要更改确认内容', 409)
                 return jsonify(json.loads(row['result']))
             if row['created_at'] < time.time() - 86400:
                 raise Problem('计划已过期，请重新生成', 409)
-            actions = json.loads(row['data'])['actions']
-            if any(i < 0 or i >= len(actions) for i in selected):
-                raise Problem('事项选择无效')
+            overrides = {row['index']: row['data'] for row in confirmation['overrides']}
             created = []
-            for index in selected:
+            for index in confirmation['selected']:
                 action = actions[index]
                 kind = action['kind']
                 if con.execute('SELECT count(*) FROM entities WHERE kind=?', (kind,)).fetchone()[0] >= 2500:
                     raise Problem('记录数量已达上限，请先整理旧记录', 409)
-                clean = validate(kind, action['data'], db)
+                clean = validate(kind, {**action['data'], **overrides.get(index, {}), 'done': False}, db)
                 item_id = secrets.token_hex(12)
                 if kind == 'tasks':
                     dependencies.check_write(con, item_id, clean)
                 con.execute('INSERT INTO entities(id,kind,data,updated_at) VALUES(?,?,?,?)', (item_id, kind, json.dumps(clean), now()))
+                actions[index] = {'kind': kind, 'data': clean}
                 created.append({'id': item_id, 'kind': kind, 'title': clean['title']})
             result = {'ok': True, 'created': created, 'destination': 'household'}
-            con.execute('UPDATE assistant_plans SET applied_at=?,result=? WHERE id=?', (time.time(), json.dumps(result), uid))
+            plan_data['_confirmation'] = confirmation
+            con.execute('UPDATE assistant_plans SET data=?,applied_at=?,result=? WHERE id=?',
+                        (json.dumps(plan_data, sort_keys=True), time.time(), json.dumps(result), uid))
             audit('assistant_plan_applied', uid)
             return jsonify(result)
