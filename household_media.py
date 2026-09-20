@@ -10,7 +10,9 @@ import json
 import math
 import re
 import secrets
+from threading import BoundedSemaphore, Lock
 import time
+import weakref
 
 from flask import Response, g, jsonify, request
 
@@ -28,6 +30,9 @@ HOUSEHOLD_BYTES = 200 * 1024 * 1024
 ITEM_RESERVATION = 3 * 1024 * 1024
 VIDEO_RESERVATION = MAX_VIDEO_CIPHER_BYTES + ITEM_RESERVATION
 LEASE_SECONDS = 600
+# One allowance for the whole serving process, including household child apps.
+# It remains occupied while WSGI owns a complete decrypted video response.
+_VIDEO_READ_SLOT = BoundedSemaphore(1)
 ACTIVE = ('queued', 'creating', 'waiting_selection', 'listing', 'staging', 'awaiting_confirmation')
 ITEM_VIEW = 'id,owner,account_id,import_id,source_key,state,visibility,journey_id,revision,metadata_cipher,preview_key,created_at,updated_at,confirmed_at,deleted_at,delete_revision'
 ERRORS = {
@@ -42,6 +47,7 @@ ERRORS = {
     'reauth': (409, '照片来源需要重新授权'),
     'api_disabled': (503, 'Google Photos Picker API 尚未启用。请联系应用维护者启用后，再重新选片；无需重复授权。'),
     'unavailable': (503, '媒体暂时无法读取，请稍后重试'),
+    'video_busy': (503, '视频正在读取，请稍后重试'),
     'worker_error': (503, '媒体处理暂时失败'),
     'timeout': (503, '媒体服务暂时未响应'),
     'rate_limited': (503, '媒体服务繁忙，请稍后重试'),
@@ -92,6 +98,36 @@ class MediaError(Exception):
         self.code = code if code in ERRORS else 'worker_error'
         self.status, self.message = ERRORS[self.code]
         super().__init__(self.message)
+
+
+class _VideoReadPermit:
+    def __init__(self):
+        self._lock = Lock()
+        self._held = _VIDEO_READ_SLOT.acquire(blocking=False)
+        if not self._held:
+            raise MediaError('video_busy')
+
+    def release(self):
+        with self._lock:
+            if self._held:
+                self._held = False
+                _VIDEO_READ_SLOT.release()
+
+    def response(self, raw):
+        response = Response(raw, content_type='video/mp4', headers={
+            'Cache-Control':'private, no-store', 'X-Content-Type-Options':'nosniff',
+            'Content-Disposition':'inline; filename="video.mp4"'})
+        reference = weakref.ref(response)
+        finalize = weakref.finalize(response, self.release)
+
+        def close():
+            current = reference()
+            if current is not None:
+                current.response = []
+            finalize()
+
+        response.call_on_close(close)
+        return response
 
 
 SCHEMA_SQL = '''
@@ -1113,36 +1149,54 @@ class MediaLibrary:
         return Response(raw,content_type='image/jpeg',headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'})
 
 
+    def _video_identity(self, con, uid, television):
+        actor = self._tv(con) if television else self._member(con)
+        row = self._item(con,uid,device=actor) if television else self._item(con,uid,actor)
+        meta = self._metadata(row)
+        if meta.get('mediaType','photo') != 'video':
+            raise MediaError('not_found')
+        return actor, row['revision'], meta
+
     def video(self, uid, television=False):
         # Fully buffered bounded response. No range/session capability, public
         # file path or streaming iterator may outlive this second authority read.
+        # Reject unauthorized reads before admission; no video BLOB or waiting
+        # transaction here. A busy slot never queues a stale authorization.
         with self.transaction() as con:
-            actor=self._tv(con) if television else self._member(con)
-            row=self._item(con,uid,device=actor) if television else self._item(con,uid,actor)
-            revision=row['revision']
-            meta=self._metadata(row)
-            if meta.get('mediaType','photo')!='video':
-                raise MediaError('not_found')
-            cache=con.execute('SELECT cache_key,cipher FROM media_video_cache WHERE media_id=?',(uid,)).fetchone()
-            if not cache or cache['cache_key']!=meta.get('videoKey'):
-                raise MediaError('unavailable')
-            blob=bytes(cache['cipher'])
-        raw=None
+            initial_actor, initial_revision, initial_meta = self._video_identity(con,uid,television)
+        permit = _VideoReadPermit()
+        transferred = False
         try:
-            raw=self.cipher.open_bytes('media-video',blob)
-        except MediaCryptoError:
-            pass
-        if (raw is None or not 0<len(raw)<=MAX_VIDEO_BYTES or len(raw)!=meta.get('videoBytes')
-            or hashlib.sha256(raw).hexdigest()!=meta.get('videoSha256')):
-            raise MediaError('unavailable')
-        with self.transaction() as con:
-            current=self._tv(con) if television else self._member(con)
-            latest=self._item(con,uid,device=current) if television else self._item(con,uid,current)
-            cache=con.execute('SELECT cache_key FROM media_video_cache WHERE media_id=?',(uid,)).fetchone()
-            if current!=actor or latest['revision']!=revision or not cache or cache['cache_key']!=meta['videoKey']:
-                raise MediaError('conflict')
-        return Response(raw,content_type='video/mp4',headers={'Cache-Control':'private, no-store',
-                        'X-Content-Type-Options':'nosniff','Content-Disposition':'inline; filename="video.mp4"'})
+            with self.transaction() as con:
+                actor, revision, meta = self._video_identity(con,uid,television)
+                if (actor, revision, meta.get('videoKey')) != (initial_actor, initial_revision, initial_meta.get('videoKey')):
+                    raise MediaError('conflict')
+                cache=con.execute('SELECT cache_key,cipher FROM media_video_cache WHERE media_id=?',(uid,)).fetchone()
+                if not cache or cache['cache_key']!=meta.get('videoKey'):
+                    raise MediaError('unavailable')
+                blob=bytes(cache['cipher'])
+            raw=None
+            try:
+                raw=self.cipher.open_bytes('media-video',blob)
+            except MediaCryptoError:
+                pass
+            del blob, cache
+            if (raw is None or not 0<len(raw)<=MAX_VIDEO_BYTES or len(raw)!=meta.get('videoBytes')
+                or hashlib.sha256(raw).hexdigest()!=meta.get('videoSha256')):
+                raise MediaError('unavailable')
+            with self.transaction() as con:
+                current, latest_revision, latest_meta = self._video_identity(con,uid,television)
+                cache=con.execute('SELECT cache_key FROM media_video_cache WHERE media_id=?',(uid,)).fetchone()
+                if (current!=actor or latest_revision!=revision or not cache
+                        or cache['cache_key']!=meta['videoKey'] or latest_meta.get('videoKey')!=meta['videoKey']):
+                    raise MediaError('conflict')
+            response = permit.response(raw)
+            transferred = True
+            return response
+        finally:
+            # Successful responses release only on WSGI close (or finalization).
+            if not transferred:
+                permit.release()
 
 
 def _request_object():
@@ -1197,7 +1251,8 @@ def register_media_library(app, db, Problem, body, require_member, audit):
 
     @app.errorhandler(MediaError)
     def media_error(error):
-        return jsonify(error=error.message,code=error.code),error.status
+        headers = {'Retry-After':'1'} if error.code == 'video_busy' else {}
+        return jsonify(error=error.message,code=error.code),error.status,headers
 
     @app.route('/api/media/imports',methods=['GET','POST'])
     def media_imports():

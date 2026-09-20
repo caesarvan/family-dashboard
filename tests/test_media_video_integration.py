@@ -101,6 +101,8 @@ def test_worker_video_confirm_original_receipt_private_encryption_and_restart(en
     with pytest.raises(media_crypto.MediaCryptoError):env[1].cipher.open_bytes('media-preview',row['cipher'])
     other=media_crypto.MediaCipher(env[0].secret_key,'different-household')
     with pytest.raises(media_crypto.MediaCryptoError):other.open_bytes('media-video',row['cipher'])
+    returned_video=reply.data
+    reply.close()
     replay=c.post('/api/media/imports/'+receipt['import']['id']+'/confirm',json=payload,headers=h)
     assert replay.json['replayed'] and replay.json['itemIds']==[uid]
     with env[1].transaction() as con:
@@ -109,7 +111,8 @@ def test_worker_video_confirm_original_receipt_private_encryption_and_restart(en
         assert con.execute('SELECT reserved_bytes FROM media_imports').fetchone()[0]==0
     restarted=__import__('app').create_app(dict(env[0].config))
     recopy=clone(restarted,c)
-    assert recopy.get(value['videoUrl']).data==reply.data
+    with recopy.get(value['videoUrl']) as restarted_reply:
+        assert restarted_reply.data==returned_video
 
 
 def test_video_sharing_tv_each_grant_and_unsharing_immediately_refuses(env,clip,tools):
@@ -119,18 +122,21 @@ def test_video_sharing_tv_each_grant_and_unsharing_immediately_refuses(env,clip,
     tvurl='/api/media-tv/items/'+value['id']+'/video'
     assert tv.get(tvurl).status_code==404
     value=share(c,h,value)
-    assert other.get(value['videoUrl']).status_code==200 and tv.get(tvurl).status_code==404
+    with other.get(value['videoUrl']) as reply:
+        assert reply.status_code==200 and tv.get(tvurl).status_code==404
     grant=c.put('/api/media/items/'+value['id']+'/tv-grants',json={'revision':value['revision'],
         'deviceIds':[did],'consentVersion':'media-v1','allowTvDisplay':True},headers=h)
     assert grant.status_code==200
-    assert tv.get(tvurl).status_code==200 and tv2.get(tvurl).status_code==404
+    with tv.get(tvurl) as reply:
+        assert reply.status_code==200 and tv2.get(tvurl).status_code==404
     listed=tv.get('/api/media-tv/items').json['items'][0]
     assert listed['mediaType']=='video' and listed['videoUrl']==tvurl
     assert all(k not in listed for k in ('accountId','displayFilename','sourceCreatedAt','owner','sourceKey'))
     changed=c.patch('/api/media/items/'+value['id'],json={'revision':grant.json['revision'],'visibility':'private'},headers=h)
     assert changed.status_code==200
     assert other.get(value['videoUrl']).status_code==404 and tv.get(tvurl).status_code==404
-    assert c.get(value['videoUrl']).status_code==200 and cache(env,value['id']) is not None
+    with c.get(value['videoUrl']) as reply:
+        assert reply.status_code==200 and cache(env,value['id']) is not None
 
 
 @pytest.mark.parametrize('revoke',['share','device','delete','member'])

@@ -164,6 +164,8 @@ class MediaImportWorker:
             return
         try:
             video=sanitize_media_video(downloaded.data,downloaded.content_type,tools=tools,temp_root=temporary)
+            # Do not retain up to 100 MiB of source bytes through seal/SQLite.
+            del downloaded
         except MediaVideoError as error:
             code=error.code if error.code in {'invalid_input','too_large','too_long','unsupported','invalid','timeout','tools_unavailable'} else 'invalid'
             self._fail(job,'video_'+code)
