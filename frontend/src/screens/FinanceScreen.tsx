@@ -15,6 +15,7 @@ import FinanceBaselinePanel from '../components/FinanceBaselinePanel';
 import FinanceSourceImportPanel from '../components/FinanceSourceImportPanel';
 import FinanceAccountsPanel from '../components/FinanceAccountsPanel';
 import ShoppingSettlementPanel from '../components/ShoppingSettlementPanel';
+import JourneyFinancePanel from '../components/JourneyFinancePanel';
 import InventoryScreen from './InventoryScreen';
 
 type Data = { overview: Overview; ledger: Ledger; shared: Totals[]; finance: SharedSnapshot };
@@ -94,6 +95,12 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     if (!alive.current || latest.current.identityKey !== props.identityKey || !accountsRef.current) return;
     accountsPendingRef.current = value; props.onFinanceAccountsPending?.(value);
   }, [props.identityKey, props.onFinanceAccountsPending]);
+  const [journeyFinance, setJourneyFinanceState] = useState<{paymentId?: string} | null>(null), journeyFinanceRef = useRef<typeof journeyFinance>(null), journeyFinancePending = useRef(false);
+  const setJourneyFinance = (value: typeof journeyFinance) => { journeyFinanceRef.current = value; setJourneyFinanceState(value); };
+  const notifyJourneyFinancePending = useCallback((value: boolean) => {
+    if (!alive.current || latest.current.identityKey !== props.identityKey || !journeyFinanceRef.current) return;
+    journeyFinancePending.current = value; props.onJourneyFinancePending?.(value);
+  }, [props.identityKey, props.onJourneyFinancePending]);
   const [settlement, setSettlementState] = useState<string | null>(null), settlementRef = useRef<string | null>(null), settlementPendingRef = useRef(false);
   const [inventoryOrder, setInventoryOrderState] = useState<string | null>(null), inventoryOrderRef = useRef<string | null>(null), inventoryPendingRef = useRef(false);
   const setInventoryOrder = (value: string | null) => { inventoryOrderRef.current = value; setInventoryOrderState(value); };
@@ -107,7 +114,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     if (!alive.current || latest.current.identityKey !== props.identityKey || !settlementRef.current) return;
     settlementPendingRef.current = value; props.onShoppingSettlementPending?.(value);
   }, [props.identityKey, props.onShoppingSettlementPending]);
-  const current = () => alive.current && active.current && focused.current && appActive.current && !denied.current && !baselineRef.current && !sourceImportRef.current && !accountsRef.current && !settlementRef.current && !inventoryOrderRef.current && latest.current.identityKey === props.identityKey && latest.current.online && online() && foreground();
+  const current = () => alive.current && active.current && focused.current && appActive.current && !denied.current && !baselineRef.current && !sourceImportRef.current && !accountsRef.current && !settlementRef.current && !journeyFinanceRef.current && !inventoryOrderRef.current && latest.current.identityKey === props.identityKey && latest.current.online && online() && foreground();
   const setDetail = (v: Reconciliation | null) => { detailRef.current = v; setDetailState(v); };
   const setEdit = (v: Edit | null) => { editRef.current = v; setEditState(v); };
   const setBudget = (v: BudgetDraft | null) => { budgetRef.current = v; setBudgetState(v); };
@@ -117,7 +124,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
   function conceal(clear = false) {
     active.current = false; ++epoch.current; fence.current.invalidate(); reading.current = false; writing.current = false;
     setVisible(false); setBusy(false); setData(null); setPreview(null); setRevoke(null);
-    if (clear) { setInventoryOrder(null); inventoryPendingRef.current = false; props.onInventoryPending?.(null); }
+    if (clear) { setJourneyFinance(null); journeyFinancePending.current = false; props.onJourneyFinancePending?.(false); setInventoryOrder(null); inventoryPendingRef.current = false; props.onInventoryPending?.(null); }
     if (clear) { closeDetail(); setBudget(null); setSharedEditor(null); setPending(null); setNotice(''); setError(''); setImporting(false); setImportMonths([]); setBaseline(false); setSourceImport(false); sourcePendingRef.current = false; props.onFinanceSourcePending?.(false); setAccounts(false); accountsPendingRef.current = false; props.onFinanceAccountsPending?.(false); settlementFence.current.invalidate(); setSettlement(null); settlementPendingRef.current = false; props.onShoppingSettlementPending?.(false); }
   }
   function failure(caught: unknown) {
@@ -193,7 +200,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     finally { if (ticket === epoch.current) { reading.current = false; if (alive.current) setBusy(false); } }
   }
   function enter() { if (!alive.current || active.current || !focused.current || denied.current || !appActive.current || !online() || !foreground() || !latest.current.online) return; active.current = true; void reload(); }
-  useEffect(() => { alive.current = true; return () => { alive.current = false; active.current = false; ++epoch.current; fence.current.invalidate(); sourcePendingRef.current = false; props.onFinanceSourcePending?.(false); accountsPendingRef.current = false; props.onFinanceAccountsPending?.(false); settlementFence.current.invalidate(); settlementPendingRef.current = false; props.onShoppingSettlementPending?.(false); }; }, []);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; active.current = false; ++epoch.current; fence.current.invalidate(); sourcePendingRef.current = false; props.onFinanceSourcePending?.(false); accountsPendingRef.current = false; props.onFinanceAccountsPending?.(false); settlementFence.current.invalidate(); settlementPendingRef.current = false; props.onShoppingSettlementPending?.(false); journeyFinancePending.current = false; props.onJourneyFinancePending?.(false); }; }, []);
   useFocusEffect(useCallback(() => { focused.current = true; enter(); return () => { focused.current = false; conceal(true); }; }, [props.identityKey]));
   useEffect(() => {
     const visibility = () => foreground() ? enter() : conceal(); const offline = () => { conceal(); setError('网络已断开，财务内容已隐藏。恢复后会重新核对，原输入暂时保留。'); }; const connected = () => enter();
@@ -291,6 +298,17 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     if (!alive.current || accountsPendingRef.current || latest.current.identityKey !== props.identityKey) return;
     props.onFinanceAccountsPending?.(false); setAccounts(false); if (current()) void reload(true);
   }
+  function openJourneyFinance(paymentId?: string) {
+    if (!current() || reading.current || writing.current || pendingRef.current || budgetRef.current || sharedRef.current || candidate || revoke) return;
+    const draft = editRef.current;
+    if (draft && (draft.conflict || draft.category !== draft.original.category || draft.flow !== draft.original.flow || draft.shared !== (draft.original.visibility === 'shared'))) { setNotice('分类或共享设置尚未保存，请先保存核对，或重新读取交易后再查看旅行费用。'); return; }
+    ++epoch.current; fence.current.invalidate(); setVisible(false); setData(null); setError(''); setNotice('');
+    setJourneyFinance(paymentId ? { paymentId } : {});
+  }
+  function closeJourneyFinance() {
+    if (!alive.current || !focused.current || journeyFinancePending.current || latest.current.identityKey !== props.identityKey) return;
+    setJourneyFinance(null); props.onJourneyFinancePending?.(false); if (current()) void reload(true); else enter();
+  }
   function openSettlement() {
     if (!current() || reading.current || writing.current || pendingRef.current || budgetRef.current || sharedRef.current || !detailRef.current) return;
     const draft = editRef.current;
@@ -326,6 +344,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
     setInventoryOrder(null); props.onInventoryPending?.(null);
     if (current()) void reload(true); else enter();
   }
+  if (journeyFinance) return <JourneyFinancePanel paymentId={journeyFinance.paymentId} onBack={closeJourneyFinance} onPendingChange={notifyJourneyFinancePending} />;
   if (inventoryOrder) return <InventoryScreen {...props} inventoryRequest={undefined} orderSourceId={inventoryOrder} onReturnToFinance={closeOrderInventory} onInventoryPending={notifyInventoryPending} />;
   if (settlement) return <ShoppingSettlementPanel key={props.identityKey + ':' + settlement} transactionId={settlement} onClose={closeSettlement} onSaved={settlementSaved} onPendingChange={notifySettlementPending} />;
   if (accounts) return <FinanceAccountsPanel onBack={closeAccounts} onPendingChange={notifyAccountsPending} />;
@@ -347,6 +366,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
       {ledgerChanged && <View style={styles.warning}><Text>账本已变化。请刷新后重新查看，当前页面不能继续翻页。</Text><Button disabled={locked} onPress={() => { query.current.page = 1; void reload(true); }}>刷新到最新账本</Button></View>}
       {!detail ? <>
         <View style={styles.row}>{([['shared', '共同资金'], ['ledger', '我的账本'], ['budgets', '月预算']] as const).map(([key, label]) => <Button key={key} mode={tab === key ? 'contained' : 'outlined'} disabled={locked} onPress={() => setTab(key)}>{label}</Button>)}</View>
+        <Button accessibilityLabel="我的旅行费用" disabled={locked} onPress={() => openJourneyFinance()}>我的旅行费用</Button>
         {monthControls}
         {tab === 'shared' && <>
           <SectionCard title="共同资金快照" action={<Button disabled={locked} onPress={() => openShared(data.finance)}>核对资金</Button>}><View style={styles.stack}><Text style={styles.muted}>手工核对账户余额与准备金。本人账单不会自动修改这些值。</Text><Text variant="displaySmall" style={styles.money}>{data.finance.confirmedAt ? decimalDisplay(data.finance.wallet) : '待核对'}</Text><Text>周转目标 {decimalDisplay(data.finance.reserveTarget)}</Text><View style={styles.grid}>{sharedFinanceFields.filter(k => k !== 'wallet' && k !== 'reserveTarget').map(k => <View key={k} style={[styles.metric, width < 600 && styles.full]}><Text style={styles.muted}>{sharedFinanceLabels[k]}</Text><Text variant="titleLarge" style={styles.money}>{data.finance.confirmedAt ? decimalDisplay(data.finance[k]) : '待核对'}</Text></View>)}</View><Text>税后收入 {data.finance.contributionPercent}% 共同出资</Text><Text style={styles.muted}>最近核对：{time(data.finance.confirmedAt)}</Text>{!!data.finance.note && <Text>{data.finance.note}</Text>}</View></SectionCard>
@@ -370,6 +390,7 @@ function FinanceWorkspace(props: ScreenProps & { identityKey: string }) {
           {detail.transaction.kind === 'orders' && <Button testID="finance-order-inventory" icon="package-variant-closed" mode="outlined" accessibilityLabel="登记或查看订单库存" contentStyle={{ minHeight: 44 }} disabled={locked || ledgerChanged} onPress={openOrderInventory}>登记或查看订单库存</Button>}
         </View></SectionCard>
         {edit && <SectionCard title="核对分类与共享"><View style={styles.stack}><TextInput accessibilityLabel="交易分类" label="交易分类" maxLength={60} mode="outlined" style={styles.input} disabled={locked} value={edit.category} onChangeText={value => setEdit({ ...edit, category: value })} /><View style={styles.row}>{(Object.entries(flowLabels) as [Flow, string][]).map(([flow, label]) => <Button key={flow} disabled={locked} mode={edit.flow === flow ? 'contained' : 'outlined'} onPress={() => setEdit({ ...edit, flow, shared: ['expense', 'refund'].includes(flow) ? edit.shared : false })}>{label}</Button>)}</View><Check label={sharedConsent} checked={edit.shared} disabled={locked || edit.original.kind !== 'payments' || !['expense', 'refund'].includes(edit.flow)} onPress={() => setEdit({ ...edit, shared: !edit.shared })} /><Text style={styles.muted}>共享后家人可见该月的消费与退款金额汇总；标题、账户、来源、编号和本人收入仍仅本人可见。</Text>{edit.conflict && <Text style={styles.warning}>记录已变化，原输入保留。请重新读取交易，再核对最新版本。</Text>}<View style={styles.row}><Button mode="contained" disabled={locked || edit.conflict || ledgerChanged} onPress={() => void saveTransaction()}>保存核对</Button><Button disabled={locked} onPress={() => void openTransaction(detail.transaction.id)}>重新读取交易</Button></View></View></SectionCard>}
+        {detail.transaction.kind === 'payments' && <Button accessibilityLabel="这笔付款的旅行归集" disabled={locked} onPress={() => openJourneyFinance(detail.transaction.id)}>这笔付款的旅行归集</Button>}
         <SectionCard title="订单、付款与退款"><View style={styles.stack}><Text style={styles.muted}>{detail.note}</Text><View style={styles.row}><TextInput label="查找订单或付款" accessibilityLabel="查找订单或付款" maxLength={160} mode="outlined" style={[styles.input, styles.search]} disabled={locked} value={relationQuery} onChangeText={setRelationQuery} /><Button disabled={locked} onPress={() => void openTransaction(detail.transaction.id, false, relationQuery.trim())}>查找关联</Button></View>
           {detail.candidates.length ? detail.candidates.map(pair => <View key={[pair.kind, pair.left.id, pair.right.id].join('-')} testID={`finance-candidate-${pair.kind}-${pair.left.id}-${pair.right.id}`} style={styles.white}><Text variant="titleMedium">{relationLabels[pair.kind]}</Text><Text>{pair.kind === 'duplicate' ? '排除：' : '关联：'}{pair.left.title}</Text><Text>{pair.kind === 'duplicate' ? '保留：' : '付款：'}{pair.right.title}</Text><Text style={styles.muted}>可分配上限 {formatFinanceAmount(pair.maxAmountCents, pair.left.currency)}</Text>{pair.reasons.map((r, i) => <Text key={i}>{r}</Text>)}{pair.uncertainty.map((r, i) => <Text style={styles.muted} key={i}>{r}</Text>)}<Button disabled={locked || ledgerChanged} onPress={() => { setCandidate(pair); setAllocation(centsToDecimal(pair.suggestedAmountCents)); setPreview(null); }}>核对这组记录</Button></View>) : <EmptyState title="没有可用关联候选" description="可用另一笔标题或编号搜索；跨币种、方向不符或已分配完的记录不会作为候选。" />}
           {detail.truncated && <Text>共有 {detail.candidateCount} 组候选，当前显示 40 组。请用标题或编号缩小范围。</Text>}
