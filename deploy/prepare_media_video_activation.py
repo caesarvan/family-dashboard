@@ -169,6 +169,15 @@ def verify_resources(spec, profile, package_value):
     return file_map(root)
 
 
+def verify_review(record):
+    need(isinstance(record, dict), 'review_not_passed')
+    decisions = [record[k] for k in ('verdict', 'conclusion', 'status', 'decision') if k in record]
+    findings = [record[k] for k in ('findings', 'blockingFindings') if k in record]
+    need(decisions and all(isinstance(v, str) and (v == 'PASS' or v.startswith('PASS_'))
+                           for v in decisions) and findings and
+         all(isinstance(v, list) and not v for v in findings), 'review_not_passed')
+
+
 def verify_evidence(inputs):
     need(set(inputs) == {'package', 'build', 'migration', 'worker100', 'response64', 'reviews'}, 'release_inputs_incomplete')
     p, b = inputs['package'], inputs['build']
@@ -190,8 +199,7 @@ def verify_evidence(inputs):
         path = regular(Path(item['path']))
         need(set(item) == {'path', 'sha256'} and digest_file(path) == item['sha256'], 'review_changed')
         record = read(path)
-        verdict = record.get('verdict', record.get('conclusion', record.get('status')))
-        need(isinstance(verdict, str) and verdict.startswith('PASS') and not record.get('findings'), 'review_not_passed')
+        verify_review(record)
         verified['reviews'][name] = item['sha256']
     return value, built, verified
 

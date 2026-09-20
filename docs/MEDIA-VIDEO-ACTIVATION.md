@@ -12,7 +12,7 @@
 - `build`：原双镜像构建目录 `root`、总 `build.json` 的 `sha256`；内部两个完整构建、镜像配置、运行文件、原输出和 contexts 仍由已审 `verify_build` 逐一核验。
 - `migration`：`run` 和 `input` 两个描述符，分别指真实 Linux 结果目录和完整 prepared 输入目录。描述符为 `{root, result, sha256}`；`result` 是目录内相对文件名。要求十个阶段、两户三库、app-only 保全、旧 71／非空 73 完整恢复及跨户部分失败恢复全部真实通过，并核所有输入／proof 文件。工具来源提交可以不同，应用运行字节必须匹配固定镜像包。
 - `worker100`、`response64`：各自真实 Linux profile 的 `{root,result,sha256}`。必须明确 `passed/status=passed`、完整双角色回执、同两个镜像、精确运行源码、384／768 MiB 和零 OOM/max 事件；缺失、失败、压力中止、部分输出均拒绝。输入与本批输出目录全文件再哈希进入计划。
-- `reviews`：`package/lifecycle/controller/migration/resources/browser` 六份真实非作者报告，分别为 `{path,sha256}`。原报告须明确 PASS 且无未关闭 findings；批准计划的人仍须核对报告的具体范围与来源，程序不会生成审查通过记录。
+- `reviews`：`package/lifecycle/controller/migration/resources/browser` 六份真实非作者报告，分别为 `{path,sha256}`。接受已有报告的 `verdict/conclusion/status/decision` 结论字段；存在的每个结论都必须为 `PASS` 或 `PASS_` 开头的限定通过。至少明确提供 `findings` 或 `blockingFindings`，存在的两种字段都必须为空数组；冲突结论、未关闭问题或格式缺失均拒绝。批准计划的人仍须核对报告的具体范围与来源，程序不会生成审查通过记录。
 
 准备工具只接受环境文件的 SHA256，不读取生产 `.env`。环境摘要由授权只读采集另行提供；实际 stage 必须重新核验。
 
