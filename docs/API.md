@@ -1,5 +1,9 @@
 # 家庭看板接口文档
 
+## 本人旅行费用归集（实现候选，未发布）
+
+只归集本人已有人民币付款净额，不修改原交易、采购或共享旅行金额；五接口与恢复/导出合同见 [JOURNEY-FINANCE](JOURNEY-FINANCE.md)。前缀 `/api/finance-hub/journey-allocations`：GET 根（本人历史/旅行分页）、GET `/payments`（原付款）、POST `/preview`、POST `/confirm`（原requestId+token）、GET `/operations/<requestId>`（200/found=false仍表示未知）。读取需当前成员，电视禁止；写入需Origin/CSRF/事务身份复核。两新表73→75尚待独立迁移和发布，不代表线上schema已变化。
+
 ## 本人站内提醒（已发布）
 
 完整 DTO、错误和权限见[提醒 API](TASK-REMINDERS.md)，当前交付状态见[集中验收](TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。以下三个接口只服务当前有效成员，匿名／电视／其他家庭不能读取；写入沿原 Origin、CSRF 与身份边界。
