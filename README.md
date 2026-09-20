@@ -110,7 +110,7 @@ flowchart LR
 | 财务／来源／投资 | [finance_hub.py](finance_hub.py)、[finance_baseline.py](finance_baseline.py)、[finance_accounts.py](finance_accounts.py)、[investment_import.py](investment_import.py) | [财务 API](docs/FINANCE-API.md)、[来源桥接](docs/FINANCE-SOURCE-BRIDGE.md)、[投资导入](docs/INVESTMENT-IMPORT.md) |
 | 助理 | [home_assistant.py](home_assistant.py)、[assistant_trip_intent.py](assistant_trip_intent.py) | [平台 API](docs/PLATFORM-API.md)、[资料照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-UI.md) |
 | 本人导出 | [data_portability.py](data_portability.py) | [导出格式与权限](docs/PORTABILITY.md) |
-| 打包／发布 | [deploy](deploy) | [当前五服务发布合同](docs/JOURNEY-FINANCE-RELEASE.md)、[完整验收索引](docs/VALIDATION.md) |
+| 打包／发布 | [deploy](deploy) | [当前五服务发布合同](docs/MEDIA-CONFIRMED-DATE-RELEASE.md)、[完整验收索引](docs/VALIDATION.md) |
 
 常用接口从 `/api/me`、`/api/state`、`/api/items/*`、`/api/accounts/*`、`/api/media/*`、`/api/assistant/*` 和 `/api/portability/*` 进入。精确方法／路径参见 [路由索引](docs/PLATFORM-ROUTES.md)，字段、错误码和可见范围以各模块契约与源码为准。
 
@@ -148,9 +148,9 @@ flowchart LR
 
 ## 部署、备份与故障恢复
 
-当前服务器为 racknerd VPS／Ubuntu，Name.com 管理域名 DNS，Nginx 负责 HTTPS。现有生产使用 app、sync、media、decoder、web 五服务；本批旅行费用完成73→75迁移，平台仍为9表。
+当前服务器为 racknerd VPS／Ubuntu，Name.com 管理域名 DNS，Nginx 负责 HTTPS。现有生产使用 app、sync、media、decoder、web 五服务；此前旅行费用完成73→75迁移，本批照片日期更新保持75/9，不做迁移。
 
-**当前已发布版本的合同是 [JOURNEY-FINANCE-RELEASE](docs/JOURNEY-FINANCE-RELEASE.md)。** 该合同记录财务父版 `53ea3fd` 到 `302a62d` 的已完成发布，计划已消费，禁止重放。下次必须以届时实际线上版本为父版重新适配并生成新计划。[DEPLOYMENT](docs/DEPLOYMENT.md)和 [OPERATIONS](docs/OPERATIONS.md)中的旧表数、旧镜像及迁移命令保留历史含义，不能覆盖本页和最新验收所绑定的父版。
+**当前已发布版本的合同是 [MEDIA-CONFIRMED-DATE-RELEASE](docs/MEDIA-CONFIRMED-DATE-RELEASE.md)。** 该合同记录旅行费用父版 `302a62d` 到 `5fae5c5` 的已完成发布，计划已消费，禁止重放。下次必须以届时实际线上版本为父版重新适配并生成新计划。[DEPLOYMENT](docs/DEPLOYMENT.md)和 [OPERATIONS](docs/OPERATIONS.md)中的旧表数、旧镜像及迁移命令保留历史含义，不能覆盖本页和最新验收所绑定的父版。
 
 | 环节 | 必须保留的核验 |
 |---|---|
@@ -166,7 +166,7 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 
 备份须覆盖平台注册库与所有已登记家庭，保留散列清单和配套密钥。在线备份不等同跨库原子快照；恢复必须保持完整家庭映射，按 [会话恢复合同](docs/MEMBER-SESSIONS.md#恢复后使旧成员登录失效)处理旧登录。
 
-本批隔离两户三库已完成73→75迁移、部分失败收停、完整73恢复和非空75恢复；生产本次只做迁移与保全，没有恢复数据库。发布只读回读也不代表重新校验活库内容、备份SQLite字节或worker业务tick。
+此前旅行费用批次已完成隔离两户三库73→75迁移、部分失败收停、完整73恢复和非空75恢复；本批另以合成两户三库验证非空75表启动保全与完整组恢复。生产本次只做75/9保全，没有迁移或恢复数据库。发布只读回读也不代表重新校验活库内容、备份SQLite字节或worker业务tick。
 
 不要删除数据卷、覆盖密钥、仅回退镜像或只恢复一个家庭。已有业务写入时先保全现场，再确定恢复策略；旧71／73表、四服务或已消费迁移入口不能操作当前75/9五服务环境。
 
@@ -187,7 +187,8 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 
 | 证据入口 | 能确认什么 |
 |---|---|
-| [本人旅行费用归集](docs/JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release) | 当前部署 source `302a62d`、manifest `9a44d4c`、app镜像 `1f957a9`；3/3真实浏览器、Linux46项、73→75隔离迁移／恢复，以及本次生产迁移、保全和只读回读 |
+| [本人照片日期确认](docs/MEDIA-CONFIRMED-DATE-ACCEPTANCE.md#media-date-release) | 当前部署 source `5fae5c5`、manifest `25d2b49`、app镜像 `fb94ae0`；手机宽度 R1 与桌面 R2 分轮浏览器、Linux55项，以及本次生产75/9保全与只读回读 |
+| [本人旅行费用归集](docs/JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release) | 此前部署 source `302a62d`、manifest `9a44d4c`、app镜像 `1f957a9`；3/3真实浏览器、Linux46项、73→75隔离迁移／恢复，以及本次生产迁移、保全和只读回读 |
 | [通用账单收支方向列](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release) | 此前部署 source `53ea3fd`、manifest `e6898a2`、app镜像 `cdbe470`；22项Node、两组tsc、3/3浏览器、新Linux33项及实际生产保全／回读，继承证据范围单列 |
 | [地点入口与重复提示](docs/DISCOVERY-ACCEPTANCE.md#discovery-release) | 此前 source `63dc634`、manifest `7b77dfb`、app镜像 `b63c1f5`；保留125与新增9项Linux、5＋1分段浏览器、四请求资源及生产回读；当批 main `1d589e6` 仅追加四份后验文档 |
 | [设备照片与那年今日](docs/LOCAL-PHOTO-ACCEPTANCE.md#local-photo-release) | 该批 source `79e5ef9`；191实际Linux、浏览器分段、R3媒体资源、73→73演练和当批生产只读审计 |
@@ -198,7 +199,7 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 | [资料与照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release) | 早期授权元数据搜索与原详情往返；地点新入口的后续证据见此前地点批次验收 |
 | [VALIDATION](docs/VALIDATION.md)与[历史README](docs/README-HISTORY-20260920.md) | 更早模块、分轮成功／失败和固定原件索引，按对应版本解释 |
 
-最近一批旅行费用生产发布实际为一户两库：完整备份后73→75／平台9保持，旧73表及序列保全、新两表在app停止核验时为空；1222安装文件、三个应用服务各136运行文件与decoder原4文件核对通过。五服务运行且无OOM／重启，app／decoder健康，备份timer active。完整SHA和原件集中在[最新验收页](docs/JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release)；实际安装 source 固定为 `302a62d`，Git合并与后续文档提交不改变该部署身份。
+最近一批照片日期生产发布实际为一户两库：完整备份后75/9保持，全部表、数据、settings与序列在app启动后停止核验时一致；1236安装文件、三个应用服务各136运行文件与decoder原4文件核对通过。五服务运行且无OOM／重启，app／decoder健康，备份timer active。完整SHA和原件集中在[最新验收页](docs/MEDIA-CONFIRMED-DATE-ACCEPTANCE.md#media-date-release)；实际安装 source 固定为 `5fae5c5`，Git合并与后续文档提交不改变该部署身份。
 
 失败也属于交付记录：设备照片浏览器曾因会话预期和无界等待失败；图像资源R1 OOM、R2触限及首次构建权限失败均保留。R3通过不抹去此前失败，也不扩成任意负载保证。
 
