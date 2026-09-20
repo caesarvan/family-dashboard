@@ -3,7 +3,7 @@ import { AppState, Platform, View } from 'react-native';
 import { Button, Text } from 'react-native-paper';
 import { request } from '../lib/api';
 import { useHousehold } from '../lib/household';
-import { fetchMemberVideo, PhotoReadDiscarded, PhotoReadFence, validatePhoto, videoDescription } from '../lib/photos';
+import { fetchMemberVideo, PhotoReadDiscarded, PhotoReadFence, validatePhoto, videoDescription, VideoReadBusy } from '../lib/photos';
 import type { Photo, PhotoSession } from '../lib/photos';
 
 type Props = { item: Photo; user: NonNullable<PhotoSession['user']>; identityKey?: string; enabled: boolean };
@@ -68,7 +68,9 @@ export default function MemberVideoPlayer(props: Props) {
       url.current = URL.createObjectURL(blob); setSource(url.current);
     } catch (caught) {
       if (ticket !== generation.current || !alive.current) return;
-      stop(caught instanceof PhotoReadDiscarded ? '身份已变化，请重新打开相册。' : '视频暂时无法播放，请重新打开详情核对后再试。');
+      stop(caught instanceof PhotoReadDiscarded ? '身份已变化，请重新打开相册。'
+        : caught instanceof VideoReadBusy ? '视频正在读取，请稍后点击播放重试。'
+          : '视频暂时无法播放，请重新打开详情核对后再试。');
     } finally {
       clearTimeout(timer); controllers.current.delete(controller);
       if (ticket === generation.current && alive.current) { pending.current = false; setBusy(false); }

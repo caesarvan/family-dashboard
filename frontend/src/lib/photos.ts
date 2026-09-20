@@ -76,6 +76,30 @@ export function validatePhoto(item: Photo): Photo {
 }
 
 export const MAX_VIDEO_BYTES = 64 * 1024 * 1024;
+export class VideoReadBusy extends Error {
+  constructor() { super('视频正在读取，请稍后点击播放重试。'); }
+}
+async function videoIsBusy(response: Response): Promise<boolean> {
+  if (response.status !== 503 || response.redirected || response.headers.get('Retry-After') !== '1'
+    || response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() !== 'application/json'
+    || !response.body) return false;
+  const reader = response.body.getReader(); let size = 0;
+  const parts: Uint8Array[] = [];
+  try {
+    for (;;) {
+      const part = await reader.read();
+      if (part.done) break;
+      size += part.value.byteLength;
+      if (size > 1024) return false;
+      parts.push(part.value);
+    }
+    const raw = new Uint8Array(size); let offset = 0;
+    for (const part of parts) { raw.set(part, offset); offset += part.byteLength; }
+    const value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw));
+    return value?.code === 'video_busy';
+  } catch { return false; }
+  finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+}
 export function videoPath(item: Pick<Photo, 'id' | 'mediaType' | 'videoUrl'>): string {
   return item.mediaType === 'video' && isMediaId(item.id) && item.videoUrl === `/api/media/items/${item.id}/video` ? item.videoUrl : '';
 }
@@ -93,6 +117,7 @@ export async function fetchMemberVideo(item: Photo, signal: AbortSignal, transpo
   if (!path) throw new Error('此内容不是可播放的视频。');
   const response = await transport(path, { method: 'GET', mode: 'same-origin', credentials: 'same-origin',
     cache: 'no-store', redirect: 'error', signal, headers: { Accept: 'video/mp4' } });
+  if (await videoIsBusy(response)) throw new VideoReadBusy();
   if (!response.ok || response.status !== 200 || response.redirected || response.headers.get('Content-Type')?.split(';')[0].trim().toLowerCase() !== 'video/mp4' || !response.body) {
     await response.body?.cancel(); throw new Error('视频已变化或暂时无法读取，请重新打开详情。');
   }

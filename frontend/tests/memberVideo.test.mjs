@@ -18,7 +18,7 @@ function loader(mocks = {}, globals = {}) {
       module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022, jsx: ts.JsxEmit.React, esModuleInterop: true,
     } }).outputText;
     runInNewContext(js, { exports, require: name => name in mocks ? mocks[name] : load(resolve(dirname(path), name)),
-      URL, Blob, Uint8Array, AbortController, Date, Error, setTimeout, clearTimeout, setInterval, clearInterval,
+      URL, Blob, Uint8Array, TextDecoder, AbortController, Date, Error, setTimeout, clearTimeout, setInterval, clearInterval,
       process: { env: {} }, ...globals });
     return exports;
   }
@@ -35,6 +35,19 @@ const deferred = () => { let release; return { promise: new Promise(resolve => {
 const response = (chunks = [new Uint8Array([0, 1, 2, 3])], headers = {}, status = 200) => new Response(new ReadableStream({
   start(controller) { chunks.forEach(value => controller.enqueue(value)); controller.close(); },
 }), { status, headers: { 'Content-Type': 'video/mp4', ...headers } });
+const busyResponse = (body = { code: 'video_busy', error: 'PRIVATE-SERVER-TEXT' }, status = 503, headers = {}) =>
+  new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', 'Retry-After': '1', ...headers } });
+
+test('busy video contract is bounded and fixed; other failures cannot masquerade as retryable busy', async () => {
+  await assert.rejects(photos.fetchMemberVideo(item, new AbortController().signal, async () => busyResponse()), error =>
+    error instanceof photos.VideoReadBusy && !error.message.includes('PRIVATE'));
+  for (const make of [() => busyResponse({ code: 'unavailable' }), () => busyResponse(undefined, 403),
+    () => busyResponse(undefined, 503, { 'Retry-After': '30' }),
+    () => busyResponse({ code: 'video_busy', error: 'x'.repeat(1024) })]) {
+    await assert.rejects(photos.fetchMemberVideo(item, new AbortController().signal, async () => make()), error =>
+      !(error instanceof photos.VideoReadBusy) && !error.message.includes('PRIVATE'));
+  }
+});
 
 test('backend video result codes map to fixed actionable copy, including provider not-ready; unknown text stays hidden', () => {
   const expected = { video_not_ready: /Google.*其他照片可正常保存/, video_invalid_input: /媒体类型无效/,
@@ -120,7 +133,8 @@ function harness(options = {}) {
     'react-native-paper': { Text: 'Text', Button: 'Button' }, '../lib/household': { useHousehold: () => household }, '../lib/api': { request } },
     { document, window: events, navigator, ...timersApi,
       URL: { createObjectURL(blob) { f.created.push(blob); return 'blob:synthetic-' + f.created.length; }, revokeObjectURL(value) { f.revoked.push(value); } },
-      fetch: async (path, init) => { f.calls.push(path); f.videoCount++; f.lastSignal = init.signal; if (f.gate) await f.gate.promise; return response(); } });
+      fetch: async (path, init) => { f.calls.push(path); f.videoCount++; f.lastSignal = init.signal; if (f.gate) await f.gate.promise;
+        return f.videoCount <= (f.busyResponses || 0) ? busyResponse() : response(); } });
   const Component = ui(resolve(root, 'components/MemberVideoPlayer.tsx')).default;
   function nodes(node = tree) { if (!node || typeof node !== 'object') return []; return [node, ...node.props.children.flatMap(n => nodes(n))]; }
   const text = (node = tree) => typeof node === 'string' ? node : !node || typeof node !== 'object' ? '' : node.props.children.map(text).join(' ');
@@ -165,6 +179,14 @@ test('changed revision or revoked ACL during the next permission read stops the 
     if (mode === 'revision') h.f.item.revision++; else h.f.denied = true;
     await h.tick(); assert.equal(h.f.revoked.length, 1); assert.equal(h.f.videoCount, 1); assert(h.text().includes('已停止'));
   }
+});
+test('actual player keeps detail on video busy and retries only on a new explicit click', async t => {
+  const h = harness({ busyResponses: 1 }); t.after(h.close); await h.flush(); await h.click('播放视频');
+  assert.equal(h.f.videoCount, 1); assert.equal(h.f.created.length, 0);
+  assert(h.text().includes('稍后点击播放重试')); assert(!h.text().includes('PRIVATE'));
+  await h.tick(); assert.equal(h.f.videoCount, 1);
+  await h.click('播放视频'); assert.equal(h.f.videoCount, 2); assert.equal(h.f.created.length, 1);
+  assert(!h.text().includes('稍后点击播放重试'));
 });
 test('native fallback is explicit and sends no media request', async t => {
   const h = harness({ native: true }); t.after(h.close); await h.flush(); assert(h.text().includes('浏览器')); assert.equal(h.f.calls.length, 0);
