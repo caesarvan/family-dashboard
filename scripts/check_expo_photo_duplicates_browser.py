@@ -91,6 +91,7 @@ def main():
     shutil.copyfile(__file__, out / 'executed-wrapper.py')
     report = dict(passed=False, checks=[], pageErrors=[], externalRequests=[], unexpectedProviderAttempts=[],
         screenshots=[], scenarioResults=[], scenarioFailures=[], httpEvidence=[], databaseEvidence=[],
+        browserHttpResponses=[], unexpectedHttpServerErrors=[], httpCaptureErrors=[],
         requestedChecks=len(cases), requestedCases=list(cases), expectedScreenshots=expected_screenshots,
         head=head, tree=tree, buildEvidenceSha256=sha(evidence_path), harnessSha256=sha(root / HARNESS),
         wrapperSha256=sha(root / WRAPPER), buildSourceHead=head, buildSourceTree=evidence['sourceTree'],
@@ -112,7 +113,9 @@ def main():
                 Run.run_scenarios(root, runtime_bundle, report, out, browser, temp_root, cases)
                 assert len(report['checks']) == len(cases) and len(report['screenshots']) == expected_screenshots
                 assert [case['name'] for case in report['scenarioResults']] == list(cases)
-                assert not any(report[key] for key in ('scenarioFailures', 'pageErrors', 'externalRequests', 'unexpectedProviderAttempts'))
+                assert not any(report[key] for key in ('scenarioFailures', 'pageErrors', 'externalRequests',
+                    'unexpectedProviderAttempts', 'unexpectedHttpServerErrors', 'httpCaptureErrors'))
+                assert all(case.get('httpGuardPassed') is True for case in report['scenarioResults'])
                 report['passed'] = True
             finally:
                 browser.close()

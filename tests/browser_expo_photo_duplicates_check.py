@@ -13,6 +13,7 @@ import tempfile
 import time
 import traceback
 from unittest.mock import patch
+from urllib.parse import urlsplit
 
 from PIL import Image
 from playwright.sync_api import expect
@@ -26,6 +27,64 @@ HARNESS = 'tests/browser_expo_photo_duplicates_check.py'
 CASES = ('cross_source_pages', 'coverage_and_draft', 'identity_and_revocation')
 CASE_SCREENSHOTS = dict(zip(CASES, (3, 3, 4)))
 LABEL = '展示副本一致，原图未核验'
+LEGACY_PREVIEW = '/api/media/items/' + '0' * 24 + '/preview'
+
+
+class BrowserHttpGuard:
+    """Observe all pages in each context; never fetch, block or alter a response."""
+    def __init__(self, base, case, out, report):
+        origin = urlsplit(base)
+        self.origin = (origin.scheme, origin.netloc)
+        self.case, self.report = case, report
+        self.contexts = 0
+        self.responses = []
+        self.allow_legacy_preview = False
+        self.path = out / 'browser-http-responses.jsonl'
+        with self.path.open('x', encoding='utf-8'):
+            pass
+        for key in ('browserHttpResponses', 'unexpectedHttpServerErrors', 'httpCaptureErrors'):
+            report.setdefault(key, [])
+
+    def attach(self, context):
+        self.contexts += 1
+        number = self.contexts
+        # Context-level response events cover every page (including popups).
+        context.on('response', lambda response: self.capture(response, number))
+
+    def permit_legacy_fixture(self):
+        assert self.case == 'coverage_and_draft'
+        self.allow_legacy_preview = True
+
+    def capture(self, response, context):
+        try:
+            parsed = urlsplit(response.url)
+            method, status = response.request.method, response.status
+            assert isinstance(method, str) and isinstance(status, int) and 100 <= status <= 599
+            expected = (self.allow_legacy_preview and method == 'GET' and status == 503
+                and (parsed.scheme, parsed.netloc) == self.origin
+                and parsed.path == LEGACY_PREVIEW and not parsed.query and not parsed.fragment)
+            entry = dict(case=self.case, context=context, method=method, path=parsed.path,
+                status=status, observedMonotonic=time.monotonic(), expectedErrorReason=(
+                    'Deliberately seeded legacy photo lacks a display fingerprint; preview must return 503 unavailable.'
+                    if expected else None))
+            self.responses.append(entry)
+            self.report['browserHttpResponses'].append(entry)
+            if status >= 500 and not expected:
+                self.report['unexpectedHttpServerErrors'].append(entry)
+            # Write before later UI assertions; retain the actual response even on failure.
+            with self.path.open('a', encoding='utf-8', newline='\n') as stream:
+                stream.write(json.dumps(entry, ensure_ascii=False) + '\n')
+                stream.flush()
+        except Exception as error:
+            # Event callback failures must fail the final guard, not disappear in stderr.
+            self.report['httpCaptureErrors'].append(dict(case=self.case, error=type(error).__name__))
+
+    def assert_clean(self):
+        assert self.contexts > 0 and self.responses, 'No browser HTTP response coverage'
+        errors = [r for r in self.report['httpCaptureErrors'] if r['case'] == self.case]
+        unexpected = [r for r in self.report['unexpectedHttpServerErrors'] if r['case'] == self.case]
+        assert not errors, errors
+        assert not unexpected, unexpected
 
 
 def picture(color='#496654'):
@@ -52,6 +111,7 @@ class Run(MediaRun):
         assert ThreadedWSGIServer.block_on_close is True
         lifecycle.enter_context(patch.object(ThreadedWSGIServer, 'daemon_threads', False))
         super().__init__(root, bundle, folder, report, out, lifecycle)
+        self.http_guard = BrowserHttpGuard(self.base, out.name, out, report)
         modules = ('app', 'household_media', 'media_images', 'media_crypto', 'media_local_upload',
                    'member_sessions', 'membership_storage', 'home_assistant', 'google_photos_picker')
         for name in modules:
@@ -70,6 +130,11 @@ class Run(MediaRun):
         lifecycle.enter_context(patch.object(self.engine.accounts, 'active_provider', forbidden))
         for name in ('_model_json', 'model_plan', 'model_journey_brief'):
             lifecycle.enter_context(patch.object(sys.modules['home_assistant'], name, forbidden))
+
+    def context(self, browser, member=1):
+        context = super().context(browser, member)
+        self.http_guard.attach(context)
+        return context
 
     def snapshot(self):
         assert self.database.resolve().is_relative_to(self.folder.resolve())
@@ -217,7 +282,9 @@ class Run(MediaRun):
             button(page, '关闭').click()
             # This new local upload uses exactly the Google JPEG; no fingerprint is substituted.
             anchor = self.local(ctx, picture(), '合成上限检查原项')
-            self.legacy_cap(google[0]); self.open_photo(page, anchor)
+            self.legacy_cap(google[0])
+            self.http_guard.permit_legacy_fixture()
+            self.open_photo(page, anchor)
             before, mark = self.snapshot(), len(self.requests)
             capped = self.scan(page, anchor, 'bounded-partial')
             assert capped['coverage'] == {'scope': 'mine', 'scanLimit': 1000, 'scanned': 999, 'capped': True, 'unverifiable': 1}
@@ -324,6 +391,8 @@ class Run(MediaRun):
                     folder = Path(lifecycle.enter_context(tempfile.TemporaryDirectory(prefix='pd-', dir=temp_root)))
                     run = cls(root, bundle, folder, report, case_out, lifecycle)
                     getattr(run, name)(browser)
+                run.http_guard.assert_clean()
+                case['httpGuardPassed'] = True
                 assert len(report['checks']) == before + 1 and not folder.exists()
                 assert len(report['screenshots']) - count == CASE_SCREENSHOTS[name]
                 assert run.server is None and not run.thread.is_alive()
@@ -334,6 +403,10 @@ class Run(MediaRun):
                 report['scenarioFailures'].append({'scenario': name, 'traceback': failure})
                 print('FAIL ' + name + '\n' + failure, flush=True)
             finally:
+                if run is not None:
+                    case['browserHttpEvidence'] = {'path': str(run.http_guard.path),
+                        'sha256': sha(run.http_guard.path), 'responses': len(run.http_guard.responses),
+                        'contexts': run.http_guard.contexts}
                 case['temporaryFixtureRemoved'] = folder is not None and not folder.exists()
                 case['listenerStopped'] = run is not None and run.server is None and not run.thread.is_alive()
                 report['scenarioResults'].append(case)
