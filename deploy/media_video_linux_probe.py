@@ -18,12 +18,76 @@ import xml.etree.ElementTree as ET
 
 PARENT = 'sha256:a783c58c882748d273c5956e2d94a43c99261c61c6b41f0489118d9fd96f6654'
 REMOTE_ROOT = Path('/tmp/family-dashboard-media-probe')
+RUNTIME_FILES = (
+    'app.py',
+    'frontend_runtime.py',
+    'member_sessions.py',
+    'household_members.py',
+    'tv_display.py',
+    'sync_health.py',
+    'household_memberships.py',
+    'personal_accounts.py',
+    'membership_storage.py',
+    'membership_http.py',
+    'cloud_accounts.py',
+    'cloud_providers.py',
+    'sync_worker.py',
+    'google_photos_picker.py',
+    'media_crypto.py',
+    'media_images.py',
+    'household_media.py',
+    'media_import_worker.py',
+    'media_playback.py',
+    'shopping_media.py',
+    'shopping_settlement.py',
+    'finance_baseline.py',
+    'spending_observations.py',
+    'finance_source_bridge.py',
+    'finance_accounts.py',
+    'journey_time.py',
+    'journey_reschedule.py',
+    'finance_analysis.py',
+    'finance_fx.py',
+    'household_spaces.py',
+    'journey_workflows.py',
+    'finance_hub.py',
+    'home_assistant.py',
+    'assistant_trip_intent.py',
+    'assistant_trip_change_api.py',
+    'assistant_finance_query.py',
+    'journey_routes.py',
+    'journey_documents.py',
+    'journey_places.py',
+    'inventory_core.py',
+    'inventory_api.py',
+    'inventory_sources.py',
+    'calendar_publish.py',
+    'calendar_privacy.py',
+    'financial_files.py',
+    'investment_import.py',
+    'investment_operations.py',
+    'dashboard_preferences.py',
+    'data_portability.py',
+    'task_publish.py',
+    'household_routines.py',
+    'task_dependencies.py',
+    'task_reminders.py',
+    'media_videos.py',
+    'media_video_storage.py',
+    'requirements.txt',
+)
+FIXTURE_FILES = (
+    "tests/test_household_media.py", "tests/test_journey_documents.py",
+    "tests/test_google_photos_picker.py",
+)
 SOURCE_FILES = {
-    'media_videos.py': 'media_videos.py', 'media_images.py': 'media_images.py',
-    'media_crypto.py': 'media_crypto.py', 'tests/test_media_videos.py': 'tests/test_media_videos.py',
-    'deploy/media_video_linux_probe.py': 'probe.py',
-    'deploy/Dockerfile.media-video-probe': 'Dockerfile',
+    **{name: "runtime/"+name for name in RUNTIME_FILES},
+    **{name: "fixtures/"+Path(name).name for name in FIXTURE_FILES},
+    "tests/test_media_videos.py": "tests/test_media_videos.py",
+    "deploy/media_video_linux_probe.py": "probe.py",
+    "deploy/Dockerfile.media-video-probe": "Dockerfile",
 }
+PROFILES = ("core", "resources", "response64", "worker100")
 CORE_NAMES = (
     'test_actual_h264_audio_complete_decode_poster_and_metadata',
     'test_actual_hevc_10bit_rotates_pixels_to_portrait',
@@ -47,6 +111,14 @@ def need(value, message):
 
 def digest(raw):
     return hashlib.sha256(raw).hexdigest()
+
+
+def file_digest(path):
+    value = hashlib.sha256()
+    with Path(path).open('rb') as stream:
+        for chunk in iter(lambda: stream.read(1024*1024), b''):
+            value.update(chunk)
+    return value.hexdigest()
 
 
 def save(path, value):
@@ -169,7 +241,7 @@ def build_candidate(input_dir, output):
 
 def run_args(image, proof, memory, profile):
     need(re.fullmatch('sha256:[0-9a-f]{64}', image) and image != PARENT, 'candidate immutable image required')
-    need(profile in ('core', 'resources', 'crypto64') and memory in (768, 1024), 'invalid experiment')
+    need(profile in PROFILES and memory in (768, 1024), 'invalid experiment')
     proof = safe_path(proof, existing=True, remote=True)
     return ['create', '--network=none', '--read-only', '--user=10001:10001', '--cap-drop=ALL',
         '--security-opt=no-new-privileges:true', '--cpus=1', '--memory='+str(memory)+'m',
@@ -206,7 +278,7 @@ def run_candidate(input_dir, build_result, output, memory, profile):
         report = {'profile': profile, 'imageId': image, 'containerId': container, 'inputsSha256': contract['inputsSha256'],
             'sourceHead': contract['sourceHead'], 'memoryMiB': memory, 'attachExit': code,
             'state': state['State'], 'commands': run.records,
-            'proof': {p.name: digest(p.read_bytes()) for p in proof.iterdir() if p.is_file()}}
+            'proof': {p.relative_to(proof).as_posix(): file_digest(p) for p in proof.rglob('*') if p.is_file()}}
         report['toolchainMatchesBuild'] = (proof/'toolchain.json').is_file() and json.loads((proof/'toolchain.json').read_text()) == result['toolchain']
         report['passed'] = (code == 0 and state['State']['ExitCode'] == 0 and not state['State']['OOMKilled']
             and report['toolchainMatchesBuild'] and (proof/'finished.json').is_file()
@@ -217,12 +289,21 @@ def run_candidate(input_dir, build_result, output, memory, profile):
 
 def fingerprint(output):
     need(sys.platform == 'linux', 'Linux tools required')
+    from importlib.metadata import version
+    requirements = {}
+    for line in Path('/probe/runtime/requirements.txt').read_text().splitlines():
+        if not line.strip() or line.startswith('#'):
+            continue
+        name, expected = line.split('==')
+        actual = version(name)
+        need(actual == expected, 'parent Python dependency differs: '+name)
+        requirements[name] = actual
     def capture(args): return subprocess.check_output(args, timeout=60).decode()
     save(output, {'tools': {name: {'sha256': digest(Path('/usr/bin/'+name).read_bytes()),
         'version': capture(['/usr/bin/'+name, '-version'])} for name in ('ffmpeg', 'ffprobe')},
         'debianPackages': capture(['dpkg-query', '-W', '-f=${Package}\t${Version}\n']),
         'pythonPackages': capture([sys.executable, '-m', 'pip', 'freeze']),
-        'osRelease': Path('/etc/os-release').read_text()})
+        'osRelease': Path('/etc/os-release').read_text(), 'runtimeRequirements': requirements})
 
 
 class Monitor:
@@ -250,65 +331,230 @@ class Monitor:
             'cpuSeconds': (int(re.search(r'^usage_usec (\d+)', Path('/sys/fs/cgroup/cpu.stat').read_text(), re.M)[1])-self.cpu)/1e6}
 
 
-def resource_cases(proof, crypto_only=False):
-    sys.path.insert(0, '/probe')
+def resource_cases(proof):
+    sys.path.insert(0, '/probe/runtime')
     from media_videos import VideoTools, sanitize_media_video, MAX_INPUT_BYTES, MAX_OUTPUT_BYTES
     from media_crypto import MediaCipher
     import tempfile
     tools = VideoTools('/usr/bin/ffmpeg', '/usr/bin/ffprobe')
     cipher = MediaCipher('synthetic-probe-secret-never-production', 'synthetic-probe-household')
-    cases = ('max-buffer-encryption',) if crypto_only else ('h264-1080p-max-input', 'hevc-1080p-10bit-rotation')
+    cases = ('h264-1080p-max-input', 'hevc-1080p-10bit-rotation')
     for kind in cases:
         with tempfile.TemporaryDirectory(prefix='representative-', dir='/tmp') as directory, Monitor() as monitor:
             directory = Path(directory); source = directory / 'source.mp4'
-            if kind == 'max-buffer-encryption':
-                # Explicit allocation envelope, not a valid movie or codec proof.
-                raw = b'Z' * MAX_OUTPUT_BYTES; display = raw
-                encrypted = cipher.seal_bytes('media-video', display)
-                restored = cipher.open_bytes('media-video', encrypted)
-                need(restored == display and len(raw) == MAX_OUTPUT_BYTES, 'encryption envelope differs')
-                record = {'kind': kind, 'validMovie': False, 'inputBytes': len(raw), 'displayBytes': len(display), 'cipherBytes': len(encrypted)}
+            hevc = kind.startswith('hevc')
+            command = [tools.ffmpeg, '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=12',
+                '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=12', '-c:v', 'libx265' if hevc else 'libx264',
+                '-preset', 'ultrafast', '-threads:v', '2', '-pix_fmt', 'yuv420p10le' if hevc else 'yuv420p', '-c:a', 'aac']
+            if hevc: command += ['-x265-params', 'pools=1:frame-threads=1:log-level=error', '-tag:v', 'hvc1']
+            subprocess.run([*command, str(source)], check=True, timeout=240, stdin=subprocess.DEVNULL)
+            if hevc:
+                rotated = directory / 'rotated.mp4'
+                subprocess.run([tools.ffmpeg, '-v', 'error', '-y', '-display_rotation', '90', '-i', str(source), '-c', 'copy', str(rotated)], check=True, timeout=60)
+                source = rotated
             else:
-                hevc = kind.startswith('hevc')
-                command = [tools.ffmpeg, '-v', 'error', '-y', '-f', 'lavfi', '-i', 'testsrc2=size=1920x1080:rate=30:duration=12',
-                    '-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=12', '-c:v', 'libx265' if hevc else 'libx264',
-                    '-preset', 'ultrafast', '-threads:v', '2', '-pix_fmt', 'yuv420p10le' if hevc else 'yuv420p', '-c:a', 'aac']
-                if hevc: command += ['-x265-params', 'pools=1:frame-threads=1:log-level=error', '-tag:v', 'hvc1']
-                subprocess.run([*command, str(source)], check=True, timeout=240, stdin=subprocess.DEVNULL)
-                if hevc:
-                    rotated = directory / 'rotated.mp4'
-                    subprocess.run([tools.ffmpeg, '-v', 'error', '-y', '-display_rotation', '90', '-i', str(source), '-c', 'copy', str(rotated)], check=True, timeout=60)
-                    source = rotated
-                else:
-                    # Valid self-contained MP4 with a top-level free box exercises
-                    # the full source buffer budget without fake decoder success.
-                    padding = MAX_INPUT_BYTES-source.stat().st_size
-                    need(padding >= 8, 'fixture unexpectedly large')
-                    with source.open('ab') as stream:
-                        stream.write(padding.to_bytes(4, 'big')+b'free')
-                        while padding > 8:
-                            amount = min(padding-8, 1024*1024); stream.write(bytes(amount)); padding -= amount
-                raw = source.read_bytes(); workspace = directory / 'processing'; workspace.mkdir()
-                started = time.monotonic(); preview = sanitize_media_video(raw, 'video/mp4', tools=tools, temp_root=workspace)
-                codec_seconds = time.monotonic()-started
-                encrypted = cipher.seal_bytes('media-video', preview.data)
-                need(cipher.open_bytes('media-video', encrypted) == preview.data, 'real output encryption differs')
-                need(abs(preview.duration_ms-12000) <= 250 and preview.has_audio, 'full representative duration/audio differs')
-                need((preview.width, preview.height) == ((720, 1280) if hevc else (1280, 720)), 'output rotation/dimensions differ')
-                need(not list(workspace.iterdir()), 'temporary plaintext remained')
-                record = {'kind': kind, 'validMovie': True, 'sourceBytes': len(raw), 'sourceSha256': digest(raw),
-                    'sourceDimensions': [1920,1080], 'sourceDurationMs': 12000, 'sourcePadded': not hevc,
-                    'outputBytes': len(preview.data), 'outputSha256': preview.sha256, 'durationMs': preview.duration_ms,
-                    'width': preview.width, 'height': preview.height, 'cipherBytes': len(encrypted), 'codecWallSeconds': codec_seconds}
+                # Valid self-contained MP4 with a top-level free box exercises
+                # the full source buffer budget without fake decoder success.
+                padding = MAX_INPUT_BYTES-source.stat().st_size
+                need(padding >= 8, 'fixture unexpectedly large')
+                with source.open('ab') as stream:
+                    stream.write(padding.to_bytes(4, 'big')+b'free')
+                    while padding > 8:
+                        amount = min(padding-8, 1024*1024); stream.write(bytes(amount)); padding -= amount
+            raw = source.read_bytes(); workspace = directory / 'processing'; workspace.mkdir()
+            started = time.monotonic(); preview = sanitize_media_video(raw, 'video/mp4', tools=tools, temp_root=workspace)
+            codec_seconds = time.monotonic()-started
+            encrypted = cipher.seal_bytes('media-video', preview.data)
+            need(cipher.open_bytes('media-video', encrypted) == preview.data, 'real output encryption differs')
+            need(abs(preview.duration_ms-12000) <= 250 and preview.has_audio, 'full representative duration/audio differs')
+            need((preview.width, preview.height) == ((720, 1280) if hevc else (1280, 720)), 'output rotation/dimensions differ')
+            need(not list(workspace.iterdir()), 'temporary plaintext remained')
+            record = {'kind': kind, 'validMovie': True, 'sourceBytes': len(raw), 'sourceSha256': digest(raw),
+                'sourceDimensions': [1920,1080], 'sourceDurationMs': 12000, 'sourcePadded': not hevc,
+                'outputBytes': len(preview.data), 'outputSha256': preview.sha256, 'durationMs': preview.duration_ms,
+                'width': preview.width, 'height': preview.height, 'cipherBytes': len(encrypted), 'codecWallSeconds': codec_seconds}
         save(proof / (kind+'.json'), {**record, **monitor.result})
         del raw, encrypted
-        if kind == 'max-buffer-encryption': del display, restored
-        else: del preview
+        del preview
+
+
+def padded_mp4(path, target):
+    """Preserve the whole valid movie; padding is a size fixture, not encoding."""
+    extra = target-path.stat().st_size
+    need(8 <= extra < 2**32, 'invalid MP4 fixture padding')
+    with path.open('ab') as stream:
+        stream.write(extra.to_bytes(4, 'big')+b'free')
+        remaining = extra-8
+        while remaining:
+            amount = min(remaining, 1024*1024)
+            stream.write(bytes(amount)); remaining -= amount
+    need(path.stat().st_size == target, 'MP4 fixture size differs')
+
+
+class FileMediaResponse:
+    """Transport-only stand-in: bounded local file reads, never in-memory body."""
+    def __init__(self, path):
+        from email.message import Message
+        self.stream = Path(path).open('rb')
+        self.status, self.url, self.closed, self.bytes_read = 200, None, False, 0
+        self.headers = Message()
+        self.headers['Content-Type'] = 'video/mp4'
+        self.headers['Content-Length'] = str(Path(path).stat().st_size)
+
+    def geturl(self): return self.url
+
+    def read1(self, size):
+        need(type(size) is int and 0 < size <= 65536, 'unbounded transport read')
+        raw = self.stream.read(size); self.bytes_read += len(raw)
+        return raw
+
+    def close(self):
+        self.stream.close(); self.closed = True
+
+
+def application_case(proof, profile):
+    """Actual temporary application/SQLite/WSGI; mock only Google's transport."""
+    import gc
+    import socket
+    import tempfile
+    from dataclasses import replace
+    import pytest
+    from google_photos_picker import GooglePhotosPicker
+    from media_import_worker import MediaImportWorker
+    from media_videos import VideoTools, sanitize_media_video, MAX_INPUT_BYTES, MAX_OUTPUT_BYTES
+    from test_household_media import configured, create, confirm, session, selected
+    from test_google_photos_picker import Response, item, session as picker_session
+
+    need(profile in ('response64', 'worker100'), 'invalid application profile')
+    tools = VideoTools('/usr/bin/ffmpeg', '/usr/bin/ffprobe')
+    phases = {}
+    calls = []
+    def no_network(*_args, **_kwargs):
+        raise AssertionError('Only synthetic transport is allowed')
+    with pytest.MonkeyPatch.context() as patch, tempfile.TemporaryDirectory(prefix=profile+'-', dir='/tmp') as temporary:
+        patch.setattr(socket.socket, 'connect', no_network)
+        patch.setattr(socket, 'create_connection', no_network)
+        temporary = Path(temporary)
+        source = temporary/'source.mp4'; processing = temporary/'processing'; processing.mkdir()
+        with Monitor() as monitor:
+            env = configured(proof/'household', patch)
+            client, headers, imp, _ = create(env)
+            subprocess.run([tools.ffmpeg, '-v', 'error', '-nostdin', '-y', '-f', 'lavfi',
+                '-i', 'testsrc2=size=1920x1080:rate=30:duration=12', '-f', 'lavfi',
+                '-i', 'sine=frequency=440:sample_rate=48000:duration=12', '-c:v', 'libx264',
+                '-preset', 'ultrafast', '-threads:v', '2', '-pix_fmt', 'yuv420p', '-c:a', 'aac',
+                str(source)], check=True, timeout=240, stdin=subprocess.DEVNULL)
+        phases['applicationAndSourceSetup'] = monitor.result
+
+        if profile == 'response64':
+            with Monitor() as monitor:
+                video = sanitize_media_video(source.read_bytes(), 'video/mp4', tools=tools, temp_root=processing)
+                boundary = temporary/'64MiB-display-fixture.mp4'; boundary.write_bytes(video.data)
+                padded_mp4(boundary, MAX_OUTPUT_BYTES)
+                # Independent full decode: the fixture remains a playable MP4.
+                subprocess.run([tools.ffmpeg, '-v', 'error', '-nostdin', '-xerror', '-i', str(boundary),
+                    '-f', 'null', '-'], check=True, timeout=120, stdin=subprocess.DEVNULL)
+                data = boundary.read_bytes()
+                video = replace(video, data=data, sha256=digest(data))
+                expected_bytes, expected_sha = len(data), video.sha256
+                engine = env[1]
+                need(engine.complete(engine.claim_next(), session(env)), 'fixture create failed')
+                records = [selected('synthetic-size-boundary', 'VIDEO')]
+                need(engine.complete(engine.claim_next(), records), 'fixture list failed')
+                need(engine.complete(engine.claim_next(), {'mediaId': records[0]['id'],
+                    'manifest': records, 'preview': video.poster, 'video': video}), 'fixture stage failed')
+                detail = client.get('/api/media/imports/'+imp['id']).json
+                need(detail['import']['state'] == 'awaiting_confirmation', 'fixture not staged')
+                receipt, payload = confirm(client, headers, detail)
+                uid = receipt['itemIds'][0]
+                del video, data
+                source.unlink(); boundary.unlink()
+                gc.collect()
+            phases['explicitSizeFixtureStageAndConfirm'] = monitor.result
+            fixture_note = 'Sanitized complete MP4 plus legal free box to 64MiB, independently decoded; explicit response-size fixture, not actual sanitizer output or Google import.'
+        else:
+            padded_mp4(source, MAX_INPUT_BYTES)
+            stream = FileMediaResponse(source)
+            record = item('synthetic-worker-full-source', 'VIDEO')
+            queue = [picker_session(), picker_session(), {'mediaItems': [record]},
+                     picker_session(), {'mediaItems': [record]}, stream, Response(b'', status=204)]
+            def transport(method, url, *, headers, body, timeout):
+                # Real Picker constructs/validates URLs, parses metadata and enforces reads.
+                calls.append({'method': method, 'video': url.endswith('=dv')})
+                need(bool(queue), 'unexpected synthetic transport request')
+                response = queue.pop(0)
+                if not isinstance(response, (Response, FileMediaResponse)):
+                    response = Response(response)
+                response.url = response.url or url
+                return response
+            worker = MediaImportWorker(env[1], picker_factory=lambda token: GooglePhotosPicker(token, transport=transport),
+                video_tools=tools, video_temp_root=processing, jitter=lambda: 0)
+            try:
+                with Monitor() as monitor:
+                    need(worker.tick() and worker.tick() and worker.tick(), 'worker did not complete three real claims')
+                    need(stream.closed and stream.bytes_read == MAX_INPUT_BYTES, 'bounded full source download differs')
+                    need(not list(processing.iterdir()), 'decoder left temporary plaintext')
+                    detail = client.get('/api/media/imports/'+imp['id']).json
+                    need(detail['import']['state'] == 'awaiting_confirmation' and len(detail['items']) == 1, 'worker did not stage real video')
+                    receipt, payload = confirm(client, headers, detail)
+                    uid = receipt['itemIds'][0]
+                    need(worker.tick() and not queue, 'synthetic Picker cleanup incomplete')
+                phases['workerDownloadDecodeSealCommitConfirm'] = monitor.result
+            finally:
+                stream.close()
+            source.unlink(); gc.collect()
+            with env[1].transaction() as con:
+                row = con.execute('SELECT * FROM media_items WHERE id=?', (uid,)).fetchone()
+                metadata = env[1]._metadata(row)
+                expected_bytes, expected_sha = metadata['videoBytes'], metadata['videoSha256']
+            fixture_note = 'Actual Picker bounded file transport reads 100MiB complete MP4 with legal free padding; real worker FFmpeg/AES/SQLite/confirmation. Padding tests source-buffer size, not coding complexity.'
+
+        before = client.get('/api/media/items/'+uid).json['item']
+        need(before['mediaType'] == 'video' and before['visibility'] == 'private', 'confirmed metadata differs')
+        with Monitor() as monitor:
+            response = client.get(before['videoUrl'], buffered=False)
+            observed = hashlib.sha256(); length = 0; closed = False
+            try:
+                need(response.status_code == 200 and response.content_type == 'video/mp4', 'actual video response failed')
+                need('no-store' in response.headers['Cache-Control'], 'video response may cache')
+                # Do not response.data/join the body: consume the real WSGI iterable.
+                for chunk in response.response:
+                    need(type(chunk) is bytes, 'WSGI did not return bytes')
+                    length += len(chunk); observed.update(chunk)
+                need(length == expected_bytes and observed.hexdigest() == expected_sha, 'actual response bytes differ')
+                del chunk
+            finally:
+                response.close(); closed = True
+            del response
+            gc.collect()
+        phases['sqliteReadDecryptFullWsgiAndClose'] = monitor.result
+        after = client.get('/api/media/items/'+uid).json['item']
+        need(after['id'] == before['id'] and after['revision'] == before['revision'], 'read changed source ID or revision')
+        replay = client.post('/api/media/imports/'+imp['id']+'/confirm', json=payload, headers=headers)
+        need(replay.status_code == 200 and replay.json['replayed'] and replay.json['itemIds'] == [uid], 'confirmation replay differs')
+        with env[1].transaction() as con:
+            cache = con.execute('SELECT length(cipher) AS bytes,cache_key FROM media_video_cache WHERE media_id=?', (uid,)).fetchone()
+            counts = {name: con.execute('SELECT count(*) FROM '+name).fetchone()[0] for name in ('media_items', 'media_video_cache')}
+            reserved = con.execute('SELECT reserved_bytes FROM media_imports WHERE id=?', (imp['id'],)).fetchone()[0]
+        need(counts == {'media_items': 1, 'media_video_cache': 1} and reserved == 0, 'commit count or reservation differs')
+        need(cache['bytes'] == expected_bytes+76, 'AES envelope differs')
+        loaded = {}
+        for name in RUNTIME_FILES:
+            if name.endswith('.py') and name[:-3] in sys.modules:
+                actual = Path(sys.modules[name[:-3]].__file__).resolve()
+                need(actual == Path('/probe/runtime', name), 'module came from unbound parent source: '+name)
+                loaded[name] = digest(actual.read_bytes())
+        save(proof/(profile+'.json'), {'profile': profile, 'fixtureNote': fixture_note, 'phases': phases,
+            'mediaId': uid, 'revision': after['revision'], 'responseBytes': length, 'responseSha256': observed.hexdigest(),
+            'responseClosed': closed, 'cipherBytes': cache['bytes'], 'counts': counts, 'reservedBytes': reserved,
+            'confirmationReplayed': True, 'transportCalls': calls, 'loadedRuntime': loaded,
+            'cgroupPeakScope': 'Whole fresh container includes fixture setup; per-phase RSS/current memory are sampled, not exact resettable peaks.'})
 
 
 def inside(profile, memory):
     need(sys.platform == 'linux' and os.getuid() == 10001 and sys.dont_write_bytecode, 'unprivileged Linux python -B required')
     root, proof = Path('/probe'), Path('/proof')
+    sys.path[:0] = ['/probe/runtime', '/probe/fixtures']
     contract = json.loads((root / 'inputs.json').read_text())
     for name, expected in contract['files'].items(): need(digest((root / name).read_bytes()) == expected, 'image input differs')
     need(contract['parentImage'] == PARENT and contract['coreNodes'] == list(CORE_NAMES), 'selection differs')
@@ -331,8 +577,10 @@ def inside(profile, memory):
             suites = ET.parse(proof/'core.xml').getroot(); nodes = list(suites.iter('testcase'))
             need(pytest_code == 0 and len(nodes) == 16 and not any(n.find(k) is not None for n in nodes for k in ('failure','error','skipped')), 'core16 failed or skipped')
             code = 0
+        elif profile == 'resources':
+            resource_cases(proof); code = 0
         else:
-            resource_cases(proof, crypto_only=profile == 'crypto64'); code = 0
+            application_case(proof, profile); code = 0
     finally:
         save(proof/'finished.json', {'exitCode': code, 'completedAt': time.time(),
             'cgroup': {name: (cgroup/name).read_text() for name in ('memory.peak','memory.events','cpu.stat','pids.peak')}})
@@ -343,9 +591,9 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__); sub = parser.add_subparsers(dest='command', required=True)
     p = sub.add_parser('prepare'); p.add_argument('--source', required=True); p.add_argument('--source-head', required=True); p.add_argument('--output', required=True); p.add_argument('--ffmpeg-version', required=True)
     p = sub.add_parser('build'); p.add_argument('--prepared', required=True); p.add_argument('--output', required=True)
-    p = sub.add_parser('run'); p.add_argument('--prepared', required=True); p.add_argument('--build-result', required=True); p.add_argument('--output', required=True); p.add_argument('--memory-mib', type=int, choices=(768,1024), default=768); p.add_argument('--profile', choices=('core','resources','crypto64'), required=True)
+    p = sub.add_parser('run'); p.add_argument('--prepared', required=True); p.add_argument('--build-result', required=True); p.add_argument('--output', required=True); p.add_argument('--memory-mib', type=int, choices=(768,1024), default=768); p.add_argument('--profile', choices=PROFILES, required=True)
     p = sub.add_parser('fingerprint'); p.add_argument('--output', required=True)
-    p = sub.add_parser('inside'); p.add_argument('--profile', choices=('core','resources','crypto64'), required=True); p.add_argument('--memory-mib', type=int, choices=(768,1024), required=True)
+    p = sub.add_parser('inside'); p.add_argument('--profile', choices=PROFILES, required=True); p.add_argument('--memory-mib', type=int, choices=(768,1024), required=True)
     a = parser.parse_args()
     if a.command == 'prepare': prepare(a.source, a.source_head, a.output, a.ffmpeg_version)
     elif a.command == 'build': build_candidate(a.prepared, a.output)

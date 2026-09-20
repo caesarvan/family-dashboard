@@ -6,7 +6,9 @@ RUN test -n "$FFMPEG_VERSION" && apt-get update \
  && rm -rf /var/lib/apt/lists/*
 RUN python -m pip install --no-cache-dir pytest==9.0.2
 WORKDIR /probe
-COPY media_videos.py media_images.py media_crypto.py probe.py inputs.json Dockerfile ./
+COPY probe.py inputs.json Dockerfile ./
+COPY runtime ./runtime
+COPY fixtures ./fixtures
 COPY tests/test_media_videos.py ./tests/test_media_videos.py
 RUN python -B probe.py fingerprint --output /probe/toolchain.json
 USER 10001:10001
