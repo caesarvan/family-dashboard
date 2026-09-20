@@ -8,11 +8,11 @@ import sqlite3
 
 from media_crypto import MAX_VIDEO_CIPHER_BYTES
 
-SCHEMA_SQL = '''
+SCHEMA_SQL = f'''
 CREATE TABLE IF NOT EXISTS media_video_cache(
  media_id TEXT PRIMARY KEY REFERENCES media_items(id) ON DELETE CASCADE,
  cache_key TEXT NOT NULL UNIQUE,
- cipher BLOB NOT NULL CHECK(length(cipher)>0 AND length(cipher)<=89478628),
+ cipher BLOB NOT NULL CHECK(length(cipher)>0 AND length(cipher)<={MAX_VIDEO_CIPHER_BYTES}),
  created_at REAL NOT NULL
 );
 CREATE TRIGGER IF NOT EXISTS media_video_deleted
@@ -31,8 +31,6 @@ def initialize_media_video_storage(con):
     parents = {r[0] for r in con.execute("SELECT name FROM sqlite_master WHERE type='table'")}
     if not {'media_items', 'media_imports', 'media_tv_grants'} <= parents:
         raise RuntimeError('Video storage requires existing media parents')
-    if MAX_VIDEO_CIPHER_BYTES != 89478628:
-        raise RuntimeError('Video storage ciphertext bound differs from reviewed DDL')
     try:
         con.execute('BEGIN IMMEDIATE')
         statement=''

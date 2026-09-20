@@ -213,7 +213,7 @@ def test_mixed_import_confirm_only_photo_discards_unselected_real_video(env,clip
 
 
 def test_video_reservation_rejects_before_download_and_actual_cipher_is_counted(env,clip,tools,monkeypatch):
-    monkeypatch.setattr(media,'OWNER_BYTES',80*1024*1024)
+    monkeypatch.setattr(media,'OWNER_BYTES',media.VIDEO_RESERVATION-1)
     c,h,imp,_=create(env)
     r=item('big-video','VIDEO');t=Transport(remote_session(),remote_session(),{'mediaItems':[r]})
     w=MediaImportWorker(env[1],picker_factory=lambda token:GooglePhotosPicker(token,transport=t),video_tools=tools)

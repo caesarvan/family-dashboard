@@ -8,7 +8,7 @@ Google Picker 仍只下载本次明确选择的内容；PHOTO 保留原图片路
 
 ## 数据与 API
 
-原 `media_items` ID、revision、导入记录和明确保存回执不变。原 `preview_cipher` 保存 JPEG 封面；新表 `media_video_cache(media_id, cache_key, cipher, created_at)` 通过 FK 关联原媒体。视频采用独立的 `media-video` purpose 派生密钥，明文字节上限 64 MiB，加密后限 89,478,628 字节；原图片 purpose 和密钥保持兼容。加密元数据绑定原媒体、家庭、拥有者、cache key、视频长度和摘要。
+原 `media_items` ID、revision、导入记录和明确保存回执不变。原 `preview_cipher` 保存 JPEG 封面；新表 `media_video_cache(media_id, cache_key, cipher, created_at)` 通过 FK 关联原媒体。视频对外仍使用 `media-video` purpose，内部采用独立 `media-video/aesgcm/v1` 密钥域的 AES-256-GCM；明文字节上限 64 MiB，加密后限 67,108,940 字节。原图片与 JSON 的 Fernet 格式及密钥保持兼容。格式、内存实测与尚待完成的 Linux 验证见 [MEDIA-VIDEO-CIPHER](MEDIA-VIDEO-CIPHER.md)。加密元数据绑定原媒体、家庭、拥有者、cache key、视频长度和摘要。
 
 列表、详情、待确认项和电视项在原字段外增加 `mediaType: 'photo' | 'video'`；旧照片缺少该字段时按 photo 读取。video 项增加 `durationMs`、`hasAudio`、同源 `videoUrl`；成员项 `contentType` 为 `video/mp4`，`previewUrl` 始终是 JPEG。不会向客户端暴露 Google 下载 URL、token 或本地文件路径。
 
