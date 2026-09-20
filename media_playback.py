@@ -175,6 +175,16 @@ class MediaPlayback:
             uid=self.library._tv(con)
             progress.check_csrf(self.library,self._device(con,uid),self.clock())
 
+    def _authorize_tv_item_metadata(self, con, uid, device):
+        # Match MediaLibrary._item(device=...) without fetching preview bytes.
+        # _tv_dto still checks the device; television repeats both in a fresh snapshot.
+        row = con.execute('SELECT '+ITEM_VIEW+' FROM media_items WHERE id=?', (_id(uid),)).fetchone()
+        if (not row or row['state']!='ready' or row['visibility']!='shared'
+                or not self.library._media_authority(con,row)
+                or not con.execute('SELECT 1 FROM media_tv_grants WHERE media_id=? AND device_id=?',
+                                   (uid,device)).fetchone()):
+            raise MediaError('not_found')
+
     def _tv_dto(self,con,uid):
         device=self._device(con,uid)
         state,now=self._state(con,uid),self.clock()
@@ -186,7 +196,7 @@ class MediaPlayback:
         result.update(item=None,progress=None,protocol=2)
         if play:
             row=photos[position]
-            self.library._item(con,row['id'],device=uid)
+            self._authorize_tv_item_metadata(con,row['id'],uid)
             item=dict(self.library._item_dto(con,row,television=True),revision=row['revision'])
             duration=item['durationMs'] if item.get('mediaType')=='video' else state['interval_seconds']*1000
             result.update(item=item,progress=dict(playId=play['play_id'],positionMs=min(play['position_ms'],duration),
