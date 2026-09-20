@@ -59,9 +59,10 @@ def remove_source_time(engine, uid):
 
 def revoke_member_sessions(database, folder):
     assert database.resolve().is_relative_to(folder.resolve())
-    with sqlite3.connect(database) as con:
-        changed = con.execute("UPDATE member_sessions SET revoked_at=1 WHERE owner='member1' AND revoked_at IS NULL").rowcount
-        assert changed > 0
+    with closing(sqlite3.connect(database)) as con:
+        with con:
+            changed = con.execute("UPDATE member_sessions SET revoked_at=1 WHERE owner='member1' AND revoked_at IS NULL").rowcount
+            assert changed > 0
     return changed
 
 

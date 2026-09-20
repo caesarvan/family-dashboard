@@ -3,7 +3,9 @@
 These checks do not launch Edge or prove the three browser flows passed.
 """
 from datetime import datetime, timezone
+from contextlib import closing
 from pathlib import Path
+import sqlite3
 import subprocess
 from unittest.mock import patch
 
@@ -126,3 +128,35 @@ def test_revocation_fixture_rejects_outside_root_and_real_session(env):
     assert client.get(URL).status_code == 200
     assert revoke_member_sessions(database, folder) > 0
     assert client.get(URL).status_code == 401
+
+
+@pytest.mark.parametrize('outcome', ['commit', 'assertion', 'sql-error'])
+def test_revocation_connection_closed_without_gc_on_success_and_errors(tmp_path, outcome):
+    database = tmp_path / 'household.sqlite3'
+    connect = sqlite3.connect
+    with closing(connect(database)) as con:
+        if outcome != 'sql-error':
+            con.execute('CREATE TABLE member_sessions(owner TEXT, revoked_at INTEGER)')
+            con.execute('INSERT INTO member_sessions VALUES(?, NULL)', ('member1' if outcome == 'commit' else 'member2',))
+            con.commit()
+    held = []
+    def actual_connection(*args, **kwargs):
+        con = connect(*args, **kwargs); held.append(con)
+        return con
+    # Retain a strong reference so garbage collection cannot hide a missing
+    # explicit close. SQL/transactions and connections are genuine SQLite.
+    with patch.object(sqlite3, 'connect', actual_connection):
+        if outcome == 'commit':
+            assert revoke_member_sessions(database, tmp_path) == 1
+        else:
+            with pytest.raises(AssertionError if outcome == 'assertion' else sqlite3.OperationalError):
+                revoke_member_sessions(database, tmp_path)
+    assert len(held) == 1
+    with pytest.raises(sqlite3.ProgrammingError, match='closed'):
+        held[0].execute('SELECT 1')
+    with closing(connect(database)) as con:
+        if outcome != 'sql-error':
+            assert con.execute('SELECT revoked_at FROM member_sessions').fetchone()[0] == (1 if outcome == 'commit' else None)
+    # Windows requires closed handles. No sleep, retry or forced GC is used.
+    database.unlink()
+    assert not database.exists()
