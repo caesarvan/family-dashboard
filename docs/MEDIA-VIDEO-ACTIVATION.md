@@ -24,15 +24,17 @@ python -B deploy/prepare_media_video_activation.py --repo <固定干净工具 ch
 
 ## 明确分开的生产阶段
 
-由外置 `operator/deploy/media_video_release_controller.py` 执行，候选目录必须在 `/opt/family-dashboard-candidates`。CLI 要求 Linux root、`python -B`、无优化、无环境覆盖 Docker/Compose 选择器，并与历史控制器共用排他发布锁。
+由外置 `operator/deploy/media_video_release_controller.py` 执行，候选目录必须在 `/opt/family-dashboard-candidates`。CLI 要求 Linux root、`python -B`、无优化、无环境覆盖 Docker/Compose 选择器。按固定顺序同时非阻塞持有 `.membership-release.lock` 和 `.static-release.lock`，覆盖两类历史控制器；第二把锁失败或操作异常时，释放全部已打开描述符。
 
 1. `stage <candidate> <plan SHA>`：只读重新核对原件、工具、源码、父 manifest `83ff8610…add5c1`、父应用 `a783c58c…6654`、环境 0600 和摘要、四服务身份及两个现存不可变镜像。不会启动验证容器、备份、停服务或改生产配置；仅在候选目录独占写 stage 回执。
 2. `activate <candidate> <plan SHA>`：再次核对后独占写计划消费标记。保全父源码、原环境及镜像标签；停备份 timer、确认备份 service 不在运行；依序停 web／sync／media（1200 秒）／app，核数据与 socket 卷无使用者。
-3. 使用新 app 镜像、无网络、非 root、384 MiB/no swap 的受限一次性 helper 调用真实完整组 `begin/migrate`。真实生产数据只挂此受控 helper，环境保持私有文件，不进入日志或公开回执。
+3. 使用新 app 镜像、无网络、非 root、384 MiB/no swap 的受限 helper 调用真实完整组 `begin/migrate`。先独占记录创建意图，`docker create` 后记录唯一 CID、名称及计划／动作标签，复核身份才 `start --attach`。真实生产数据只挂此受控 helper，环境保持私有文件，不进入日志或公开回执。
 4. 安装已核 b8c4 源码和导出，保留旧 Expo 目录，绑定两个镜像标签。只对 manifest 管理且已完整备份的旧源文件处理移除。环境文件不改；现存 socket 卷必须是空、UID 10001、0700 的本地卷，异常不会自动删除。
 5. 单独启动 app，使用真实 app factory 初始化全部注册家庭，再停止 app。真实 `check_stopped` 比较完整旧 71 表、序列和平台、新两表空状态。关联收据完全一致才按 app → decoder → sync/media → web 启动。复核 HTTPS health、源码和环境后恢复 timer，写完成回执。
 
 计划消费标记、stage、迁移尝试和各阶段记录均不覆盖。失败保留原件并停止明确记录的候选 CID；media 未确认停止则保留 decoder 并报告未完整停止。不会自动恢复数据库、删除 socket/卷、启动旧程序或自动重新执行未知操作。
+
+helper 的客户端超时或中断不等于容器退出。失败时只向本次已核 CID 发停止请求，随后重新核对状态、PID 为 0、数据／socket 卷无运行使用者，再记录已停止；不会删除 helper，便于核对失败现场。创建结果不明、身份变化、收停未确认时明确记录停止不完整，保留原尝试，不能自动重放迁移或恢复服务。停止部分迁移不代表数据库组已恢复，仍须完整组人工回退和核验。
 
 ## 完整组回退与只读核验
 
@@ -47,5 +49,7 @@ python -B <candidate>/operator/deploy/media_video_release_controller.py verify-r
 该入口要求 timer、备份 service 和所有数据/socket/项目服务均停止，调用既有 `verify_rollback` 只读核对完整 71／9 组及 marker，再独占写核验回执。它不会执行恢复或启动服务；恢复旧服务及独立审计仍需单独审查和授权。非空 73 的合成恢复是迁移验收内容，不把它误当作生产回退到旧版的许可。
 
 本组件的离线测试使用真实文件／SHA／Git 边界与记录型 Docker 传输模型。R1 24 项、R2 新增 5 项、R3 资源原件校验 11 项（含 2 项新增）、R4 来源目录权限修订后仅复验 prepare 1 项，分轮共 31 个唯一用例／41 次执行，不能称为同轮完整运行。另只读核验现有真实 Linux 迁移原件与 58 个镜像运行文件匹配，并确认真实 `preflight_blocked` 的 worker100 结果被计划组装拒绝；没有重新运行这些 Linux 负载。
+
+双锁／helper 修订 R5 仅运行 16 项相关用例：9 项新增、7 项受影响流程复验，全部通过；累计为 40 个唯一用例／57 次执行。覆盖两把锁的竞争、第二把锁打开失败及异常释放；Windows 使用真实原生文件锁适配，只证明描述符与释放流程，不冒充 Linux `flock` 实测。helper 的超时、中断、未知创建、收停失败和身份变化使用记录型 Docker 模拟；停止 PID 和卷写者断言不是实际容器结果。
 
 新控制器自身的完整 Linux 隔离演练和生产运行均尚未完成。当前 worker100 未通过、response64 没有成功原件，不能组装实际可执行发布计划；现有独立 codec、迁移和浏览器证据不能填补资源验证缺口。

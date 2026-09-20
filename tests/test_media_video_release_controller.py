@@ -35,6 +35,7 @@ class Runner(model.RecordingDocker):
         self.timer = True; self.data = []; self.fault = None; self.started = []
         self.app_config = {'Env': model.BASE_ENV}
         self.decoder_config = {'Env': model.DECODER_ENV}
+        self.helpers, self.helper_fault = {}, None
 
     def __call__(self, argv, *, cwd, timeout):
         if argv[0] == 'systemctl':
@@ -61,20 +62,51 @@ class Runner(model.RecordingDocker):
             self.calls.append((argv, timeout)); return b''
         if args[:1] == ['exec']:
             self.calls.append((argv, timeout)); return b'{"initialized":true,"households":2}'
-        if args[:1] == ['run']:
+        if args[:1] == ['create']:
             self.calls.append((argv, timeout))
             program = args[-1]
             action = next(k for k,v in control.DATA_ACTIONS.items() if v in program)
-            self.data.append(action)
             assert not any(v['State']['Running'] for v in self.values.values())
             assert '--network' in args and args[args.index('--network')+1] == 'none'
             assert '--env-file' in args and not any('synthetic-only' in item for item in args)
             assert args[args.index('--memory')+1] == '384m'
-            if self.fault == action: raise ReleaseError('injected_'+action)
+            cid = sha(str(len(self.helpers)).encode())
+            labels = dict(args[index+1].split('=',1) for index,x in enumerate(args) if x == '--label')
+            self.helpers[cid] = {'Id':cid,'Name':'/'+args[args.index('--name')+1], 'Image':prepare.IMAGES['app'],
+                'Config':{'Labels':labels}, 'State':{'Status':'created','Running':False,'Pid':0,
+                    'ExitCode':0,'OOMKilled':False,'FinishedAt':''}, 'action':action}
+            if action == 'migrate' and self.helper_fault == 'unknown-create':
+                raise ReleaseError('command_unavailable_or_timeout')
+            return cid.encode()
+        if args[:1] == ['inspect'] and args[-1] in self.helpers:
+            self.calls.append((argv,timeout)); value = self.helpers[args[-1]]
+            if value['State']['Running'] and self.helper_fault == 'identity-changed':
+                value['Config']['Labels']['family-dashboard.release-plan'] = 'f'*64
+            return json.dumps([value]).encode()
+        if args[:1] == ['stop'] and args[-1] in self.helpers:
+            self.calls.append((argv,timeout)); value = self.helpers[args[-1]]
+            assert args[1:-1] == ['--signal','SIGTERM','--timeout','30']
+            if self.helper_fault == 'stop-failed':raise ReleaseError('stop_rpc_timed_out')
+            value['State'].update(Status='exited',Running=False,Pid=0,ExitCode=143,FinishedAt='stopped')
+            return args[-1].encode()
+        if args[:2] == ['start','--attach'] and args[-1] in self.helpers:
+            self.calls.append((argv,timeout)); value = self.helpers[args[-1]]; action = value['action']
+            self.data.append(action); value['State'].update(Status='running',Running=True,Pid=909)
+            if action == 'migrate' and self.helper_fault in ('timeout','stop-failed','identity-changed'):
+                raise ReleaseError('command_unavailable_or_timeout')
+            if action == 'migrate' and self.helper_fault == 'interrupt':raise KeyboardInterrupt('synthetic interruption')
+            value['State'].update(Status='exited',Running=False,Pid=0,FinishedAt='completed')
+            if self.fault == action:
+                value['State']['ExitCode']=1
+                raise ReleaseError('injected_'+action)
             value = dict(verified=True,households=2,databases=3,planSha256=self.plan_sha,
                          logicalSha256='2'*64,sourceIdentitySha256='3'*64)
             if action == 'check' and self.fault == 'logical-drift': value['logicalSha256']='4'*64
             return json.dumps(value).encode()
+        if args[:1] == ['ps'] and 'volume='+control.VOLUME in args:
+            raw = super().__call__(argv,cwd=cwd,timeout=timeout)
+            live = [cid for cid,v in self.helpers.items() if v['State']['Running']]
+            return raw + ('\n'.join(live)+ ('\n' if live else '')).encode()
         if 'up' in args: self.started.extend(args[args.index('--wait-timeout')+2:])
         return super().__call__(argv,cwd=cwd,timeout=timeout)
 
@@ -328,3 +360,98 @@ def test_existing_socket_volume_with_stale_entry_is_preserved_and_rejected(rig,t
     monkeypatch.setattr(c,'docker',docker)
     with pytest.raises(ReleaseError,match='socket_volume_not_empty_private'):c.socket_ready()
     assert (directory/'video.sock').read_bytes()==b'stale fixture'
+
+
+@pytest.mark.parametrize('fault',['timeout','interrupt'])
+def test_helper_timeout_or_signal_stops_recorded_cid_before_failed_handoff(rig,fault):
+    c,r,_=rig;c.stage();r.helper_fault=fault
+    with pytest.raises((ReleaseError,KeyboardInterrupt)):c.activate()
+    failure=json.loads((c.candidate/'failure.json').read_bytes())
+    receipt=failure['dataHelperStop'];cid=receipt['helper']['id']
+    assert receipt['complete'] and receipt['terminal']['Pid']==0 and receipt['terminal']['Status']=='exited'
+    assert failure['candidateStop']['complete'] and not failure['automaticRestore'] and not r.timer
+    assert r.data==['backup','migrate'] and not r.started
+    assert not any(v['State']['Running'] for v in r.helpers.values())
+    receipts=[json.loads(p.read_bytes()) for p in sorted(c.release.glob('phase-*.json'))]
+    created=next(x for x in receipts if x['event']=='data_helper_created' and x['helper']['id']==cid)
+    assert created['helper']['action']=='migrate'
+    commands=[a[3:] for a,_ in r.calls if a[:3]==list(lifecycle.DOCKER)]
+    start=commands.index(['start','--attach',cid]); stop=commands.index(['stop','--signal','SIGTERM','--timeout','30',cid])
+    assert start<stop and ['inspect',cid] in commands[stop+1:]
+    assert not any(a[0] in ('run','rm','kill') for a in commands)
+    assert len([a for a in commands if a==['start','--attach',cid]])==1
+    assert len([a for a in commands if a[0]=='stop'])==1  # Only the exact helper, no broad selector.
+
+
+@pytest.mark.parametrize('fault',['unknown-create','stop-failed','identity-changed'])
+def test_unconfirmed_helper_is_retained_without_false_stopped_or_retry(rig,fault):
+    c,r,_=rig;c.stage();r.helper_fault=fault
+    with pytest.raises(ReleaseError):c.activate()
+    failure=json.loads((c.candidate/'failure.json').read_bytes())
+    assert not failure['dataHelperStop']['complete'] and not failure['candidateStop']['complete']
+    assert 'data-helper:stop_unverified' in failure['candidateStop']['failed']
+    assert not r.timer and not r.started and not failure['automaticRestore']
+    assert r.data==(['backup'] if fault=='unknown-create' else ['backup','migrate'])
+    helpers=[v for v in r.helpers.values() if v['action']=='migrate'];assert len(helpers)==1
+    cid=helpers[0]['Id']
+    stops=[a for a,_ in r.calls if a[:4]==[*lifecycle.DOCKER,'stop']]
+    if fault in ('unknown-create','identity-changed'):assert not stops
+    else:assert len(stops)==1 and stops[0][-1]==cid and helpers[0]['State']['Running']
+    with pytest.raises(ReleaseError,match='plan_consumed'):c.activate()
+
+
+@pytest.fixture
+def native_lock_backend(tmp_path,monkeypatch):
+    """Real OS locks. Windows adapter tests fd lifetime, not Linux flock semantics."""
+    import sys
+    if os.name=='nt':
+        import msvcrt
+        from types import SimpleNamespace
+        def flock(fd,operation):
+            os.lseek(fd,0,os.SEEK_SET)
+            msvcrt.locking(fd,msvcrt.LK_NBLCK,1)
+        backend=SimpleNamespace(LOCK_EX=1,LOCK_NB=2,flock=flock)
+        monkeypatch.setitem(sys.modules,'fcntl',backend)
+        monkeypatch.setattr(control.os,'O_NOFOLLOW',0,raising=False)
+    else:
+        import fcntl as backend
+    monkeypatch.setattr(control,'RELEASES',tmp_path)
+    for name in ('.membership-release.lock','.static-release.lock'):(tmp_path/name).write_bytes(b'0')
+    return backend,tmp_path
+
+
+@pytest.mark.parametrize('held',['.membership-release.lock','.static-release.lock'])
+def test_both_historical_lock_contention_releases_partial_acquisition(native_lock_backend,held):
+    backend,path=native_lock_backend
+    occupied=os.open(path/held,os.O_RDWR)
+    try:
+        backend.flock(occupied,backend.LOCK_EX|backend.LOCK_NB)
+        with pytest.raises(OSError):
+            with control.release_lock():pytest.fail('must not enter while a historical lock is held')
+    finally:os.close(occupied)
+    with control.release_lock():pass  # Includes the first fd after second-lock contention.
+
+
+def test_dual_lock_order_and_body_exception_close_every_fd(native_lock_backend,monkeypatch):
+    _,_=native_lock_backend;opened=[];original=os.open
+    def tracked(path,*args,**kwargs):
+        fd=original(path,*args,**kwargs);opened.append((Path(path).name,fd));return fd
+    monkeypatch.setattr(control.os,'open',tracked)
+    with pytest.raises(RuntimeError,match='inside action'):
+        with control.release_lock():raise RuntimeError('inside action')
+    assert [n for n,_ in opened]==['.membership-release.lock','.static-release.lock']
+    for _,fd in opened:
+        with pytest.raises(OSError):os.fstat(fd)
+    with control.release_lock():pass
+
+
+def test_second_lock_open_error_closes_first_fd(native_lock_backend,monkeypatch):
+    _,_=native_lock_backend;opened=[];original=os.open
+    def tracked(path,*args,**kwargs):
+        if Path(path).name=='.static-release.lock':raise OSError('synthetic second-open error')
+        fd=original(path,*args,**kwargs);opened.append(fd);return fd
+    monkeypatch.setattr(control.os,'open',tracked)
+    with pytest.raises(OSError,match='second-open'):
+        with control.release_lock():pytest.fail('must not enter after second-open failure')
+    assert len(opened)==1
+    with pytest.raises(OSError):os.fstat(opened[0])

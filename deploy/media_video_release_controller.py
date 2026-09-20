@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import re
+import secrets
 import shutil
 import signal
 import stat
@@ -79,6 +81,8 @@ class Controller:
         self.lifecycle = services.Lifecycle(self.call, **dict(app_image=prepare.IMAGES['app'],
                                                              decoder_image=prepare.IMAGES['decoder']), root=self.root)
         self.release = None
+        self.data_helper = None
+        self.data_helper_stop = None
 
     def call(self, argv, *, cwd=None, timeout=240):
         return self.runner(argv, cwd=cwd or self.root, timeout=timeout)
@@ -187,17 +191,71 @@ class Controller:
              stat.S_IMODE(env.stat().st_mode) == 0o600 and
              sha(regular(self.root / '.env').read_bytes()) == self.plan['envSha256'], 'data_environment_changed')
         source_hashes(self.source, self.files, exact=True)
-        args = ['run', '--rm', '--network', 'none', '--read-only', '--user', '10001:10001', '--cap-drop', 'ALL',
+        helper = {'action': action, 'name': 'family-dashboard-video-data-'+secrets.token_hex(12), 'id': None}
+        self.data_helper, self.data_helper_stop = helper, None
+        self.record('data_helper_create_intent', helper=dict(helper))
+        args = ['create', '--name', helper['name'], '--label', 'family-dashboard.release-plan='+self.plan_sha,
+                '--label', 'family-dashboard.data-action='+action,
+                '--network', 'none', '--read-only', '--user', '10001:10001', '--cap-drop', 'ALL',
                 '--security-opt', 'no-new-privileges:true', '--memory', '384m', '--memory-swap', '384m',
                 '--cpus', '1', '--pids-limit', '128', '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=134217728,mode=1777',
                 '--env-file', str(env), '--mount', 'type=volume,src='+VOLUME+',dst=/data'+('' if write else ',readonly'),
                 '--mount', 'type=bind,src='+str(self.source)+',dst=/release,readonly',
                 '--mount', 'type=bind,src='+str(proof)+',dst=/proof', '--entrypoint', 'python', prepare.IMAGES['app'],
                 '-B', '-c', DATA_PREFIX+DATA_ACTIONS[action]+"\nprint(json.dumps(value))"]
-        value = json.loads(self.docker(*args, timeout=360))
-        need(value.get('verified') is True, 'data_operation_not_verified')
-        self.stopped()
+        try:
+            cid = self.docker(*args).decode().strip()
+            need(re.fullmatch('[0-9a-f]{64}', cid), 'data_helper_create_unconfirmed')
+            helper['id'] = cid
+            self.record('data_helper_created', helper=dict(helper))
+            state = self.helper_state(helper)
+            need(state.get('Status') == 'created' and not state.get('Running'), 'data_helper_not_fresh')
+            raw = self.docker('start', '--attach', cid, timeout=360)
+            state = self.helper_state(helper)
+            need(state.get('Status') == 'exited' and state.get('Running') is False and
+                 state.get('ExitCode') == 0 and not state.get('OOMKilled'), 'data_helper_not_successful')
+            value = json.loads(raw)
+            need(value.get('verified') is True, 'data_operation_not_verified')
+        except BaseException:
+            self.stop_data_helper()
+            raise
+        need(self.stop_data_helper()['complete'], 'data_helper_stop_unconfirmed')
         return value
+
+    def helper_state(self, helper):
+        """Bind only the recorded CID; never persist its private inspect Config."""
+        value = self.lifecycle.inspect(helper['id'])
+        labels = value.get('Config', {}).get('Labels') or {}
+        need(value.get('Id') == helper['id'] and value.get('Name') == '/'+helper['name'] and
+             value.get('Image') == prepare.IMAGES['app'] and
+             labels.get('family-dashboard.release-plan') == self.plan_sha and
+             labels.get('family-dashboard.data-action') == helper['action'], 'data_helper_identity_changed')
+        return value['State']
+
+    def stop_data_helper(self):
+        """Stop only this attempt's confirmed helper and prove no volume writer remains."""
+        helper = self.data_helper
+        result = {'complete': False, 'helper': dict(helper) if helper else None, 'failure': None}
+        try:
+            need(helper is not None and helper.get('id') is not None, 'data_helper_create_unconfirmed')
+            state = self.helper_state(helper)
+            if state.get('Running') or state.get('Status') not in ('created', 'exited', 'dead'):
+                try:
+                    self.docker('stop', '--signal', 'SIGTERM', '--timeout', '30', helper['id'], timeout=60)
+                except BaseException as error:
+                    result['stopErrorType'] = type(error).__name__
+                # A failed/expired CLI is never evidence of a stopped daemon process.
+                state = self.helper_state(helper)
+            need(state.get('Running') is False and state.get('Pid') == 0 and
+                 state.get('Status') in ('created', 'exited', 'dead'), 'data_helper_still_running')
+            result['terminal'] = {key: state.get(key) for key in ('Status', 'Running', 'Pid', 'ExitCode', 'OOMKilled', 'FinishedAt')}
+            self.stopped()
+            result['complete'] = True
+        except BaseException as error:
+            result['failure'] = type(error).__name__+':'+str(error)
+        self.data_helper_stop = result
+        self.record('data_helper_stop_checked', **result)
+        return result
 
     def install(self, old):
         self.stopped()
@@ -294,8 +352,12 @@ print(json.dumps({'initialized':True,'households':len(hs)}))
             except Exception:
                 pass
             stopped = self.lifecycle.stop_after_failure()
+            if self.data_helper is not None and not (self.data_helper_stop or {}).get('complete'):
+                stopped['failed'].append('data-helper:stop_unverified')
+                stopped['complete'] = False
             failure = {'completed': False, 'planSha256': self.plan_sha, 'releaseDirectory': str(self.release),
                        'errorType': type(error).__name__, 'candidateStop': stopped,
+                       'dataHelperStop': self.data_helper_stop,
                        'backupTimerStopRequested': timer_stopped, 'automaticRestore': False}
             put(self.candidate/'failure.json', failure)
             raise
@@ -323,13 +385,16 @@ print(json.dumps({'initialized':True,'households':len(hs)}))
 def release_lock():
     import fcntl
     regular(RELEASES, directory=True)
-    # Same lock as all older release operators; never run competing controllers.
-    fd = os.open(RELEASES/'.membership-release.lock', os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW, 0o600)
+    descriptors = []
     try:
-        fcntl.flock(fd, fcntl.LOCK_EX|fcntl.LOCK_NB)
+        # Both historical operator families use this order in the video window.
+        for name in ('.membership-release.lock', '.static-release.lock'):
+            fd = os.open(RELEASES/name, os.O_RDWR|os.O_CREAT|os.O_NOFOLLOW, 0o600)
+            descriptors.append(fd)
+            fcntl.flock(fd, fcntl.LOCK_EX|fcntl.LOCK_NB)
         yield
     finally:
-        os.close(fd)
+        for fd in reversed(descriptors): os.close(fd)
 
 
 def main(argv=None):
