@@ -27,7 +27,10 @@ HOST_BUDGET = {'preflightMiB': 672, 'preflightSamples': 3, 'preflightIntervalSec
 def _profile(mode=None):
     # Only these source-controlled policies exist. No JSON-selected import.
     need(mode in (None, 'discovery-source-update', 'finance-flow-source-update',
-                  'journey-finance-73-to-75', 'media-date-source-update'), 'unsupported_source_update_profile')
+                  'journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update'), 'unsupported_source_update_profile')
+    if mode == 'assistant-list-source-update':
+        from deploy import prepare_assistant_list_activation
+        return prepare_assistant_list_activation
     if mode == 'media-date-source-update':
         from deploy import prepare_media_date_activation
         return prepare_media_date_activation
@@ -58,8 +61,8 @@ def check_plan(plan, *, mode=None):
     cfg.plan_images(plan)
     need(plan.get('kind') == cfg.KIND and plan.get('parentSource') == cfg.PARENT_SOURCE and
          plan.get('parentManifest') == cfg.PARENT_MANIFEST and
-         plan.get('schemaBefore') == ([75, 9] if mode == 'media-date-source-update' else [73, 9]) and
-         plan.get('schemaAfter') == ([75, 9] if mode in ('journey-finance-73-to-75', 'media-date-source-update')
+         plan.get('schemaBefore') == ([75, 9] if mode in ('media-date-source-update', 'assistant-list-source-update') else [73, 9]) and
+         plan.get('schemaAfter') == ([75, 9] if mode in ('journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update')
                                     else [73, 9]) and plan.get('productionWritesDuringPreparation') is False and
          re.fullmatch('[0-9a-f]{40}', plan.get('sourceHead', '')) and
          re.fullmatch('[0-9a-f]{40}', plan.get('tree', '')), 'local_photo_plan_changed')
@@ -179,7 +182,7 @@ def resources(spec, profile, meta):
 
 def verify_evidence(inputs, *, mode=None):
     cfg = _profile(mode); package = cfg.package
-    expected_inputs = cfg.INPUT_ROLES if mode == 'media-date-source-update' else ({'package', 'build', 'validation', 'selection', 'parentAudit',
+    expected_inputs = cfg.INPUT_ROLES if mode in ('media-date-source-update', 'assistant-list-source-update') else ({'package', 'build', 'validation', 'selection', 'parentAudit',
                          'image_overlap', 'nginx_raw', 'reviews'} | ({'duplicates'} if mode else set())
          | ({'retainedDiscovery'} if mode == 'finance-flow-source-update' else set())
          | ({'retainedFinance', 'retainedDiscovery', 'migrationRehearsal'} if mode == 'journey-finance-73-to-75' else set()))
@@ -250,8 +253,8 @@ def prepare(inputs_file, env_sha256, output, *, mode=None):
             'images': {'app': built['imageId'], 'decoder': package.DECODER_IMAGE},
             'envSha256': env_sha256, 'inputs': inputs, 'verifiedEvidence': verified,
             'operatorSha256': sha(encoded(operator)),
-            'schemaBefore': [75, 9] if mode == 'media-date-source-update' else [73, 9],
-            'schemaAfter': [75, 9] if mode in ('journey-finance-73-to-75', 'media-date-source-update') else [73, 9],
+            'schemaBefore': [75, 9] if mode in ('media-date-source-update', 'assistant-list-source-update') else [73, 9],
+            'schemaAfter': [75, 9] if mode in ('journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update') else [73, 9],
             'productionWritesDuringPreparation': False}
     cfg.check_plan(plan)
     need(cfg.verify_evidence(inputs)[2] == verified, 'evidence_changed_during_prepare')
