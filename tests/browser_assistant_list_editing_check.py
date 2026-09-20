@@ -285,14 +285,22 @@ class Run(LocalRun):
                     route, status, headers, raw = entry
                     route.fulfill(status=status, headers=headers, body=raw); held.remove(entry)
             me = fresh.value.json()
-            expect(button(page, me['user']['name'] + '，账户菜单')).to_be_visible()
+            expect(page.get_by_text('登录身份已变化，已清除本页草案。请刷新后重新打开助理。', exact=True)).to_be_visible()
             expect(page.get_by_test_id('assistant-list-receipt')).to_have_count(0)
             leaks = page.evaluate('() => {window.__listObserver.disconnect();return window.__listLeaks;}')
             assert leaks == []
             assert page.evaluate('key => localStorage.getItem(key)===null && sessionStorage.getItem(key)===null', STORAGE)
+            assert page.evaluate('title => !document.body.innerText.includes(title)', title)
+            # The expired workspace explicitly asks for a user refresh; prove cleanup first.
+            page.reload()
+            expect(button(page, me['user']['name'] + '，账户菜单')).to_be_visible(timeout=TIMEOUT)
+            expect(page.get_by_test_id('assistant-list-receipt')).to_have_count(0)
+            assert page.evaluate('title => !document.body.innerText.includes(title)', title)
+            assert page.evaluate('key => localStorage.getItem(key)===null && sessionStorage.getItem(key)===null', STORAGE)
             peer = self.get(ctx, self.plan_path(uid), 404)
             self.evidence('late-real-owner-receipt', dict(delivered=[json.loads(e[3]) for e in pending],
-                currentMember=me['user']['id'], leaks=leaks, peerDenied=peer))
+                currentMember=me['user']['id'], leaksBeforeReload=leaks, clearedBeforeReload=True,
+                explicitPageReload=True, peerDenied=peer))
             self.capture(page, 'late-owner-cleared-1280', page.locator('body'))
         finally:
             for route, *_ in held: route.abort('failed')
