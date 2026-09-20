@@ -41,6 +41,8 @@ export function readTripPhoto(value: unknown, journeyId: string, expectedId?: st
     width: row.width as number, height: row.height as number, previewUrl: row.previewUrl as string,
     visibility: row.visibility as Photo['visibility'], canManage: row.canManage as boolean,
     createdAt: row.createdAt,
+    ...(row.mediaType === 'video' ? { mediaType: 'video' as const, durationMs: row.durationMs as number,
+      hasAudio: row.hasAudio as boolean, videoUrl: row.videoUrl as string } : row.mediaType === 'photo' ? { mediaType: 'photo' as const } : {}),
     journey: { id: journeyId, tripId: journey.tripId, title: title(journey.title) },
   };
 }
