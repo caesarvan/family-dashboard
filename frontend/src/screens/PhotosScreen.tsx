@@ -7,13 +7,16 @@ import { useHousehold } from '../lib/household';
 import { memberIdentity } from '../lib/sessionIdentity.ts';
 import { openPhotosProvider } from '../lib/navigation';
 import type { ScreenProps } from '../lib/types';
-import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, finishPhotoCreate, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto, videoDescription } from '../lib/photos';
+import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, finishPhotoCreate, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto, videoDescription, photoOriginalNotice, photoSourceLabel } from '../lib/photos';
 import type { ImportDetail, Photo, PhotoAccount, PhotoDevice, PhotoImport, PhotoJourney, PhotoPage, PhotoSession } from '../lib/photos';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { SelectionRow } from '../ui/SelectionRow';
 import PhotoJourneySuggestions from '../components/PhotoJourneySuggestions';
 import MemberVideoPlayer from '../components/MemberVideoPlayer';
+import LocalPhotoImportPanel from '../components/LocalPhotoImportPanel';
+import { LocalPhotoUpload } from '../lib/localPhotoUpload';
 import { photoSuggestionBody, readPhotoJourneySuggestions, type PhotoJourneySuggestions as Suggestions } from '../lib/photoJourneySuggestions';
+import { memoryOffsetAfterDateChange, photoMemoriesQuery, readPhotoMemories, type PhotoMemories } from '../lib/photoMemories';
 
 type Editor = { item: Photo; caption: string; visibility: 'private' | 'shared'; journeyId: string; grants: string[]; savedGrants: string[]; tvConsent: boolean; blocked: boolean; suggestionReview: boolean; message: string };
 type Receipt = { path: string; body: Record<string, unknown> };
@@ -50,16 +53,21 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   const serial = useRef({ gallery: 0, detail: 0, imports: 0 });
   const initialPhoto = useRef(props.initialPhotoId || '');
   const [denied, setDenied] = useState(false); const [focused, setFocused] = useState(false);
-  const [busy, setBusy] = useState(false); const [loading, setLoading] = useState(true);
+  const [writeBusy, setBusy] = useState(false); const [localBusy, setLocalBusy] = useState(false);
+  const busy = writeBusy || localBusy; const [loading, setLoading] = useState(true);
   const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const [scope, setScope] = useState('mine'); const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<PhotoPage>({ items: [], total: 0, hasMore: false });
+  const [memories, setMemories] = useState<PhotoMemories | null>(null);
+  const memoryDate = useRef<string | null>(null);
   const [accounts, setAccounts] = useState<PhotoAccount[]>([]); const [accountId, setAccountId] = useState('');
   const [devices, setDevices] = useState<PhotoDevice[]>([]); const [journeys, setJourneys] = useState<PhotoJourney[]>([]);
   const [imports, setImports] = useState<PhotoImport[]>([]); const [importDetail, setImportDetail] = useState<ImportDetail | null>(null);
   const importRef = useRef(importDetail); importRef.current = importDetail;
   const importReadAt = useRef(0);
   const [selected, setSelected] = useState<string[]>([]); const [temporary, setTemporary] = useState(false); const [persist, setPersist] = useState(false);
+  const [importSource, setImportSource] = useState('google');
+  const localUpload = useRef<LocalPhotoUpload | null>(null);
   const [importOpen, setImportOpen] = useState(false); const [accountMenu, setAccountMenu] = useState(false);
   const [createReceipt, setCreateReceipt] = useState<Receipt | null>(null); const [confirmReceipt, setConfirmReceipt] = useState<Receipt | null>(null);
   const [confirmReview, setConfirmReview] = useState(false);
@@ -72,6 +80,12 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     && (typeof document === 'undefined' || !document.hidden) && (typeof navigator === 'undefined' || navigator.onLine !== false) && latest.current.online;
   const current = () => alive.current && active.current && routeActive.current && !deniedRef.current && available()
     && (!props.identityKey || latest.current.identityKey === props.identityKey);
+
+  if (!localUpload.current) localUpload.current = new LocalPhotoUpload({ user: props.user, identityKey: props.identityKey,
+    current: () => current() && !locked.current, denied: () => clearIdentity(),
+    review: async id => { await readImport(id, true); await support(); },
+  });
+  useEffect(() => localUpload.current!.subscribe(() => setLocalBusy(localUpload.current!.view.busy)), []);
 
   // This local transport covers identity and suggestion requests only. The URL
   // is fixed to this origin, and both JSON consumption and lifetime are bounded.
@@ -100,8 +114,8 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   }
 
   const clearIdentity = () => {
-    deniedRef.current = true; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort()); setDenied(true); setPage({ items: [], total: 0, hasMore: false });
-    setEditor(null); editorRef.current = null; setImportDetail(null); importRef.current = null;
+    deniedRef.current = true; localUpload.current?.dispose(); fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort()); setDenied(true); setPage({ items: [], total: 0, hasMore: false });
+    memoryDate.current = null; setMemories(null); setEditor(null); editorRef.current = null; setImportDetail(null); importRef.current = null;
     setAccounts([]); setDevices([]); setJourneys([]); setImports([]); setSelected([]);
     setCreateReceipt(null); setConfirmReceipt(null); setDecision(null); setError('登录身份已变化，正在重新读取。');
     void latest.current.refresh();
@@ -121,11 +135,25 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   async function gallery(nextScope = scope, nextOffset = offset) {
     const ticket = ++serial.current.gallery;
     const data = await checked(async () => {
+      if (nextScope === 'memories') {
+        const memories = readPhotoMemories(await request(photoMemoriesQuery(nextOffset)), nextOffset);
+        return { items: memories.items.map(row => row.item), total: memories.total, hasMore: memories.hasMore, memories };
+      }
       const result = await request<PhotoPage>(`/media/items?scope=${nextScope}&limit=24&offset=${nextOffset}`);
       if (!Array.isArray(result.items) || result.items.length > 24) throw new Error('图库数据无法核对。');
-      result.items.forEach(validatePhoto); return result;
+      result.items.forEach(validatePhoto); return { ...result, memories: null };
     }, () => ticket === serial.current.gallery);
-    setPage(data); setLoading(false);
+    if (data.memories) {
+      const next = memoryOffsetAfterDateChange(memoryDate.current, data.memories);
+      memoryDate.current = data.memories.referenceDate;
+      if (next !== nextOffset) {
+        setPage({ items: [], total: 0, hasMore: false }); setMemories(null); setLoading(true);
+        // The existing focus lifecycle reads offset 0 with a fresh identity
+        // fence. Never briefly install the new day's second page as its start.
+        setOffset(next); return;
+      }
+    }
+    setPage({ items: data.items, total: data.total, hasMore: data.hasMore }); setMemories(data.memories); setLoading(false);
   }
   async function support() {
     const [accountData, deviceData, journeyData, importData] = await checked(() => Promise.all([
@@ -143,6 +171,8 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     const ended = terminalImport(result.import.state);
     const data = ended ? { ...result, items: [] } : result;
     const changed = importRef.current?.import.id !== id;
+    localUpload.current?.observe(data);
+    if (changed || reset) setImportSource(data.import.source === 'local-upload' ? 'device' : 'google');
     importRef.current = data; importReadAt.current = Date.now(); setImportDetail(data);
     if (changed || reset) { setSelected(data.items.map(item => item.id)); setPersist(false);
       if (!ended || data.import.state === 'confirmed') { setConfirmReceipt(null); setConfirmReview(false); } }
@@ -178,7 +208,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     finally { if (current()) setLoading(false); }
   }
   async function write(path: string, method: string, body: Record<string, unknown>, done: (data: any) => Promise<void>, category: 'create' | 'confirm' | 'editor' | 'other' = 'other') {
-    if (locked.current || !current()) return;
+    if (locked.current || localUpload.current?.view.busy || !current()) return;
     locked.current = true; setBusy(true); setError(''); setNotice('');
     const ticket = epoch.current; let writeReturned = false;
     try {
@@ -200,8 +230,8 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   }
 
   function conceal() {
-    active.current = false; ++epoch.current; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort());
-    setFocused(false); setPage({ items: [], total: 0, hasMore: false }); setJourneyMenu(false); setAccountMenu(false); setDecision(null);
+    active.current = false; localUpload.current?.suspend(); ++epoch.current; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort());
+    setFocused(false); setPage({ items: [], total: 0, hasMore: false }); setMemories(null); setJourneyMenu(false); setAccountMenu(false); setDecision(null);
   }
   async function resume() {
     if (!alive.current || !routeActive.current || !available() || deniedRef.current || active.current) return;
@@ -235,7 +265,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
           editorRef.current = null; setEditor(null); setError('照片已移除或不再可见。');
         }
       }
-      if (current() && ticket === epoch.current) setFocused(true);
+      if (current() && ticket === epoch.current) { setFocused(true); void localUpload.current?.resumeSelection(); }
     } catch (caught) {
       if (ticket !== epoch.current || !current()) return;
       failure(caught); active.current = false;
@@ -243,7 +273,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   }
   const lifecycle = useRef({ conceal, resume }); lifecycle.current = { conceal, resume };
   useEffect(() => { alive.current = true; return () => {
-    alive.current = false; active.current = false; ++epoch.current; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort());
+    alive.current = false; localUpload.current?.dispose(); active.current = false; localUpload.current?.suspend(); ++epoch.current; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort());
   }; }, []);
   useFocusEffect(useCallback(() => {
     routeActive.current = true; void lifecycle.current.resume();
@@ -269,7 +299,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     let running = false;
     const timer = setInterval(() => {
       setClock(Date.now());
-      if (running || locked.current || typeof document !== 'undefined' && document.hidden) return;
+      if (running || locked.current || localUpload.current?.view.busy || typeof document !== 'undefined' && document.hidden) return;
       running = true;
       void (async () => {
         try {
@@ -407,7 +437,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   function decide() {
     const action = decision; setDecision(null);
     if (action === 'discard') { serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); }
-    if (action === 'delete' && editor) void write(`/media/items/${editor.item.id}`, 'DELETE', { revision: editor.item.revision }, async () => { setEditor(null); await gallery(); setNotice('已移除看板副本，Google Photos 原始内容保留。'); }, 'editor');
+    if (action === 'delete' && editor) void write(`/media/items/${editor.item.id}`, 'DELETE', { revision: editor.item.revision }, async () => { setEditor(null); await gallery(); setNotice('已移除看板副本。' + photoOriginalNotice(editor.item.source)); }, 'editor');
     if (action === 'cancel' && importDetail) void write(`/media/imports/${importDetail.import.id}`, 'DELETE', { revision: importDetail.import.revision }, async () => {
       setConfirmReceipt(null); setConfirmReview(false); setPersist(false); await readImport(importDetail.import.id); await support();
     });
@@ -416,7 +446,8 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   const row = importDetail?.import;
   const expired = !!row && Date.parse(row.expiresAt) <= clock && !terminalImport(row.state);
   const canSelect = !!row?.canConfirm && !expired && row.state === 'awaiting_confirmation';
-  const activeImport = imports.some(item => !terminalImport(item.state)) || !!row && !terminalImport(row.state);
+  const localPending = localUpload.current!.view.needsCheck || !!localUpload.current!.view.detail && !terminalImport(localUpload.current!.view.detail!.import.state);
+  const activeImport = localPending || imports.some(item => !terminalImport(item.state)) || !!row && !terminalImport(row.state);
   const columns = width < 540 ? 2 : width < 960 ? 3 : 4;
   const cardWidth = `${100 / columns - 1.7}%` as `${number}%`;
   const closeEditor = () => { if (busy) return; if (editor && (anyDraft(editor) || editor.blocked)) setDecision('discard'); else { serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); } };
@@ -430,8 +461,11 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     <PageHeader title="相册" description="自己留下，按你的选择分享。" action={<View style={styles.actions}>{backToSearch}<Button accessibilityLabel="电视与播放" mode="outlined" icon="television" disabled={busy || !!editor || importOpen || !!createReceipt || !!confirmReceipt} onPress={() => props.onNavigate('devices')}>电视与播放</Button><Button accessibilityLabel="选择照片" mode="contained" icon="plus" disabled={busy} onPress={() => setImportOpen(value => !value)}>选择照片</Button></View>} />
     {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
     {!!notice && <Text accessibilityLiveRegion="polite">{notice}</Text>}
-    {importOpen && <SectionCard title="从 Google Photos 选择" action={<Button disabled={busy} onPress={() => setImportOpen(false)}>收起</Button>}>
+    {importOpen && <SectionCard title="添加照片" action={<Button disabled={busy} onPress={() => setImportOpen(false)}>收起</Button>}>
       <View style={styles.stack}>
+        <View style={styles.actions}><Button mode={importSource === 'device' ? 'contained' : 'outlined'} disabled={busy || !!createReceipt || !!confirmReceipt} onPress={() => setImportSource('device')}>设备照片</Button><Button mode={importSource === 'google' ? 'contained' : 'outlined'} disabled={busy} onPress={() => setImportSource('google')}>Google Photos</Button></View>
+        {importSource === 'device' && <LocalPhotoImportPanel controller={localUpload.current!} disabled={writeBusy || !!createReceipt || !!confirmReceipt || activeImport && !localPending && !localUpload.current?.view.detail} />}
+        {importSource === 'google' && <>
         <Text variant="bodyMedium">最多 20 项，仅处理本次选择的照片和视频，不扫描整个图库。视频最长 10 分钟、源文件最大 100 MiB；超限会说明原因，不截断保存。</Text>
         <Menu theme={{ animation: { scale: 0 } }} visible={accountMenu} onDismiss={() => setAccountMenu(false)} anchor={<Button mode="outlined" disabled={busy || !!createReceipt} onPress={() => setAccountMenu(true)}>{account ? account.name || account.email || 'Google 账户' : '选择照片来源'}</Button>}>
           {accounts.map(value => <Menu.Item key={value.id} title={value.name || value.email || 'Google 账户'} onPress={() => { setAccountId(value.id); setAccountMenu(false); }} />)}
@@ -442,15 +476,20 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
         {checkbox('允许临时处理本次选择，供我预览确认；未保存的内容最迟 24 小时后清理。', temporary, () => setTemporary(v => !v), busy || !!createReceipt)}
         <Button mode="contained" disabled={busy || (!createReceipt && (!temporary || activeImport || !account?.capabilities?.photos || account.needsReauth)) || !!confirmReceipt} onPress={() => { try { create(); } catch (caught) { failure(caught); } }}>{createReceipt ? '核对 / 重试原选择请求' : '开始选择照片'}</Button>
         {!!createReceipt && <Text>上一请求结果未确认；此按钮沿用原请求标识，不会自动重复创建。</Text>}
+        </>}
         {!!confirmReceipt && (!row || terminalImport(row.state)) && <View style={styles.stack}>
           <Text>原保存结果仍待核对。结束核对只清除此页的等待记录，不代表原请求成功或失败。</Text>
           <Button contentStyle={{ minHeight: 44 }} disabled={busy} onPress={() => { if (!locked.current && current()) { setConfirmReceipt(null); setConfirmReview(false); setSelected([]); setPersist(false); } }}>结束本次核对</Button>
         </View>}
         {activeImport && !row && <Text>已有进行中的选择，请从下方继续。</Text>}
         {imports.length > 0 && <List.Accordion title="最近的选择" description="继续选片或查看保存结果">
-          {imports.map(item => <List.Item key={item.id} title={importLabels[item.state] || '选择记录'} description={item.state === 'confirmed' ? savedSummary(item, '项') : new Date(item.createdAt).toLocaleString('zh-CN')} onPress={() => { if (!busy && !confirmReceipt) void readAction(() => readImport(item.id)); }} />)}
+          {imports.map(item => <List.Item key={item.id} title={photoSourceLabel(item.source) + ' · ' + (importLabels[item.state] || '选择记录')} description={item.state === 'confirmed' ? savedSummary(item, '项') : new Date(item.createdAt).toLocaleString('zh-CN')} onPress={() => { if (!busy && !confirmReceipt) void readAction(async () => {
+            if (item.source === 'local-upload') { setImportSource('device'); await localUpload.current?.check(item.id); }
+            await readImport(item.id);
+          }); }} />)}
         </List.Accordion>}
         {!!row && <View style={styles.stack}>
+          {row.source === 'local-upload' && row.state === 'staging' && <Button disabled={busy} onPress={() => { setImportSource('device'); void localUpload.current?.check(row.id); }}>继续本批设备上传</Button>}
           <Divider /><Text variant="titleMedium" accessibilityRole="header">{importLabels[row.state]}</Text>
           {row.resultsState === 'unknown' ? <Text>{row.state === 'confirmed' ? savedSummary(row, '项') : terminalImport(row.state) ? '本次其他处理结果未记录。' : '正在等待本次选择的处理结果。'}</Text> : <>
             <Text accessibilityLiveRegion="polite">本次选择 {countText(row.counts.selected, '项')} · 成功 {countText(row.counts.ready, '项')} · 失败 {countText(row.counts.failed, '项')} · 跳过 {countText(row.counts.skipped, '项')} · 处理中 {countText(row.counts.pending, '项')}</Text>
@@ -483,11 +522,32 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
         </View>}
       </View>
     </SectionCard>}
-    <View style={styles.actions}><SegmentedButtons style={styles.scope} value={scope} onValueChange={value => { if (!busy) { setScope(value); setOffset(0); setLoading(true); } }} buttons={[{ value: 'mine', label: '我的照片', disabled: busy }, { value: 'shared', label: '家人共享', disabled: busy }]} /><Button icon="refresh" disabled={busy} onPress={() => void readAction(async () => { await Promise.all([gallery(), support()]); })}>刷新</Button></View>
-    {loading ? <ActivityIndicator accessibilityLabel="正在读取相册" /> : !page.items.length ? <EmptyState title={scope === 'mine' ? '把想回看的照片留下' : '还没有家人共享的照片'} description={scope === 'mine' ? '先选择照片，预览后再确认保存。默认只有你能看见。' : '家人明确共享后，照片才会出现在这里。'} action={scope === 'mine' ? <Button onPress={() => setImportOpen(true)}>从 Google Photos 选择</Button> : undefined} /> : <View style={styles.grid}>{page.items.map(item => <Card key={item.id} mode="outlined" accessibilityLabel={(item.mediaType === 'video' ? '查看视频：' : '查看照片：') + (item.caption || '未添加说明')} onPress={() => { if (!busy) void readAction(() => readEditor(item.id)); }} style={[styles.photoCard, { width: cardWidth }]}>
-      {renderPhoto(item, item.caption || (item.mediaType === 'video' ? '视频封面' : '已保存的照片'))}<Card.Content style={styles.photoCopy}>{item.mediaType === 'video' && <Text variant="bodySmall">{videoDescription(item)}</Text>}<Text variant="bodyMedium">{item.caption || '未添加说明'}</Text><Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.visibility === 'private' ? '仅我自己' : '家庭共享'}{item.journey ? ' · ' + item.journey.title : ''}</Text></Card.Content>
-    </Card>)}</View>}
-    <View style={styles.actions}><Text variant="bodySmall">共 {page.total} 项 · 第 {Math.floor(offset / 24) + 1} 页</Text><Button disabled={!offset || busy} onPress={() => setOffset(v => Math.max(0, v - 24))}>上一页</Button><Button disabled={!page.hasMore || busy} onPress={() => setOffset(v => v + 24)}>下一页</Button></View>
+    <View style={styles.actions}><SegmentedButtons style={styles.scope} value={scope} onValueChange={value => { if (!busy) { setScope(value); setOffset(0); setLoading(true); } }} buttons={[{ value: 'mine', label: '我的照片', disabled: busy }, { value: 'shared', label: '家人共享', disabled: busy }, { value: 'memories', label: '那年今日', disabled: busy }]} /><Button icon="refresh" disabled={busy} onPress={() => void readAction(async () => { await Promise.all([gallery(), support()]); })}>刷新</Button></View>
+    {scope === 'memories' && !loading && memories && <View style={{ gap: 6 }} testID="photo-memories-summary">
+      <Text variant="titleLarge" accessibilityRole="header">{Number(memories.referenceDate.slice(5, 7))} 月 {Number(memories.referenceDate.slice(8))} 日，那些年的今天</Text>
+      <Text variant="bodyMedium">按来源日期（北京时间）回看你保存的照片。</Text>
+      {!!memories.unknownSourceTimeCount && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{memories.unknownSourceTimeCount} 张照片没有可核对的来源日期，暂未纳入回看。</Text>}
+    </View>}
+    {loading ? <ActivityIndicator accessibilityLabel="正在读取相册" /> : !page.items.length ? <EmptyState
+      title={scope === 'memories' ? offset ? '这一页暂时没有照片' : '还没有往年同日的照片' : scope === 'mine' ? '把想回看的照片留下' : '还没有家人共享的照片'}
+      description={scope === 'memories' ? offset ? '照片可能已变化，回到第一页查看最新内容。' : '回看只使用已记录的来源日期，不会用导入日期补齐。' : scope === 'mine' ? '先选择照片，预览后再确认保存。默认只有你能看见。' : '家人明确共享后，照片才会出现在这里。'}
+      action={scope === 'memories' && offset ? <Button onPress={() => setOffset(0)}>返回第一页</Button> : scope === 'mine' ? <Button onPress={() => { setImportSource('device'); setImportOpen(true); }}>从设备选择照片</Button> : undefined} />
+      : <View style={styles.grid}>{page.items.map((item, index) => {
+        const memory = scope === 'memories' ? memories?.items[index] : undefined;
+        const year = memory?.sourceLocalDate.slice(0, 4);
+        return <React.Fragment key={item.id}>
+          {memory && (!index || memories?.items[index - 1].sourceLocalDate.slice(0, 4) !== year) && <Text variant="titleMedium" accessibilityRole="header" style={{ width: '100%' }}>{year} 年 · {memory.yearsAgo} 年前</Text>}
+          <Card mode="outlined" accessibilityLabel={(item.mediaType === 'video' ? '查看视频：' : '查看照片：') + (item.caption || '未添加说明')} onPress={() => { if (!busy) void readAction(() => readEditor(item.id)); }} style={[styles.photoCard, { width: cardWidth }]}>
+            {renderPhoto(item, item.caption || (item.mediaType === 'video' ? '视频封面' : '已保存的照片'))}<Card.Content style={styles.photoCopy}>
+              {item.mediaType === 'video' && <Text variant="bodySmall">{videoDescription(item)}</Text>}
+              {memory && <Text variant="bodySmall">来源日期：{memory.sourceLocalDate}</Text>}
+              <Text variant="bodyMedium">{item.caption || '未添加说明'}</Text><Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.visibility === 'private' ? '仅我自己' : '家庭共享'}{item.journey ? ' · ' + item.journey.title : ''}</Text>
+            </Card.Content>
+          </Card>
+        </React.Fragment>;
+      })}</View>}
+    <View style={styles.actions}><Text variant="bodySmall">共 {page.total} 项 · 第 {Math.floor(offset / 24) + 1} 页</Text><Button disabled={!offset || busy || loading} onPress={() => setOffset(v => Math.max(0, v - 24))}>上一页</Button><Button disabled={!page.hasMore || busy || loading || scope === 'memories' && offset + 24 > 4000} onPress={() => setOffset(v => v + 24)}>下一页</Button></View>
+    {scope === 'memories' && page.hasMore && offset + 24 > 4000 && <Text variant="bodySmall">已到达当前可浏览范围，可返回第一页查看。</Text>}
     <Portal><Dialog testID="photo-editor" visible={!!editor} onDismiss={closeEditor} dismissable={!busy} style={[styles.dialog, { maxHeight: height - 40 }]}>
       <Dialog.Title>{editor?.item.mediaType === 'video' ? '视频详情' : '照片详情'}</Dialog.Title>
       <Dialog.ScrollArea style={styles.dialogScroll}><ScrollView contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
@@ -519,12 +579,12 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
               <Button mode="outlined" disabled={busy || editor.blocked || dirty(editor) || editor.item.visibility !== 'shared' || !!editor.grants.length && !editor.tvConsent} onPress={() => saveGrants()}>保存电视范围</Button>
               <Button disabled={busy || editor.blocked || dirty(editor)} onPress={() => saveGrants(true)}>收回全部电视展示</Button>
             </List.Accordion>
-            <Button textColor={theme.colors.error} disabled={busy || editor.blocked} onPress={() => setDecision('delete')}>移除看板副本</Button><Text variant="bodySmall">Google Photos 原始内容保留。</Text>
+            <Button textColor={theme.colors.error} disabled={busy || editor.blocked} onPress={() => setDecision('delete')}>移除看板副本</Button><Text variant="bodySmall">{photoSourceLabel(editor.item.source)} · {photoOriginalNotice(editor.item.source)}</Text>
           </> : <><Text variant="titleMedium">{editor.item.caption || '家庭共享照片'}</Text><Text>由上传者管理，你可以查看当前共享的照片。</Text>{!!editor.item.journey && <Text>关联旅行：{editor.item.journey.title}</Text>}</>}
         </>}
       </ScrollView></Dialog.ScrollArea><Dialog.Actions><Button disabled={busy} onPress={closeEditor}>{props.onBack ? '返回搜索' : '关闭'}</Button></Dialog.Actions>
     </Dialog>
-    <Dialog visible={!!decision} onDismiss={() => setDecision(null)} style={styles.dialog}><Dialog.Title>{decision === 'discard' ? '离开照片详情？' : decision === 'delete' ? '移除这张照片？' : '取消本次选择？'}</Dialog.Title><Dialog.Content><Text>{decision === 'discard' ? '未保存的输入将丢弃。关闭页面不会撤销已经提交的操作。' : decision === 'delete' ? '将删除看板副本，并收回家庭共享及电视展示。Google Photos 原始内容保留。' : '清理未确认的临时预览，Google Photos 原始内容保留。已经发出的请求仍会由服务器处理。'}</Text></Dialog.Content><Dialog.Actions><Button onPress={() => setDecision(null)}>返回</Button><Button onPress={decide}>确认</Button></Dialog.Actions></Dialog></Portal>
+    <Dialog visible={!!decision} onDismiss={() => setDecision(null)} style={styles.dialog}><Dialog.Title>{decision === 'discard' ? '离开照片详情？' : decision === 'delete' ? '移除这张照片？' : '取消本次选择？'}</Dialog.Title><Dialog.Content><Text>{decision === 'discard' ? '未保存的输入将丢弃。关闭页面不会撤销已经提交的操作。' : decision === 'delete' ? '将删除看板副本，并收回家庭共享及电视展示。' + photoOriginalNotice(editor?.item.source) : '清理未确认的临时预览。' + photoOriginalNotice(row?.source) + '已经发出的请求仍会由服务器处理。'}</Text></Dialog.Content><Dialog.Actions><Button onPress={() => setDecision(null)}>返回</Button><Button onPress={decide}>确认</Button></Dialog.Actions></Dialog></Portal>
   </View>;
 }
 

@@ -744,3 +744,10 @@ GET `/auth/<provider>/callback` 接收供应商的 `state`、`code`，或 `error
 - 新增写接口明确 JSON、CSRF、Origin、revision 和云端副作用。不要绕过 `task_write` 直接修改镜像 JSON，也不要将“排队成功”显示为“同步成功”。
 - 当前已提供独立家庭数据边界、个人账户与多家庭成员关系，以及成员数据副本 API；分别见 [个人账户](PERSONAL-ACCOUNTS.md)、[成员协作](EXPO-MEMBERSHIPS.md) 和 [个人导出](PORTABILITY.md)。本人账单与导入、媒体管理及同步状态各有独立模块合同，不以本页基础接口清单判断它们尚未实现；也不将这些受控接口视为通用第三方机器认证或不受限公共访问。
 - 修改接口后同步更新本文、[数据模型](DATA-MODEL.md)、相关测试及 [验证记录](VALIDATION.md)。本文是人工维护的实现文档，不替代可执行的回归测试。
+
+
+## 从设备手动导入照片（源码候选）
+
+`POST /api/media/local-imports` 创建本人固定文件清单，逐项 `PUT /api/media/local-imports/<id>/files/<slotId>` 发送原始图片，随后 `/finish` 收口并使用原 `/api/media/imports/<id>/confirm` 明确保存。最多 10 张 JPEG/PNG/WebP、每张 8 MiB／2000 万像素；本地来源无需 Google 账户，默认私有、日期未知。只有该精确 PUT 路径放行 raw body；Origin、CSRF、家庭和成员核验保持，其他写 API 仍要求 JSON。
+
+完整请求、幂等恢复、共享和电视权限、无新增 DDL 及未验边界见 [本地照片导入](LOCAL-PHOTO-IMPORT.md)。这是手动文件入口，不代表 iCloud／NAS 实时连接或本地视频上传已经完成。
