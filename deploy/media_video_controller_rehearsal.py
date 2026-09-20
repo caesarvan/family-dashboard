@@ -208,6 +208,7 @@ class Transport:
         self.output = root/'commands'; self.output.mkdir()
         self.records, self.owned, self.intents = [], {}, {}
         self.timer, self.cleanup, self.unknown = True, False, None
+        self.discovery_admitted = False
         self.data_path = None; self.injected = None
 
     def execute(self, argv, timeout=240):
@@ -251,8 +252,14 @@ class Transport:
         return value
 
     def discover(self):
+        need(self.discovery_admitted, 'fixture_discovery_not_admitted')
         raw = self.raw('ps', '--all', '--quiet', '--no-trunc', '--filter', 'label='+LABEL+'='+self.project)
         for cid in raw.decode().splitlines(): self.remember(cid)
+
+    def fresh_project(self):
+        for label in ('com.docker.compose.project', LABEL):
+            need(not self.raw('ps','--all','--quiet','--filter','label='+label+'='+self.project).strip(),
+                 'fixture_project_exists')
 
     def validate(self, args):
         need(bool(args), 'empty_docker_command')
@@ -332,7 +339,8 @@ class Transport:
 
     def stop_owned(self):
         self.cleanup = True; failures = []
-        try: self.discover()
+        try:
+            if self.discovery_admitted: self.discover()
         except Exception: failures.append('discovery_unconfirmed')
         for cid, saved in list(self.owned.items()):
             try:
@@ -479,6 +487,7 @@ def create_data_volume(transport):
          value.get('Labels', {}).get(LABEL)==transport.project, 'fixture_volume_identity')
     path = safe(value['Mountpoint'], exists=True); need(not list(path.iterdir()), 'fixture_data_not_empty')
     os.chown(path, 10001, 10001); path.chmod(0o700); transport.data_path = path
+    transport.discovery_admitted = True  # Only after an empty project and new, owned empty volume.
     save(transport.root/'fixture-volume.json', value)
     return path
 
@@ -538,7 +547,7 @@ def scenario(bundle, input_sha, meta, verified, output, name, run_id, monitor):
     transport = Transport(root, bundle, project, origin, monitor, name)
     result = {'passed': False, 'scenario': name, 'syntheticOnly': True, 'productionPlanAdmissionExercised': False}
     try:
-        need(not transport.raw('ps','--all','--quiet','--filter','label=com.docker.compose.project='+project).strip(), 'fixture_project_exists')
+        transport.fresh_project()
         data_path = create_data_volume(transport)
         proof = root/'seed-proof'; proof.mkdir(mode=0o700); os.chown(proof,10001,10001)
         mounts = ['type=volume,src='+controller.VOLUME+',dst=/data', 'type=bind,src='+str(proof)+',dst=/proof']

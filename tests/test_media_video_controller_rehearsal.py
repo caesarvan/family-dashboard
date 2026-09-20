@@ -97,6 +97,7 @@ def test_process_timeout_retains_original_pid_and_terminal(transport):
 
 
 def test_unknown_creation_never_claims_cleanup_complete(transport,monkeypatch):
+    transport.discovery_admitted=True
     transport.unknown={'name':'fixture-create-result-unavailable'}
     monkeypatch.setattr(transport,'discover',lambda:None)
     calls=[]
@@ -107,6 +108,7 @@ def test_unknown_creation_never_claims_cleanup_complete(transport,monkeypatch):
 
 
 def test_changed_container_identity_is_not_treated_as_removed(transport,monkeypatch):
+    transport.discovery_admitted=True
     cid='a'*64;transport.owned[cid]={'name':'fixture','image':rehearsal.IMAGES['app'],'state':{'Running':False}}
     monkeypatch.setattr(transport,'discover',lambda:None)
     def changed(_):raise rehearsal.controller.ReleaseError('unowned_container')
@@ -119,6 +121,26 @@ def test_changed_container_identity_is_not_treated_as_removed(transport,monkeypa
     result=transport.stop_owned()
     assert not result['complete'] and cid+':inspect_unconfirmed' in result['failures']
     assert not any(x[0]=='stop' for x in calls)
+
+
+def test_existing_standalone_run_label_is_never_adopted_for_cleanup(transport,monkeypatch):
+    cid='b'*64;calls=[]
+    def raw(*args,**kw):
+        calls.append(args)
+        return cid.encode() if ('label='+rehearsal.LABEL+'='+PROJECT) in args else b''
+    monkeypatch.setattr(transport,'raw',raw)
+    with pytest.raises(rehearsal.controller.ReleaseError,match='fixture_project_exists'):
+        transport.fresh_project()
+    monkeypatch.setattr(transport,'discover',lambda:pytest.fail('unadmitted project cannot be adopted'))
+    assert not transport.discovery_admitted and not transport.owned
+    transport.stop_owned()
+    assert not any(x[0] in ('inspect','stop','start','create') for x in calls)
+
+
+def test_discovery_requires_completed_fresh_fixture_admission(transport,monkeypatch):
+    monkeypatch.setattr(transport,'raw',lambda *a,**k:pytest.fail('must fail before reading containers'))
+    with pytest.raises(rehearsal.controller.ReleaseError,match='fixture_discovery_not_admitted'):
+        transport.discover()
 
 
 def test_host_pressure_latches_before_any_next_command(transport,monkeypatch):
