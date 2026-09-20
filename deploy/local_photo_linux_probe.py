@@ -133,7 +133,31 @@ def make_images(folder):
     return entries
 
 
-def prepare(source, head, output, video_fixture):
+def image_runtime_blobs(source, blobs, runtime, image_head=None, image_sha256=None):
+    """Bind one reviewed image decoder change, never a general runtime override."""
+    need((image_head is None) == (image_sha256 is None), 'image source head and SHA must be paired')
+    if image_head is None:
+        return blobs, None
+    need(isinstance(image_head, str) and re.fullmatch('[a-f0-9]{40}', image_head), 'full image commit required')
+    need(isinstance(image_sha256, str) and re.fullmatch('[a-f0-9]{64}', image_sha256), 'full image SHA required')
+    ancestor = subprocess.run(['git', '--no-replace-objects', 'merge-base', '--is-ancestor', BASE, image_head],
+                              cwd=source, capture_output=True, timeout=60)
+    need(ancestor.returncode == 0, 'image source must descend from runtime baseline')
+    from deploy.git_blobs import read_git_blobs
+    pinned = sorted(set(runtime) | {'Dockerfile', 'deploy/nginx.conf', COMMON})
+    candidate = read_git_blobs(source, image_head, pinned)
+    need(all(candidate[n] == blobs[n] for n in pinned if n != 'media_images.py'),
+         'image source changed another runtime, dependency or proxy input')
+    original_sha = hashlib.sha256(blobs['media_images.py']).hexdigest()
+    need(hashlib.sha256(candidate['media_images.py']).hexdigest() == image_sha256,
+         'reviewed image SHA differs')
+    need(original_sha != image_sha256, 'image override must contain a real change')
+    patch = {'path': 'media_images.py', 'sourceHead': image_head,
+             'baseSha256': original_sha, 'sha256': image_sha256}
+    return {**blobs, 'media_images.py': candidate['media_images.py']}, patch
+
+
+def prepare(source, head, output, video_fixture, *, image_source_head=None, image_sha256=None):
     from deploy.git_blobs import read_git_blobs
     source, video_fixture, output = safe(source), safe(video_fixture), safe(output, exists=False)
     need(re.fullmatch('[a-f0-9]{40}', head), 'full commit required')
@@ -145,6 +169,7 @@ def prepare(source, head, output, video_fixture):
     candidates = [n for n in names if n == 'Dockerfile' or n == 'deploy/nginx.conf' or n == COMMON or n == SELF or '/' not in n or n.startswith('static/')]
     blobs = read_git_blobs(source, head, candidates); runtime = runtime_names(blobs)
     need(blobs[SELF] == Path(__file__).read_bytes(), 'executed probe differs from Git')
+    blobs, image_patch = image_runtime_blobs(source, blobs, runtime, image_source_head, image_sha256)
     need(sha(video_fixture / 'display.mp4') == VIDEO_SHA and (video_fixture / 'display.mp4').stat().st_size == 64 * MIB, 'unreviewed video fixture')
     need(sha(video_fixture / 'poster.jpg') == POSTER_SHA, 'unreviewed poster fixture')
     metadata = json.loads((video_fixture / 'fixture.json').read_text())
@@ -171,6 +196,7 @@ def prepare(source, head, output, video_fixture):
     (output / 'tls/cert.pem').write_bytes(cert.public_bytes(serialization.Encoding.PEM))
     (output / 'tls/key.pem').write_bytes(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption()))
     contract = {'kind': 'local-photo-linux-input-v1', 'sourceHead': head, 'runtimeBase': BASE,
+                'runtimeSourceHead': image_source_head or BASE, 'runtimePatch': image_patch,
                 'runtime': {n: hashlib.sha256(blobs[n]).hexdigest() for n in runtime}, 'images': {'app': APP_IMAGE, 'web': WEB_IMAGE},
                 'limitsMiB': LIMITS, 'hostBudget': BUDGET, 'photoFixtures': images,
                 'adaptations': ['private internal bridge, no host ports', 'synthetic HTTPS names/certificate and nonprivileged Nginx listeners',
@@ -181,10 +207,32 @@ def prepare(source, head, output, video_fixture):
     return contract
 
 
+def checked_runtime_binding(c):
+    need(isinstance(c.get('sourceHead'), str) and re.fullmatch('[a-f0-9]{40}', c['sourceHead']), 'tool source head differs')
+    runtime = c.get('runtime')
+    need(isinstance(runtime, dict) and 'media_images.py' in runtime, 'runtime hashes absent')
+    expected = {'runtime/' + n: digest for n, digest in runtime.items()}
+    actual = {n: digest for n, digest in c['files'].items() if n.startswith('runtime/')}
+    need(expected == actual and all(isinstance(v, str) and re.fullmatch('[a-f0-9]{64}', v) for v in runtime.values()),
+         'runtime manifest differs from prepared files')
+    patch = c.get('runtimePatch')
+    if patch is None:
+        need(c.get('runtimeSourceHead') == BASE, 'unbound image source')
+        return
+    need(isinstance(patch, dict) and set(patch) == {'path', 'sourceHead', 'baseSha256', 'sha256'}
+         and patch['path'] == 'media_images.py', 'unexpected runtime patch')
+    need(isinstance(patch['sourceHead'], str) and re.fullmatch('[a-f0-9]{40}', patch['sourceHead'])
+         and c.get('runtimeSourceHead') == patch['sourceHead'], 'image source binding differs')
+    need(isinstance(patch['baseSha256'], str) and re.fullmatch('[a-f0-9]{64}', patch['baseSha256'])
+         and patch['baseSha256'] != patch['sha256'] and patch['sha256'] == runtime['media_images.py'],
+         'image patch hash differs')
+
+
 def checked_input(path):
     path = safe(path); c = json.loads((path / 'input.json').read_text())
     need(c['kind'] == 'local-photo-linux-input-v1' and c['runtimeBase'] == BASE and c['images'] == {'app': APP_IMAGE, 'web': WEB_IMAGE}
          and c['limitsMiB'] == LIMITS and c['hostBudget'] == BUDGET, 'input contract differs')
+    checked_runtime_binding(c)
     files = {p.relative_to(path).as_posix() for p in path.rglob('*') if p.is_file()}
     need(files == set(c['files']) | {'input.json'}, 'unexpected prepared file')
     for n, digest in c['files'].items():
@@ -586,11 +634,12 @@ def client_inside(profile):
 def main():
     p=argparse.ArgumentParser(description=__doc__);sub=p.add_subparsers(dest='command',required=True)
     a=sub.add_parser('prepare');a.add_argument('--source',type=Path,required=True);a.add_argument('--head',required=True);a.add_argument('--output',type=Path,required=True);a.add_argument('--video-fixture',type=Path,required=True)
+    a.add_argument('--image-source-head');a.add_argument('--image-sha256')
     a=sub.add_parser('run');a.add_argument('--input',type=Path,required=True);a.add_argument('--expected-input-sha256',required=True);a.add_argument('--output',type=Path,required=True);a.add_argument('--profile',choices=PROFILES,required=True)
     a=sub.add_parser('inside');a.add_argument('--role',choices=('app','client'),required=True);a.add_argument('--profile',choices=PROFILES,required=True)
     a=p.parse_args()
     if a.command=='prepare':
-        prepare(a.source,a.head,a.output,a.video_fixture)
+        prepare(a.source,a.head,a.output,a.video_fixture,image_source_head=a.image_source_head,image_sha256=a.image_sha256)
         print(json.dumps({'input':str(a.output/'input.json'),'sha256':sha(a.output/'input.json')}))
     elif a.command=='run':run(a.input,a.output,a.profile,a.expected_input_sha256)
     else:

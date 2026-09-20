@@ -1,4 +1,6 @@
-# 本地照片 Linux 验证工具（待真实执行）
+# 本地照片 Linux 验证工具
+
+2026-09-20 的 R1 已实际执行，不能作为发布通过依据：`image_overlap` 在第三张 20MP WebP 的 PUT 期间触发 app 的 384MiB OOM（`oom_kill=1`）；此前 JPEG／PNG 成功，并用第二个视频请求的 503 验证 64MiB 响应仍持有 permit。原结果 SHA `3eae83945dff6c143f2ddab3ebe4700fc459e241fb77dbbf6c0ec48dc3de0592`。独立 profile `nginx_raw` 通过，结果 SHA `6a77c1f332a912edc14ec4ae82b1d64a245878f8b2f5b9a239ad71727beeb4c0`；它不覆盖 20MP 内存重叠。生产五个服务及配置前后不变；失败容器已停止，原诊断保留。新的图片内存修复须在原限制下另行运行，不重写 R1 结果。
 
 此工具只有两个独立实验，不构建镜像、不安装依赖、不迁移生产、不停止既有服务，也不代表发布准入。每次输出目录必须全新；失败与不确定结果保留，不自动重跑或提高内存限制。首版仅 JPEG／PNG／WebP，不能用结果宣称 HEIC、视频本地上传、实际手机或 Google 导入通过。
 
@@ -16,6 +18,12 @@ python -B <固定工具路径>/local_photo_linux_probe.py run --input <准备目
 ```
 
 仅集成人获授权后在 Linux 执行 `run`；作者只做离线检查。不能从 Windows 工具测试、旧视频实验或本地浏览器结果推定本工具 Linux 通过。
+
+### 显式图片解码修复输入
+
+为复验 R1 内存问题，可在 `prepare` 同时传入 `--image-source-head <独立审查的完整提交>` 与 `--image-sha256 <该提交 media_images.py 的SHA256>`。该提交必须继承固定运行基线；逐一读取 Git 原件，要求完整 Docker COPY、依赖、Dockerfile、原 Nginx 及共用探针中，只有 `media_images.py` 字节发生变化。参数必须成对，错 SHA、无变化或其他运行文件变化均拒绝；不会读取该候选的未提交文件，也不接受任意路径覆盖。
+
+清单分别记录探针 `sourceHead`、原 `runtimeBase`、新 `runtimeSourceHead` 及只含图片文件的 `runtimePatch`（原／新 SHA），运行前再次核对完整 runtime 文件清单与绑定。原探针三文件边界、镜像、限制及负载不变。每次修复使用全新准备／运行目录和新的 input SHA；R1 输入和失败原件保持不变。此参数及其真实 Git 离线测试仅证明输入约束，不代表新解码器已通过 Linux 验证。
 
 ## 两条实际路径
 

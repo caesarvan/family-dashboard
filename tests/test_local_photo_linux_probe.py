@@ -10,6 +10,85 @@ from deploy import local_photo_linux_probe as probe
 ROOT = Path(__file__).resolve().parents[1]
 
 
+@pytest.fixture
+def image_git(tmp_path, monkeypatch):
+    """Real Git commits; no production repository mutations or command doubles."""
+    import subprocess
+    from deploy.git_blobs import read_git_blobs
+    def git(*args):
+        return subprocess.check_output(['git', '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', *args],
+                                       cwd=tmp_path, stderr=subprocess.PIPE).decode().strip()
+    git('init', '--initial-branch=fixture')
+    names = ['app.py', 'media_local_upload.py', 'media_images.py', 'media_crypto.py', 'requirements.txt']
+    blobs = {n: ('original ' + n + '\n').encode() for n in names}
+    blobs.update({'Dockerfile': ('COPY ' + ' '.join(names) + ' ./\n').encode(),
+                  'deploy/nginx.conf': b'original proxy\n', probe.COMMON: b'original common\n'})
+    for name, value in blobs.items():
+        path = tmp_path / name; path.parent.mkdir(parents=True, exist_ok=True); path.write_bytes(value)
+    git('add', '--', *blobs); git('commit', '-m', 'Synthetic baseline')
+    base = git('rev-parse', 'HEAD'); monkeypatch.setattr(probe, 'BASE', base)
+    runtime = probe.runtime_names(blobs)
+    candidate = b'reviewed image implementation\n'
+    (tmp_path / 'media_images.py').write_bytes(candidate)
+    git('add', '--', 'media_images.py'); git('commit', '-m', 'Synthetic image change')
+    head = git('rev-parse', 'HEAD')
+    assert read_git_blobs(tmp_path, base, list(blobs)) == blobs
+    return tmp_path, git, blobs, runtime, base, head, hashlib.sha256(candidate).hexdigest()
+
+
+def test_image_source_uses_exact_git_blob_and_leaves_baseline_unchanged(image_git):
+    repo, git, blobs, runtime, base, head, digest = image_git
+    (repo / 'media_images.py').write_bytes(b'uncommitted bytes must never be used')
+    actual, patch = probe.image_runtime_blobs(repo, blobs, runtime, head, digest)
+    assert actual['media_images.py'] == b'reviewed image implementation\n'
+    assert all(actual[n] == blobs[n] for n in blobs if n != 'media_images.py')
+    assert patch == {'path': 'media_images.py', 'sourceHead': head,
+                     'baseSha256': hashlib.sha256(blobs['media_images.py']).hexdigest(), 'sha256': digest}
+    assert probe.image_runtime_blobs(repo, blobs, runtime) == (blobs, None)
+
+
+@pytest.mark.parametrize('path', ['app.py', 'requirements.txt', 'Dockerfile', 'deploy/nginx.conf', probe.COMMON])
+def test_image_source_rejects_other_runtime_or_proxy_changes(image_git, path):
+    repo, git, blobs, runtime, _, _, digest = image_git
+    (repo / path).write_bytes(b'unreviewed extra change\n')
+    git('add', '--', path); git('commit', '-m', 'Synthetic prohibited change')
+    with pytest.raises(RuntimeError, match='changed another runtime'):
+        probe.image_runtime_blobs(repo, blobs, runtime, git('rev-parse', 'HEAD'), digest)
+
+
+@pytest.mark.parametrize('head,digest', [(None, 'a'*64), ('a'*40, None), ('branch', 'a'*64), ('a'*40, 'short')])
+def test_image_source_requires_paired_immutable_identities(tmp_path, head, digest):
+    with pytest.raises(RuntimeError):probe.image_runtime_blobs(tmp_path, {}, [], head, digest)
+
+
+def test_image_source_rejects_wrong_hash_noop_and_unrelated_commit(image_git):
+    repo, git, blobs, runtime, base, head, digest = image_git
+    with pytest.raises(RuntimeError, match='reviewed image SHA differs'):
+        probe.image_runtime_blobs(repo, blobs, runtime, head, '0'*64)
+    with pytest.raises(RuntimeError, match='real change'):
+        probe.image_runtime_blobs(repo, blobs, runtime, base, hashlib.sha256(blobs['media_images.py']).hexdigest())
+    git('checkout', '--orphan', 'unrelated'); git('commit', '-m', 'Unrelated identical candidate tree')
+    with pytest.raises(RuntimeError, match='descend from runtime baseline'):
+        probe.image_runtime_blobs(repo, blobs, runtime, git('rev-parse', 'HEAD'), digest)
+
+
+@pytest.mark.parametrize('fault', ['path', 'source', 'hash', 'baseline', 'manifest', 'unbound'])
+def test_prepared_runtime_binding_rejects_drift(image_git, fault):
+    repo, _, blobs, runtime, base, head, digest = image_git
+    actual, patch = probe.image_runtime_blobs(repo, blobs, runtime, head, digest)
+    hashes = {n: hashlib.sha256(actual[n]).hexdigest() for n in runtime}
+    contract = {'sourceHead': '1'*40, 'runtimeSourceHead': head, 'runtimePatch': patch, 'runtime': hashes,
+                'files': {'runtime/' + n: sha for n, sha in hashes.items()}}
+    probe.checked_runtime_binding(contract)
+    if fault == 'path':patch['path'] = 'app.py'
+    elif fault == 'source':contract['runtimeSourceHead'] = base
+    elif fault == 'hash':patch['sha256'] = '0'*64
+    elif fault == 'baseline':patch['baseSha256'] = digest
+    elif fault == 'manifest':contract['files']['runtime/media_images.py'] = '0'*64
+    else:contract['runtimePatch'] = None
+    with pytest.raises(RuntimeError):probe.checked_runtime_binding(contract)
+
+
 def test_actual_docker_copy_closure_includes_local_upload_and_static():
     names = ['Dockerfile', *[p.name for p in ROOT.glob('*.py')], 'requirements.txt',
              *[p.relative_to(ROOT).as_posix() for p in (ROOT/'static').rglob('*') if p.is_file()]]
