@@ -46,6 +46,7 @@ from media_playback import register_media_playback
 from inventory_api import register_inventory
 from frontend_runtime import register_frontend_runtime
 import task_dependencies as dependencies
+import calendar_privacy as calendar_acl
 from membership_storage import connect_household
 from membership_http import register_membership_routes
 
@@ -298,6 +299,10 @@ def create_app(config=None):
                     if not token or not secrets.compare_digest(token, session.get("csrf", "")):
                         raise Problem("会话已更新，请刷新页面再试", 403)
 
+    @app.errorhandler(calendar_acl.CalendarPrivacyError)
+    def calendar_privacy_problem(error):
+        return jsonify(error=error.message, code=error.code), error.status
+
     @app.errorhandler(dependencies.DependencyError)
     def dependency_problem(error):
         return jsonify(error=error.message, code=error.code), error.status
@@ -411,7 +416,10 @@ def create_app(config=None):
                        'layout': stored_layout(screen['display_layout'])}
         entities = {kind: [] for kind in KINDS}
         for row in db().execute("SELECT * FROM entities ORDER BY updated_at DESC"):
-            entities[row["kind"]].append({**json.loads(row["data"]), "id": row["id"], "revision": row["revision"]})
+            value = json.loads(row["data"])
+            if row["kind"] == "events" and not calendar_acl.visible(value, g.actor):
+                continue
+            entities[row["kind"]].append({**value, "id": row["id"], "revision": row["revision"]})
         graph = dependencies.task_graph(con)
         entities['tasks'] = [dependencies.project(item, graph) for item in entities['tasks']]
         row = db().execute("SELECT * FROM settings WHERE id='finance'").fetchone()
@@ -432,7 +440,8 @@ def create_app(config=None):
         incoming = body()
         if kind == 'events' and any(key in incoming for key in ('travelTiming', 'startDate', 'endDateExclusive')):
             raise Problem('旅行时间字段只能由旅行计划生成')
-        payload = validate(kind, incoming, db)
+        privacy = calendar_acl.creation(incoming, g.actor) if kind == 'events' else {}
+        payload = {**validate(kind, incoming, db), **privacy}
         if kind == 'tasks':
             source_id = incoming.get('sourceId')
             if source_id is not None and not isinstance(source_id, str):
@@ -460,7 +469,11 @@ def create_app(config=None):
     def edit_item(kind, uid):
         row = db().execute("SELECT * FROM entities WHERE id=? AND kind=?", (uid, kind)).fetchone()
         if not row:
+            if kind == 'events':
+                raise calendar_acl.CalendarPrivacyError('日程不存在或当前不可访问', 404, 'calendar_event_unavailable')
             raise Problem("记录不存在，可能已被另一位成员删除", 404)
+        if kind == 'events':
+            calendar_acl.require_visible(json.loads(row['data']), g.actor)
         data = body()
         if data.get("revision") != row["revision"]:
             raise Problem("另一位成员刚刚更新了这条记录，请刷新后再编辑", 409)
@@ -488,7 +501,8 @@ def create_app(config=None):
                     raise Problem('请在旅行计划中调整该事项的时间类型', 409)
             elif any(key in data for key in ('travelTiming', 'startDate', 'endDateExclusive')):
                 raise Problem('旅行时间字段只能由旅行计划生成')
-        payload = validate(kind, {**original, **data}, db)
+        privacy = calendar_acl.update(original, data, g.actor) if kind == 'events' else {}
+        payload = {**validate(kind, {**original, **data}, db), **privacy}
         if kind == 'tasks':
             dependencies.check_write(db(), uid, payload, original)
         if protected_travel:
@@ -512,6 +526,10 @@ def create_app(config=None):
             db().execute('BEGIN IMMEDIATE')
             dependencies.check_delete(db(), uid)
         row=db().execute('SELECT data FROM entities WHERE id=? AND kind=?',(uid,kind)).fetchone()
+        if kind == 'events':
+            if not row:
+                raise calendar_acl.CalendarPrivacyError('日程不存在或当前不可访问', 404, 'calendar_event_unavailable')
+            calendar_acl.require_visible(json.loads(row['data']), g.actor)
         if row and json.loads(row['data']).get('sync'):
             raise Problem('请在原日历或清单中删除，同步后看板会自动更新',403)
         n = db().execute("DELETE FROM entities WHERE id=? AND kind=? AND revision=?", (uid, kind, data.get("revision"))).rowcount
@@ -579,6 +597,7 @@ def create_app(config=None):
         from icalendar import Calendar
         import recurring_ical_events
         data = body()
+        privacy = calendar_acl.creation(data, g.actor)
         owner = data.get("owner", g.actor["id"])
         check_owner(owner, db)
         source = data.get("source", "文件导入")
@@ -618,10 +637,14 @@ def create_app(config=None):
             payload = validate("events", {"title": str(event.get("SUMMARY", "未命名安排")), "location": str(event.get("LOCATION", "")),
                           "start": iso(begin), "end": iso(end), "owner": owner, "allDay": all_day, "source": source, "imported": True}, db)
             prepared.append((key, payload))
+        db().execute('BEGIN IMMEDIATE')
         existing = {r[0] for r in db().execute("SELECT id FROM entities WHERE kind='events'")}
         if len(existing | {key for key, _ in prepared}) > 2500:
             raise Problem("日程总量已达上限，请先整理旧日程")
         for key, payload in prepared:
+            old = db().execute("SELECT data FROM entities WHERE id=? AND kind='events'", (key,)).fetchone()
+            saved_privacy = calendar_acl.update(json.loads(old['data']), data, g.actor) if old else privacy
+            payload.update(saved_privacy)
             db().execute("INSERT INTO entities(id,kind,data,updated_at) VALUES(?,'events',?,?) ON CONFLICT(id) DO UPDATE SET data=excluded.data,revision=entities.revision+1,updated_at=excluded.updated_at",
                          (key, json.dumps(payload), now()))
         audit("calendar_import", str(len(prepared)))

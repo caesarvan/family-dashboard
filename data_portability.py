@@ -7,6 +7,7 @@ from itertools import chain
 import csv
 import json
 from finance_hub import export_import_receipts
+import calendar_privacy as calendar_acl
 from threading import BoundedSemaphore
 from zipfile import ZipFile, ZIP_DEFLATED
 
@@ -44,7 +45,7 @@ def exported_reference_fx(con):
                   'selection': 'rate_date_desc_currency_version', 'historicalReportReconstruction': False}
 ENTITY_FIELDS = {'title','owner','done','due','priority','tripId','journeyId','quantity','budget','actual','note',
                  'photoIds','start','end','allDay','location','source','imported','destination','saved','paid',
-                 'travelTiming','startDate','endDateExclusive','workflowKey','dependsOn'}
+                 'travelTiming','startDate','endDateExclusive','workflowKey','dependsOn','visibility','createdBy'}
 INVENTORY_ITEM_FIELDS = {'id','owner','visibility','title','variant','unit','location','revision',
                          'onHandQty','inTransitQty','plannedQty','reorderPoint','belowThreshold','createdAt','updatedAt'}
 INVENTORY_ACQUISITION_FIELDS = {'id','itemId','shoppingId','kind','orderedQty','orderState','orderedOn',
@@ -56,6 +57,20 @@ INVENTORY_OPERATION_FIELDS = {'id','operation','itemId','acquisitionId','created
 REMINDER_OPERATION_FIELDS = {'taskId': str, 'occurrence': str, 'action': str, 'revision': int,
                              'readAt': (str, type(None)), 'snoozedUntil': (str, type(None)),
                              'committedAt': str}
+
+
+def exported_calendar_events(con, actor, include_shared=False):
+    result = {'personal': [], 'shared': []}
+    for row in con.execute("SELECT id,data,revision,updated_at FROM entities WHERE kind='events' ORDER BY id"):
+        value = json.loads(row['data'])
+        if not calendar_acl.visible(value, actor):
+            continue
+        target = 'personal' if calendar_acl.scope(value) == 'private' else 'shared'
+        if target == 'shared' and not include_shared:
+            continue
+        result[target].append({**{k: v for k, v in value.items() if k in ENTITY_FIELDS},
+                               'id': row['id'], 'revision': row['revision'], 'updatedAt': row['updated_at']})
+    return result
 
 
 def exported_task_reminders(con, owner):
@@ -217,6 +232,9 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
         for name, table in (('taskReminderStates', 'task_reminders'), ('taskReminderOperations', 'task_reminder_operations')):
             counts[name] = con.execute('SELECT count(*) FROM '+table+' WHERE owner=?', (uid,)).fetchone()[0] if table in tables(con) else 0
         shared = {r[0]: r[1] for r in con.execute('SELECT kind,count(*) FROM entities GROUP BY kind')}
+        calendars = exported_calendar_events(con, g.actor, include_shared=True)
+        counts['calendarEvents'] = len(calendars['personal'])
+        shared['events'] = len(calendars['shared'])
         documents = exported_documents(con, uid, include_shared=True) if 'journey_documents' in tables(con) else {'personal': [], 'shared': []}
         counts['journeyDocuments'] = len(documents['personal'])
         shared['journeyDocuments'] = len(documents['shared'])
@@ -271,6 +289,9 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                                      'inventory': 'manual_records',
                                      'externalCredentialsIncluded': False, 'completeFinancialCoverage': False}, 'personal': {}}
             personal = snapshot['personal']
+            calendars = exported_calendar_events(con, g.actor, value.get('includeShared', False))
+            personal['calendarEvents'] = calendars['personal']
+            snapshot['coverage']['calendarEvents'] = 'own_private_and_explicitly_included_shared_without_sync_credentials'
             personal['taskReminders'] = exported_task_reminders(con, uid)
             snapshot['coverage']['taskReminders'] = 'owner_state_and_minimal_operation_history_without_task_content'
             documents = exported_documents(con, uid, include_shared=value.get('includeShared', False)) if 'journey_documents' in available else {'personal': [], 'shared': []}
@@ -372,8 +393,12 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                           'financeBaselines':shared_baselines(con), 'journeyDocuments': documents['shared']}
                 for r in con.execute('SELECT id,kind,data,revision,updated_at FROM entities ORDER BY kind,id'):
                     data = json.loads(r['data'])
+                    if r['kind'] == 'events':
+                        continue
                     shared['entities'].setdefault(r['kind'], []).append({**{k:v for k,v in data.items() if k in ENTITY_FIELDS},
                         'id':r['id'],'revision':r['revision'],'updatedAt':r['updated_at']})
+                if calendars['shared']:
+                    shared['entities']['events'] = calendars['shared']
                 finance = con.execute("SELECT data,revision FROM settings WHERE id='finance'").fetchone()
                 shared['finance'] = {'data':json.loads(finance['data']),'revision':finance['revision']}
                 shared['journeys'] = [{'id':r['id'],'tripId':r['trip_id'],'plan':json.loads(r['plan']),'revision':r['revision']}
@@ -452,6 +477,8 @@ def register_portability(app, db, Problem, body, require_member, audit, limited)
                     raise InventoryError('conflict')
             except InventoryError:
                 raise Problem('物品或共享范围已变化，请重新导出以获取最新内容',409) from None
+            if exported_calendar_events(con, g.actor, value.get('includeShared', False)) != calendars:
+                raise Problem('日程或共享范围已变化，请重新导出以获取最新内容', 409)
             audit('personal_data_export', 'with_shared' if value.get('includeShared') else 'personal_only')
             con.commit()
             output.seek(0)
