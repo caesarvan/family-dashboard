@@ -39,6 +39,7 @@ from household_members import register_members
 from tv_display import stored_layout, validate_layout
 from sync_health import register_sync_health
 from shopping_settlement import register_shopping_settlement
+from journey_finance import register_journey_finance
 from household_routines import register_routines
 from task_reminders import register_task_reminders
 from household_media import register_media_library
@@ -816,6 +817,7 @@ def create_app(config=None):
     register_sync_health(app, db, require_member)
     register_finance_hub(app, db, Problem, body, require_member, audit)
     register_shopping_settlement(app, db, Problem, body, require_member, audit)
+    register_journey_finance(app, db, Problem, body, require_member, audit)
     register_routines(app, db, Problem, body, require_member, audit)
     register_task_reminders(app, db, Problem, body, require_member)
     register_assistant(app, db, Problem, body, require_member, audit, limited, validate, now)

@@ -91,12 +91,14 @@ class Lifecycle:
         self.root = Path(root).absolute()
         self.app_image, self.decoder_image = immutable(app_image), immutable(decoder_image)
         need(len({self.app_image, self.decoder_image, PARENT_IMAGE, WEB_IMAGE}) == 4, 'distinct_candidate_images_required')
-        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update'), 'unsupported_lifecycle_mode')
+        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update', 'journey-finance-73-to-75'), 'unsupported_lifecycle_mode')
         self.mode = mode
         self.source_update = mode != 'video-migration'
         self.parent_image, self.before_compose, self.parent_services = PARENT_IMAGE, BEFORE_COMPOSE, OLD_SERVICES
         if self.source_update:
-            if mode == 'finance-flow-source-update':
+            if mode == 'journey-finance-73-to-75':
+                from deploy import build_journey_finance_release as photos
+            elif mode == 'finance-flow-source-update':
                 from deploy import build_finance_flow_release as photos
             elif mode == 'discovery-source-update':
                 from deploy import build_discovery_release as photos
@@ -265,6 +267,13 @@ class Lifecycle:
                 need(isinstance(expected, str) and re.fullmatch('[0-9a-f]{64}', expected)
                      and preserved.get(key) == expected, 'preservation_identity_changed')
             keys = ('logicalSha256', 'markerSha256')
+            if self.mode == 'journey-finance-73-to-75':
+                # This is the migration receipt, not the pre-DDL backup.
+                for key, expected in (('planSha256', plan_sha256), ('sourceIdentitySha256', source_identity_sha256)):
+                    need(migrated.get(key) == expected, 'migration_identity_changed')
+                need(re.fullmatch('[0-9a-f]{64}', migrated.get('beforeSha256', '')) and
+                     re.fullmatch('[0-9a-f]{64}', migrated.get('schemaSha256', '')), 'migration_receipt_required')
+                keys = ('logicalSha256',)
         else:
             need(plan_sha256 is None and source_identity_sha256 is None, 'unexpected_preservation_binding')
             keys = ('planSha256', 'logicalSha256', 'sourceIdentitySha256')

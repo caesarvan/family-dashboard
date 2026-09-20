@@ -2,19 +2,22 @@
 
 面向伴侣共同管理的家庭看板：手机和电脑负责安排与维护，两块电视按各自侧重成员展示日程、公共资金和已授权影像。个人财务、私人资料与家庭共享分别授权。
 
-**当前已发布：通用账单可选收支方向列。** 本批于 2026-09-21 00:26:30（北京时间）激活，00:27:04只读回读通过；非作者生产审计已通过。地点搜索、重复照片提示、设备照片及视频轮播继续可用。保持 **73 张户内表、9 张平台表、五个服务**。
+**当前已发布：本人旅行费用归集。** 本批于 2026-09-21 02:38:33（北京时间）激活，02:38:56只读回读通过；非作者生产独审已通过。本人可从原旅行归集已有 CNY 净付款，核对预算并追溯来源。现为 **75 张户内表、9 张平台表、五个服务**。
 
-[日常管理](https://home.caesarcharles.world/) · [电视配对](https://home.caesarcharles.world/tv) · [私有 GitHub 仓库](https://github.com/caesarvan/family-dashboard) · [最新发布证据](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release)
+[日常管理](https://home.caesarcharles.world/) · [电视配对](https://home.caesarcharles.world/tv) · [私有 GitHub 仓库](https://github.com/caesarvan/family-dashboard) · [最新发布证据](docs/JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release)
 
 相册原照片详情可主动「查找重复照片」，结果仅说明「展示副本一致，原图未核验」；助理地点结果可打开原地图／旅行／照片再返回查询。本人实际操作与实体电视仍待验收，此前discovery批次的分段验证与生产边界见[对应验收](docs/DISCOVERY-ACCEPTANCE.md#discovery-release)。
 
 通用账单可在「收支方向（可选）」选择原文件方向列，重新预览后「确认导入 · 仅本人」。若保存结果不明，点击「核对保存结果」；不要重新发起同一导入。同文件不双记，方向冲突不覆盖已保存交易；[使用与验收](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release)。
+
+从已保存旅行进入「我的旅行费用」，选择本人付款，预览确认后与共享预算并列核对；退款或来源变化进入「需核对」，可追溯原付款、调整或解除。不会改写共享已付、采购实付或原账单。[使用与验收](docs/JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release)。
 
 ## 从这里开始
 
 | 你要做什么 | 最短入口 |
 |---|---|
 | 使用家庭看板 | [成员使用手册](docs/USER-GUIDE.md)；日程、待办、采购、旅行从主导航进入 |
+| 归集本人旅行费用 | 已保存旅行 → 我的旅行费用 → 选择实际付款 → 预览归集 → 确认归集 |
 | 导入设备照片 | 相册 → 选择照片 → 设备照片 → 上传并生成预览 → 明确私密保存 |
 | 看往年同日照片 | 相册 → 那年今日；只读取本人有可靠来源日期的往年静态照片 |
 | 查重复展示副本 | 相册 → 本人已保存照片详情 → 查找重复照片；分页打开原照片，可返回提示 |
@@ -22,7 +25,7 @@
 | 分享照片或视频 | 原详情明确家庭共享；电视另按每台设备授权，二者不互相代替 |
 | 绑定日历和清单 | 设置中的账户与自动同步；注册和权限说明见 [Microsoft / Google 接入](docs/ACCOUNT-SYNC.md) |
 | 新 agent 接手 | 本 README → [HANDOFF](docs/HANDOFF.md) → 模块契约 → [开发指南](docs/DEVELOPMENT.md) |
-| 更新已有服务器 | 先核 [当前发布合同](docs/FINANCE-FLOW-RELEASE.md)，再读部署与恢复文档；不要重放历史计划 |
+| 更新已有服务器 | 先核 [当前发布合同](docs/JOURNEY-FINANCE-RELEASE.md)，再读部署与恢复文档；不要重放历史计划 |
 
 原 README 的 515 行发布历史和全部链接保存在 [2026-09-20 历史快照](docs/README-HISTORY-20260920.md)。历史段落中的“当前”不再作为现行架构或部署依据。
 
@@ -37,7 +40,7 @@
 | 日程隐私 | 新本地安排默认私密，可明确共享和撤回；原 ID／版本编辑 | 同步日程沿来源权限，在原应用调整；不是 iCloud 实时连接 |
 | 待办与提醒 | 本地及云任务、前置依赖、完成门禁、例行计划；本人已读／稍后提醒 | 站内提醒不会替用户完成任务；新云发布写入仍需真实账号验收 |
 | 采购与库存 | 数量、负责人、截止、优先级、预算、实付和参考图；批次、收货、消耗、售后关联待办 | 私人订单来源不公开；不自动购物、付款、扣减公共余额 |
-| 旅行 | 可编辑计划、准备清单、采购／日程联动、当地时区分段、改期、JSON 导入、路线与回顾 | 保存前核对并确认；预订状态手工维护，不连接航司／酒店下单 |
+| 旅行 | 可编辑计划、准备清单、采购／日程联动、当地时区分段、改期、JSON 导入、路线与回顾；本人付款归集、预算对照与原来源追溯 | 归集仅本人 CNY 净付款，不代表家庭实际总额；预订状态手工维护，不连接航司／酒店下单 |
 | 地图与资料 | 地点管理、到访、授权坐标及助理查询→地图／旅行／照片往返；私有资料与明确共享 | 返回保留原查询页；地图不做街道导航或自动地理编码，资料不自动下载、验票或查毒 |
 | 相册 | Google Picker 明确选片；设备照片上传；净化加密、私密确认、原详情、共享和逐台电视授权；本人主动查询跨来源重复展示副本 | 不核验原图，不自动合并／删除；真实 Google 视频、手机选择器与实体电视另验 |
 | 视频 | Google 来源视频导入流程、独立解码、成员播放及电视照片／视频混合播放 | 本地视频上传尚未实现；视频缓存限额与硬件播放兼容仍有边界 |
@@ -106,7 +109,7 @@ flowchart LR
 | 财务／来源／投资 | [finance_hub.py](finance_hub.py)、[finance_baseline.py](finance_baseline.py)、[finance_accounts.py](finance_accounts.py)、[investment_import.py](investment_import.py) | [财务 API](docs/FINANCE-API.md)、[来源桥接](docs/FINANCE-SOURCE-BRIDGE.md)、[投资导入](docs/INVESTMENT-IMPORT.md) |
 | 助理 | [home_assistant.py](home_assistant.py)、[assistant_trip_intent.py](assistant_trip_intent.py) | [平台 API](docs/PLATFORM-API.md)、[资料照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-UI.md) |
 | 本人导出 | [data_portability.py](data_portability.py) | [导出格式与权限](docs/PORTABILITY.md) |
-| 打包／发布 | [deploy](deploy) | [当前五服务发布合同](docs/FINANCE-FLOW-RELEASE.md)、[完整验收索引](docs/VALIDATION.md) |
+| 打包／发布 | [deploy](deploy) | [当前五服务发布合同](docs/JOURNEY-FINANCE-RELEASE.md)、[完整验收索引](docs/VALIDATION.md) |
 
 常用接口从 `/api/me`、`/api/state`、`/api/items/*`、`/api/accounts/*`、`/api/media/*`、`/api/assistant/*` 和 `/api/portability/*` 进入。精确方法／路径参见 [路由索引](docs/PLATFORM-ROUTES.md)，字段、错误码和可见范围以各模块契约与源码为准。
 
@@ -144,9 +147,9 @@ flowchart LR
 
 ## 部署、备份与故障恢复
 
-当前服务器为 racknerd VPS／Ubuntu，Name.com 管理域名 DNS，Nginx 负责 HTTPS。现有生产使用 app、sync、media、decoder、web 五服务；本批通用账单收支方向列更新没有 DDL，保持73/9。
+当前服务器为 racknerd VPS／Ubuntu，Name.com 管理域名 DNS，Nginx 负责 HTTPS。现有生产使用 app、sync、media、decoder、web 五服务；本批旅行费用完成73→75迁移，平台仍为9表。
 
-**当前已发布版本的合同是 [FINANCE-FLOW-RELEASE](docs/FINANCE-FLOW-RELEASE.md)。** 该合同记录此前 discovery 父版到 `53ea3fd` 的已完成发布，计划已消费，禁止重放。下次必须以届时实际线上版本为父版重新适配并生成新计划。[DEPLOYMENT](docs/DEPLOYMENT.md)和 [OPERATIONS](docs/OPERATIONS.md)中的旧表数、旧镜像及迁移命令保留历史含义，不能覆盖本页和最新验收所绑定的父版。
+**当前已发布版本的合同是 [JOURNEY-FINANCE-RELEASE](docs/JOURNEY-FINANCE-RELEASE.md)。** 该合同记录财务父版 `53ea3fd` 到 `302a62d` 的已完成发布，计划已消费，禁止重放。下次必须以届时实际线上版本为父版重新适配并生成新计划。[DEPLOYMENT](docs/DEPLOYMENT.md)和 [OPERATIONS](docs/OPERATIONS.md)中的旧表数、旧镜像及迁移命令保留历史含义，不能覆盖本页和最新验收所绑定的父版。
 
 | 环节 | 必须保留的核验 |
 |---|---|
@@ -158,13 +161,13 @@ flowchart LR
 | 开放与回读 | 保全通过后恢复五服务和备份timer；正常TLS、权限、源码／运行字节、镜像及配置只读复核 |
 | 失败 | 保留失败attempt和现场，禁止重放；按原发布回执决定完整组恢复，不自动重启旧版 |
 
-app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像及四个运行文件。应用发布包含112个非Expo文件与23个静态导出；精确运行身份见集中验收，不以文档提交 SHA 替代。
+app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像及四个运行文件。应用发布包含113个非Expo文件与23个静态导出；精确运行身份见集中验收，不以文档提交 SHA 替代。
 
 备份须覆盖平台注册库与所有已登记家庭，保留散列清单和配套密钥。在线备份不等同跨库原子快照；恢复必须保持完整家庭映射，按 [会话恢复合同](docs/MEMBER-SESSIONS.md#恢复后使旧成员登录失效)处理旧登录。
 
-73→73隔离两户三库的正常、注入漂移与完整恢复已验证；生产最近一批没有恢复数据库。发布只读回读也不代表重新校验活库内容、备份SQLite字节或worker业务tick。
+本批隔离两户三库已完成73→75迁移、部分失败收停、完整73恢复和非空75恢复；生产本次只做迁移与保全，没有恢复数据库。发布只读回读也不代表重新校验活库内容、备份SQLite字节或worker业务tick。
 
-不要删除数据卷、覆盖密钥、仅回退镜像或只恢复一个家庭。已有业务写入时先保全现场，再确定恢复策略；旧71表、四服务或首次迁移入口不能操作当前73/9五服务环境。
+不要删除数据卷、覆盖密钥、仅回退镜像或只恢复一个家庭。已有业务写入时先保全现场，再确定恢复策略；旧71／73表、四服务或已消费迁移入口不能操作当前75/9五服务环境。
 
 ## 多 agent 的交付流程
 
@@ -183,7 +186,8 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 
 | 证据入口 | 能确认什么 |
 |---|---|
-| [通用账单收支方向列](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release) | 当前部署 source `53ea3fd`、manifest `e6898a2`、app镜像 `cdbe470`；22项Node、两组tsc、3/3浏览器、新Linux33项及实际生产保全／回读，继承证据范围单列 |
+| [本人旅行费用归集](docs/JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release) | 当前部署 source `302a62d`、manifest `9a44d4c`、app镜像 `1f957a9`；3/3真实浏览器、Linux46项、73→75隔离迁移／恢复，以及本次生产迁移、保全和只读回读 |
+| [通用账单收支方向列](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release) | 此前部署 source `53ea3fd`、manifest `e6898a2`、app镜像 `cdbe470`；22项Node、两组tsc、3/3浏览器、新Linux33项及实际生产保全／回读，继承证据范围单列 |
 | [地点入口与重复提示](docs/DISCOVERY-ACCEPTANCE.md#discovery-release) | 此前 source `63dc634`、manifest `7b77dfb`、app镜像 `b63c1f5`；保留125与新增9项Linux、5＋1分段浏览器、四请求资源及生产回读；当批 main `1d589e6` 仅追加四份后验文档 |
 | [设备照片与那年今日](docs/LOCAL-PHOTO-ACCEPTANCE.md#local-photo-release) | 该批 source `79e5ef9`；191实际Linux、浏览器分段、R3媒体资源、73→73演练和当批生产只读审计 |
 | [视频与混合播放](docs/MEDIA-VIDEO-ACCEPTANCE.md#media-video-release) | 五服务来源、独立解码与73/9迁移、实际资源和完整恢复演练边界 |
@@ -193,7 +197,7 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 | [资料与照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release) | 早期授权元数据搜索与原详情往返；地点新入口的后续证据见此前地点批次验收 |
 | [VALIDATION](docs/VALIDATION.md)与[历史README](docs/README-HISTORY-20260920.md) | 更早模块、分轮成功／失败和固定原件索引，按对应版本解释 |
 
-最近一批财务方向列生产发布实际为一户两库：73/9全组保持、1198安装文件、三个应用服务各135运行文件与decoder原4文件核对通过，五服务运行且无OOM／重启，app／decoder健康，备份timer active。完整SHA和原件集中在[最新验收页](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release)；该批代码与文档已合入 main `dc2b54c`，实际安装 source 仍为 `53ea3fd`，后续文档提交不改变该部署身份。
+最近一批旅行费用生产发布实际为一户两库：完整备份后73→75／平台9保持，旧73表及序列保全、新两表在app停止核验时为空；1222安装文件、三个应用服务各136运行文件与decoder原4文件核对通过。五服务运行且无OOM／重启，app／decoder健康，备份timer active。完整SHA和原件集中在[最新验收页](docs/JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release)；实际安装 source 固定为 `302a62d`，Git合并与后续文档提交不改变该部署身份。
 
 失败也属于交付记录：设备照片浏览器曾因会话预期和无界等待失败；图像资源R1 OOM、R2触限及首次构建权限失败均保留。R3通过不抹去此前失败，也不扩成任意负载保证。
 
