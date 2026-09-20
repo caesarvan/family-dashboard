@@ -16,6 +16,7 @@ import shutil
 import signal
 import socket
 import sqlite3
+import stat
 import subprocess
 import sys
 import threading
@@ -254,7 +255,7 @@ class Transport:
         self.records, self.owned, self.intents = [], {}, {}
         self.timer, self.cleanup, self.unknown = True, False, None
         self.discovery_admitted = False
-        self.data_path = None; self.injected = None
+        self.data_path = None; self.injected = None; self.partial_snapshot_sha = None
 
     def execute(self, argv, timeout=240):
         if not self.cleanup: self.monitor.check()
@@ -569,7 +570,7 @@ def create_data_volume(transport):
 
 def restore_fixture(c, transport, bundle):
     c.stopped(); need(not transport.timer, 'fixture_timer_not_stopped')
-    if transport.injected: transport.injected.chmod(0o600)
+    if transport.injected: restore_injected_permissions(c, transport)
     # Preserve the full failed/live source before restoring the explicit fixture parent.
     saved_root = transport.root/'source-before-rollback'; c.root.rename(saved_root)
     shutil.copytree(c.release/'source-before', c.root)
@@ -604,19 +605,92 @@ exec(compile(Path('/restore.py').read_text(),'<fixed-documented-restore>','exec'
     return c.verify_rollback(c.release)
 
 
-def partial_schema(root):
-    """Read only the stopped synthetic group; prove first DB committed before failure."""
+def partial_files(root, injected=None):
+    """Fingerprint only the stopped, isolated three-database fixture and sidecars."""
+    root = safe(root, exists=True)
     paths = [root/'household.sqlite3', root/'platform.sqlite3', *sorted((root/'spaces').glob('*/household.sqlite3'))]
     need(len(paths)==3, 'partial_group_not_complete')
+    need(injected is None or safe(injected)==paths[2], 'unexpected_partial_injection')
+    files = {}
+    for database in paths:
+        for suffix in ('', '-wal', '-shm', '-journal'):
+            path = safe(Path(str(database)+suffix))  # Includes dangling/ancestor links.
+            name = path.relative_to(root).as_posix()
+            if not path.exists():
+                need(bool(suffix), 'partial_database_missing'); files[name] = None; continue
+            before = path.stat()
+            need(stat.S_ISREG(before.st_mode) and before.st_nlink==1, 'partial_file_not_regular')
+            raw = path.read_bytes(); after = path.stat()
+            need((before.st_dev,before.st_ino,before.st_mode,before.st_size,before.st_mtime_ns)==
+                 (after.st_dev,after.st_ino,after.st_mode,after.st_size,after.st_mtime_ns), 'partial_file_changed')
+            files[name] = {'sha256':sha(raw), 'bytes':len(raw), 'mode':stat.S_IMODE(after.st_mode),
+                           'device':after.st_dev, 'inode':after.st_ino, 'mtimeNs':after.st_mtime_ns}
+    return paths, files
+
+
+def validate_partial_files(root, paths, files, injected):
+    for database in paths:
+        name = database.relative_to(root).as_posix()
+        wal, shm, journal = (files[name+suffix] for suffix in ('-wal', '-shm', '-journal'))
+        need(journal is None, 'partial_group_not_stopped')
+        if wal is not None or shm is not None:
+            # Exactly the failed readonly second DB may have an empty WAL and
+            # SQLite's ordinary 32KiB SHM. An immutable read cannot omit WAL data.
+            need(injected is not None and database==safe(injected) and wal is not None and shm is not None
+                 and wal['bytes']==0 and shm['bytes']==32768, 'partial_group_not_stopped')
+
+
+def partial_schema(root, *, injected=None, evidence=None):
+    """Read immutable after caller c.stopped(); retain all bytes and sidecars."""
+    root = safe(root, exists=True)
+    paths, before = partial_files(root, injected)
+    if evidence is not None:
+        save(Path(str(evidence)+'.started.json'), {'files':before, 'readOnly':True})
+    validate_partial_files(root, paths, before, injected)
     counts = {}
     for path in paths:
-        need(not any(Path(str(path)+suffix).exists() for suffix in ('-wal','-shm','-journal')), 'partial_group_not_stopped')
         with closing(sqlite3.connect(path.as_uri()+'?mode=ro&immutable=1', uri=True)) as con:
             counts[path.relative_to(root).as_posix()] = con.execute(
                 "SELECT count(*) FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").fetchone()[0]
+    _, after = partial_files(root, injected)
+    need(before==after, 'partial_read_changed_files')
     need(counts['household.sqlite3']==73 and counts['platform.sqlite3']==9 and
          counts[paths[2].relative_to(root).as_posix()]==71, 'partial_migration_not_proven')
+    if evidence is not None:
+        save(evidence, {'before':before, 'after':after, 'tables':counts, 'readOnly':True,
+                        'injected':safe(injected).relative_to(root).as_posix() if injected else None})
     return counts
+
+
+def restore_injected_permissions(c, transport):
+    """Repair only this run's readonly injection, after stopped and hash checks."""
+    c.stopped(); need(not transport.timer, 'fixture_timer_not_stopped')
+    root = safe(transport.data_path, exists=True)
+    evidence = controller.read(transport.root/'partial-sidecars.json', transport.partial_snapshot_sha)
+    need(transport.partial_snapshot_sha is not None and evidence['readOnly'] is True
+         and evidence['before']==evidence['after'], 'partial_observation_missing')
+    paths, current = partial_files(root, transport.injected)
+    validate_partial_files(root, paths, current, transport.injected)
+    name = safe(transport.injected).relative_to(root).as_posix()
+    need(evidence['injected']==name and evidence['after']==current, 'partial_files_changed_before_restore')
+    allowed = [name] + [name+suffix for suffix in ('-wal', '-shm') if current[name+suffix] is not None]
+    save(transport.root/'restore-permissions.started.json', {'files':current, 'allowed':allowed})
+    c.stopped()  # No helper, service or volume writer may appear before chmod.
+    for relative in allowed:
+        path = root/relative
+        need(not path.is_symlink() and path.is_file(), 'partial_file_not_regular')
+        path.chmod(0o600)
+    _, after = partial_files(root, transport.injected)
+    for relative, value in current.items():
+        expected = {**value, 'mode':after[relative]['mode']} if value is not None and relative in allowed else value
+        need(after[relative]==expected, 'permission_repair_changed_bytes')
+        if relative in allowed:
+            # Windows maps chmod(0600) to its readonly attribute; record its real
+            # mode. Actual Linux run must obtain exactly 0600.
+            need(after[relative]['mode']==0o600 if sys.platform=='linux' else after[relative]['mode'] & 0o200,
+                 'permission_repair_failed')
+    save(transport.root/'restore-permissions.json', {'before':current, 'after':after, 'allowed':allowed,
+                                                   'contentUnchanged':True, 'deletedFiles':[]})
 
 
 def scenario(bundle, input_sha, meta, verified, output, name, run_id, monitor):
@@ -651,7 +725,9 @@ def scenario(bundle, input_sha, meta, verified, output, name, run_id, monitor):
                      not (c.release/'proof/migration-result.json').exists(), 'expected_real_migration_failure_missing')
                 result['activationFailure'] = failed
                 c.stopped()
-                result['partialMigrationTables'] = partial_schema(data_path)
+                result['partialMigrationTables'] = partial_schema(data_path, injected=transport.injected,
+                    evidence=root/'partial-sidecars.json')
+                transport.partial_snapshot_sha = sha((root/'partial-sidecars.json').read_bytes())
                 save(root/'partial-migration.json', result['partialMigrationTables'])
             else:
                 need(name=='success' and activated['completed'] and activated['schema']==[73,9], 'unexpected_activation_success')
