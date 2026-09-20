@@ -1,6 +1,6 @@
 # 日程重叠派生合同
 
-状态：独立功能候选，仅纯前端计算；未接入界面、未发布。不增加 API、数据库字段、云写入或额外授权。
+状态：计算与 Expo 界面已于 2026-09-20 08:47:27（北京时间）激活，08:49:19 独立生产只读审计通过；[使用与集中验收](CALENDAR-CONFLICTS-ACCEPTANCE.md#calendar-conflicts-release)。不增加 API、数据库字段、云写入或额外授权。
 
 `frontend/src/lib/calendar.ts` 导出：
 

@@ -1,6 +1,12 @@
 # 部署、更新与恢复交接
 
-## 当前提醒版本：71/9
+## 当前日程重叠版本：71/9
+
+2026-09-20 08:47:27（北京时间）激活，08:49:19 独立生产只读审计通过。一户两库保持 71/9；本批只替换 Expo 界面，106 个非 Expo 运行文件与提醒父版一致。[使用与集中验收](CALENDAR-CONFLICTS-ACCEPTANCE.md#calendar-conflicts-release)包含固定包、实际镜像、已消费计划和原件。发布适配为 `build_expo_calendar_conflicts_release.py`／`activate_expo_calendar_conflicts_release.py`，见[合同](EXPO-CALENDAR-CONFLICTS-RELEASE.md)。
+
+本次按非空 71 表基线停写并备份完整数据库组，app-only 启动后核对全部表、settings、序列、提醒状态及回执完全保全，再恢复四服务。没有 DDL，也不重跑父版的 69→71 迁移。本次 stage／activate 已消费，不得重放；后续新版本必须重新绑定实际安装身份和新计划。
+
+## 历史提醒版本：69/9→71/9
 
 2026-09-20 07:52:22（北京时间）激活，07:56:49 独立生产只读审计通过；生产一户两库已完成 69/9→71/9。正式身份、已消费计划和原件集中在[提醒验收](TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。发布工具为 build_task_reminders_release.py／activate_task_reminders_release.py，合同见[发布](TASK-REMINDERS-RELEASE.md)、[迁移检查器](TASK-REMINDERS-MIGRATION.md)与[隔离 Linux 演练](TASK-REMINDERS-LINUX-REHEARSAL.md)；本次 stage／activate 及首次迁移不得重放。
 

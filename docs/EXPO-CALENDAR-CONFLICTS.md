@@ -1,6 +1,6 @@
-# Expo 日程时间重叠提示（候选）
+# Expo 日程时间重叠提示
 
-本轮仅为下一版 UI 候选，不属于已冻结的提醒发布包。正式构建、真实本地浏览器、云账户与生产尚未在本轮验收。
+本 UI 已于 2026-09-20 08:47:27（北京时间）激活，08:49:19 独立生产只读审计通过。正式构建、真实临时浏览器和生产证据见[使用与集中验收](CALENDAR-CONFLICTS-ACCEPTANCE.md#calendar-conflicts-release)；真实云账户写入、实体电视及本人完整 A–D 场景仍未验收。
 
 ## 最短使用路径
 
@@ -26,4 +26,4 @@
 
 ## 文件与验证边界
 
-本 UI 分支只修改 `CalendarScreen.tsx`、`HomeScreen.tsx`，新增 `CalendarConflictsPanel.tsx` 与本文。核心 helper 由独立分支实现并独立审查；在集成人合入已审 helper 后才进行 typecheck，不使用临时 stub。实际类型检查与后续浏览器证据另附冻结交付报告；本文不预写通过结果。
+原 UI 分支只修改 `CalendarScreen.tsx`、`HomeScreen.tsx`，新增 `CalendarConflictsPanel.tsx` 与本文。核心 helper 由独立分支实现并独立审查；组合后正式两组 TypeScript、34 项 Node 与 23 个 Expo 导出文件通过，浏览器采用 R1 后两项＋R2 首项的三流程分段证据。完整原件、失败记录与范围见集中验收，不把分段结果相加为一次全量。
