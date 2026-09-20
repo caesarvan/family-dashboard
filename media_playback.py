@@ -1,11 +1,12 @@
 """Persistent TV photo controls. Playback never creates or broadens media grants."""
 from datetime import datetime, timezone
-import math
+import secrets
 import re
 import time
 
 from flask import jsonify, request
 from household_media import ITEM_VIEW, MediaError, _request_object
+import media_playback_progress as progress
 
 LEASE_SECONDS = 15
 SCHEMA_SQL = '''
@@ -85,9 +86,8 @@ class MediaPlayback:
         return [row for row in rows if allowed[(row['account_id'],row['owner'])]]
 
     def _position(self, state, count, now):
-        steps = (max(0, math.floor((now-state['anchor_at'])/state['interval_seconds']))
-                 if state['mode']=='photos' and not state['paused'] else 0)
-        return (state['cursor']+steps) % count if count else 0
+        # A decoder's actual completion, never elapsed wall time, advances media.
+        return state['cursor'] % count if count else 0
 
     def _dto(self, state, count, now):
         return {'deviceId':state['device_id'], 'revision':state['revision'], 'mode':state['mode'],
@@ -113,6 +113,8 @@ class MediaPlayback:
             owner = self.library._member(con)  # Current signed member session, not a supplied owner.
             self._device(con,uid)
             state, photos, now = self._state(con,uid), self._photos(con,uid), self.clock()
+            play, position = progress.resolve(self.library,con,state,photos)
+            state['cursor'] = position
             if value is not None:
                 if state['revision'] != revision:
                     raise MediaError('conflict')
@@ -143,23 +145,89 @@ class MediaPlayback:
                         tuple(state[k] for k in ('mode','paused','interval_seconds','cursor','anchor_at','revision','updated_at'))+(uid,revision))
                     if changed.rowcount != 1:
                         raise MediaError('conflict')
+                if state['mode']=='dashboard':
+                    con.execute('DELETE FROM media_playback_progress WHERE device_id=?',(uid,))
+                elif photos:
+                    row=photos[state['cursor'] % len(photos)]
+                    if action in ('start','next','previous') or play is None:
+                        play=dict(device_id=uid,item_id=row['id'],item_revision=row['revision'],play_id=secrets.token_hex(12),
+                                  position_ms=0,report_seq=0,reported_at=0)
+                    progress.save(con,play)
                 self.library._audit(con,owner,'media_playback_control',uid)
             return self._dto(state,len(photos),now)
 
+    def authorize_progress_request(self):
+        with self.library.transaction() as con:
+            uid=self.library._tv(con)
+            progress.check_csrf(self.library,self._device(con,uid),self.clock())
+
+    def _tv_dto(self,con,uid):
+        device=self._device(con,uid)
+        state,now=self._state(con,uid),self.clock()
+        photos=self._photos(con,uid) if state['mode']=='photos' else []
+        play,position=progress.resolve(self.library,con,state,photos)
+        state['cursor']=position
+        result=self._dto(state,len(photos),now)
+        result.update(item=None,progress=None,protocol=2)
+        if play:
+            row=photos[position]
+            self.library._item(con,row['id'],device=uid)
+            item=dict(self.library._item_dto(con,row,television=True),revision=row['revision'])
+            duration=item['durationMs'] if item.get('mediaType')=='video' else state['interval_seconds']*1000
+            result.update(item=item,progress=dict(playId=play['play_id'],positionMs=min(play['position_ms'],duration),
+                sequence=play['report_seq'],durationMs=duration))
+        result.update(serverTime=_iso(now),validUntil=_iso(min(now+LEASE_SECONDS,device['expires'])),
+                      playbackCsrf=progress.csrf(self.library,device,now))
+        return result
+
     def television(self):
         with self.library.transaction() as con:
-            uid = self.library._tv(con)  # Real TV credential even if a member cookie also exists.
-            device = self._device(con,uid)
-            state, now = self._state(con,uid), self.clock()
-            photos = self._photos(con,uid) if state['mode']=='photos' else []
-            result = self._dto(state,len(photos),now)
-            result['item'] = None
-            if photos:
-                row = photos[result['position']]
-                self.library._item(con,row['id'],device=uid)
-                result['item'] = dict(self.library._item_dto(con,row,television=True),revision=row['revision'])
-            result.update(serverTime=_iso(now),validUntil=_iso(min(now+LEASE_SECONDS,device['expires'])))
-            return result
+            return self._tv_dto(con,self.library._tv(con))
+
+    def report(self,value):
+        keys={'revision','playId','itemId','itemRevision','sequence','positionMs','event'}
+        if type(value) is not dict or set(value)!=keys:
+            raise MediaError('invalid_input')
+        for key in ('revision','itemRevision','sequence'):
+            _integer(value[key],1,9007199254740990)
+        _id(value['playId']);_id(value['itemId']);_integer(value['positionMs'],0,600250)
+        if value['event'] not in ('ready','checkpoint','paused','ended'):
+            raise MediaError('invalid_input')
+        with self.library.transaction(True) as con:
+            uid=self.library._tv(con)
+            progress.check_csrf(self.library,self._device(con,uid),self.clock())
+            state,rows=self._state(con,uid),self._photos(con,uid)
+            play,position=progress.resolve(self.library,con,state,rows)
+            if (not play or state['revision']!=value['revision']
+                    or (play['play_id'],play['item_id'],play['item_revision'])!=(value['playId'],value['itemId'],value['itemRevision'])
+                    or value['sequence']<=play['report_seq']):
+                raise MediaError('conflict')
+            row=self.library._item(con,play['item_id'],device=uid)
+            metadata=self.library._metadata(row)
+            duration=metadata['durationMs'] if metadata.get('mediaType')=='video' else state['interval_seconds']*1000
+            offset=value['positionMs'];event=value['event']
+            if offset>duration or offset<min(play['position_ms'],duration):
+                raise MediaError('conflict')
+            if ((event in ('checkpoint','ended') and state['paused']) or (event=='paused' and not state['paused'])
+                    or (event=='ready' and abs(offset-min(play['position_ms'],duration))>250)):
+                raise MediaError('conflict')
+            if event=='ended':
+                tolerance=250 if metadata.get('mediaType')=='video' else 0
+                if offset<duration-tolerance:
+                    raise MediaError('conflict')
+                next_index=(position+1)%len(rows);next_row=rows[next_index];now=self.clock()
+                changed=con.execute('UPDATE media_playback SET cursor=?,anchor_at=?,updated_at=?,revision=revision+1 WHERE device_id=? AND revision=?',
+                                    (next_index,now,now,uid,value['revision']))
+                if changed.rowcount!=1:raise MediaError('conflict')
+                play=dict(device_id=uid,item_id=next_row['id'],item_revision=next_row['revision'],play_id=secrets.token_hex(12),
+                          position_ms=0,report_seq=0,reported_at=0)
+            else:
+                play.update(position_ms=offset,report_seq=value['sequence'],reported_at=self.clock())
+            progress.save(con,play)
+            # Operational reports never call member audit/meta, edit grants, or
+            # write media. Any duplicate/unknown report is resolved by a GET.
+            return self._tv_dto(con,uid)
+
 
 
 def register_media_playback(app):
@@ -167,6 +235,7 @@ def register_media_playback(app):
     library = app.extensions['household_media']
     with library.sessions.db() as con:
         initialize_media_playback(con)
+        progress.initialize_progress(con)
     playback = MediaPlayback(library)
     app.extensions['media_playback'] = playback
 
@@ -181,5 +250,11 @@ def register_media_playback(app):
         if request.args:
             raise MediaError('invalid_input')
         return jsonify(playback.television())
+
+    @app.post('/api/media-tv/playback/progress')
+    def media_playback_progress():
+        if request.args:
+            raise MediaError('invalid_input')
+        return jsonify(playback.report(_request_object()))
 
     return playback

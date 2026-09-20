@@ -74,7 +74,7 @@ def _response_headers(response):
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "same-origin"
     response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    response.headers["Content-Security-Policy"] = "default-src 'self'; img-src 'self' data: blob:; media-src 'self' blob:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'self'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
     if request.path.startswith(("/api/", "/auth/")):
         response.headers["Cache-Control"] = "no-store"
@@ -294,6 +294,14 @@ def create_app(config=None):
                 if not request.is_json:
                     raise Problem("仅接受 JSON 请求", 415)
                 if request.path not in {"/api/login", "/api/pair/start", "/api/pair/poll", "/api/spaces/redeem"}:
+                    if request.path == '/api/media-tv/playback/progress' and request.method == 'POST':
+                        # Only this operational TV report bypasses member writes.
+                        # The handler repeats TV/CSRF/ACL checks in its write transaction.
+                        playback = app.extensions.get('media_playback')
+                        if playback is None:
+                            raise Problem('Playback unavailable', 503)
+                        playback.authorize_progress_request()
+                        return None
                     require_member()
                     token = request.headers.get("X-CSRF-Token", "")
                     if not token or not secrets.compare_digest(token, session.get("csrf", "")):
