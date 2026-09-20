@@ -8,6 +8,8 @@ import { RecapDiscarded, RecapError, RecapFence, recapId, recapPagePath, recapRe
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
 import { useDisplayDensity } from '../ui/theme';
 
+import TripTVRecapPanel from './TripTVRecapPanel';
+
 type Props = { journeyId: string; onBack: () => void; initialTab?: Tab; backLabel?: string };
 type Tab = 'journey' | 'places' | 'photos';
 type Selection = { tab: Tab; places: number; photos: number; photoId: string };
@@ -28,6 +30,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
   const latest = useRef({ household, props }); latest.current = { household, props };
   const [data, setData] = useState<RecapSnapshot | null>(null), [busy, setBusy] = useState(false), [error, setError] = useState('');
   const [tab, setTab] = useState<Tab>(props.initialTab || 'journey'), [eventPage, setEventPage] = useState(0), [photoUrl, setPhotoUrl] = useState('');
+  const [television, setTelevision] = useState(false), inTelevision = useRef(false);
   const selection = useRef<Selection>({ tab: props.initialTab || 'journey', places: 0, photos: 0, photoId: '' });
   const alive = useRef(false), focused = useRef(false), active = useRef(false), departed = useRef(false), denied = useRef(false);
   const foreground = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive'), pageHidden = useRef(false);
@@ -35,7 +38,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
   const epoch = useRef(0), working = useRef(false), flight = useRef<AbortController | null>(null), url = useRef('');
   const imageExpiry = useRef<ReturnType<typeof setTimeout> | null>(null), imageDeadline = useRef(0);
   const fence = useRef(new RecapFence(props.identityKey));
-  const current = (ticket = epoch.current) => alive.current && focused.current && active.current && !departed.current && !denied.current && !pageHidden.current
+  const current = (ticket = epoch.current) => alive.current && focused.current && active.current && !inTelevision.current && !departed.current && !denied.current && !pageHidden.current
     && foreground.current && windowFocused.current && pageVisible() && connected() && latest.current.household.online && latest.current.household.identityKey === props.identityKey && ticket === epoch.current;
 
   function clearImage() {
@@ -95,7 +98,7 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
     finally { if (flight.current === controller) flight.current = null; if (current(ticket)) { working.current = false; setBusy(false); } }
   }
   function enter() {
-    if (active.current || denied.current || departed.current || !alive.current || !focused.current || !foreground.current || !windowFocused.current || pageHidden.current || !pageVisible() || !connected() || !latest.current.household.online) return;
+    if (inTelevision.current || active.current || denied.current || departed.current || !alive.current || !focused.current || !foreground.current || !windowFocused.current || pageHidden.current || !pageVisible() || !connected() || !latest.current.household.online) return;
     active.current = true; void load();
   }
   function back() { departed.current = true; conceal(); latest.current.props.onBack(); }
@@ -116,6 +119,8 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
       if (typeof window !== 'undefined') { window.removeEventListener('blur', blur); window.removeEventListener('focus', focus); window.removeEventListener('online', online); window.removeEventListener('offline', offline); window.removeEventListener('pagehide', hide); window.removeEventListener('pageshow', show); } };
   }, []);
   useEffect(() => { if (!household.online) conceal(); else enter(); }, [household.online]);
+
+  if (television) return <TripTVRecapPanel journeyId={props.journeyId} onBack={() => { inTelevision.current = false; setTelevision(false); enter(); }} />;
 
   const showData = current() && !!data, blocked = busy || !current();
   const button = (label: string, action: () => void, disabled = blocked, mode: 'text' | 'outlined' | 'contained' = 'outlined') =>
@@ -142,7 +147,8 @@ function Workspace(props: Props & { identityKey: string; owner: string }) {
         <Text style={{ color: theme.colors.onSurfaceVariant }}>地点的到访状态以你的记录为准。</Text>
       </View></SectionCard>
       <View style={styles.actions}>{tabs.map(([key, label]) => <Button key={key} contentStyle={styles.touch} accessibilityLabel={label} accessibilityState={{ selected: tab === key }}
-        mode={tab === key ? 'contained' : 'outlined'} disabled={blocked} onPress={() => change({ tab: key, photoId: '' })}>{label}</Button>)}{button('刷新旅行回顾', refresh)}</View>
+        mode={tab === key ? 'contained' : 'outlined'} disabled={blocked} onPress={() => change({ tab: key, photoId: '' })}>{label}</Button>)}{button('刷新旅行回顾', refresh)}<Button testID="trip-tv-entry" accessibilityLabel="在电视回顾" contentStyle={styles.touch} mode="contained" disabled={blocked || !data.journey.tripPresent}
+        onPress={() => { inTelevision.current = true; conceal(); setTelevision(true); }}>在电视回顾</Button></View>
       {tab === 'journey' && <>
         <SectionCard title="保存的城市安排"><View style={{ gap: density.sectionGap }}>
           <Text>按旅行计划排列。</Text>
