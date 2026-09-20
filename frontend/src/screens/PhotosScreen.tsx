@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Image, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Button, Card, Checkbox, Dialog, Divider, List, Menu, Portal, ProgressBar, SegmentedButtons, Text, TextInput, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Card, Dialog, Divider, List, Menu, Portal, ProgressBar, SegmentedButtons, Text, TextInput, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import { memberIdentity } from '../lib/sessionIdentity.ts';
@@ -10,6 +10,7 @@ import type { ScreenProps } from '../lib/types';
 import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, finishPhotoCreate, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto, videoDescription } from '../lib/photos';
 import type { ImportDetail, Photo, PhotoAccount, PhotoDevice, PhotoImport, PhotoJourney, PhotoPage, PhotoSession } from '../lib/photos';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
+import { SelectionRow } from '../ui/SelectionRow';
 import PhotoJourneySuggestions from '../components/PhotoJourneySuggestions';
 import MemberVideoPlayer from '../components/MemberVideoPlayer';
 import { photoSuggestionBody, readPhotoJourneySuggestions, type PhotoJourneySuggestions as Suggestions } from '../lib/photoJourneySuggestions';
@@ -420,7 +421,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   const cardWidth = `${100 / columns - 1.7}%` as `${number}%`;
   const closeEditor = () => { if (busy) return; if (editor && (anyDraft(editor) || editor.blocked)) setDecision('discard'); else { serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); } };
   const renderPhoto = (item: Photo, label: string, large = false) => <Image accessibilityLabel={label} source={{ uri: imageUri(item) }} style={large ? styles.detailImage : styles.thumbnail} resizeMode={large ? 'contain' : 'cover'} />;
-  const checkbox = (label: string, checked: boolean, change: () => void, disabled = false) => <Checkbox.Item label={label} status={checked ? 'checked' : 'unchecked'} onPress={change} disabled={disabled} position="leading" labelStyle={styles.checkLabel} style={styles.checkRow} />;
+  const checkbox = (label: string, checked: boolean, change: () => void, disabled = false) => <SelectionRow label={label} checked={checked} onPress={change} disabled={disabled} />;
   const backToSearch = props.onBack ? <Button contentStyle={{ minHeight: 44 }} disabled={busy || !!editor || !!createReceipt || !!confirmReceipt || !available()} onPress={props.onBack}>返回搜索</Button> : undefined;
   if (denied) return <EmptyState title="正在核对登录身份" description="原账户的照片和编辑内容已清空。" action={backToSearch} />;
   if (!focused || !available()) return <EmptyState title={loading && available() ? '正在核对照片权限' : '照片内容已隐藏'} description={error || '联网并回到页面后，将重新核对当前身份；未保存的修改仍保留在此页面内。'}
@@ -531,7 +532,7 @@ const styles = StyleSheet.create({
   page: { gap: 16 }, stack: { gap: 14 }, actions: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
   scope: { flexGrow: 1, minWidth: 240 }, grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 16 },
   photoCard: { borderRadius: 12, overflow: 'hidden' }, thumbnail: { width: '100%', aspectRatio: 1, backgroundColor: '#f0f0f3' },
-  photoCopy: { paddingHorizontal: 12, paddingVertical: 12, gap: 6 }, checkLabel: { fontSize: 14, lineHeight: 21, textAlign: 'left' }, checkRow: { paddingHorizontal: 0 },
+  photoCopy: { paddingHorizontal: 12, paddingVertical: 12, gap: 6 },
   dialog: { width: '92%', maxWidth: 620, alignSelf: 'center', borderRadius: 12 }, dialogScroll: { paddingHorizontal: 0, flexShrink: 1 },
   dialogContent: { padding: 20, gap: 16 }, detailImage: { width: '100%', height: 250, borderRadius: 8, backgroundColor: '#f0f0f3' },
 });

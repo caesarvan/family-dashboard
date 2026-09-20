@@ -148,7 +148,10 @@ function harness(options = {}) {
     async change(fn) { fn(); dirty = true; await flush(); } };
 }
 test('actual player waits for explicit click, fences metadata and bytes, then offers browser controls', async t => {
-  const h = harness(); t.after(h.close); await h.flush(); assert.equal(h.f.videoCount, 0); await h.click('播放视频');
+  const h = harness(); t.after(h.close); await h.flush(); assert.equal(h.f.videoCount, 0);
+  assert.equal(h.nodes().find(n => n.type === 'Button').props.accessibilityLabel, '播放视频');
+  await h.click('播放视频');
+  assert.equal(h.nodes().find(n => n.type === 'Button').props.accessibilityLabel, '停止播放');
   assert.equal(h.f.videoCount, 1); assert.deepEqual(h.f.calls, ['/me', '/media/items/' + id, item.videoUrl, '/media/items/' + id, '/me']);
   assert.equal(h.f.created.length, 1); const player = h.nodes().find(n => n.type === 'video');
   assert(player.props.controls && player.props.playsInline && player.props.disablePictureInPicture); assert(!player.props.autoPlay);

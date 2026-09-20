@@ -184,10 +184,25 @@ function Workspace(props: Props & { identityKey: string }) {
     try { void send({ kind: 'pair', path: '/pair/approve', method: 'POST', body: pairPayload(model.pair, props.state.people) }); }
     catch (caught) { setError(errorText(caught)); }
   }
-  function control(action: PlaybackAction) {
-    if (locked || model.blocked || !model.playback) return;
-    try { void send({ kind: 'playback', deviceId: model.playback.deviceId, path: '/media-playback/devices/' + model.playback.deviceId, method: 'PUT', body: playbackPayload(model.playback, action, model.interval) }); }
-    catch (caught) { setError(errorText(caught)); }
+  async function control(action: PlaybackAction) {
+    const state = live.current;
+    if (!current() || working.current || locked || state.unknown || state.blocked || !state.playback) return;
+    const ticket = epoch.current, deviceId = state.playback.deviceId, interval = state.interval;
+    let intent: DeviceIntent | null = null;
+    setWorking(true); setError(''); setNotice('');
+    try {
+      // TV ended can advance revision between phone polls. Keep the explicit
+      // action, but construct its CAS only from a freshly identity-checked GET.
+      const latestPlayback = await playback(deviceId, ticket);
+      if (!current(ticket) || live.current.view !== 'playback' || live.current.playback?.deviceId !== deviceId) return;
+      const body = playbackPayload(latestPlayback, action, interval);
+      install({ playback: latestPlayback });
+      intent = { kind: 'playback', deviceId, path: '/media-playback/devices/' + deviceId, method: 'PUT', body };
+    } catch (caught) { failure(caught, ticket); }
+    finally { if (current(ticket)) setWorking(false); }
+    // No write was attempted if the guarded read failed. Once sent, retain the
+    // existing unknown-result and conflict handling; never retry the command.
+    if (intent && current(ticket)) await send(intent);
   }
   function recover() {
     if (!live.current.unknown) return;

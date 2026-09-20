@@ -110,8 +110,8 @@ export default function MemberVideoPlayer(props: Props) {
       onError: () => stop('浏览器无法播放此视频，可关闭后重新读取。'),
     })}
     {!!error && <Text accessibilityRole="alert">{error}</Text>}
-    {source ? <Button onPress={() => stop()}>停止播放</Button>
-      : <Button mode="outlined" icon="play" loading={busy} disabled={busy || !current()} onPress={() => void play()}>播放视频</Button>}
+    {source ? <Button accessibilityLabel="停止播放" onPress={() => stop()}>停止播放</Button>
+      : <Button accessibilityLabel="播放视频" mode="outlined" icon="play" loading={busy} disabled={busy || !current()} onPress={() => void play()}>播放视频</Button>}
     <Text variant="bodySmall">仅在本页播放。切换身份、离线或离开页面后停止；不会自动分享。</Text>
   </View>;
 }
