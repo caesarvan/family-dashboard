@@ -78,18 +78,29 @@ def test_default_no_write_and_explicit_schema(env):
     assert c.put(path(uid), json={'revision':0, 'action':'start'}, headers=h).status_code == 403
 
 
-def test_frozen_engine_photo_flow_persists_and_respects_clock(env):
+def test_frozen_engine_photo_flow_persists_and_advances_only_on_actual_ended(env):
     c, h, uid, tv, _, items = granted(env)
     with env[1].transaction() as con:
         layout = tuple(con.execute('SELECT display_layout,revision FROM devices WHERE id=?',(uid,)).fetchone())
     assert command(c,h,uid,'start')['revision'] == 1
     first = tv.get('/api/media-tv/playback').json
     assert first['item']['id'] == sorted(i['id'] for i in items)[0]
-    assert set(first['item']) == {'id','width','height','previewUrl','revision'}
+    assert set(first['item']) == {'id','width','height','previewUrl','revision','mediaType'}
     assert 'filename' not in json.dumps(first) and 'account' not in json.dumps(first)
     assert tv.get(first['item']['previewUrl']).content_type == 'image/jpeg'
+    def ended():
+        current=tv.get('/api/media-tv/playback',headers={'X-Display-Mode':'tv'}).json
+        progress=current['progress'];item=current['item']
+        response=tv.post('/api/media-tv/playback/progress',headers={
+            'X-Display-Mode':'tv','Origin':'http://localhost','X-TV-Playback-CSRF':current['playbackCsrf']},json={
+            'revision':current['revision'],'playId':progress['playId'],'itemId':item['id'],
+            'itemRevision':item['revision'],'sequence':progress['sequence']+1,
+            'positionMs':progress['durationMs'],'event':'ended'})
+        assert response.status_code==200,response.json
+        return response.json
     env[2][0] += 10
-    assert tv.get('/api/media-tv/playback').json['position'] == 1
+    assert tv.get('/api/media-tv/playback').json['position'] == 0
+    assert ended()['position'] == 1
     assert command(c,h,uid,'pause')['position'] == 1
     env[2][0] += 83
     assert tv.get('/api/media-tv/playback').json['position'] == 1
@@ -99,7 +110,9 @@ def test_frozen_engine_photo_flow_persists_and_respects_clock(env):
     assert command(c,h,uid,'interval',intervalSeconds=5)['intervalSeconds'] == 5
     assert command(c,h,uid,'resume')['paused'] is False
     env[2][0] += 11
-    assert tv.get('/api/media-tv/playback').json['position'] == 2
+    assert tv.get('/api/media-tv/playback').json['position'] == 0
+    assert ended()['position'] == 1
+    assert ended()['position'] == 2
     # New service object reads committed state through new SQLite connections.
     replacement = playback.MediaPlayback(env[1], clock=lambda:env[2][0])
     with env[0].test_request_context(headers={'Cookie':'household_tv='+tv.get_cookie('household_tv').value}):
