@@ -4,11 +4,12 @@ export type Photo = {
   id: string; revision: number; caption: string; width: number; height: number;
   previewUrl: string; visibility: 'private' | 'shared'; canManage: boolean; createdAt: string;
   journey: { id: string; tripId: string; title: string } | null;
-  accountId?: string; displayFilename?: string;
+  accountId?: string | null; displayFilename?: string; source?: 'google-photos' | 'local-upload';
   sourceCreatedAt?: string | null; sourceTimeState?: 'known' | 'unknown';
   mediaType?: 'photo' | 'video'; durationMs?: number; hasAudio?: boolean; videoUrl?: string;
 };
 export type PhotoImport = {
+  source?: 'google-photos' | 'local-upload';
   id: string; revision: number; state: string; createdAt: string; expiresAt: string;
   nextPollAt: string | null; canConfirm: boolean; pickerUri?: string;
   resultsState: 'known' | 'unknown';
@@ -16,7 +17,10 @@ export type PhotoImport = {
   results: { position: number; status: string; error?: { code: string } }[];
   error?: { code: string }; cleanupPending: boolean;
 };
-export type ImportDetail = { import: PhotoImport; items: { id: string; status: string; item: Photo }[] };
+export type PhotoUploadFile = { slotId: string; clientFileId: string; filename: string; contentType: string;
+  bytes: number; sha256: string; status: 'pending' | 'successful' | 'duplicate' | 'failed' | 'skipped'; error?: { code: string } };
+export type ImportDetail = { import: PhotoImport; items: { id: string; status: string; item: Photo }[];
+  upload?: { files: PhotoUploadFile[]; canUpload: boolean } };
 export type PhotoAccount = { id: string; provider: string; name: string; email: string; needsReauth: boolean; capabilities?: { photos?: boolean } };
 export type PhotoDevice = { id: string; name: string };
 export type PhotoJourney = { id: string; trip?: { title?: string }; plan?: { title?: string } };
@@ -57,6 +61,9 @@ const errors: Record<string, string> = {
   cleanup_unknown: '远端选择器清理结果尚不明确。', create_unknown: '选片页可能已创建，不会自动重复创建。',
 };
 export const photoError = (code?: string) => errors[code || ''] || '这次处理未完成，请刷新核对；具体原因未记录。';
+export const photoSourceLabel = (source?: Photo['source']) => source === 'local-upload' ? '从设备上传' : 'Google Photos';
+export const photoOriginalNotice = (source?: Photo['source']) => source === 'local-upload'
+  ? '只移除看板展示副本，不修改设备上的原文件；看板不备份原图。' : 'Google Photos 原始内容保留。';
 export const countText = (value: number | null | undefined, unit = '张') => Number.isSafeInteger(value) && Number(value) >= 0 ? `${value} ${unit}` : '未记录';
 export function savedSummary(value: PhotoImport, unit = '张') {
   const count = value.counts.saved;
@@ -69,6 +76,7 @@ export function validatePhoto(item: Photo): Photo {
   if (!item || !previewPath(item) || !Number.isSafeInteger(item.revision) || item.revision < 1
     || !['private', 'shared'].includes(item.visibility) || typeof item.canManage !== 'boolean'
     || typeof item.caption !== 'string' || item.caption.length > 500) throw new Error('照片数据已变化，请重新读取。');
+  if (item.source !== undefined && !['google-photos', 'local-upload'].includes(item.source)) throw new Error('照片来源无法核对。');
   if (item.mediaType !== undefined && !['photo', 'video'].includes(item.mediaType)) throw new Error('媒体类型无法核对。');
   if (item.mediaType === 'video' && (!videoPath(item) || !Number.isSafeInteger(item.durationMs)
     || item.durationMs! < 1 || item.durationMs! > 600250 || typeof item.hasAudio !== 'boolean')) throw new Error('视频数据已变化，请重新读取。');
@@ -147,6 +155,7 @@ export function validateImport(value: ImportDetail): ImportDetail {
     || !row.counts || Object.values(row.counts).some(n => n !== null && (!Number.isSafeInteger(n) || n < 0 || n > 20))) {
     throw new Error('选片结果无法核对，请刷新。');
   }
+  if (row.source !== undefined && !['google-photos', 'local-upload'].includes(row.source)) throw new Error('选片来源无法核对。');
   const ids = new Set<string>();
   for (const candidate of value.items) {
     validatePhoto(candidate.item);
