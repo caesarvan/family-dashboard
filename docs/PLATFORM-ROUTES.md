@@ -4,7 +4,7 @@
 
 本表描述**本地源码**，其与正式版本的差异见 [交接说明](HANDOFF.md)。表用于定位代码；字段、权限、错误和状态机参见 [README 文档导航](../README.md#文档导航)。
 
-Flask HTTP 方法与路径组合：**198**（含本轮助理原计划查询候选）；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
+Flask HTTP 方法与路径组合：**198**（含本人助理原计划查询）；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
 
 | 方法 | 路径 | 实现 |
 |---|---|---|
@@ -20,7 +20,7 @@ Flask HTTP 方法与路径组合：**198**（含本轮助理原计划查询候�
 | POST | `/api/assistant/finance-query` | [assistant_finance_query.py](../assistant_finance_query.py) · `assistant_finance_query` |
 | POST | `/api/assistant/journey-brief` | [home_assistant.py](../home_assistant.py) · `journey_brief` |
 | POST | `/api/assistant/plan` | [home_assistant.py](../home_assistant.py) · `plan` |
-| GET | `/api/assistant/plans/<uid>` | [home_assistant.py](../home_assistant.py) · 本人原计划与回执（本轮候选） |
+| GET | `/api/assistant/plans/<uid>` | [home_assistant.py](../home_assistant.py) · 本人原计划与回执 |
 | POST | `/api/assistant/plans/<uid>/apply` | [home_assistant.py](../home_assistant.py) · `apply_plan` |
 | GET | `/api/assistant/search` | [home_assistant.py](../home_assistant.py) · `search` |
 | POST | `/api/assistant/trip-change` | [assistant_trip_change_api.py](../assistant_trip_change_api.py) · `assistant_trip_change` |

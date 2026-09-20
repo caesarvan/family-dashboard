@@ -1,6 +1,6 @@
 # 平台扩展接口：旅行、助理、家庭空间与偏好
 
-**当前版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
+**历史版本：2026-09-15 20:23:00（北京时间），镜像 `sha256:651ecfd6bdb65cf04bb8778c8657a8ec0f27a123940683a44a8b9931a5f22352`。** 旅行资料、完整细项展示与分段定位已发布，保留此前全部模块；106 个方法／路径模板、43 张户内表（41 业务 + 2 认证）及 2 张平台表。源码与文档数量见 [README](../README.md) 及交接清单；测试、迁移和实际接入边界见 [VALIDATION](VALIDATION.md)。
 
 当前源码与文档数量以 [README](../README.md) 及逐文件交接清单为准；接口和存储结构见 [当前索引](PLATFORM-ROUTES.md)，运行版本与验收证据见 [VALIDATION](VALIDATION.md)。
 
@@ -154,7 +154,7 @@ v1 仍生成北京时间全天事项，end 为最后一天的翌日零点；上�
 
 ## 2. 家庭助理
 
-实现：[home_assistant.py](../home_assistant.py)。当前源码四个接口仅限成员，数据范围为当前家庭；新增 journey-brief 已于 2026-09-15 06:50:21 发布，原有三个接口继续保留。
+实现：[home_assistant.py](../home_assistant.py)。本节清单接口仅限成员，数据范围为当前家庭；计划与回执进一步限定创建者本人。完整路由见[索引](PLATFORM-ROUTES.md)，清单字段调整和恢复见[专门契约](ASSISTANT-LIST-EDITING.md)。
 
 GET `/api/assistant/brief` 返回 today、through、tasks（最多 20 条未完成且截止不晚于 through）、events（最多 30 条覆盖区间的记录）、conflicts（最多 12 组）、shoppingCount、trips（最多 5 趟未结束旅行）、mode、modelConfigured、coverage。到期待办包括逾期事项；时间重叠按同一负责人或共同事项计算。它基于现有数据的截断摘要，不能用于证明日历或财务来源覆盖完整。
 
@@ -186,7 +186,9 @@ POST `/api/assistant/plans/<id>/apply`：
 {"selected":[0]}
 ```
 
-selected 是非空、无重复的 0 起始动作下标数组，最多 12 项。首次执行须在生成后 24 小时内。成功返回 `{"ok":true,"created":[{"id":"item-example","kind":"tasks","title":"预约保洁"}],"destination":"household"}`。重复提交返回首次执行回执，不创建此前没选的动作；需要新增动作时应生成新草案。其他成员不可执行此草案。
+selected 是非空、无重复的 0 起始动作下标数组，最多 12 项。可同时传 `overrides:[{index:0,data:{title,owner,due,note}}]`；采购另允许 quantity、budget（整数分或 null）、priority。只允许覆盖已选项；严格类型、字段白名单和所有事项在同一事务校验。首次执行须在生成后 24 小时内。成功返回 `{"ok":true,"created":[{"id":"item-example","kind":"tasks","title":"预约保洁"}],"destination":"household"}`。同一规范化确认载荷重试返回原回执，改变已确认载荷返回409，不追加事项；旧已完成记录继续返回原回执。其他成员不可执行此草案。
+
+GET `/api/assistant/plans/<id>` 不接受查询参数，只返回本人原计划及保存状态：`{id,status:"pending"|"applied"|"expired",plan:{id,mode,summary,actions,matches},receipt}`。仅 applied 带原回执；内部确认载荷不返回。读取时 pending 不保证较早的在途请求永远不会提交；404 不证明原请求失败。匿名401、电视403、其他成员／其他家庭或未知ID为404。详细时限、字段及刷新恢复约束见[清单契约](ASSISTANT-LIST-EDITING.md)。
 
 确认后只创建本地清单，不自动推送到第三方主清单。模型不能执行任意 API、转账、下单或发送邀请。仅在成员明确选择时，模型上下文才包括近期日程/任务的白名单字段；个人财务、账户和令牌不会自动发送。
 
