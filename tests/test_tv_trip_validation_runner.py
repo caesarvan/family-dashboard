@@ -98,3 +98,19 @@ def test_missing_create_cannot_leave_a_successful_memory_receipt(tmp_path, monke
     assert proof['allPassed'] is False and proof['validationCompleted'] is True
     assert proof['transforms'] == []
     assert json.loads((output/'commands.json').read_bytes()) == {'commands': []}
+
+
+def test_interrupted_inspect_cleans_owned_container_before_propagating(tmp_path, recording, monkeypatch):
+    calls, _ = recording
+    original = tool.builder.Executor.__call__
+    def interrupted(self, args, **kwargs):
+        result = original(self, args, **kwargs)
+        if args[0] == 'inspect':
+            raise KeyboardInterrupt()
+        return result
+    monkeypatch.setattr(tool.builder.Executor, '__call__', interrupted)
+    runner = tool.BoundedValidationExecutor(tmp_path, IMAGE)
+    with pytest.raises(KeyboardInterrupt): runner(arguments())
+    assert [args[0] for args in calls] == ['create', 'inspect', 'rm']
+    assert calls[-1] == ['rm', '--force', CONTAINER]
+    assert runner.transforms[0]['verifiedBeforeStart'] is False

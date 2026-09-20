@@ -68,7 +68,7 @@ class BoundedValidationExecutor(builder.Executor):
                               'image': self.image, 'user': '10001:10001', 'running': False},
                  'actual validation container limits differ')
             record['verifiedBeforeStart'] = True
-        except Exception:
+        except BaseException:
             # isolated() has not received the ID yet, so it cannot clean up.
             builder.must(super().__call__(['rm', '--force', identifier]),
                          'owned rejected container cleanup failed')
