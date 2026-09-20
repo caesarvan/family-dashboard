@@ -92,12 +92,14 @@ class Lifecycle:
         self.app_image, self.decoder_image = immutable(app_image), immutable(decoder_image)
         need(len({self.app_image, self.decoder_image, PARENT_IMAGE, WEB_IMAGE}) == 4, 'distinct_candidate_images_required')
         need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update',
-                      'finance-flow-source-update', 'journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update'), 'unsupported_lifecycle_mode')
+                      'finance-flow-source-update', 'journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update', 'tv-trip-75-to-77'), 'unsupported_lifecycle_mode')
         self.mode = mode
         self.source_update = mode != 'video-migration'
         self.parent_image, self.before_compose, self.parent_services = PARENT_IMAGE, BEFORE_COMPOSE, OLD_SERVICES
         if self.source_update:
-            if mode == 'assistant-list-source-update':
+            if mode == 'tv-trip-75-to-77':
+                from deploy import build_tv_trip_release as photos
+            elif mode == 'assistant-list-source-update':
                 from deploy import build_assistant_list_release as photos
             elif mode == 'media-date-source-update':
                 from deploy import build_media_date_release as photos
@@ -272,7 +274,7 @@ class Lifecycle:
                 need(isinstance(expected, str) and re.fullmatch('[0-9a-f]{64}', expected)
                      and preserved.get(key) == expected, 'preservation_identity_changed')
             keys = ('logicalSha256', 'markerSha256')
-            if self.mode == 'journey-finance-73-to-75':
+            if self.mode in ('journey-finance-73-to-75', 'tv-trip-75-to-77'):
                 # This is the migration receipt, not the pre-DDL backup.
                 for key, expected in (('planSha256', plan_sha256), ('sourceIdentitySha256', source_identity_sha256)):
                     need(migrated.get(key) == expected, 'migration_identity_changed')
