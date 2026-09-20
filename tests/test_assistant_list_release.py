@@ -77,4 +77,3 @@ def test_plan_rejects_prior_73_profile(rig):
     for field in ('schemaBefore', 'schemaAfter'):
         value = deepcopy(c.plan); value[field] = [73, 9]
         with pytest.raises(ReleaseError): prepare.check_plan(value)
-
