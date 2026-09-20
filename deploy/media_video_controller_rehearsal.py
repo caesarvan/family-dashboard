@@ -37,7 +37,8 @@ from deploy.git_blobs import read_git_blobs
 need, sha, encoded = controller.need, controller.sha, controller.encoded
 BASE = 'd0c8362d80215e95bd044c325006b3ec5c160d0a'
 SELF = 'deploy/media_video_controller_rehearsal.py'
-ADDITIONS = {SELF, 'tests/test_media_video_controller_rehearsal.py', 'docs/MEDIA-VIDEO-CONTROLLER-REHEARSAL.md'}
+ADDITIONS = {SELF, 'tests/test_media_video_controller_rehearsal.py',
+             'tests/test_media_video_restore_fixture.py', 'docs/MEDIA-VIDEO-CONTROLLER-REHEARSAL.md'}
 LIMITS = {'app': 192, 'media': 192, 'sync': 128, 'web': 64, 'decoder': 384}
 BUDGET = {'preflightMiB': 1088, 'samples': 3, 'intervalSeconds': 1,
           'abortBelowMiB': 256, 'monitorIntervalSeconds': .25, 'maxLagSeconds': 1}
