@@ -5,6 +5,8 @@
 
 本批已于 **2026-09-20 23:06:47（北京时间）激活，23:07:24生产只读回读通过**；非作者生产审计已通过。实际安装source为 `63dc63476b046856bf9893c19595e2971ebc13c7`，没有DDL，保持73/9和五服务。135个运行文件、完整前端及165项构建输入与已验455源逐字节相同；沿用原125项Linux与分段浏览器证据，另完成新源9项Linux检查及资源R2独立复核。本人验收仍未完成。
 
+本页保留 discovery 批次的实际发布与历史边界；下文“当前安装”指本批发布时点。后续通用账单收支方向列已发布，见[财务批次验收](FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release)；本页的旧计划不可重放。
+
 ## 最短操作路径
 
 | 要做的事 | 已发布操作 | 保持的边界 |
@@ -93,7 +95,7 @@
 
 原件保存在协调者本地 `family-dashboard-access/discovery-production-r1/`：`readback.stdout`、对应执行回执及 `retained-receipts/`，不提交Git。非作者生产审计已通过，核验25件安全回执与49份原件，报告路径和SHA见下表。回读只核安全发布回执、源码／运行字节、镜像、健康和配置摘要；不重新读取活库内容、备份SQLite字节或worker业务tick，不声称真实云、手机或实体电视已验。
 
-源码合入main `1d589e6d401d2d760f7361a2cab36839841a7208` 时比安装source仅多README及三份discovery后验文档；包内source仍是63dc，不能换写为main提交。财务收支方向[PR #47](https://github.com/caesarvan/family-dashboard/pull/47)属于独立分支候选，尚未发布，不在本批包内。
+源码合入main `1d589e6d401d2d760f7361a2cab36839841a7208` 时比安装source仅多README及三份discovery后验文档；包内source仍是63dc，不能换写为main提交。在本次discovery发布时，财务收支方向[PR #47](https://github.com/caesarvan/family-dashboard/pull/47)仍是未发布候选，不在该包内；后续已按文首财务批次记录发布。
 
 ## 独立审查索引
 

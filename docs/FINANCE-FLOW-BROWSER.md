@@ -1,6 +1,6 @@
 # 收支方向列：组合浏览器验收
 
-固定组合 `9ee62cb140eb019fe3bcc03dc49731619f2547dd` 已实际完成下述三场景（3/3、六张截图），并通过非作者浏览器审查；本功能尚未部署。工具复用既有财务 HTTPS/Flask/SQLite 夹具和文件选择操作，业务响应来自实际应用。只使用虚构 CSV/XLSX，不访问真实账单、云服务、模型或生产。
+固定组合 `9ee62cb140eb019fe3bcc03dc49731619f2547dd` 已实际完成下述三场景（3/3、六张截图），并通过非作者浏览器审查；代码已合入，随后固定53ea包已实际发布，状态见[集中验收](FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release)。工具复用既有财务 HTTPS/Flask/SQLite 夹具和文件选择操作，业务响应来自实际应用。只使用虚构 CSV/XLSX，不访问真实账单、云服务、模型或生产。
 
 默认三个独立临时家庭数据库、六张截图：
 
@@ -29,4 +29,4 @@
 - 本轮浏览器：`finance-flow-combination/test-results/finance-flow-20260920T150130152959Z/result.json`，SHA256 `0e73ee4be09923eef2a4834a18fdaafc39350b57ec15a89c981ad7517f74851b`；外层原件在同树 `test-results/finance-flow-browser-execution-r1/`。原 PID 46156、exit 0，一次执行全部 3/3；真实 HTTP／数据库证明、六图和临时夹具清理均留证。
 - 非作者审查：`media-video-usability/test-results/finance-flow-browser-independent-r1.json`，SHA256 `e24fcb0504b997bcd8ef686ee8844f65f42f93f69cf35622de3a537554d38970`，结论为三场景通过。stderr 保留一条 `Response.finished` 的 `Target closed` 异步观察警告；无应用 traceback、HTTP 5xx、页面错误或外网请求。stdout／stderr 没有共同时间戳，不能断言该警告的精确时序或所有异步观察者均正常结束。
 
-这些证据来自 Windows 上的合成本地浏览器流程，不是 Linux 或生产验收。部署仍需 33 项 Linux 后端检查，以及绑定当时实际父版的新发布 profile、单次计划和生产准入；不重放历史计划。
+这些证据来自 Windows 上的合成本地浏览器流程，不是 Linux 或生产验收。固定53ea候选随后已完成实际33项 Linux 后端检查；该结果与本页浏览器证据分开留证。生产激活及独审进度见集中验收，仍须使用新固定单次计划，不重放历史计划。
