@@ -15,7 +15,7 @@ from cloud_accounts import AccountBusy
 from cloud_providers import ProviderError
 from google_photos_picker import GooglePhotosPicker, PickerError
 from media_images import MediaImageError, sanitize_media_preview
-from household_media import MediaError
+from household_media import MediaError, manifest_identity
 
 
 MAX_ITEMS = 20
@@ -36,7 +36,7 @@ def _manifest(items):
                 or 'baseUrl' in item['mediaFile']):
             return None
         result[item['id']] = item
-    return result
+    return manifest_identity(list(result.values()))
 
 
 class MediaImportWorker:
@@ -129,11 +129,17 @@ class MediaImportWorker:
             return
         original, observed = _manifest(job['manifest']), _manifest(current)
         media = job['media']
+        media_identity = _manifest([media]) if isinstance(media,dict) else None
         if (original is None or observed != original or not isinstance(media, dict)
-                or observed.get(media.get('id')) != media or media.get('type') not in ('PHOTO','VIDEO')):
+                or media_identity is None or observed.get(media.get('id')) != media_identity.get(media.get('id')) or media.get('type') not in ('PHOTO','VIDEO')):
             self._fail(job, 'selection_changed')
             return
         if media['type']=='VIDEO':
+            refreshed = next(item for item in current if item['id']==media['id'])
+            status = refreshed['mediaFile']['mediaFileMetadata'].get('videoMetadata',{}).get('processingStatus')
+            if status in ('UNSPECIFIED','PROCESSING','FAILED'):
+                self._fail(job,'video_not_ready')
+                return
             self._download_video(picker,job,media,current,session_id)
             return
         downloaded = picker.download_media(session_id, media['id'], variant='preview', width=1600, height=1600)

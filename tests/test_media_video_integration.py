@@ -295,3 +295,51 @@ def test_additive_71_to_72_preserves_all_old_objects_rows_and_restarts(tmp_path,
         with pytest.raises(RuntimeError):initialize_media_video_storage(con)
         assert con.in_transaction
         con.rollback()
+
+
+@pytest.mark.parametrize('status',['PROCESSING','FAILED','UNSPECIFIED','READY'])
+def test_video_processing_status_is_per_item_and_ready_transition_preserves_photo(env,clip,tools,status):
+    c,h,imp,_=create(env)
+    before=[item('keep-photo'),item('pending-video','VIDEO','PROCESSING')]
+    after=[item('keep-photo'),item('pending-video','VIDEO',status)]
+    photo=preview().data
+    responses=[remote_session(),remote_session(),{'mediaItems':before},
+        remote_session(),{'mediaItems':before},Response(photo,mime='image/jpeg'),
+        remote_session(),{'mediaItems':after}]
+    if status=='READY':responses.append(Response(clip,mime='video/mp4'))
+    transport=Transport(*responses)
+    worker=MediaImportWorker(env[1],picker_factory=lambda token:GooglePhotosPicker(token,transport=transport),video_tools=tools)
+    for _ in range(3):assert worker.tick()
+    prior=c.get('/api/media/imports/'+imp['id']).json
+    saved=prior['items'][0]['item'];assert saved['mediaType']=='photo'
+    saved_bytes=c.get(saved['previewUrl']).data
+    assert worker.tick()
+    detail=c.get('/api/media/imports/'+imp['id']).json
+    assert detail['import']['state']=='awaiting_confirmation' and detail['import']['canConfirm']
+    assert detail['import']['counts']['ready']==(2 if status=='READY' else 1)
+    assert detail['import']['counts']['failed']==(0 if status=='READY' else 1)
+    assert c.get(saved['previewUrl']).data==saved_bytes
+    if status!='READY':
+        result=next(r for r in detail['import']['results'] if r['status']=='failed')
+        assert result['error']['code']=='video_not_ready'
+        assert not any(call['url'].endswith('=dv') for call in transport.calls)
+    receipt,payload=confirm(c,h,detail)
+    assert saved['id'] in receipt['itemIds']
+    replay=c.post('/api/media/imports/'+imp['id']+'/confirm',headers=h,json=payload)
+    assert replay.json['replayed'] and replay.json['itemIds']==receipt['itemIds']
+
+
+@pytest.mark.parametrize('change',['filename','width','session'])
+def test_video_processing_fix_does_not_allow_real_selection_or_session_changes(env,tools,change):
+    c,h,imp,_=create(env);before=[item('strict-video','VIDEO','PROCESSING')]
+    after=[item('strict-video','VIDEO','READY')]
+    if change=='filename':after[0]['mediaFile']['filename']='different.mp4'
+    if change=='width':after[0]['mediaFile']['mediaFileMetadata']['width']+=1
+    transport=Transport(remote_session(),remote_session(),{'mediaItems':before},
+                        remote_session(ready=change!='session'),{'mediaItems':after})
+    worker=MediaImportWorker(env[1],picker_factory=lambda token:GooglePhotosPicker(token,transport=transport),video_tools=tools)
+    for _ in range(3):assert worker.tick()
+    detail=c.get('/api/media/imports/'+imp['id']).json
+    assert detail['import']['state']=='failed'
+    assert detail['import']['error']['code']==('not_ready' if change=='session' else 'selection_changed')
+    assert not any(call['url'].endswith('=dv') for call in transport.calls)

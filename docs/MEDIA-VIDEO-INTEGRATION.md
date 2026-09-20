@@ -34,3 +34,5 @@ Google Picker 仍只下载本次明确选择的内容；PHOTO 保留原图片路
 专项使用真实临时 Flask／SQLite、Fernet、实际 FFmpeg 生成与处理的合成视频，只有 Google 网络 transport 为模拟边界。覆盖完整 worker→staged→确认→回执重放／重启、伙伴与各 TV grant、解密期间撤权、取消／过期／原 tombstone 清理、配额、长处理 lease、元数据导出及 71→72 原数据保全；实际执行计数与失败记录由作者报告分别列出，不把代码存在当作测试通过。
 
 本地作者验证已实际结束：首轮 253 项中 250 通过、3 失败；三项失败分别是撤销设备测试缺少 JSON 请求体、成员移除测试未先开启事务，以及旧表集合断言未包含新表。只修正这些测试后，第二轮仅复测这三项并全部通过；253 个唯一用例共执行 256 次，最终无遗留失败／跳过，原首轮失败记录保留。没有重跑纯处理器的已审 16 项，也没有运行 Linux、浏览器、真实账号或生产验收。原件与哈希见本分支 ignored `test-results/media-video-integration-author-verification-r1.json`。
+
+Google VIDEO 的 PROCESSING／FAILED／UNSPECIFIED 记为本项 `video_not_ready`，不进行下载或无限等待，其他已成功照片仍可使用原确认回执保存。处理状态若在本轮准备阶段从 PROCESSING 变为 READY，可继续真实转换；仅合法 VIDEO `processingStatus` 被视为暂态，媒体 ID、类型、创建时间、文件名、MIME、尺寸及其余字段仍严格核对。会话尚未完成选择、选择变化、过期或撤权仍沿原导入整体失败／取消边界，不伪装成单个视频未就绪。
