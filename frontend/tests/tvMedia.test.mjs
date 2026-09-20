@@ -36,7 +36,7 @@ test('unknown report resolves only from committed sequence, new control revision
 // Actual TSX/hooks/controller with synthetic DOM, media metadata and HTTP.
 // Native decoding, layout, autoplay policies and real Flask remain browser work.
 function harness(options={}) {
-  const ts=createRequire(import.meta.url)('typescript');let state=snapshot(),now=0,dirty=true,dead=false,cursor=0,tree;
+  const ts=createRequire(import.meta.url)('typescript');let state=options.snapshot?options.snapshot():snapshot(),now=0,dirty=true,dead=false,cursor=0,tree;
   const values=[],effects=[],cleanups=[],timers=new Map(),listeners=new Map(),calls=[],revoked=[],created=[];
   let timerId=0,assetGate=null,reportGate=null,unknownPost=false,reportFail=false,denied=false;
   const same=(a,b)=>Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((x,i)=>Object.is(x,b[i]));
@@ -82,16 +82,16 @@ function harness(options={}) {
   };
   const modules=new Map();
   function load(name){if(modules.has(name))return modules.get(name);const exports={};modules.set(name,exports);
-    const file=new URL('../src/ui/'+name,import.meta.url),code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,esModuleInterop:true,target:ts.ScriptTarget.ES2022}}).outputText;
-    const mocks={react,'react-native':{View:'View',StyleSheet:{create:v=>v},useWindowDimensions:()=>({width:1920,height:1080})},'react-native-paper':{Text:'Text',Button:'Button',ActivityIndicator:'Spinner'}};
-    runInNewContext(code,{exports,require:n=>mocks[n]||load(n.replace('./','')+'.ts'),document,navigator,window:{...events,location:{origin:'http://localhost'}},fetch,performance:{now:()=>now},Image:Element,HTMLVideoElement:Movie,URL:ObjectURL,Blob,AbortController,Uint8Array,TextDecoder,Error,Date,Promise,...timerApi});return exports;}
+    const file=name instanceof URL?name:new URL('../src/ui/'+name,import.meta.url),code=ts.transpileModule(readFileSync(file,'utf8'),{compilerOptions:{module:ts.ModuleKind.CommonJS,jsx:ts.JsxEmit.React,esModuleInterop:true,target:ts.ScriptTarget.ES2022}}).outputText;
+    const mocks={react,'react-native':{View:'View',StyleSheet:{create:v=>v},useWindowDimensions:()=>({width:1920,height:1080})},'react-native-paper':{Text:'Text',Button:'Button',ActivityIndicator:'Spinner',useTheme:()=>({colors:{surface:'surface'}})},'./TVTripRecap':{default:'TVTripRecap',__esModule:true}};
+    runInNewContext(code,{exports,require:n=>mocks[n]||load(new URL(n.endsWith('.ts')?n:n+'.ts',file)),document,navigator,window:{...events,location:{origin:'http://localhost'}},fetch,performance:{now:()=>now},Image:Element,HTMLVideoElement:Movie,URL:ObjectURL,Blob,AbortController,Uint8Array,TextDecoder,Error,Date,Promise,...timerApi});return exports;}
   const Component=load('TVPhotoPlayer.web.tsx').default,props={deviceId:device,active:true,onUnauthorized(){denied=true;}};
   const nodes=(n=tree)=>!n||typeof n!=='object'?[]:[n,...(n.props.children||[]).flatMap(x=>nodes(x))];
   const text=(n=tree)=>typeof n==='string'?n:!n||typeof n!=='object'?'':n.props.children.map(text).join(' ');
   async function flush(){for(let i=0;i<35;i++){if(dirty&&!dead){dirty=false;cursor=0;tree=Component(props);for(const n of nodes())if(n.props.ref){const el=n.type==='video'?movie:image;n.props.ref.current=el;if(n.type==='video'){el.onloadedmetadata=n.props.onLoadedMetadata;el.oncanplay=n.props.onCanPlay;el.onended=n.props.onEnded;}}while(effects.length)effects.shift()();}await new Promise(setImmediate);}}
   async function advance(ms){const end=now+ms;while(now<end){const dt=Math.min(100,end-now);now+=dt;if(!movie.paused&&!movie.ended){movie.currentTime=Math.min(movie.duration,movie.currentTime+dt/1000);if(movie.currentTime>=movie.duration){movie.ended=true;movie.paused=true;movie.onended?.();}}for(const[id,t]of [...timers])if(t.at<=now){if(t.repeat)t.at=now+t.ms;else timers.delete(id);t.fn();}await flush();}}
   const close=()=>{dead=true;cleanups.forEach(fn=>fn?.());};
-  return{calls,created,revoked,movie,flush,advance,close,text,get state(){return state;},pause(){state.paused=true;state.revision++;},resume(){state.paused=false;state.revision++;},
+  return{calls,created,revoked,movie,flush,advance,close,text,get state(){return state;},find:id=>nodes().find(n=>n.props.testID===id),review:()=>nodes().find(n=>n.type==='TVTripRecap')?.props.review,setState:value=>{state=value;},pause(){state.paused=true;state.revision++;},resume(){state.paused=false;state.revision++;},
     next(){state.revision++;state.progress={...state.progress,playId:'e'.repeat(24),positionMs:0,sequence:0};},
     gateReport(){let release;reportGate={promise:new Promise(r=>release=r)};return()=>{release();reportGate=null;};},
     gate(){let release;assetGate={promise:new Promise(r=>release=r)};return()=>{release();assetGate=null;};},unknown(){unknownPost=true;},deny(){denied=true;},
@@ -196,4 +196,27 @@ test('actual delayed checkpoint with unknown response freezes end until a curren
   await h.advance(300);assert(!h.text().includes('提交结果尚未核对'));
   assert(!h.calls.some(c=>c.body?.event==='ended'));assert.equal(h.state.revision,1);
   assert.equal(h.calls.filter(c=>c.body?.event==='checkpoint'&&c.body.sequence===2).length,1);
+});
+
+function tripProjection(count=1) {
+  return {status:'ready',journey:{id:'1'.repeat(24),tripId:'2'.repeat(24),title:'合成电视旅行',start:'2026-09-01',end:'2026-09-02',revision:1,tripRevision:1},
+    routeStatus:'available',sourceVersion:'3'.repeat(64),route:{id:'4'.repeat(24),title:'合成路线',revision:1,
+      stops:Array.from({length:count},(_,index)=>({index,state:'available',place:{id:index.toString(16).padStart(24,'0'),name:'站'.repeat(160),country:'国'.repeat(100),city:'城'.repeat(100),
+        coordinates:{latitude:20,longitude:100},coordinatePrecision:'approximate',coordinateGridDegrees:.1,status:'planned',startDate:null,endDate:null}})),segments:[]}};
+}
+test('actual scoped TV accepts a 100-stop projection above old 32KiB cap; route-only polls without media bytes and hides on offline',async t=>{
+  const value={...snapshot(),scope:'journey',journeyReview:tripProjection(100),photoCount:0,item:null,progress:null};
+  assert(Buffer.byteLength(JSON.stringify(value))>32768);
+  const h=harness({snapshot:()=>copy(value)});t.after(h.close);await h.flush();assert.equal(h.review().route.stops.length,100);
+  await h.advance(4200);assert(h.calls.filter(c=>c.path==='/api/media-tv/playback').length>=3);
+  assert(!h.calls.some(c=>c.path.endsWith('/video')||c.path.endsWith('/preview')||c.method==='POST'));
+  await h.event('offline');assert.equal(h.review(),undefined);assert(h.text().includes('画面已清除'));
+});
+test('actual scoped TV route revocation preserves authorized video without download; missing journey clears both projection and Blob',async t=>{
+  const value={...snapshot(),scope:'journey',journeyReview:tripProjection()};
+  const h=harness({snapshot:()=>copy(value)});t.after(h.close);await h.flush();assert(h.review().route);assert.equal(h.created.length,1);
+  h.setState({...h.state,journeyReview:{...value.journeyReview,route:null,routeStatus:'unavailable',sourceVersion:'5'.repeat(64)}});
+  await h.advance(2200);assert.equal(h.review().route,null);assert.equal(h.calls.filter(c=>c.path.endsWith('/video')).length,1);
+  h.setState({...h.state,photoCount:0,item:null,progress:null,canStart:false,journeyReview:{status:'journey_unavailable',journey:null,route:null,routeStatus:'unavailable',sourceVersion:'6'.repeat(64)}});
+  await h.advance(2200);assert.equal(h.review().journey,null);assert(h.movie.paused&&h.movie.src==='');assert.equal(h.revoked.length,1);
 });

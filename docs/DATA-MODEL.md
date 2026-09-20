@@ -1,6 +1,17 @@
 # 数据模型、同步一致性与隐私边界
 
-> 当前生产为 **69 张户内表与 9 张平台表**。旅行路线已于 2026-09-19 22:56:47（北京时间）完成 66→69，见[路线验收](JOURNEY-ROUTES-ACCEPTANCE.md#journey-routes-release)；最新旅行准备、采购与分工于 2026-09-20 01:13:38 激活，01:23:44 独立只读审计通过，69/9 不变，无本批 DDL，见[最新验收](ASSISTANT-TRIP-ITEMS-ACCEPTANCE.md#assistant-trip-items-release)。当前安装身份见 [HANDOFF](HANDOFF.md)，本地源码结构见 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)。下面较早版本的表数仅描述各自历史状态。
+## 电视单趟旅行范围与原操作回执（候选75→77，未上线）
+
+唯一新 DDL 在 [media_trip_playback.py](../media_trip_playback.py) 的 `SCHEMA_SQL`。`init_schema(con)` 要求启用外键且调用者已开始事务，不自行提交；旧 `media_playback` 八列与 `media_playback_progress` 保持，平台9表不变。新安装沿原播放模块初始化，已有服务器必须另行完整备份、精确迁移、停止态保全及独立准入，不能直接重放旧75表计划。
+
+| 新表 | 键与关系 | 保存内容及删除语义 |
+|---|---|---|
+| `media_playback_journeys` | device_id 为主键并随原播放行级联；journey_id、route_id、started_by 删除源后置 null | 每电视一行，保存所选旅行／路线引用、route_selected、原开始 requestId 与时点；行存在即旅行范围，journey_id 为 null 仍不能解释为全相册 |
+| `media_playback_operations` | 主键 `(owner,request_id)`；owner 关联 users，device_id 不随设备删除级联 | 请求摘要、原设备ID、journey_start、结果 revision 和完成时间；每成员最多10000条，同载荷回执重放先于限额检查，不保存历史地点／媒体 DTO |
+
+读取时重建当前安全投影，回执不能恢复旧权限。开始事务同时更新范围、photos 模式、首项进度、审计／meta及操作回执；失败全部回滚。两个电视的范围与授权分别核验。原旅行／路线删除不删除成功回执，不重建源记录；完整库组备份必须覆盖两表。字段和恢复竞态见 [TV-TRIP-PLAYBACK](TV-TRIP-PLAYBACK.md)。
+
+> 当前生产为助理清单版 `e8f0427`，**75 张户内表与9张平台表**，见[已发布验收](ASSISTANT-LIST-ACCEPTANCE.md#assistant-list-release)。本地电视单趟旅行候选为 **77/9**，尚未上线；实际源索引见 [PLATFORM-ROUTES](PLATFORM-ROUTES.md)。下方较早版本表数只描述各自历史状态。
 
 ## 旅行路线与持久操作回执（已上线，66→69 迁移已完成）
 

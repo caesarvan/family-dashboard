@@ -1,14 +1,16 @@
 import React, { useLayoutEffect, useRef, useState } from 'react';
 import { StyleSheet, View, useWindowDimensions } from 'react-native';
-import { ActivityIndicator, Button, Text } from 'react-native-paper';
+import { ActivityIndicator, Button, Text, useTheme } from 'react-native-paper';
 import { isTVPhotoId, readTVPlayback, TVPhotoIdentityChanged, TVPhotoLease, TV_PHOTO_MAX_BYTES,
   TV_PHOTO_POLL_MS, TV_PHOTO_TIMEOUT_MS, TV_VIDEO_MAX_BYTES, TVMediaClock, progressIntent, reportResolved,
   type TVPlayback, type TVProgressEvent, type TVProgressIntent, type TVPhotoPlayerProps } from './TVPhotoPlayer.model';
+import { TRIP_TV_JSON_BYTES, type JourneyReview } from '../lib/tvTripRecap';
+import TVTripRecap from './TVTripRecap';
 export type { TVPhotoPlayerProps } from './TVPhotoPlayer.model';
 
-type Display = { deviceId: string; mode: 'unknown' | 'dashboard' | 'photos'; status: 'loading' | 'image' | 'empty' | 'error' | 'expired' | 'blocked' | 'pending' | 'busy'; position: number; count: number; paused: boolean };
+type Display = { review: JourneyReview | null; deviceId: string; mode: 'unknown' | 'dashboard' | 'photos'; status: 'loading' | 'image' | 'empty' | 'error' | 'expired' | 'blocked' | 'pending' | 'busy'; position: number; count: number; paused: boolean };
 type Request = { controller: AbortController; ticket: number };
-const blank = (deviceId: string): Display => ({ deviceId, mode: 'unknown', status: 'loading', position: 0, count: 0, paused: false });
+const blank = (deviceId: string): Display => ({ review: null, deviceId, mode: 'unknown', status: 'loading', position: 0, count: 0, paused: false });
 class DisplayHttpError extends Error { status: number; constructor(status: number) { super('Display unavailable'); this.status = status; } }
 class DisplayVideoBusy extends Error {}
 
@@ -63,6 +65,7 @@ function decode(image: HTMLImageElement, signal: AbortSignal) {
 }
 
 export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPhotoPlayerProps) {
+  const theme = useTheme();
   const size = useWindowDimensions(), scale = Math.max(0.65, Math.min(size.width / 1920, size.height / 1080));
   const image = useRef<HTMLImageElement>(null), video = useRef<HTMLVideoElement>(null);
   const paint = useRef<(() => void) | null>(null), ended = useRef<(() => void) | null>(null);
@@ -97,7 +100,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
       if (sending) unknown = sending;
       lease.clear(); pollRequest?.controller.abort(); reportRequest?.controller.abort(); cancelAsset(); clearFrame();
       nextPoll = performance.now() + TV_PHOTO_POLL_MS;
-      if (mounted) setView(value => ({ ...value, status, position: 0, count: 0 }));
+      if (mounted) setView(value => ({ ...value, review: null, status, position: 0, count: 0 }));
     };
     function actualPosition(): number {
       const duration = state?.progress?.durationMs || 1;
@@ -143,7 +146,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
       state = value;
       if (value.mode === 'dashboard') { cancelAsset(); clearFrame(); setView({ ...blank(deviceId), mode: 'dashboard' }); return; }
       const key = keyOf(value);
-      setView({ deviceId, mode: 'photos', status: unknown ? 'pending' : !value.item ? 'empty' : frame?.key === key
+      setView({ review: value.journeyReview || null, deviceId, mode: 'photos', status: unknown ? 'pending' : !value.item ? 'empty' : frame?.key === key
         ? frame.blocked ? 'blocked' : 'image' : failedKey === key ? failedStatus : 'loading',
         position: value.position, count: value.photoCount, paused: value.paused });
       if (unknown || !value.item) { cancelAsset(); clearFrame(); return; }
@@ -165,7 +168,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
       polling = (async () => {
         try {
           const response = await displayResponse('/api/media-tv/playback', 'application/json', signal);
-          const raw = await bytes(response, 32768, signal);
+          const raw = await bytes(response, TRIP_TV_JSON_BYTES, signal);
           if (!current()) return;
           apply(readTVPlayback(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(raw)), deviceId), started);
         } catch (error) {
@@ -245,7 +248,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
         if (!response.ok) throw new DisplayHttpError(response.status);
         if (response.redirected || response.url !== new URL('/api/media-tv/playback/progress', window.location.origin).href
           || !response.headers.get('Content-Type')?.toLowerCase().startsWith('application/json')) throw new Error('Unknown progress response');
-        const body = await bytes(response, 32768, operation.controller.signal);
+        const body = await bytes(response, TRIP_TV_JSON_BYTES, operation.controller.signal);
         if (!lease.current(operation.ticket) || !available()) return;
         const value = readTVPlayback(JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(body)), deviceId);
         if (!state || value.revision >= state.revision) apply(value, started);
@@ -304,14 +307,16 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
   }, [deviceId, active]);
   useLayoutEffect(() => { paint.current?.(); });
   if (!active || view.deviceId !== deviceId || view.mode !== 'photos') return null;
-  const message = view.status === 'empty' ? '还没有可播放的媒体，请在手机上允许这台电视展示。'
+  const message = view.status === 'empty' && view.review ? '' : view.status === 'empty' ? '还没有可播放的媒体，请在手机上允许这台电视展示。'
     : view.status === 'expired' ? '显示授权已到期，正在重新核对。'
       : view.status === 'pending' ? '播放进度的提交结果尚未核对，已停止播放。可在手机暂停或继续后重新核对。'
         : view.status === 'blocked' ? '浏览器尚未允许静音播放，请在电视上确认。手机操作不能开启电视声音。'
           : view.status === 'busy' ? '视频正在读取，请稍后重试。当前项目已保留，显示权限仍会持续核对。'
             : view.status === 'error' ? '连接、媒体或许可暂不可用，画面已清除。'
             : view.status === 'loading' ? '正在核对媒体并加载…' : '';
-  return <View testID="tv-photo-player" accessibilityLabel="已授权家庭媒体播放" style={styles.overlay}>
+  return <View testID="tv-photo-player" accessibilityLabel="已授权家庭媒体播放" style={[styles.overlay, !!view.review && { flexDirection: 'row', alignItems: 'stretch', gap: 28 * scale, padding: 32 * scale, backgroundColor: theme.colors.surface }]} >
+    {view.review && <View style={{ flex: view.count ? 0.42 : 1, minWidth: 0 }}><TVTripRecap review={view.review} paused={view.paused} hasMedia={view.count > 0} scale={scale} /></View>}
+    <View testID="tv-trip-media" style={{ position: view.review ? 'relative' : 'absolute', ...(view.review ? { flex: view.count ? 0.58 : 0, overflow: 'hidden', minWidth: 0, backgroundColor: styles.overlay.backgroundColor, borderRadius: 24 * scale } : { inset: 0 }), alignItems: 'center', justifyContent: 'center' }}>
     <img ref={image} data-testid="tv-photo-image" alt="已授权的家庭照片" hidden onError={() => mediaError.current?.()}
       style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'contain' }} />
     <video ref={video} data-testid="tv-media-video" aria-label="已授权的家庭视频（静音）" hidden muted playsInline
@@ -326,6 +331,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
     {view.count > 0 && <Text testID="tv-photo-position" style={[styles.position, { bottom: 24 * scale, right: 24 * scale,
       paddingVertical: 10 * scale, paddingHorizontal: 18 * scale, borderRadius: 24 * scale,
       fontSize: 20 * scale, lineHeight: 28 * scale }]}>{view.position + 1} / {view.count}{view.paused ? ' · 已暂停' : ''}</Text>}
+    </View>
   </View>;
 }
 const styles = StyleSheet.create({

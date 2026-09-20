@@ -4,7 +4,7 @@
 
 本表描述**本地源码**，其与正式版本的差异见 [交接说明](HANDOFF.md)。表用于定位代码；字段、权限、错误和状态机参见 [README 文档导航](../README.md#文档导航)。
 
-Flask HTTP 方法与路径组合：**198**（含本人助理原计划查询）；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
+Flask HTTP 方法与路径组合：**217**；另有 `GET /space/<slug>`。HEAD/OPTIONS 不重复列出。动态 `<action>` 路由算一个模板，允许的具体动作见 [待办发布契约](TASK-PUBLISH.md)。
 
 | 方法 | 路径 | 实现 |
 |---|---|---|
@@ -20,7 +20,7 @@ Flask HTTP 方法与路径组合：**198**（含本人助理原计划查询）�
 | POST | `/api/assistant/finance-query` | [assistant_finance_query.py](../assistant_finance_query.py) · `assistant_finance_query` |
 | POST | `/api/assistant/journey-brief` | [home_assistant.py](../home_assistant.py) · `journey_brief` |
 | POST | `/api/assistant/plan` | [home_assistant.py](../home_assistant.py) · `plan` |
-| GET | `/api/assistant/plans/<uid>` | [home_assistant.py](../home_assistant.py) · 本人原计划与回执 |
+| GET | `/api/assistant/plans/<uid>` | [home_assistant.py](../home_assistant.py) · `read_plan` |
 | POST | `/api/assistant/plans/<uid>/apply` | [home_assistant.py](../home_assistant.py) · `apply_plan` |
 | GET | `/api/assistant/search` | [home_assistant.py](../home_assistant.py) · `search` |
 | POST | `/api/assistant/trip-change` | [assistant_trip_change_api.py](../assistant_trip_change_api.py) · `assistant_trip_change` |
@@ -75,6 +75,11 @@ Flask HTTP 方法与路径组合：**198**（含本人助理原计划查询）�
 | GET | `/api/finance-hub/investments/imports/receipts` | [investment_import.py](../investment_import.py) · `investment_import_receipt` |
 | GET | `/api/finance-hub/investments/imports/template` | [investment_import.py](../investment_import.py) · `investment_import_template` |
 | GET | `/api/finance-hub/investments/operations/<rid>` | [investment_operations.py](../investment_operations.py) · `investment_operation_result` |
+| GET | `/api/finance-hub/journey-allocations` | [journey_finance.py](../journey_finance.py) · `journey_finance_allocations` |
+| POST | `/api/finance-hub/journey-allocations/confirm` | [journey_finance.py](../journey_finance.py) · `journey_finance_confirm` |
+| GET | `/api/finance-hub/journey-allocations/operations/<rid>` | [journey_finance.py](../journey_finance.py) · `journey_finance_operation` |
+| GET | `/api/finance-hub/journey-allocations/payments` | [journey_finance.py](../journey_finance.py) · `journey_finance_payments` |
+| POST | `/api/finance-hub/journey-allocations/preview` | [journey_finance.py](../journey_finance.py) · `journey_finance_preview` |
 | GET | `/api/finance-hub/overview` | [finance_hub.py](../finance_hub.py) · `hub_overview` |
 | GET | `/api/finance-hub/reconciliation` | [finance_hub.py](../finance_hub.py) · `hub_reconciliation` |
 | POST | `/api/finance-hub/reconciliation/<rid>/revoke` | [finance_hub.py](../finance_hub.py) · `hub_reconciliation_revoke` |
@@ -142,9 +147,14 @@ Flask HTTP 方法与路径组合：**198**（含本人助理原计划查询）�
 | GET | `/api/me` | [app.py](../app.py) · `me` |
 | GET | `/api/media-playback/devices/<uid>` | [media_playback.py](../media_playback.py) · `media_playback_control` |
 | PUT | `/api/media-playback/devices/<uid>` | [media_playback.py](../media_playback.py) · `media_playback_control` |
+| POST | `/api/media-playback/devices/<uid>/journey-preview` | [media_trip_playback.py](../media_trip_playback.py) · `media_trip_preview` |
+| POST | `/api/media-playback/devices/<uid>/journey-start` | [media_trip_playback.py](../media_trip_playback.py) · `media_trip_start` |
+| GET | `/api/media-playback/operations/<request_id>` | [media_trip_playback.py](../media_trip_playback.py) · `media_trip_operation` |
 | GET | `/api/media-tv/items` | [household_media.py](../household_media.py) · `media_tv_items` |
 | GET | `/api/media-tv/items/<uid>/preview` | [household_media.py](../household_media.py) · `media_tv_preview` |
+| GET | `/api/media-tv/items/<uid>/video` | [household_media.py](../household_media.py) · `media_tv_video` |
 | GET | `/api/media-tv/playback` | [media_playback.py](../media_playback.py) · `media_playback_tv` |
+| POST | `/api/media-tv/playback/progress` | [media_playback.py](../media_playback.py) · `media_playback_progress` |
 | GET | `/api/media/imports` | [household_media.py](../household_media.py) · `media_imports` |
 | POST | `/api/media/imports` | [household_media.py](../household_media.py) · `media_imports` |
 | DELETE | `/api/media/imports/<uid>` | [household_media.py](../household_media.py) · `media_import_detail` |
@@ -154,10 +164,16 @@ Flask HTTP 方法与路径组合：**198**（含本人助理原计划查询）�
 | DELETE | `/api/media/items/<uid>` | [household_media.py](../household_media.py) · `media_item` |
 | GET | `/api/media/items/<uid>` | [household_media.py](../household_media.py) · `media_item` |
 | PATCH | `/api/media/items/<uid>` | [household_media.py](../household_media.py) · `media_item` |
+| GET | `/api/media/items/<uid>/duplicates` | [household_media.py](../household_media.py) · `media_duplicate_hints` |
 | GET | `/api/media/items/<uid>/journey-suggestions` | [household_media.py](../household_media.py) · `media_journey_suggestions` |
 | GET | `/api/media/items/<uid>/preview` | [household_media.py](../household_media.py) · `media_preview` |
 | GET | `/api/media/items/<uid>/tv-grants` | [household_media.py](../household_media.py) · `media_tv_grants` |
 | PUT | `/api/media/items/<uid>/tv-grants` | [household_media.py](../household_media.py) · `media_tv_grants` |
+| GET | `/api/media/items/<uid>/video` | [household_media.py](../household_media.py) · `media_video` |
+| POST | `/api/media/local-imports` | [media_local_upload.py](../media_local_upload.py) · `local_photo_create` |
+| PUT | `/api/media/local-imports/<uid>/files/<slot_id>` | [media_local_upload.py](../media_local_upload.py) · `local_photo_upload` |
+| POST | `/api/media/local-imports/<uid>/finish` | [media_local_upload.py](../media_local_upload.py) · `local_photo_finish` |
+| GET | `/api/media/memories/on-this-day` | [household_media.py](../household_media.py) · `media_on_this_day` |
 | GET | `/api/member-invitations` | [membership_http.py](../membership_http.py) · `invitation_list` |
 | POST | `/api/member-invitations` | [membership_http.py](../membership_http.py) · `invitation_create` |
 | POST | `/api/member-invitations/<invitation_id>/revoke` | [membership_http.py](../membership_http.py) · `invitation_revoke` |
@@ -197,6 +213,9 @@ Flask HTTP 方法与路径组合：**198**（含本人助理原计划查询）�
 | POST | `/api/task-publish/preview` | [task_publish.py](../task_publish.py) · `task_publication_preview` |
 | POST | `/api/task-publish/publications/<rid>/<action>` | [task_publish.py](../task_publish.py) · `task_publication_action` |
 | GET | `/api/task-publish/state` | [task_publish.py](../task_publish.py) · `task_publication_state` |
+| GET | `/api/task-reminders` | [task_reminders.py](../task_reminders.py) · `inbox` |
+| POST | `/api/task-reminders/<task_id>/actions` | [task_reminders.py](../task_reminders.py) · `action` |
+| GET | `/api/task-reminders/operations/<request_id>` | [task_reminders.py](../task_reminders.py) · `operation` |
 | GET | `/app` | [frontend_runtime.py](../frontend_runtime.py) · `expo_frontend` |
 | GET | `/app/<path:name>` | [frontend_runtime.py](../frontend_runtime.py) · `expo_frontend` |
 | GET | `/auth/<provider>/callback` | [cloud_accounts.py](../cloud_accounts.py) · `callback` |
@@ -209,9 +228,9 @@ Flask HTTP 方法与路径组合：**198**（含本人助理原计划查询）�
 
 ## 每户业务数据表
 
-共 **69** 张表：
+共 **77** 张表：
 
-`assistant_plans`, `attempts`, `audit`, `calendar_publications`, `cloud_accounts`, `cloud_items`, `cloud_oauth_states`, `cloud_sources`, `cloud_writes`, `devices`, `entities`, `finance_account_cashflows`, `finance_account_operations`, `finance_account_profiles`, `finance_account_reviews`, `finance_account_valuations`, `finance_accounts`, `finance_analysis_operations`, `finance_baselines`, `finance_fx_rates`, `finance_source_receipts`, `finance_spending_observations`, `finance_spending_receipts`, `household_memberships`, `household_routines`, `hub_budgets`, `hub_import_receipts`, `hub_imports`, `hub_investment_import_previews`, `hub_investment_import_receipts`, `hub_investment_links`, `hub_investment_operations`, `hub_investment_sources`, `hub_investments`, `hub_reconciliations`, `hub_shopping_settlement_receipts`, `hub_shopping_settlements`, `hub_transactions`, `inventory_acquisitions`, `inventory_items`, `inventory_movements`, `inventory_operations`, `inventory_source_links`, `journey_actions`, `journey_documents`, `journey_links`, `journey_places`, `journey_route_operations`, `journey_route_stops`, `journey_routes`, `journey_workflows`, `media_imports`, `media_items`, `media_playback`, `media_tv_grants`, `member_dashboard_layout`, `member_invitations`, `member_preferences`, `member_session_browsers`, `member_sessions`, `membership_operations`, `photo_refs`, `photos`, `private_finance`, `routine_occurrences`, `routine_receipts`, `settings`, `task_publications`, `users`
+`assistant_plans`, `attempts`, `audit`, `calendar_publications`, `cloud_accounts`, `cloud_items`, `cloud_oauth_states`, `cloud_sources`, `cloud_writes`, `devices`, `entities`, `finance_account_cashflows`, `finance_account_operations`, `finance_account_profiles`, `finance_account_reviews`, `finance_account_valuations`, `finance_accounts`, `finance_analysis_operations`, `finance_baselines`, `finance_fx_rates`, `finance_source_receipts`, `finance_spending_observations`, `finance_spending_receipts`, `household_memberships`, `household_routines`, `hub_budgets`, `hub_import_receipts`, `hub_imports`, `hub_investment_import_previews`, `hub_investment_import_receipts`, `hub_investment_links`, `hub_investment_operations`, `hub_investment_sources`, `hub_investments`, `hub_journey_allocation_operations`, `hub_journey_allocations`, `hub_reconciliations`, `hub_shopping_settlement_receipts`, `hub_shopping_settlements`, `hub_transactions`, `inventory_acquisitions`, `inventory_items`, `inventory_movements`, `inventory_operations`, `inventory_source_links`, `journey_actions`, `journey_documents`, `journey_links`, `journey_places`, `journey_route_operations`, `journey_route_stops`, `journey_routes`, `journey_workflows`, `media_imports`, `media_items`, `media_playback`, `media_playback_journeys`, `media_playback_operations`, `media_playback_progress`, `media_tv_grants`, `media_video_cache`, `member_dashboard_layout`, `member_invitations`, `member_preferences`, `member_session_browsers`, `member_sessions`, `membership_operations`, `photo_refs`, `photos`, `private_finance`, `routine_occurrences`, `routine_receipts`, `settings`, `task_publications`, `task_reminder_operations`, `task_reminders`, `users`
 
 ## 平台注册目录
 
