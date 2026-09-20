@@ -49,6 +49,9 @@ ERRORS = {
     'api_disabled': (503, 'Google Photos Picker API 尚未启用。请联系应用维护者启用后，再重新选片；无需重复授权。'),
     'unavailable': (503, '媒体暂时无法读取，请稍后重试'),
     'video_busy': (503, '视频正在读取，请稍后重试'),
+    'local_upload_busy': (503, '正在处理照片，请稍后用原记录重试'),
+    'local_upload_mismatch': (422, '文件与本次声明不一致，请重新选择原文件'),
+    'local_upload_incomplete': (422, '本次未上传此文件，已跳过'),
     'worker_error': (503, '媒体处理暂时失败'),
     'timeout': (503, '媒体服务暂时未响应'),
     'rate_limited': (503, '媒体服务繁忙，请稍后重试'),
@@ -355,6 +358,8 @@ class MediaLibrary:
         self.household = app.config.get('HOUSEHOLD_INFO', {}).get('id', 'default')
         self.cipher = MediaCipher(app.secret_key, self.household)
         self._maintenance_cursor = ''
+        from media_local_upload import LocalPhotoUploads
+        self.local_uploads = LocalPhotoUploads(self)
 
     @contextmanager
     def transaction(self, write=False):
@@ -413,6 +418,29 @@ class MediaLibrary:
             return None
         return row
 
+    def _import_source(self, row):
+        if row['context_cipher']:
+            context = self._open('import-context', row, row['context_cipher'])
+            if context.get('source') == 'local-upload' and context.get('version') == 1 and row['account_id'] is None:
+                return 'local-upload'
+        return 'google-photos'
+
+    def _media_authority(self, con, row):
+        # NULL can also be a revoked/deleted Google account. Only the explicitly
+        # sealed local source, bound to this exact row/fingerprint, permits it.
+        if row['account_id'] is not None:
+            return self._authority(con, row['account_id'], row['owner']) is not None
+        if not con.execute("SELECT 1 FROM household_memberships WHERE member_id=? AND state='active'", (row['owner'],)).fetchone():
+            return False
+        try:
+            meta = self._metadata(row)
+            digest = meta.get('uploadSha256')
+            return (meta.get('source') == 'local-upload' and meta.get('sourceVersion') == 1
+                    and type(digest) is str and re.fullmatch('[a-f0-9]{64}', digest) is not None
+                    and secrets.compare_digest(row['source_key'], self.cipher.source_key(row['owner'], 'local-upload/v1', digest)))
+        except (MediaError, MediaCryptoError, KeyError, TypeError, ValueError):
+            return False
+
     def _context_valid(self, con, row):
         if row['state'] not in ACTIVE or row['expires_at'] <= self.clock():
             return False
@@ -420,7 +448,9 @@ class MediaLibrary:
         try:
             context = self._open('import-context', row, row['context_cipher'])
             member = self.sessions.validate_context(con, context['member'], member=True)
-            valid = member['owner'] == row['owner'] and self._authority(con, row['account_id'], row['owner'], context['account']) is not None
+            valid = member['owner'] == row['owner'] and (
+                self._import_source(row) == 'local-upload' or
+                self._authority(con, row['account_id'], row['owner'], context['account']) is not None)
         except Exception:
             pass
         return valid
@@ -525,13 +555,13 @@ class MediaLibrary:
         try:
             summary=self._result_summary(row)
             # Replace active authorization context with counts and fixed reasons only.
-            return self._seal('import-context',row,{'resultSummary':summary}) if summary['resultsState']=='known' else None
+            return self._seal('import-context',row,self.local_uploads.terminal_context(row, {'resultSummary':summary})) if summary['resultsState']=='known' else None
         except (MediaError,MediaCryptoError,KeyError,TypeError,ValueError,AttributeError):
             # Diagnostics must never prevent cancellation or privacy cleanup.
             return None
 
     def _import_dto(self, row):
-        result = {'id': row['id'], 'revision': row['revision'], 'state': row['state'],
+        result = {'id': row['id'], 'revision': row['revision'], 'state': row['state'], 'source': self._import_source(row),
             'createdAt': _iso(row['created_at']), 'expiresAt': _iso(row['expires_at']),
             'nextPollAt': _iso(row['next_attempt_at']) if row['next_attempt_at'] else None,
             **self._result_summary(row),
@@ -646,8 +676,10 @@ class MediaLibrary:
         self.maintenance()
         now = self.clock()
         with self.transaction(True) as con:
-            rows = con.execute("SELECT * FROM media_imports WHERE (state IN ('queued','waiting_selection','listing','staging') OR cleanup_state IN ('pending','unknown')) AND next_attempt_at<=? AND (lease_token IS NULL OR lease_until<=?) ORDER BY created_at,id LIMIT 100", (now, now)).fetchall()
+            rows = con.execute("SELECT * FROM media_imports WHERE ((state IN ('queued','waiting_selection','listing','staging') AND account_id IS NOT NULL) OR cleanup_state IN ('pending','unknown')) AND next_attempt_at<=? AND (lease_token IS NULL OR lease_until<=?) ORDER BY created_at,id LIMIT 100", (now, now)).fetchall()
             for row in rows:
+                if self._import_source(row) == 'local-upload':
+                    continue  # Local bytes are supplied by bounded requests, never Google jobs.
                 cleanup = row['cleanup_state'] in ('pending', 'unknown')
                 if cleanup:
                     saved_session=self._open('picker-session',row,row['session_cipher']) if row['session_cipher'] else None
@@ -881,7 +913,7 @@ class MediaLibrary:
         if row['state']=='deleted':
             raise MediaError('gone')
         if device is not None:
-            if (row['state']!='ready' or row['visibility']!='shared' or not self._authority(con,row['account_id'],row['owner'])
+            if (row['state']!='ready' or row['visibility']!='shared' or not self._media_authority(con,row)
                 or not con.execute('SELECT 1 FROM media_tv_grants WHERE media_id=? AND device_id=?',(uid,device)).fetchone()):
                 raise MediaError('not_found')
         elif row['owner']==owner:
@@ -889,7 +921,7 @@ class MediaLibrary:
                 parent = self._import(con,row['import_id'],owner)
                 if not self._context_valid(con,parent):
                     raise MediaError('gone')
-        elif row['state']!='ready' or row['visibility']!='shared' or not self._authority(con,row['account_id'],row['owner']):
+        elif row['state']!='ready' or row['visibility']!='shared' or not self._media_authority(con,row):
             raise MediaError('not_found')
         elif manage:
             raise MediaError('forbidden')
@@ -912,7 +944,7 @@ class MediaLibrary:
         if row['owner']==owner:
             source_time = meta.get('sourceCreatedAt')
             known = _source_time(source_time) is not None
-            result.update(accountId=row['account_id'],displayFilename=meta['displayFilename'],source='google-photos',
+            result.update(accountId=row['account_id'],displayFilename=meta['displayFilename'],source=meta.get('source','google-photos'),
                           sourceCreatedAt=source_time if known else None,sourceTimeState='known' if known else 'unknown')
         return result
 
@@ -1003,6 +1035,8 @@ class MediaLibrary:
             owner = self._member(con)
             row = self._import(con,uid,owner)
             result = {'import':self._import_dto(row),'items':[]}
+            if self._import_source(row) == 'local-upload':
+                result['upload'] = self.local_uploads.detail(row) if row['state'] in ('staging','awaiting_confirmation') and self._context_valid(con,row) else {'files':[], 'canUpload':False}
             if row['state'] not in ('staging','awaiting_confirmation') or not self._context_valid(con,row):
                 result['import'].pop('pickerUri',None) if row['state']=='waiting_selection' and not self._context_valid(con,row) else None
                 result['import']['canConfirm']=False
@@ -1010,7 +1044,7 @@ class MediaLibrary:
             for slot in self._manifest(row)['slots']:
                 if slot['status'] in ('successful','duplicate'):
                     item = con.execute("SELECT * FROM media_items WHERE id=? AND owner=? AND state!='deleted'",(slot['itemId'],owner)).fetchone()
-                    if item:
+                    if item and not any(entry['id'] == item['id'] for entry in result['items']):
                         result['items'].append({'id':item['id'],'status':slot['status'],'item':self._item_dto(con,item,owner)})
             return result
 
@@ -1057,8 +1091,8 @@ class MediaLibrary:
                     self._delete_item(con,item)
             summary=self._result_summary(row,saved=len(ids))
             summary['counts']['unselected']=summary['counts']['ready']-len(ids)
-            receipt=self._seal('import-context',row,{'consentVersion':CONSENT_VERSION,'confirmedAt':self.clock(),
-                'itemIds':ids,'resultSummary':summary})
+            receipt=self._seal('import-context',row,self.local_uploads.terminal_context(row, {'consentVersion':CONSENT_VERSION,'confirmedAt':self.clock(),
+                'itemIds':ids,'resultSummary':summary}))
             con.execute("UPDATE media_imports SET state='confirmed',confirm_request_id=?,confirm_key=?,context_cipher=?,manifest_cipher=NULL,reserved_bytes=0,revision=revision+1 WHERE id=?",
                         (request_id,digest,receipt,uid))
             self._quota(con,owner)
@@ -1101,7 +1135,7 @@ class MediaLibrary:
             visibility=value.get('visibility',row['visibility'])
             if visibility not in ('private','shared'):
                 raise MediaError('invalid_input')
-            if visibility=='shared' and not self._authority(con,row['account_id'],owner):
+            if visibility=='shared' and not self._media_authority(con,row):
                 raise MediaError('reauth')
             journey=value.get('journeyId',row['journey_id'])
             if journey is not None:
@@ -1156,7 +1190,7 @@ class MediaLibrary:
             if value is not None:
                 if row['revision']!=value['revision'] or row['state']!='ready' or devices and row['visibility']!='shared':
                     raise MediaError('conflict')
-                if devices and not self._authority(con,row['account_id'],owner):
+                if devices and not self._media_authority(con,row):
                     raise MediaError('reauth')
                 for device in devices:
                     if not con.execute('SELECT 1 FROM devices WHERE id=? AND approved=1 AND expires>?',(device,self.clock())).fetchone():
@@ -1312,7 +1346,7 @@ def register_media_library(app, db, Problem, body, require_member, audit):
 
     @app.errorhandler(MediaError)
     def media_error(error):
-        headers = {'Retry-After':'1'} if error.code == 'video_busy' else {}
+        headers = {'Retry-After':'1'} if error.code in ('video_busy','local_upload_busy') else {}
         return jsonify(error=error.message,code=error.code),error.status,headers
 
     @app.route('/api/media/imports',methods=['GET','POST'])
@@ -1362,7 +1396,7 @@ def register_media_library(app, db, Problem, body, require_member, audit):
                 clause+=' AND journey_id=?'
                 params.append(_id(query['journeyId']))
             rows=con.execute('SELECT '+ITEM_VIEW+" FROM media_items WHERE state='ready' AND "+clause+' ORDER BY updated_at DESC,id',params).fetchall()
-            rows=[r for r in rows if r['owner']==owner or engine._authority(con,r['account_id'],r['owner'])]
+            rows=[r for r in rows if r['owner']==owner or engine._media_authority(con,r)]
             selected=rows[query['offset']:query['offset']+query['limit']]
             return jsonify(items=[engine._item_dto(con,r,owner) for r in selected],total=len(rows),limit=query['limit'],offset=query['offset'],hasMore=query['offset']+query['limit']<len(rows))
 
@@ -1406,7 +1440,7 @@ def register_media_library(app, db, Problem, body, require_member, audit):
             device=engine._tv(con)
             columns=','.join('m.'+column for column in ITEM_VIEW.split(','))
             rows=con.execute('SELECT '+columns+" FROM media_items m JOIN media_tv_grants t ON t.media_id=m.id WHERE t.device_id=? AND m.state='ready' AND m.visibility='shared' ORDER BY m.updated_at DESC,m.id",(device,)).fetchall()
-            rows=[r for r in rows if engine._authority(con,r['account_id'],r['owner'])]
+            rows=[r for r in rows if engine._media_authority(con,r)]
             selected=rows[query['offset']:query['offset']+query['limit']]
             return jsonify(items=[engine._item_dto(con,r,television=True) for r in selected],limit=query['limit'],offset=query['offset'],hasMore=query['offset']+query['limit']<len(rows),validUntil=_iso(engine.clock()+15))
 
@@ -1418,4 +1452,6 @@ def register_media_library(app, db, Problem, body, require_member, audit):
     def media_tv_video(uid):
         return engine.video(uid,True)
 
+    from media_local_upload import register_local_uploads
+    register_local_uploads(app, engine, require_member)
     return engine

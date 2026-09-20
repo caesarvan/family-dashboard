@@ -723,7 +723,7 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
                 library._member(con)
                 rows = con.execute("SELECT " + ITEM_VIEW + " FROM media_items WHERE state='ready' AND (owner=? OR visibility='shared') ORDER BY id", (owner,))
                 for row in rows:
-                    if row['owner'] != owner and not library._authority(con, row['account_id'], row['owner']):
+                    if row['owner'] != owner and not library._media_authority(con, row):
                         continue
                     projected = library._item_dto(con, row, owner)
                     journey = projected.get('journey')
