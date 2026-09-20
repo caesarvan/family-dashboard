@@ -19,12 +19,15 @@ import socket
 import stat
 import subprocess
 import sys
+import threading
 import time
 
 ROOT = Path('/tmp/family-dashboard-media-ipc-probe')
 SOCKET = '/decoder-private/video.sock'
 PROFILES = ('worker100', 'response64')
 LIMITS = {'application': 384, 'decoder': 768}
+HOST_BUDGET = {'preflightMiB': 1280, 'preflightSamples': 3, 'preflightSpanSeconds': 1,
+               'abortBelowMiB': 256, 'sampleIntervalSeconds': .25, 'maxSampleLagSeconds': 1}
 DECODER_FILES = ('media_video_service.py', 'media_video_transport.py', 'media_videos.py', 'media_images.py')
 APP_FILES = tuple('''app.py frontend_runtime.py member_sessions.py household_members.py tv_display.py
 sync_health.py household_memberships.py personal_accounts.py membership_storage.py membership_http.py
@@ -147,11 +150,98 @@ def container_args(role, profile, image, tools, output):
     return args
 
 
+def mem_available_kib():
+    match = re.search(r'^MemAvailable:\s+(\d+) kB$', Path('/proc/meminfo').read_text(), re.M)
+    need(match is not None, 'MemAvailable missing or malformed')
+    return int(match[1])
+
+
+def host_preflight(output, *, reader=None, sleeper=None):
+    reader, sleeper = reader or mem_available_kib, sleeper or time.sleep
+    samples = []; failure = None
+    try:
+        for index in range(HOST_BUDGET['preflightSamples']):
+            if index: sleeper(HOST_BUDGET['preflightSpanSeconds'] / (HOST_BUDGET['preflightSamples'] - 1))
+            value = reader()
+            need(type(value) is int and value >= 0, 'invalid MemAvailable reading')
+            samples.append({'at': time.time(), 'monotonic': time.monotonic(), 'availableKiB': value})
+        if any(s['availableKiB'] < HOST_BUDGET['preflightMiB'] * 1024 for s in samples):
+            failure = 'host_memory_below_preflight_threshold'
+    except BaseException as error:
+        failure = 'host_memory_read_failed:' + type(error).__name__
+    record = {'status': 'preflight_blocked' if failure else 'ready', 'policy': HOST_BUDGET,
+              'samples': samples, 'failure': failure}
+    save(output / 'preflight.json', record)
+    return record
+
+
+class HostMemoryAbort(RuntimeError):
+    pass
+
+
+class HostMemoryMonitor:
+    """One read-only sampler; only the coordinator may issue Docker commands."""
+    def __init__(self, output, *, reader=None):
+        self.output, self.reader = output, reader or mem_available_kib
+        self.stop_event, self.ready = threading.Event(), threading.Event()
+        self.lock = threading.Lock(); self.failure = None
+        self.count = 0; self.minimum = None; self.last_sample = time.monotonic()
+        self.thread = None; self.stream = None
+
+    def latch(self, reason):
+        with self.lock:
+            if self.failure is None: self.failure = {'reason': reason, 'at': time.time()}
+
+    def _sample(self):
+        try:
+            while not self.stop_event.is_set():
+                value = self.reader()
+                need(type(value) is int and value >= 0, 'invalid MemAvailable reading')
+                if self.stop_event.is_set(): break
+                sample = {'at': time.time(), 'monotonic': time.monotonic(), 'availableKiB': value}
+                self.stream.write(json.dumps(sample) + '\n'); self.stream.flush()
+                with self.lock:
+                    self.count += 1; self.minimum = value if self.minimum is None else min(self.minimum, value)
+                    self.last_sample = sample['monotonic']
+                if value < HOST_BUDGET['abortBelowMiB'] * 1024: self.latch('host_memory_below_abort_threshold')
+                self.ready.set()
+                if self.stop_event.wait(HOST_BUDGET['sampleIntervalSeconds']): break
+        except BaseException as error:
+            self.latch('host_memory_monitor_failed:' + type(error).__name__); self.ready.set()
+
+    def start(self):
+        self.stream = (self.output / 'host-memory-samples.jsonl').open('x', encoding='utf8')
+        self.thread = threading.Thread(target=self._sample, name='host-memory-monitor', daemon=True)
+        self.thread.start()
+        if not self.ready.wait(HOST_BUDGET['maxSampleLagSeconds']): self.latch('host_memory_monitor_stalled')
+        self.check()
+
+    def check(self):
+        if self.thread is None or not self.thread.is_alive(): self.latch('host_memory_monitor_stopped')
+        if time.monotonic() - self.last_sample > HOST_BUDGET['maxSampleLagSeconds']:
+            self.latch('host_memory_monitor_stalled')
+        if self.failure: raise HostMemoryAbort(self.failure['reason'])
+
+    def finish(self):
+        # Check before our deliberate stop so an unexpected dead thread cannot pass.
+        try: self.check()
+        except HostMemoryAbort: pass
+        self.stop_event.set()
+        if self.thread: self.thread.join(HOST_BUDGET['maxSampleLagSeconds'])
+        if self.thread and self.thread.is_alive(): self.latch('host_memory_monitor_join_failed')
+        elif self.stream: self.stream.close()
+        record = {'policy': HOST_BUDGET, 'sampleCount': self.count, 'minimumAvailableKiB': self.minimum,
+                  'failure': self.failure, 'threadStopped': not self.thread or not self.thread.is_alive()}
+        save(self.output / 'host-memory.json', record)
+        return record
+
+
 class Executor:
     def __init__(self, output):
         self.output, self.records = output, []
 
-    def call(self, args, *, timeout=120, check=True):
+    def call(self, args, *, timeout=120, check=True, guard=None, interruptible=True):
+        if guard: guard.check()
         argv = ['docker', '--host', 'unix:///var/run/docker.sock', *args]
         stem = self.output / f'command-{len(self.records):02d}'
         env = {'PATH': '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin',
@@ -160,16 +250,54 @@ class Executor:
             child = subprocess.Popen(argv, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=err)
             started = {'argv': argv, 'pid': child.pid, 'startedAt': time.time()}
             save(str(stem) + '.started.json', started)
+            aborted = None; child_code = None; deadline = time.monotonic() + timeout
             try:
-                code = child.wait(timeout=timeout)
-            except subprocess.TimeoutExpired:
-                child.kill(); child.wait(); code = 124
+                while True:
+                    if guard and interruptible: guard.check()
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        child.kill(); child_code = child.wait(); code = 124; break
+                    try:
+                        code = child_code = child.wait(timeout=min(.25, remaining)); break
+                    except subprocess.TimeoutExpired:
+                        continue
+            except BaseException as error:
+                child.kill(); child_code = child.wait(); code = 125; aborted = error
         receipt = {**started, 'exitCode': code, 'completedAt': time.time(),
+                   'childExitCode': child_code,
+                   'abortedBy': type(aborted).__name__ if aborted else None,
                    'stdoutSha256': sha(str(stem) + '.stdout'), 'stderrSha256': sha(str(stem) + '.stderr')}
         save(str(stem) + '.json', receipt); self.records.append(receipt)
+        if aborted is not None: raise aborted
         if check:
             need(code == 0, 'command failed; preserve evidence, no retry')
         return code, Path(str(stem) + '.stdout').read_bytes()
+
+
+def cleanup_owned(executor, owned, output, monitor):
+    """On pressure, kill all known new IDs first; never wait ten seconds per role."""
+    errors = []; states = {}; ids = list(reversed(list(owned.items())))
+    need(all(re.fullmatch('[0-9a-f]{64}', cid) for _, cid in ids), 'invalid owned cleanup ID')
+    pressure = False
+    try: monitor.check()
+    except HostMemoryAbort: pressure = True
+    if not pressure:
+        for role, cid in ids:
+            try: executor.call(['stop', '--time=10', cid], timeout=30, check=False, guard=monitor)
+            except HostMemoryAbort:
+                pressure = True; break
+            except Exception as error: errors.append({'role': role, 'error': type(error).__name__})
+    if pressure:
+        for role, cid in ids:
+            try: executor.call(['kill', cid], timeout=10, check=False)
+            except Exception as error: errors.append({'role': role, 'error': type(error).__name__})
+    for role, cid in ids:
+        try:
+            _, raw = executor.call(['inspect', cid]); states[role] = json.loads(raw)[0]
+            save(output / (role + '-container.json'), states[role])
+            executor.call(['logs', cid], check=False)
+        except Exception as error: errors.append({'role': role, 'error': type(error).__name__})
+    return states, errors
 
 
 def verify_final(states, proofs, worker_exit, contract, profile):
@@ -196,52 +324,62 @@ def run(input_dir, output, profile):
     tools, contract = prepared(input_dir)
     safe(tools, exists=True, remote=True)
     output = safe(output, remote=True); output.mkdir(parents=True, mode=0o700)
-    mem = re.search(r'^MemAvailable:\s+(\d+) kB', Path('/proc/meminfo').read_text(), re.M)
-    need(mem and int(mem[1]) >= (384 + 768 + 384) * 1024, 'insufficient host headroom; no expansion or retry')
-    save(output / 'started.json', {'profile': profile, 'contract': contract, 'memAvailableKiB': int(mem[1]), 'startedAt': time.time()})
+    save(output / 'started.json', {'profile': profile, 'contract': contract, 'hostBudget': HOST_BUDGET, 'startedAt': time.time()})
+    preflight = host_preflight(output)
+    if preflight['status'] == 'preflight_blocked':
+        save(output / 'result.json', {'passed': False, 'status': 'preflight_blocked', 'profile': profile,
+             'contract': contract, 'failure': preflight['failure'], 'containers': {}, 'commands': [],
+             'artifacts': {f.name: sha(f) for f in output.iterdir() if f.is_file()}, 'completedAt': time.time()})
+        raise RuntimeError('preflight_blocked; no containers created, no automatic retry')
     for name in ('application', 'decoder', 'socket', 'fixtures'):
         folder = output / name; folder.mkdir(mode=0o700); os.chown(folder, 10001, 10001)
-    executor = Executor(output); owned = {}; states = {}; worker_exit = None; failure = None
+    executor = Executor(output); owned = {}; states = {}; worker_exit = None; failure = None; unconfirmed_create = None
+    monitor = HostMemoryMonitor(output)
     try:
+        monitor.start()
         for role, image in contract['images'].items():
-            _, raw = executor.call(['image', 'inspect', image]); info = json.loads(raw)[0]
+            _, raw = executor.call(['image', 'inspect', image], guard=monitor); info = json.loads(raw)[0]
             need(info['Id'] == image, 'image identity differs')
             for value in info['Config'].get('Env', []):
                 need(not any(k in value.partition('=')[0].upper() for k in ('SECRET', 'PASSWORD', 'TOKEN', 'API_KEY', 'PROXY')), 'image embeds unsafe environment')
         for role in ('decoder', 'application'):
-            _, raw = executor.call(container_args(role, profile, contract['images'][role], tools, output))
+            # Create both containers before starting either workload. Obtain each
+            # ID before consuming an abort so owned-only cleanup has a known target.
+            unconfirmed_create = {'role': role, 'reason': 'create attempt has no confirmed ID; see original command receipt'}
+            _, raw = executor.call(container_args(role, profile, contract['images'][role], tools, output),
+                                   timeout=10, guard=monitor, interruptible=False)
             cid = raw.decode().strip(); need(re.fullmatch('[0-9a-f]{64}', cid), 'invalid container ID')
             owned[role] = cid; save(output / (role + '-owned.json'), {'id': cid, 'image': contract['images'][role]})
-            if role == 'decoder':
-                executor.call(['start', cid])
-                until = time.monotonic() + 240
-                while True:
-                    path = output / 'socket/video.sock'
-                    if path.exists():
-                        mode = path.lstat()
-                        need(stat.S_ISSOCK(mode.st_mode) and stat.S_IMODE(mode.st_mode) == 0o600 and mode.st_uid == 10001,
-                             'decoder socket ownership differs')
-                        need((output / 'fixtures/fixture.json').is_file(), 'fixture missing')
-                        break
-                    need(not (output / 'decoder/finished.json').exists() and time.monotonic() < until, 'decoder setup failed/timed out')
-                    time.sleep(.1)
-            else:
-                worker_exit, _ = executor.call(['start', '--attach', cid], timeout=1800, check=False)
+            unconfirmed_create = None
+            monitor.check()
+        executor.call(['start', owned['decoder']], guard=monitor)
+        until = time.monotonic() + 240
+        while True:
+            monitor.check()
+            path = output / 'socket/video.sock'
+            if path.exists():
+                mode = path.lstat()
+                need(stat.S_ISSOCK(mode.st_mode) and stat.S_IMODE(mode.st_mode) == 0o600 and mode.st_uid == 10001,
+                     'decoder socket ownership differs')
+                need((output / 'fixtures/fixture.json').is_file(), 'fixture missing')
+                break
+            need(not (output / 'decoder/finished.json').exists() and time.monotonic() < until, 'decoder setup failed/timed out')
+            time.sleep(.1)
+        worker_exit, _ = executor.call(['start', '--attach', owned['application']], timeout=1800, check=False, guard=monitor)
+        monitor.check()
     except BaseException as error:
         failure = type(error).__name__ + ': ' + str(error)
     finally:
-        # Only the newly recorded IDs; retain stopped containers and all evidence.
-        cleanup_errors = []
-        for role, cid in reversed(list(owned.items())):
-            try:
-                executor.call(['stop', '--time=10', cid], timeout=30, check=False)
-                _, raw = executor.call(['inspect', cid]); states[role] = json.loads(raw)[0]
-                save(output / (role + '-container.json'), states[role])
-                executor.call(['logs', cid], check=False)
-            except Exception as error:
-                cleanup_errors.append({'role': role, 'error': type(error).__name__ + ': ' + str(error)})
-        proofs = {r: json.loads((output / r / 'finished.json').read_text()) for r in owned
-                  if (output / r / 'finished.json').is_file()}
+        states, cleanup_errors = cleanup_owned(executor, owned, output, monitor)
+        host_memory = monitor.finish()
+        if host_memory['failure']:
+            failure = failure or host_memory['failure']['reason']
+        proofs = {}
+        for role in owned:
+            path = output / role / 'finished.json'
+            if path.is_file():
+                try: proofs[role] = json.loads(path.read_text())
+                except Exception as error: cleanup_errors.append({'role': role, 'error': 'partial_inside_proof:' + type(error).__name__})
         passed = False
         if failure is None and not cleanup_errors:
             try:
@@ -250,6 +388,9 @@ def run(input_dir, output, profile):
                 failure = type(error).__name__ + ': ' + str(error)
         save(output / 'result.json', {'passed': passed, 'failure': failure, 'profile': profile,
              'contract': contract, 'workerAttachExitCode': worker_exit, 'containers': owned,
+             'unconfirmedCreate': unconfirmed_create,
+             'status': 'passed' if passed else 'aborted' if host_memory['failure'] else 'failed',
+             'hostMemory': host_memory,
              'proofs': proofs, 'cleanupErrors': cleanup_errors, 'commands': executor.records,
              'artifacts': {f.relative_to(output).as_posix(): sha(f) for f in output.rglob('*') if f.is_file()},
              'completedAt': time.time()})
