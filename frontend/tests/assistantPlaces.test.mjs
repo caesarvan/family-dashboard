@@ -50,7 +50,12 @@ function harness(options={}) {
     else if(path==='/me'){value=clone(f.session);}
     else if(path==='/assistant/brief')value={modelConfigured:false};
     else if(path.startsWith('/assistant/search?')){const u=new URL('https://synthetic.invalid'+path);value=search(Number(u.searchParams.get('offset')));}
-    else if(path.startsWith('/journey-places?'))value={items:Array.from({length:24},(_,i)=>clonePlace({id:(i+10).toString(16).padStart(24,'0'),name:'本页地点 '+i,coordinates:null})),total:25,limit:24,offset:Number(new URL('https://synthetic.invalid'+path).searchParams.get('offset')),hasMore:true};
+    else if(path.startsWith('/journey-places?')){
+      const query=new URL('https://synthetic.invalid'+path).searchParams,offset=Number(query.get('offset'));
+      const all=[...Array.from({length:24},(_,i)=>clonePlace({id:(i+10).toString(16).padStart(24,'0'),name:'本页地点 '+i,coordinates:null})),clone(f.place)];
+      const rows=all.filter(row=>query.get('scope')!=='mine'||row.owner===f.session.user.id);
+      value={items:rows.slice(offset,offset+24),total:rows.length,limit:24,offset,hasMore:offset+24<rows.length};
+    }
     else if(path==='/journey-places/'+photoId){if(f.placeStatus)throw new api.ApiError('地点不可见',f.placeStatus);value={place:clone(f.place)};}
     else if(path==='/journeys')value={journeys:[{id:journeyId,tripId,trip:{title:journey.title}}]};
     else throw new Error('Unexpected synthetic HTTP '+path);
@@ -152,4 +157,32 @@ test('offline conceals private target; same-identity recovery freshly reads the 
 test('fresh unlinked place does not open stale search journey',async t=>{
   const h=harness({place:clonePlace({journey:null,journeyId:null})});t.after(h.close);await h.search();await h.click('查看地点 旧地点快照');
   assert(h.text().includes('尚未关联旅行'));assert.equal(h.control('查看旅行').length,0);assert.equal(h.control('查看旅行照片').length,0);
+});
+
+for(const action of ['应用筛选','重置筛选','下一页','上一页'])test('explicit map navigation clears selection: '+action,async t=>{
+  const h=harness({place:clonePlace({owner:'bob',visibility:'shared',canManage:false})});t.after(h.close);
+  await h.search();await h.click('查看地点 旧地点快照');
+  if(action==='上一页'){
+    await h.click('下一页');await h.click('打开地点：当前地点名称');
+  }else if(action==='应用筛选'||action==='重置筛选'){
+    await h.click('筛选地点');
+    if(action==='应用筛选'){await h.click('范围： 全部可见');await h.click('仅我的');}
+  }
+  assert.equal(h.nodes().find(n=>n.type==='WorldMap').props.selected,photoId);
+  const reads=h.f.calls.filter(p=>p==='/journey-places/'+photoId).length;
+  await h.click(action);
+  const map=h.nodes().find(n=>n.type==='WorldMap');assert.equal(map.props.selected,undefined);
+  assert(h.text().includes('选一个地点看看'));assert.equal(h.control('查看旅行').length,0);assert.equal(h.control('查看旅行照片').length,0);
+  assert.equal(h.f.calls.filter(p=>p==='/journey-places/'+photoId).length,reads,'navigation must not reread the former selection');
+  assert.equal(map.props.places.length,action==='下一页'?1:24,'map contains only the new list page');
+  if(action!=='下一页')assert(!map.props.places.some(row=>row.id===photoId));
+  if(action==='应用筛选')assert(h.f.calls.some(p=>p.startsWith('/journey-places?')&&p.includes('scope=mine')));
+  await h.click('刷新地点');assert.equal(h.nodes().find(n=>n.type==='WorldMap').props.selected,undefined,'refresh cannot resurrect a cleared selection');
+});
+
+test('ordinary map refresh preserves off-page original ID with freshly authorized detail',async t=>{
+  const h=harness();t.after(h.close);await h.search();await h.click('查看地点 旧地点快照');
+  h.f.place=clonePlace({name:'刷新后原地点',revision:4});await h.click('刷新地点');
+  const map=h.nodes().find(n=>n.type==='WorldMap');assert.equal(map.props.selected,photoId);assert.equal(map.props.places.length,25);
+  assert.equal(map.props.places.at(-1).revision,4);assert(h.text().includes('刷新后原地点'));assert(!h.text().includes('当前地点名称'));
 });
