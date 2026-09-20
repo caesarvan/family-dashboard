@@ -1,6 +1,12 @@
 # 部署、更新与恢复交接
 
-## 当前本地日程隐私版本：71/9
+## 当前视频版本：73/9，五服务
+
+2026-09-20 17:26:15（北京时间）激活，17:33:17 生产只读检查通过，随后非作者复核通过。相册支持明确选择并保存视频、成员播放和逐台授权的照片／视频轮播；真实 Google 视频和实体电视仍待验。固定应用 source `b8c4d599`；新五服务为 app、sync、media、decoder、web，环境值保持。[发布身份与数据保全](MEDIA-VIDEO-ACCEPTANCE.md#media-video-release)列出完整包、镜像、plan、stage／activation SHA 和保全目录。
+
+发布使用[独立五服务控制器](MEDIA-VIDEO-ACTIVATION.md)，本次计划已经消费，不能重放。后续更新必须绑定当前安装 manifest、73/9 和新计划；不得让旧四服务适配器或 71 表迁移入口直接操作当前库。恢复必须停全部写者和备份 timer，核对本次保全目录，恢复同一时点的平台及全部家庭，再核验后启动；禁止只回退镜像或单户数据库。生产本批未执行恢复，隔离完整组演练另有证据。
+
+## 历史本地日程隐私版本：71/9
 
 2026-09-20 10:11:17（北京时间）激活，10:18:48 独立生产只读审计通过。一户两库保持 71/9，没有 DDL 或旧数据回填。[使用与集中验收](CALENDAR-PRIVACY-ACCEPTANCE.md#calendar-privacy-release)固定了实际 source、镜像、包、已消费计划和阶段原件；发布入口为 `build_calendar_privacy_release.py`／`activate_calendar_privacy_release.py`，合同见[发布适配](CALENDAR-PRIVACY-RELEASE.md)。
 

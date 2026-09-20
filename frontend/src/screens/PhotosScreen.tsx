@@ -1,16 +1,18 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, Image, Platform, ScrollView, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { useFocusEffect } from 'expo-router';
-import { ActivityIndicator, Button, Card, Checkbox, Dialog, Divider, List, Menu, Portal, ProgressBar, SegmentedButtons, Text, TextInput, useTheme } from 'react-native-paper';
+import { ActivityIndicator, Button, Card, Dialog, Divider, List, Menu, Portal, ProgressBar, SegmentedButtons, Text, TextInput, useTheme } from 'react-native-paper';
 import { ApiError, request } from '../lib/api';
 import { useHousehold } from '../lib/household';
 import { memberIdentity } from '../lib/sessionIdentity.ts';
 import { openPhotosProvider } from '../lib/navigation';
 import type { ScreenProps } from '../lib/types';
-import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, finishPhotoCreate, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto } from '../lib/photos';
+import { CONSENT, PhotoReadDiscarded, PhotoReadFence, confirmPhotos, countText, finishPhotoCreate, importLabels, isMediaId, newPhotoRequestId, photoError, previewPath, savedSummary, terminalImport, validateImport, validatePhoto, videoDescription } from '../lib/photos';
 import type { ImportDetail, Photo, PhotoAccount, PhotoDevice, PhotoImport, PhotoJourney, PhotoPage, PhotoSession } from '../lib/photos';
 import { EmptyState, PageHeader, SectionCard } from '../ui/components';
+import { SelectionRow } from '../ui/SelectionRow';
 import PhotoJourneySuggestions from '../components/PhotoJourneySuggestions';
+import MemberVideoPlayer from '../components/MemberVideoPlayer';
 import { photoSuggestionBody, readPhotoJourneySuggestions, type PhotoJourneySuggestions as Suggestions } from '../lib/photoJourneySuggestions';
 
 type Editor = { item: Photo; caption: string; visibility: 'private' | 'shared'; journeyId: string; grants: string[]; savedGrants: string[]; tvConsent: boolean; blocked: boolean; suggestionReview: boolean; message: string };
@@ -385,7 +387,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     if (confirmReceipt && confirmReceipt.path !== `/media/imports/${importDetail.import.id}/confirm`) { setError('请先核对原选片保存请求。'); return; }
     const receipt = confirmReceipt || { path: `/media/imports/${importDetail.import.id}/confirm`, body: confirmPhotos(importDetail.import, selected, newPhotoRequestId()) };
     setConfirmReceipt(receipt);
-    void write(receipt.path, 'POST', receipt.body, async () => { await readImport(importDetail.import.id); await gallery(); await support(); setNotice('保存结果已更新，仅留下本次明确勾选的照片。'); }, 'confirm');
+    void write(receipt.path, 'POST', receipt.body, async () => { await readImport(importDetail.import.id); await gallery(); await support(); setNotice('保存结果已更新，仅留下本次明确勾选的照片或视频。'); }, 'confirm');
   }
   function saveEditor() {
     if (!editor || editor.blocked) return;
@@ -397,7 +399,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   function saveGrants(revoke = false) {
     if (!editor || editor.blocked || dirty(editor)) return;
     const ids = revoke ? [] : editor.grants;
-    if (ids.length && !editor.tvConsent) { setError('请确认允许选中的电视展示这张照片。'); return; }
+    if (ids.length && !editor.tvConsent) { setError('请确认允许选中的电视展示此照片或视频。'); return; }
     void write(`/media/items/${editor.item.id}/tv-grants`, 'PUT', { revision: editor.item.revision, deviceIds: ids, consentVersion: CONSENT, allowTvDisplay: !!ids.length }, async () => {
       await readEditor(editor.item.id); setNotice(ids.length ? '已保存电视展示范围。' : '已收回全部电视展示。');
     }, 'editor');
@@ -405,7 +407,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   function decide() {
     const action = decision; setDecision(null);
     if (action === 'discard') { serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); }
-    if (action === 'delete' && editor) void write(`/media/items/${editor.item.id}`, 'DELETE', { revision: editor.item.revision }, async () => { setEditor(null); await gallery(); setNotice('已移除看板副本，Google Photos 原图保留。'); }, 'editor');
+    if (action === 'delete' && editor) void write(`/media/items/${editor.item.id}`, 'DELETE', { revision: editor.item.revision }, async () => { setEditor(null); await gallery(); setNotice('已移除看板副本，Google Photos 原始内容保留。'); }, 'editor');
     if (action === 'cancel' && importDetail) void write(`/media/imports/${importDetail.import.id}`, 'DELETE', { revision: importDetail.import.revision }, async () => {
       setConfirmReceipt(null); setConfirmReview(false); setPersist(false); await readImport(importDetail.import.id); await support();
     });
@@ -419,7 +421,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   const cardWidth = `${100 / columns - 1.7}%` as `${number}%`;
   const closeEditor = () => { if (busy) return; if (editor && (anyDraft(editor) || editor.blocked)) setDecision('discard'); else { serial.current.detail++; editorRef.current = null; setEditor(null); props.onBack?.(); } };
   const renderPhoto = (item: Photo, label: string, large = false) => <Image accessibilityLabel={label} source={{ uri: imageUri(item) }} style={large ? styles.detailImage : styles.thumbnail} resizeMode={large ? 'contain' : 'cover'} />;
-  const checkbox = (label: string, checked: boolean, change: () => void, disabled = false) => <Checkbox.Item label={label} status={checked ? 'checked' : 'unchecked'} onPress={change} disabled={disabled} position="leading" labelStyle={styles.checkLabel} style={styles.checkRow} />;
+  const checkbox = (label: string, checked: boolean, change: () => void, disabled = false) => <SelectionRow label={label} checked={checked} onPress={change} disabled={disabled} />;
   const backToSearch = props.onBack ? <Button contentStyle={{ minHeight: 44 }} disabled={busy || !!editor || !!createReceipt || !!confirmReceipt || !available()} onPress={props.onBack}>返回搜索</Button> : undefined;
   if (denied) return <EmptyState title="正在核对登录身份" description="原账户的照片和编辑内容已清空。" action={backToSearch} />;
   if (!focused || !available()) return <EmptyState title={loading && available() ? '正在核对照片权限' : '照片内容已隐藏'} description={error || '联网并回到页面后，将重新核对当前身份；未保存的修改仍保留在此页面内。'}
@@ -430,13 +432,13 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
     {!!notice && <Text accessibilityLiveRegion="polite">{notice}</Text>}
     {importOpen && <SectionCard title="从 Google Photos 选择" action={<Button disabled={busy} onPress={() => setImportOpen(false)}>收起</Button>}>
       <View style={styles.stack}>
-        <Text variant="bodyMedium">最多 20 张，仅处理你本次选择的照片，不扫描整个图库。视频暂不支持播放。</Text>
+        <Text variant="bodyMedium">最多 20 项，仅处理本次选择的照片和视频，不扫描整个图库。视频最长 10 分钟、源文件最大 100 MiB；超限会说明原因，不截断保存。</Text>
         <Menu theme={{ animation: { scale: 0 } }} visible={accountMenu} onDismiss={() => setAccountMenu(false)} anchor={<Button mode="outlined" disabled={busy || !!createReceipt} onPress={() => setAccountMenu(true)}>{account ? account.name || account.email || 'Google 账户' : '选择照片来源'}</Button>}>
           {accounts.map(value => <Menu.Item key={value.id} title={value.name || value.email || 'Google 账户'} onPress={() => { setAccountId(value.id); setAccountMenu(false); }} />)}
           {!accounts.length && <Menu.Item title="尚未连接 Google Photos" disabled />}
         </Menu>
         <View style={styles.actions}><Text>{account?.capabilities?.photos && !account.needsReauth ? '照片来源已连接' : '需要连接或更新照片授权'}</Text><Button disabled={busy || !!createReceipt} onPress={connect}>{account?.capabilities?.photos && !account.needsReauth ? '更新授权' : '连接 Google Photos'}</Button></View>
-        <Text variant="bodySmall">Google 保留原图；在账户设置中解绑照片来源会删除这里对应的展示副本。</Text>
+        <Text variant="bodySmall">Google 保留原始照片和视频；在账户设置中解绑照片来源会删除这里对应的展示副本。</Text>
         {checkbox('允许临时处理本次选择，供我预览确认；未保存的内容最迟 24 小时后清理。', temporary, () => setTemporary(v => !v), busy || !!createReceipt)}
         <Button mode="contained" disabled={busy || (!createReceipt && (!temporary || activeImport || !account?.capabilities?.photos || account.needsReauth)) || !!confirmReceipt} onPress={() => { try { create(); } catch (caught) { failure(caught); } }}>{createReceipt ? '核对 / 重试原选择请求' : '开始选择照片'}</Button>
         {!!createReceipt && <Text>上一请求结果未确认；此按钮沿用原请求标识，不会自动重复创建。</Text>}
@@ -446,15 +448,15 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
         </View>}
         {activeImport && !row && <Text>已有进行中的选择，请从下方继续。</Text>}
         {imports.length > 0 && <List.Accordion title="最近的选择" description="继续选片或查看保存结果">
-          {imports.map(item => <List.Item key={item.id} title={importLabels[item.state] || '选择记录'} description={item.state === 'confirmed' ? savedSummary(item) : new Date(item.createdAt).toLocaleString('zh-CN')} onPress={() => { if (!busy && !confirmReceipt) void readAction(() => readImport(item.id)); }} />)}
+          {imports.map(item => <List.Item key={item.id} title={importLabels[item.state] || '选择记录'} description={item.state === 'confirmed' ? savedSummary(item, '项') : new Date(item.createdAt).toLocaleString('zh-CN')} onPress={() => { if (!busy && !confirmReceipt) void readAction(() => readImport(item.id)); }} />)}
         </List.Accordion>}
         {!!row && <View style={styles.stack}>
           <Divider /><Text variant="titleMedium" accessibilityRole="header">{importLabels[row.state]}</Text>
-          {row.resultsState === 'unknown' ? <Text>{row.state === 'confirmed' ? savedSummary(row) : terminalImport(row.state) ? '本次其他处理结果未记录。' : '正在等待本次选择的处理结果。'}</Text> : <>
-            <Text accessibilityLiveRegion="polite">本次选择 {countText(row.counts.selected)} · 成功 {countText(row.counts.ready)} · 失败 {countText(row.counts.failed)} · 跳过 {countText(row.counts.skipped)} · 处理中 {countText(row.counts.pending)}</Text>
-            {row.state === 'confirmed' && <Text>{savedSummary(row)} · 成功但未勾选 {countText(row.counts.unselected)}</Text>}
+          {row.resultsState === 'unknown' ? <Text>{row.state === 'confirmed' ? savedSummary(row, '项') : terminalImport(row.state) ? '本次其他处理结果未记录。' : '正在等待本次选择的处理结果。'}</Text> : <>
+            <Text accessibilityLiveRegion="polite">本次选择 {countText(row.counts.selected, '项')} · 成功 {countText(row.counts.ready, '项')} · 失败 {countText(row.counts.failed, '项')} · 跳过 {countText(row.counts.skipped, '项')} · 处理中 {countText(row.counts.pending, '项')}</Text>
+            {row.state === 'confirmed' && <Text>{savedSummary(row, '项')} · 成功但未勾选 {countText(row.counts.unselected, '项')}</Text>}
             {!!row.counts.selected && row.counts.pending !== null && <ProgressBar progress={(row.counts.selected - row.counts.pending) / row.counts.selected} />}
-            {row.results.filter(result => ['failed', 'skipped'].includes(result.status)).map(result => <Text key={result.position}>第 {result.position} 张：{photoError(result.error?.code)}</Text>)}
+            {row.results.filter(result => ['failed', 'skipped'].includes(result.status)).map(result => <Text key={result.position}>第 {result.position} 项：{photoError(result.error?.code)}</Text>)}
           </>}
           {!!row.error && <Text style={{ color: theme.colors.error }}>{photoError(row.error.code)}</Text>}
           {row.state === 'waiting_selection' && !expired && <><Button mode="contained" icon="open-in-new" disabled={busy || clock - importReadAt.current > 15000} onPress={() => {
@@ -468,34 +470,36 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
           {expired && <Text>临时预览已过期，请刷新后重新选择。</Text>}
           {canSelect && <>
             <View style={styles.grid}>{importDetail.items.map(candidate => <Card key={candidate.id} mode="outlined" style={[styles.photoCard, { width: cardWidth }]}>
-              {renderPhoto(candidate.item, '本次选择的照片')}
-              {checkbox(candidate.status === 'duplicate' ? '已有，可复用' : '保留这张', selected.includes(candidate.id), () => setSelected(ids => toggle(ids, candidate.id)), busy || !!confirmReceipt)}
+              {renderPhoto(candidate.item, candidate.item.mediaType === 'video' ? '待保存视频封面' : '本次选择的照片')}
+              {candidate.item.mediaType === 'video' && <Text style={styles.photoCopy}>{videoDescription(candidate.item)}</Text>}
+              {checkbox(candidate.status === 'duplicate' ? '已有，可复用' : candidate.item.mediaType === 'video' ? '保留此视频' : '保留这张', selected.includes(candidate.id), () => setSelected(ids => toggle(ids, candidate.id)), busy || !!confirmReceipt)}
             </Card>)}</View>
-            <Text variant="titleSmall">仅将当前勾选的 {confirmReceipt ? (confirmReceipt.body.itemIds as string[]).length : selected.length} 张保存到私密相册。</Text>
+            <Text variant="titleSmall">仅将当前勾选的 {confirmReceipt ? (confirmReceipt.body.itemIds as string[]).length : selected.length} 项保存到私密相册。</Text>
             <Text variant="bodySmall">未勾选的预览不会新增保存；已存在的照片不会因此删除。</Text>
-            {checkbox('同意将勾选照片的展示副本持久保存在相册中。之后另行设置家庭共享和电视展示。', persist, () => setPersist(v => !v), busy || !!confirmReceipt)}
-            {confirmReview ? <Button disabled={busy} onPress={() => void readAction(() => readImport(row.id, true))}>读取最新选择，重新核对</Button> : <Button mode="contained" disabled={busy || !persist || !selected.length} onPress={() => { try { saveSelection(); } catch (caught) { failure(caught); } }}>{confirmReceipt ? '核对 / 重试原保存请求' : `保存选中的 ${selected.length} 张`}</Button>}
+            {checkbox('同意将勾选照片或视频的展示副本持久保存在私密相册中。之后另行设置家庭共享和电视展示。', persist, () => setPersist(v => !v), busy || !!confirmReceipt)}
+            {confirmReview ? <Button disabled={busy} onPress={() => void readAction(() => readImport(row.id, true))}>读取最新选择，重新核对</Button> : <Button mode="contained" disabled={busy || !persist || !selected.length} onPress={() => { try { saveSelection(); } catch (caught) { failure(caught); } }}>{confirmReceipt ? '核对 / 重试原保存请求' : `保存选中的 ${selected.length} 项`}</Button>}
           </>}
           <View style={styles.actions}><Button disabled={busy} onPress={() => void readAction(() => readImport(row.id))}>刷新状态</Button>{row.state !== 'confirmed' && row.state !== 'cancelled' && <Button disabled={busy || !!confirmReceipt} onPress={() => setDecision('cancel')}>取消本次选择</Button>}</View>
         </View>}
       </View>
     </SectionCard>}
     <View style={styles.actions}><SegmentedButtons style={styles.scope} value={scope} onValueChange={value => { if (!busy) { setScope(value); setOffset(0); setLoading(true); } }} buttons={[{ value: 'mine', label: '我的照片', disabled: busy }, { value: 'shared', label: '家人共享', disabled: busy }]} /><Button icon="refresh" disabled={busy} onPress={() => void readAction(async () => { await Promise.all([gallery(), support()]); })}>刷新</Button></View>
-    {loading ? <ActivityIndicator accessibilityLabel="正在读取相册" /> : !page.items.length ? <EmptyState title={scope === 'mine' ? '把想回看的照片留下' : '还没有家人共享的照片'} description={scope === 'mine' ? '先选择照片，预览后再确认保存。默认只有你能看见。' : '家人明确共享后，照片才会出现在这里。'} action={scope === 'mine' ? <Button onPress={() => setImportOpen(true)}>从 Google Photos 选择</Button> : undefined} /> : <View style={styles.grid}>{page.items.map(item => <Card key={item.id} mode="outlined" accessibilityLabel={'查看照片：' + (item.caption || '未添加说明')} onPress={() => { if (!busy) void readAction(() => readEditor(item.id)); }} style={[styles.photoCard, { width: cardWidth }]}>
-      {renderPhoto(item, item.caption || '已保存的照片')}<Card.Content style={styles.photoCopy}><Text variant="bodyMedium">{item.caption || '未添加说明'}</Text><Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.visibility === 'private' ? '仅我自己' : '家庭共享'}{item.journey ? ' · ' + item.journey.title : ''}</Text></Card.Content>
+    {loading ? <ActivityIndicator accessibilityLabel="正在读取相册" /> : !page.items.length ? <EmptyState title={scope === 'mine' ? '把想回看的照片留下' : '还没有家人共享的照片'} description={scope === 'mine' ? '先选择照片，预览后再确认保存。默认只有你能看见。' : '家人明确共享后，照片才会出现在这里。'} action={scope === 'mine' ? <Button onPress={() => setImportOpen(true)}>从 Google Photos 选择</Button> : undefined} /> : <View style={styles.grid}>{page.items.map(item => <Card key={item.id} mode="outlined" accessibilityLabel={(item.mediaType === 'video' ? '查看视频：' : '查看照片：') + (item.caption || '未添加说明')} onPress={() => { if (!busy) void readAction(() => readEditor(item.id)); }} style={[styles.photoCard, { width: cardWidth }]}>
+      {renderPhoto(item, item.caption || (item.mediaType === 'video' ? '视频封面' : '已保存的照片'))}<Card.Content style={styles.photoCopy}>{item.mediaType === 'video' && <Text variant="bodySmall">{videoDescription(item)}</Text>}<Text variant="bodyMedium">{item.caption || '未添加说明'}</Text><Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.visibility === 'private' ? '仅我自己' : '家庭共享'}{item.journey ? ' · ' + item.journey.title : ''}</Text></Card.Content>
     </Card>)}</View>}
-    <View style={styles.actions}><Text variant="bodySmall">共 {page.total} 张 · 第 {Math.floor(offset / 24) + 1} 页</Text><Button disabled={!offset || busy} onPress={() => setOffset(v => Math.max(0, v - 24))}>上一页</Button><Button disabled={!page.hasMore || busy} onPress={() => setOffset(v => v + 24)}>下一页</Button></View>
+    <View style={styles.actions}><Text variant="bodySmall">共 {page.total} 项 · 第 {Math.floor(offset / 24) + 1} 页</Text><Button disabled={!offset || busy} onPress={() => setOffset(v => Math.max(0, v - 24))}>上一页</Button><Button disabled={!page.hasMore || busy} onPress={() => setOffset(v => v + 24)}>下一页</Button></View>
     <Portal><Dialog testID="photo-editor" visible={!!editor} onDismiss={closeEditor} dismissable={!busy} style={[styles.dialog, { maxHeight: height - 40 }]}>
-      <Dialog.Title>照片详情</Dialog.Title>
+      <Dialog.Title>{editor?.item.mediaType === 'video' ? '视频详情' : '照片详情'}</Dialog.Title>
       <Dialog.ScrollArea style={styles.dialogScroll}><ScrollView contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
         {editor && <>
-          {renderPhoto(editor.item, editor.item.caption || '照片详情预览', true)}
+          {renderPhoto(editor.item, editor.item.caption || (editor.item.mediaType === 'video' ? '视频封面' : '照片详情预览'), true)}
+          {editor.item.mediaType === 'video' && <MemberVideoPlayer key={[props.identityKey, editor.item.id, editor.item.revision].join(':')} item={editor.item} user={props.user} identityKey={props.identityKey} enabled={!busy && !editor.blocked && focused && current()} />}
           {!!error && <Text accessibilityRole="alert" style={{ color: theme.colors.error }}>{error}</Text>}
           {!!editor.message && <Text accessibilityLiveRegion="polite">{editor.message}</Text>}
           {editor.item.canManage ? <>
             <TextInput mode="outlined" outlineStyle={{ borderRadius: 8 }} label="照片说明" accessibilityLabel="照片说明" multiline maxLength={500} value={editor.caption} disabled={busy || editor.suggestionReview} onChangeText={caption => update({ caption })} />
             <Text variant="titleSmall">谁能查看</Text><SegmentedButtons value={editor.visibility} onValueChange={visibility => update({ visibility: visibility as 'private' | 'shared', tvConsent: false })} buttons={[{ value: 'private', label: '仅我自己', disabled: busy || editor.suggestionReview }, { value: 'shared', label: '家庭成员', disabled: busy || editor.suggestionReview }]} />
-            <Text variant="bodySmall">家庭共享包括照片和说明。改回私密会同时收回全部电视展示。</Text>
+            <Text variant="bodySmall">家庭共享包括所选照片或视频及说明。改回私密会同时收回全部电视展示。</Text>
             <Menu theme={{ animation: { scale: 0 } }} visible={journeyMenu} onDismiss={() => setJourneyMenu(false)} anchor={<Button mode="outlined" disabled={busy || editor.suggestionReview} onPress={() => setJourneyMenu(true)}>{editor.journeyId ? journeys.find(j => j.id === editor.journeyId)?.trip?.title || journeys.find(j => j.id === editor.journeyId)?.plan?.title || editor.item.journey?.title || '已关联旅行' : '关联旅行（可选）'}</Button>}>
               <Menu.Item title="不关联旅行" onPress={() => { update({ journeyId: '' }); setJourneyMenu(false); }} />
               {journeys.map(journey => <Menu.Item key={journey.id} title={journey.trip?.title || journey.plan?.title || '旅行'} onPress={() => { update({ journeyId: journey.id }); setJourneyMenu(false); }} />)}
@@ -509,18 +513,18 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
                 const value = editorRef.current; if (value) update({ caption: value.item.caption, visibility: value.item.visibility, journeyId: value.item.journey?.id || '', grants: [...value.savedGrants], tvConsent: false });
               }} />
             <Divider /><List.Accordion title="电视展示" description="家庭共享后，再选择具体电视">
-              <Text variant="bodySmall">先保存上方设置。只有勾选并确认的电视可以展示这张照片；电视配对不等于获得全部相册。</Text>
+              <Text variant="bodySmall">先保存上方设置。只有勾选并确认的电视可以展示此照片或视频；电视配对不等于获得全部相册。</Text>
               {devices.length ? devices.map(device => <React.Fragment key={device.id}>{checkbox(device.name || '家庭电视', editor.grants.includes(device.id), () => update({ grants: toggle(editor.grants, device.id), tvConsent: false }), busy || editor.blocked || dirty(editor) || editor.item.visibility !== 'shared')}</React.Fragment>) : <Text>尚未配对电视，可在设备设置中添加。</Text>}
-              {checkbox('允许选中的电视展示这张照片。', editor.tvConsent, () => update({ tvConsent: !editor.tvConsent }), busy || editor.blocked || dirty(editor) || editor.item.visibility !== 'shared')}
+              {checkbox('允许选中的电视展示此照片或视频。', editor.tvConsent, () => update({ tvConsent: !editor.tvConsent }), busy || editor.blocked || dirty(editor) || editor.item.visibility !== 'shared')}
               <Button mode="outlined" disabled={busy || editor.blocked || dirty(editor) || editor.item.visibility !== 'shared' || !!editor.grants.length && !editor.tvConsent} onPress={() => saveGrants()}>保存电视范围</Button>
               <Button disabled={busy || editor.blocked || dirty(editor)} onPress={() => saveGrants(true)}>收回全部电视展示</Button>
             </List.Accordion>
-            <Button textColor={theme.colors.error} disabled={busy || editor.blocked} onPress={() => setDecision('delete')}>移除看板副本</Button><Text variant="bodySmall">Google Photos 原图保留。</Text>
+            <Button textColor={theme.colors.error} disabled={busy || editor.blocked} onPress={() => setDecision('delete')}>移除看板副本</Button><Text variant="bodySmall">Google Photos 原始内容保留。</Text>
           </> : <><Text variant="titleMedium">{editor.item.caption || '家庭共享照片'}</Text><Text>由上传者管理，你可以查看当前共享的照片。</Text>{!!editor.item.journey && <Text>关联旅行：{editor.item.journey.title}</Text>}</>}
         </>}
       </ScrollView></Dialog.ScrollArea><Dialog.Actions><Button disabled={busy} onPress={closeEditor}>{props.onBack ? '返回搜索' : '关闭'}</Button></Dialog.Actions>
     </Dialog>
-    <Dialog visible={!!decision} onDismiss={() => setDecision(null)} style={styles.dialog}><Dialog.Title>{decision === 'discard' ? '离开照片详情？' : decision === 'delete' ? '移除这张照片？' : '取消本次选择？'}</Dialog.Title><Dialog.Content><Text>{decision === 'discard' ? '未保存的输入将丢弃。关闭页面不会撤销已经提交的操作。' : decision === 'delete' ? '将删除看板副本，并收回家庭共享及电视展示。Google Photos 原图保留。' : '清理未确认的临时预览，Google Photos 原图保留。已经发出的请求仍会由服务器处理。'}</Text></Dialog.Content><Dialog.Actions><Button onPress={() => setDecision(null)}>返回</Button><Button onPress={decide}>确认</Button></Dialog.Actions></Dialog></Portal>
+    <Dialog visible={!!decision} onDismiss={() => setDecision(null)} style={styles.dialog}><Dialog.Title>{decision === 'discard' ? '离开照片详情？' : decision === 'delete' ? '移除这张照片？' : '取消本次选择？'}</Dialog.Title><Dialog.Content><Text>{decision === 'discard' ? '未保存的输入将丢弃。关闭页面不会撤销已经提交的操作。' : decision === 'delete' ? '将删除看板副本，并收回家庭共享及电视展示。Google Photos 原始内容保留。' : '清理未确认的临时预览，Google Photos 原始内容保留。已经发出的请求仍会由服务器处理。'}</Text></Dialog.Content><Dialog.Actions><Button onPress={() => setDecision(null)}>返回</Button><Button onPress={decide}>确认</Button></Dialog.Actions></Dialog></Portal>
   </View>;
 }
 
@@ -528,7 +532,7 @@ const styles = StyleSheet.create({
   page: { gap: 16 }, stack: { gap: 14 }, actions: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 10 },
   scope: { flexGrow: 1, minWidth: 240 }, grid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', rowGap: 16 },
   photoCard: { borderRadius: 12, overflow: 'hidden' }, thumbnail: { width: '100%', aspectRatio: 1, backgroundColor: '#f0f0f3' },
-  photoCopy: { paddingHorizontal: 12, paddingVertical: 12, gap: 6 }, checkLabel: { fontSize: 14, lineHeight: 21, textAlign: 'left' }, checkRow: { paddingHorizontal: 0 },
+  photoCopy: { paddingHorizontal: 12, paddingVertical: 12, gap: 6 },
   dialog: { width: '92%', maxWidth: 620, alignSelf: 'center', borderRadius: 12 }, dialogScroll: { paddingHorizontal: 0, flexShrink: 1 },
   dialogContent: { padding: 20, gap: 16 }, detailImage: { width: '100%', height: 250, borderRadius: 8, backgroundColor: '#f0f0f3' },
 });

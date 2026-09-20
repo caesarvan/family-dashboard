@@ -10,12 +10,16 @@ import json
 import math
 import re
 import secrets
+from threading import BoundedSemaphore, Lock
 import time
+import traceback
+import weakref
 
 from flask import Response, g, jsonify, request
 
 from cloud_accounts import photos_allowed
-from media_crypto import MediaCipher, MediaCryptoError
+from media_crypto import MediaCipher, MediaCryptoError, MAX_VIDEO_BYTES, MAX_VIDEO_CIPHER_BYTES
+from media_video_storage import initialize_media_video_storage
 from media_images import Preview
 from journey_time import TimeIssue, date_only, zone
 
@@ -25,7 +29,11 @@ MAX_SELECTION = 20
 OWNER_BYTES = 100 * 1024 * 1024
 HOUSEHOLD_BYTES = 200 * 1024 * 1024
 ITEM_RESERVATION = 3 * 1024 * 1024
+VIDEO_RESERVATION = MAX_VIDEO_CIPHER_BYTES + ITEM_RESERVATION
 LEASE_SECONDS = 600
+# One allowance for the whole serving process, including household child apps.
+# It remains occupied while WSGI owns a complete decrypted video response.
+_VIDEO_READ_SLOT = BoundedSemaphore(1)
 ACTIVE = ('queued', 'creating', 'waiting_selection', 'listing', 'staging', 'awaiting_confirmation')
 ITEM_VIEW = 'id,owner,account_id,import_id,source_key,state,visibility,journey_id,revision,metadata_cipher,preview_key,created_at,updated_at,confirmed_at,deleted_at,delete_revision'
 ERRORS = {
@@ -40,6 +48,7 @@ ERRORS = {
     'reauth': (409, '照片来源需要重新授权'),
     'api_disabled': (503, 'Google Photos Picker API 尚未启用。请联系应用维护者启用后，再重新选片；无需重复授权。'),
     'unavailable': (503, '媒体暂时无法读取，请稍后重试'),
+    'video_busy': (503, '视频正在读取，请稍后重试'),
     'worker_error': (503, '媒体处理暂时失败'),
     'timeout': (503, '媒体服务暂时未响应'),
     'rate_limited': (503, '媒体服务繁忙，请稍后重试'),
@@ -68,7 +77,17 @@ IMAGE_FAILURES = {
     'output_too_large': '净化后的展示图片超过 2 MiB 上限。',
     'unsafe_decoder_configuration': '当前解码配置无法安全处理图片。',
 }
-ERRORS.update({code:(422,message) for code,message in IMAGE_FAILURES.items()})
+VIDEO_FAILURES = {
+    'video_not_ready': 'Google 尚未完成此视频处理或处理失败；其他照片可正常保存，请稍后重新选择此视频。',
+    'video_invalid_input': '视频字节或媒体类型无效。',
+    'video_too_large': '视频源文件超过 100 MiB，或展示副本超过 64 MiB 上限。',
+    'video_too_long': '视频不能超过十分钟。',
+    'video_unsupported': '此视频编码或色彩格式暂不支持。',
+    'video_invalid': '视频不完整或无法安全解码。',
+    'video_timeout': '视频处理超时，请选择更短的视频。',
+    'video_tools_unavailable': '视频处理服务尚未就绪，请稍后重试。',
+}
+ERRORS.update({code:(422,message) for code,message in {**IMAGE_FAILURES, **VIDEO_FAILURES}.items()})
 RESULT_MESSAGES = {code:message for code,(_status,message) in ERRORS.items()}
 RESULT_MESSAGES.update(invalid_input='图片字节或媒体类型无效。',
     unsupported_type='本次仅处理照片，已跳过非照片媒体。',
@@ -80,6 +99,52 @@ class MediaError(Exception):
         self.code = code if code in ERRORS else 'worker_error'
         self.status, self.message = ERRORS[self.code]
         super().__init__(self.message)
+
+
+def _clear_video_error_frames(error):
+    # Retain exception identity, messages and stack locations, but not buffers in
+    # completed decoder/response frames. The active video frame is cleared by
+    # its caller before releasing admission; clear_frames skips active frames.
+    pending, visited = [error], set()
+    while pending:
+        current = pending.pop()
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        traceback.clear_frames(current.__traceback__)
+        for chained in (current.__cause__, current.__context__):
+            if chained is not None:
+                pending.append(chained)
+
+
+class _VideoReadPermit:
+    def __init__(self):
+        self._lock = Lock()
+        self._held = _VIDEO_READ_SLOT.acquire(blocking=False)
+        if not self._held:
+            raise MediaError('video_busy')
+
+    def release(self):
+        with self._lock:
+            if self._held:
+                self._held = False
+                _VIDEO_READ_SLOT.release()
+
+    def response(self, raw):
+        response = Response(raw, content_type='video/mp4', headers={
+            'Cache-Control':'private, no-store', 'X-Content-Type-Options':'nosniff',
+            'Content-Disposition':'inline; filename="video.mp4"'})
+        reference = weakref.ref(response)
+        finalize = weakref.finalize(response, self.release)
+
+        def close():
+            current = reference()
+            if current is not None:
+                current.response = []
+            finalize()
+
+        response.call_on_close(close)
+        return response
 
 
 SCHEMA_SQL = '''
@@ -268,6 +333,20 @@ def manifest_map(value):
     return result
 
 
+def manifest_identity(value):
+    """Only a validated VIDEO processing state is transient; all other fields bind selection."""
+    result = manifest_map(value)
+    result = json.loads(_canonical(result))
+    for item in result.values():
+        if item['type'] != 'VIDEO':
+            continue
+        metadata = item['mediaFile'].get('mediaFileMetadata')
+        video = metadata.get('videoMetadata') if type(metadata) is dict else None
+        if type(video) is dict and video.get('processingStatus') in ('UNSPECIFIED','PROCESSING','READY','FAILED'):
+            video['processingStatus'] = '<validated-video-processing-state>'
+    return result
+
+
 class MediaLibrary:
     def __init__(self, app, *, clock=time.time):
         self.app, self.clock = app, clock
@@ -310,7 +389,8 @@ class MediaLibrary:
     def _quota(self, con, owner):
         totals = con.execute('''SELECT owner,SUM(bytes) AS n FROM (
           SELECT owner,coalesce(length(context_cipher),0)+coalesce(length(session_cipher),0)+coalesce(length(manifest_cipher),0)+reserved_bytes bytes FROM media_imports
-          UNION ALL SELECT owner,coalesce(length(metadata_cipher),0)+coalesce(length(preview_cipher),0) FROM media_items)
+          UNION ALL SELECT owner,coalesce(length(metadata_cipher),0)+coalesce(length(preview_cipher),0) FROM media_items
+          UNION ALL SELECT m.owner,length(v.cipher) FROM media_video_cache v JOIN media_items m ON m.id=v.media_id)
           GROUP BY owner''').fetchall()
         if sum(r['n'] for r in totals) > HOUSEHOLD_BYTES or sum(r['n'] for r in totals if r['owner'] == owner) > OWNER_BYTES:
             raise MediaError('quota')
@@ -580,11 +660,17 @@ class MediaLibrary:
                     if not action or not self._context_valid(con, row):
                         continue
                 lease = secrets.token_hex(16)
+                lease_seconds = LEASE_SECONDS
+                if action=='download':
+                    pending_manifest=self._manifest(row)
+                    pending_slot=next((s for s in pending_manifest['slots'] if s['status']=='pending'),None)
+                    if pending_slot and any(m['id']==pending_slot['mediaId'] and m['type']=='VIDEO' for m in pending_manifest['media']):
+                        lease_seconds=1200
                 state = 'creating' if action == 'create' else row['state']
                 con.execute('''UPDATE media_imports SET state=?,lease_token=?,lease_until=?,revision=revision+1,
                     create_attempted=CASE WHEN ?='create' THEN 1 ELSE create_attempted END,
                     cleanup_state=CASE WHEN ?='cleanup' THEN 'checking' ELSE cleanup_state END WHERE id=?''',
-                    (state, lease, now+LEASE_SECONDS, action, action, row['id']))
+                    (state, lease, now+lease_seconds, action, action, row['id']))
                 current = self._import(con, row['id'], row['owner'])
                 manifest = self._manifest(current)
                 pending = next((s for s in manifest['slots'] if s['status'] == 'pending'), None)
@@ -645,10 +731,13 @@ class MediaLibrary:
     def _finish_staging(self, con, row, manifest):
         pending = sum(s['status']=='pending' for s in manifest['slots'])
         successes = sum(s['status'] in ('successful','duplicate') for s in manifest['slots'])
+        kinds = {m['id']:m['type'] for m in manifest['media']}
+        reserved = sum(VIDEO_RESERVATION if kinds[s['mediaId']]=='VIDEO' else ITEM_RESERVATION
+                       for s in manifest['slots'] if s['status']=='pending')
         state = 'staging' if pending else 'awaiting_confirmation' if successes else 'failed'
         con.execute('''UPDATE media_imports SET state=?,manifest_cipher=?,reserved_bytes=?,cleanup_state=?,
             lease_token=NULL,lease_until=NULL,revision=revision+1,attempts=0,next_attempt_at=0,error_code=NULL WHERE id=?''',
-            (state,self._seal('picker-manifest',row,manifest),pending*ITEM_RESERVATION,
+            (state,self._seal('picker-manifest',row,manifest),reserved,
              'none' if pending else 'pending',row['id']))
         self._quota(con, row['owner'])
 
@@ -694,12 +783,12 @@ class MediaLibrary:
                     if existing and existing['state'] == 'staged':
                         raise MediaError('conflict')
                     slots.append({'mediaId':item['id'],'sourceKey':key,'itemId':existing['id'] if existing else secrets.token_hex(12),
-                        'status':'duplicate' if existing else 'pending' if item['type']=='PHOTO' else 'skipped',
-                        'error_code':'unsupported_type' if not existing and item['type']!='PHOTO' else None})
+                        'status':'duplicate' if existing else 'pending',
+                        'error_code':None})
                 self._finish_staging(con, row, {'media':list(media.values()), 'slots':slots})
             elif action == 'download':
                 manifest = self._manifest(row)
-                if manifest_map(result.get('manifest')) != manifest_map(manifest['media']):
+                if manifest_identity(result.get('manifest')) != manifest_identity(manifest['media']):
                     raise MediaError('selection_changed')
                 slot = next((s for s in manifest['slots'] if s['status']=='pending'), None)
                 if not slot or slot['mediaId'] != result.get('mediaId'):
@@ -710,17 +799,37 @@ class MediaLibrary:
                 if con.execute('SELECT COUNT(*) FROM media_items WHERE owner=?', (row['owner'],)).fetchone()[0] >= 4000:
                     raise MediaError('quota')
                 media = next(m for m in manifest['media'] if m['id']==slot['mediaId'])
+                video = result.get('video')
+                if media['type']=='VIDEO':
+                    from media_videos import VideoPreview
+                    if (not isinstance(video,VideoPreview) or video.content_type!='video/mp4'
+                        or type(video.data) is not bytes or not 0<len(video.data)<=MAX_VIDEO_BYTES
+                        or type(video.duration_ms) is not int or not 0<video.duration_ms<=600250
+                        or type(video.has_audio) is not bool or video.poster!=preview
+                        or type(video.width) is not int or type(video.height) is not int
+                        or not 0<video.width<=1280 or not 0<video.height<=1280
+                        or video.sha256!=hashlib.sha256(video.data).hexdigest()):
+                        raise MediaError('video_invalid')
+                elif video is not None:
+                    raise MediaError('invalid_input')
                 item = {'id':slot['itemId'],'owner':row['owner']}
                 preview_key = secrets.token_hex(12)
                 metadata = {'accountId':row['account_id'],'sourceKey':slot['sourceKey'],'previewKey':preview_key,
                     'mediaId':media['id'],'displayFilename':media['mediaFile']['filename'],'caption':'',
                     'sourceCreatedAt':media['createTime'],
                     'width':preview.width,'height':preview.height,'contentType':'image/jpeg',
-                    'sha256':hashlib.sha256(preview.data).hexdigest(),'bytes':len(preview.data)}
+                    'sha256':hashlib.sha256(preview.data).hexdigest(),'bytes':len(preview.data),
+                    'mediaType':'video' if video is not None else 'photo'}
+                if video is not None:
+                    metadata.update(videoKey=secrets.token_hex(12),videoSha256=video.sha256,videoBytes=len(video.data),
+                                    durationMs=video.duration_ms,hasAudio=video.has_audio,width=video.width,height=video.height)
                 con.execute('''INSERT INTO media_items(id,owner,account_id,import_id,source_key,state,metadata_cipher,preview_cipher,preview_key,created_at,updated_at)
                     VALUES(?,?,?,?,?,'staged',?,?,?,?,?)''',
                     (item['id'],row['owner'],row['account_id'],row['id'],slot['sourceKey'],self._seal('media-metadata',item,metadata),
                      self.cipher.seal_bytes('media-preview',preview.data),preview_key,self.clock(),self.clock()))
+                if video is not None:
+                    con.execute('INSERT INTO media_video_cache(media_id,cache_key,cipher,created_at) VALUES(?,?,?,?)',
+                                (item['id'],metadata['videoKey'],self.cipher.seal_bytes('media-video',video.data),self.clock()))
                 slot['status'] = 'successful'
                 self._finish_staging(con, row, manifest)
             else:
@@ -750,7 +859,7 @@ class MediaLibrary:
                 delay = max(30, min(float(retry_after), 900), 30*2**row['attempts'])
                 con.execute('''UPDATE media_imports SET attempts=attempts+1,next_attempt_at=?,error_code=?,lease_token=NULL,lease_until=NULL,
                     revision=revision+1 WHERE id=?''', (self.clock()+delay,code,row['id']))
-            elif job['action']=='download' and code in (set(IMAGE_FAILURES)|{'invalid_input','unsupported_media','unsupported_image','too_large'}):
+            elif job['action']=='download' and code in (set(IMAGE_FAILURES)|set(VIDEO_FAILURES)|{'invalid_input','unsupported_media','unsupported_image','too_large'}):
                 manifest = self._manifest(row)
                 slot=next(s for s in manifest['slots'] if s['status']=='pending')
                 slot.update(status='failed',error_code=code)
@@ -790,10 +899,14 @@ class MediaLibrary:
         meta = self._metadata(row)
         result = {'id':row['id'],'width':meta['width'],'height':meta['height'],
                   'previewUrl':('/api/media-tv/items/' if television else '/api/media/items/')+row['id']+'/preview'}
+        result['mediaType'] = meta.get('mediaType','photo')
+        if result['mediaType']=='video':
+            result.update(durationMs=meta['durationMs'],hasAudio=meta['hasAudio'],
+                          videoUrl=('/api/media-tv/items/' if television else '/api/media/items/')+row['id']+'/video')
         if television:
             return result
         journey = con.execute("SELECT j.id,j.trip_id,e.data FROM journey_workflows j JOIN entities e ON e.id=j.trip_id AND e.kind='trips' WHERE j.id=?",(row['journey_id'],)).fetchone() if row['journey_id'] else None
-        result.update(revision=row['revision'],caption=meta['caption'],contentType='image/jpeg',visibility=row['visibility'],
+        result.update(revision=row['revision'],caption=meta['caption'],contentType='video/mp4' if result['mediaType']=='video' else 'image/jpeg',visibility=row['visibility'],
                       journey={'id':journey['id'],'tripId':journey['trip_id'],'title':json.loads(journey['data']).get('title','')} if journey else None,
                       createdAt=_iso(row['created_at']),canManage=row['owner']==owner)
         if row['owner']==owner:
@@ -1053,6 +1166,64 @@ class MediaLibrary:
         return Response(raw,content_type='image/jpeg',headers={'Cache-Control':'private, no-store','X-Content-Type-Options':'nosniff'})
 
 
+    def _video_identity(self, con, uid, television):
+        actor = self._tv(con) if television else self._member(con)
+        row = self._item(con,uid,device=actor) if television else self._item(con,uid,actor)
+        meta = self._metadata(row)
+        if meta.get('mediaType','photo') != 'video':
+            raise MediaError('not_found')
+        return actor, row['revision'], meta
+
+    def video(self, uid, television=False):
+        # Fully buffered bounded response. No range/session capability, public
+        # file path or streaming iterator may outlive this second authority read.
+        # Reject unauthorized reads before admission; no video BLOB or waiting
+        # transaction here. A busy slot never queues a stale authorization.
+        with self.transaction() as con:
+            initial_actor, initial_revision, initial_meta = self._video_identity(con,uid,television)
+        permit = _VideoReadPermit()
+        transferred = False
+        raw = blob = cache = response = None
+        try:
+            with self.transaction() as con:
+                actor, revision, meta = self._video_identity(con,uid,television)
+                if (actor, revision, meta.get('videoKey')) != (initial_actor, initial_revision, initial_meta.get('videoKey')):
+                    raise MediaError('conflict')
+                cache=con.execute('SELECT cache_key,cipher FROM media_video_cache WHERE media_id=?',(uid,)).fetchone()
+                if not cache or cache['cache_key']!=meta.get('videoKey'):
+                    raise MediaError('unavailable')
+                blob=bytes(cache['cipher'])
+            raw=None
+            try:
+                raw=self.cipher.open_bytes('media-video',blob)
+            except MediaCryptoError as error:
+                _clear_video_error_frames(error)
+            del blob, cache
+            if (raw is None or not 0<len(raw)<=MAX_VIDEO_BYTES or len(raw)!=meta.get('videoBytes')
+                or hashlib.sha256(raw).hexdigest()!=meta.get('videoSha256')):
+                raise MediaError('unavailable')
+            with self.transaction() as con:
+                current, latest_revision, latest_meta = self._video_identity(con,uid,television)
+                cache=con.execute('SELECT cache_key FROM media_video_cache WHERE media_id=?',(uid,)).fetchone()
+                if (current!=actor or latest_revision!=revision or not cache
+                        or cache['cache_key']!=meta['videoKey'] or latest_meta.get('videoKey')!=meta['videoKey']):
+                    raise MediaError('conflict')
+            response = permit.response(raw)
+            transferred = True
+            return response
+        except BaseException as error:
+            # An error handler may retain this traceback after admission is
+            # released. Drop our references before clearing completed inner
+            # frames (which can finalize a partially constructed response).
+            raw = blob = cache = response = None
+            _clear_video_error_frames(error)
+            raise
+        finally:
+            # Successful responses release only on WSGI close (or finalization).
+            if not transferred:
+                permit.release()
+
+
 def _request_object():
     def pairs(items):
         result={}
@@ -1099,12 +1270,14 @@ def register_media_library(app, db, Problem, body, require_member, audit):
     """Explicit root-owned wiring; the public engine owns its own connections."""
     with app.app_context():
         initialize_media_library(db())
+        initialize_media_video_storage(db())
     engine=MediaLibrary(app)
     app.extensions['household_media']=engine
 
     @app.errorhandler(MediaError)
     def media_error(error):
-        return jsonify(error=error.message,code=error.code),error.status
+        headers = {'Retry-After':'1'} if error.code == 'video_busy' else {}
+        return jsonify(error=error.message,code=error.code),error.status,headers
 
     @app.route('/api/media/imports',methods=['GET','POST'])
     def media_imports():
@@ -1167,6 +1340,11 @@ def register_media_library(app, db, Problem, body, require_member, audit):
         require_member()
         return engine.preview(uid)
 
+    @app.get('/api/media/items/<uid>/video')
+    def media_video(uid):
+        require_member()
+        return engine.video(uid)
+
     @app.get('/api/media/items/<uid>/journey-suggestions')
     def media_journey_suggestions(uid):
         require_member()
@@ -1193,5 +1371,9 @@ def register_media_library(app, db, Problem, body, require_member, audit):
     @app.get('/api/media-tv/items/<uid>/preview')
     def media_tv_preview(uid):
         return engine.preview(uid,True)
+
+    @app.get('/api/media-tv/items/<uid>/video')
+    def media_tv_video(uid):
+        return engine.video(uid,True)
 
     return engine

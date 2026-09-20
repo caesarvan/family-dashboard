@@ -46,18 +46,54 @@ services:
     env_file: .env
     environment:
       DATA_DIR: /data
+      MEDIA_VIDEO_SOCKET: /decoder-private/video.sock
     volumes:
       - household-data:/data
+      - decoder-socket:/decoder-private
     read_only: true
     tmpfs:
       - /tmp
     security_opt:
       - no-new-privileges:true
     mem_limit: 384m
-    stop_grace_period: 360s
+    stop_grace_period: 1200s
     depends_on:
       app:
         condition: service_healthy
+      decoder:
+        condition: service_healthy
+  decoder:
+    image: family-dashboard-video-decoder
+    build:
+      context: .
+      dockerfile: deploy/Dockerfile.media-video-service
+    restart: unless-stopped
+    user: '10001:10001'
+    network_mode: none
+    read_only: true
+    volumes:
+      - decoder-socket:/decoder-private
+    tmpfs:
+      - /decode-temp:rw,noexec,nosuid,nodev,size=384m,uid=10001,gid=10001,mode=0700
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    mem_limit: 768m
+    memswap_limit: 768m
+    cpus: 1
+    pids_limit: 128
+    ulimits:
+      nofile:
+        soft: 128
+        hard: 128
+    stop_grace_period: 30s
+    healthcheck:
+      test: [CMD, python, -B, -c, "import os,stat; s=os.stat('/decoder-private/video.sock',follow_symlinks=False); assert stat.S_ISSOCK(s.st_mode) and s.st_uid==10001 and stat.S_IMODE(s.st_mode)==0o600"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
   web:
     image: nginx:stable-alpine@sha256:dc5069ad14f19660b141b21236140b91656bf89bbc3e2417c70ae650cd66104c
     restart: unless-stopped
@@ -76,3 +112,4 @@ services:
     mem_limit: 96m
 volumes:
   household-data:
+  decoder-socket:

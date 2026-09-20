@@ -184,10 +184,25 @@ function Workspace(props: Props & { identityKey: string }) {
     try { void send({ kind: 'pair', path: '/pair/approve', method: 'POST', body: pairPayload(model.pair, props.state.people) }); }
     catch (caught) { setError(errorText(caught)); }
   }
-  function control(action: PlaybackAction) {
-    if (locked || model.blocked || !model.playback) return;
-    try { void send({ kind: 'playback', deviceId: model.playback.deviceId, path: '/media-playback/devices/' + model.playback.deviceId, method: 'PUT', body: playbackPayload(model.playback, action, model.interval) }); }
-    catch (caught) { setError(errorText(caught)); }
+  async function control(action: PlaybackAction) {
+    const state = live.current;
+    if (!current() || working.current || locked || state.unknown || state.blocked || !state.playback) return;
+    const ticket = epoch.current, deviceId = state.playback.deviceId, interval = state.interval;
+    let intent: DeviceIntent | null = null;
+    setWorking(true); setError(''); setNotice('');
+    try {
+      // TV ended can advance revision between phone polls. Keep the explicit
+      // action, but construct its CAS only from a freshly identity-checked GET.
+      const latestPlayback = await playback(deviceId, ticket);
+      if (!current(ticket) || live.current.view !== 'playback' || live.current.playback?.deviceId !== deviceId) return;
+      const body = playbackPayload(latestPlayback, action, interval);
+      install({ playback: latestPlayback });
+      intent = { kind: 'playback', deviceId, path: '/media-playback/devices/' + deviceId, method: 'PUT', body };
+    } catch (caught) { failure(caught, ticket); }
+    finally { if (current(ticket)) setWorking(false); }
+    // No write was attempted if the guarded read failed. Once sent, retain the
+    // existing unknown-result and conflict handling; never retry the command.
+    if (intent && current(ticket)) await send(intent);
   }
   function recover() {
     if (!live.current.unknown) return;
@@ -248,7 +263,7 @@ function Workspace(props: Props & { identityKey: string }) {
         <View style={styles.actions}>{button('显示设置：' + device.name, () => open(device.id, 'settings'))}{button('播放控制：' + device.name, () => open(device.id, 'playback'), locked, 'contained')}</View>
       </View></SectionCard></View>)}
       <Text style={styles.muted}>电视只读。侧重成员和隐藏卡片不会扩大或撤销数据权限。</Text>
-      {button('管理照片与电视许可', () => props.onNavigate('photos'))}
+      {button('管理相册与电视许可', () => props.onNavigate('photos'))}
     </View>}
     {model.view === 'pair' && <SectionCard title="输入电视上的配对码"><View style={styles.stack}>
       <Text>在电视浏览器打开本站 /tv。配对码有效期 10 分钟；连接后仍需单独选择可展示的照片。</Text>
@@ -281,18 +296,18 @@ function Workspace(props: Props & { identityKey: string }) {
       </View></SectionCard>
       <Divider />{button('撤销这台电视', () => setDialog('revoke'))}
     </View>}
-    {model.view === 'playback' && model.playback && <SectionCard title="照片播放"><View style={styles.stack}>
-      <Text variant="headlineSmall">{model.playback.mode === 'dashboard' ? '正在显示家庭看板' : model.playback.paused ? '照片已暂停' : '正在轮播照片'}</Text>
-      <Text testID="device-playback-status">{model.playback.photoCount} 张已授权照片{model.playback.mode === 'photos' && model.playback.photoCount ? ` · 当前第 ${model.playback.position + 1} 张` : ''} · 间隔 {model.playback.intervalSeconds} 秒</Text>
-      <Text>只播放照片本人明确共享并允许这台电视展示的照片。开始播放不会增加照片权限。</Text>
+    {model.view === 'playback' && model.playback && <SectionCard title="相册播放"><View style={styles.stack}>
+      <Text variant="headlineSmall">{model.playback.mode === 'dashboard' ? '正在显示家庭看板' : model.playback.paused ? '相册已暂停' : '正在播放相册'}</Text>
+      <Text testID="device-playback-status">{model.playback.photoCount} 项已授权媒体{model.playback.mode === 'photos' && model.playback.photoCount ? ` · 当前第 ${model.playback.position + 1} 项` : ''} · 照片间隔 {model.playback.intervalSeconds} 秒</Text>
+      <Text>只播放拥有者明确共享并允许这台电视展示的照片和视频。开始播放不会增加媒体权限。</Text>
       {model.blocked && <Text accessibilityRole="alert">播放状态已变化。请先刷新，再明确操作。</Text>}
       {button('刷新播放状态', () => void readJob(async ticket => { await reload(ticket); if (current(ticket)) install({ blocked: false }); }))}
-      <View style={styles.actions}>{button('开始照片播放', () => control('start'), locked || model.blocked || !model.playback.canStart, 'contained')}{button('显示家庭看板', () => control('dashboard'), locked || model.blocked)}</View>
-      {!model.playback.canStart && <EmptyState title="还没有可播放的照片" description="去相册保存照片、设置为家庭共享，再明确允许这台电视展示。配对本身不会授权相册。" />}
-      {model.playback.mode === 'photos' && <View style={styles.actions}>{button(model.playback.paused ? '继续播放' : '暂停播放', () => control(model.playback!.paused ? 'resume' : 'pause'), locked || model.blocked)}{button('上一张照片', () => control('previous'), locked || model.blocked)}{button('下一张照片', () => control('next'), locked || model.blocked)}</View>}
-      <TextInput mode="outlined" label="轮播间隔（秒）" accessibilityLabel="轮播间隔（秒）" keyboardType="number-pad" value={model.interval} onChangeText={interval => { if (!locked && current()) install({ interval }); }} disabled={locked} outlineStyle={styles.inputOutline} />
-      {button('保存轮播间隔', () => control('interval'), locked || model.blocked)}
-      {button('管理照片与电视许可', () => props.onNavigate('photos'), locked || dirty(model))}
+      <View style={styles.actions}>{button('开始相册播放', () => control('start'), locked || model.blocked || !model.playback.canStart, 'contained')}{button('显示家庭看板', () => control('dashboard'), locked || model.blocked)}</View>
+      {!model.playback.canStart && <EmptyState title="还没有可播放的媒体" description="去相册保存照片或视频、设置为家庭共享，再明确允许这台电视展示。配对本身不会授权相册。" />}
+      {model.playback.mode === 'photos' && <View style={styles.actions}>{button(model.playback.paused ? '继续播放' : '暂停播放', () => control(model.playback!.paused ? 'resume' : 'pause'), locked || model.blocked)}{button('上一项', () => control('previous'), locked || model.blocked)}{button('下一项', () => control('next'), locked || model.blocked)}</View>}
+      <TextInput mode="outlined" label="照片间隔（秒）" accessibilityLabel="照片间隔（秒）" keyboardType="number-pad" value={model.interval} onChangeText={interval => { if (!locked && current()) install({ interval }); }} disabled={locked} outlineStyle={styles.inputOutline} />
+      {button('保存照片间隔', () => control('interval'), locked || model.blocked)}
+      {button('管理相册与电视许可', () => props.onNavigate('photos'), locked || dirty(model))}
       <Text style={styles.muted}>显示状态来自服务器，不证明实体电视当前画面；电视断网、休眠时可能尚未更新。</Text>
     </View></SectionCard>}
     <Portal><Dialog visible={!!dialog && visible} onDismiss={() => { if (!busy) setDialog(null); }} style={styles.dialog}>

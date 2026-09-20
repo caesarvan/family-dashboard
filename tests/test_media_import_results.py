@@ -80,14 +80,15 @@ def test_ten_photo_results_survive_subset_confirm_cleanup_replay_and_restart(env
         assert con.execute("SELECT count(*) FROM media_items WHERE import_id=? AND state='ready'",(uid,)).fetchone()[0]==3
 
 
-def test_skipped_and_duplicate_keep_processing_counts_separate_from_saved(env):
+def test_failed_video_and_duplicate_keep_processing_counts_separate_from_saved(env):
     c,h,detail,_=stage(env,items=[selected('existing')]);confirm(c,h,detail)
     photos=[selected('existing'),selected('non-photo','VIDEO')]
     c,h,uid=listing(env,photos)
+    assert env[1].fail(env[1].claim_next(),'video_unsupported')
     detail=read(c,uid)
-    assert detail['import']['counts']=={'selected':2,'ready':1,'skipped':1,'failed':0,'pending':0,'saved':0,'unselected':None}
+    assert detail['import']['counts']=={'selected':2,'ready':1,'skipped':0,'failed':1,'pending':0,'saved':0,'unselected':None}
     assert detail['import']['results']==[{'position':1,'status':'duplicate'},
-        {'position':2,'status':'skipped','error':{'code':'unsupported_type','message':'本次仅处理照片，已跳过非照片媒体。'}}]
+        {'position':2,'status':'failed','error':{'code':'video_unsupported','message':'此视频编码或色彩格式暂不支持。'}}]
     confirmed,_=confirm(c,h,detail)
     assert confirmed['import']['counts']['saved']==1 and confirmed['import']['counts']['unselected']==0
 
