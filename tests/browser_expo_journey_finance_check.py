@@ -16,6 +16,7 @@ import socket
 import sqlite3
 import subprocess
 import sys
+import threading
 import traceback
 from unittest.mock import patch
 from urllib.parse import urlencode, urlsplit
@@ -26,7 +27,7 @@ sys.path[:0] = [str(ROOT), str(ROOT / 'tests')]
 from playwright.sync_api import expect, sync_playwright
 from flask import request
 import browser_finance_flow_mapping_check as fixture
-from browser_expo_finance_check import DAY, button, row, sha
+from browser_expo_finance_check import DAY, Quiet, button, make_server, row, sha
 
 HARNESS = 'tests/browser_expo_journey_finance_check.py'
 PREFIX = '/api/finance-hub/journey-allocations'
@@ -46,10 +47,13 @@ class Run(fixture.Run):
         assert self.report.setdefault('journeyFixtureHashes', actual_hashes) == actual_hashes
         self.exchange = 0
 
-    def restart(self):
-        super().restart()
-        # BaseRun creates a new Flask application. Keep observing that actual
-        # application, rather than silently losing the post-restart requests.
+    def start(self, port=0):
+        if not hasattr(self, 'http'):
+            # Parent construction installs the first journal before any browser
+            # exists. Subsequent starts retain that same journal and lock.
+            return super().start(port)
+        self.application = self.source.create_app(self.cfg)
+
         @self.application.after_request
         def journal(response):
             if request.path.startswith('/api/'):
@@ -57,6 +61,16 @@ class Run(fixture.Run):
                     self.http.append({'index': len(self.http), 'method': request.method,
                         'path': request.path, 'status': response.status_code})
             return response
+
+        # Register on the newly created application before the listener can
+        # accept even the first background request from the open browser.
+        self.server = make_server('127.0.0.1', port, self.application, threaded=True,
+                                  request_handler=Quiet, ssl_context='adhoc')
+        self.base = 'https://127.0.0.1:' + str(self.server.server_port)
+        self.cfg['PUBLIC_ORIGIN'] = self.base
+        self.application.config['PUBLIC_ORIGIN'] = self.base
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
 
     def snapshot(self):
         result = super().snapshot()
