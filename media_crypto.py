@@ -20,10 +20,14 @@ from cryptography.hazmat.primitives.kdf.hkdf import HKDF
 NAMESPACE = b'family-dashboard/media/v1'
 JSON_PURPOSES = frozenset({'import-context', 'picker-session', 'picker-manifest', 'media-metadata'})
 PREVIEW_PURPOSE = 'media-preview'
+VIDEO_PURPOSE = 'media-video'
 MAX_JSON_BYTES = 256 * 1024
 MAX_PREVIEW_BYTES = 2 * 1024 * 1024
+MAX_VIDEO_BYTES = 64 * 1024 * 1024
 MAX_JSON_DEPTH = 64
 _PREVIEW_HEADER = NAMESPACE + b'\x00media-preview\x00'
+_VIDEO_HEADER = NAMESPACE + b'\x00media-video\x00'
+_BINARY = {PREVIEW_PURPOSE: (MAX_PREVIEW_BYTES, _PREVIEW_HEADER), VIDEO_PURPOSE: (MAX_VIDEO_BYTES, _VIDEO_HEADER)}
 _ERROR = '媒体加密数据无效或无法处理'
 
 
@@ -65,6 +69,9 @@ def _token_limit(plaintext_limit):
     # PKCS7 adds one full block when the plaintext is block-aligned.
     raw_size = 57 + 16 * (plaintext_limit // 16 + 1)
     return 4 * ((raw_size + 2) // 3)
+
+
+MAX_VIDEO_CIPHER_BYTES = _token_limit(MAX_VIDEO_BYTES + len(_VIDEO_HEADER))
 
 
 def _validate_json(value):
@@ -149,7 +156,7 @@ class MediaCipher:
                         info=_frame(NAMESPACE, household, purpose.encode('ascii'))).derive(secret)
 
         self._ciphers = {purpose: Fernet(base64.urlsafe_b64encode(derive(purpose)))
-                         for purpose in (*sorted(JSON_PURPOSES), PREVIEW_PURPOSE)}
+                         for purpose in (*sorted(JSON_PURPOSES), *_BINARY)}
         self._source_key = derive('source-key')
 
     def __repr__(self):
@@ -195,18 +202,20 @@ class MediaCipher:
 
     @_safe
     def seal_bytes(self, purpose: str, value: bytes) -> bytes:
-        cipher = self._cipher(purpose, {PREVIEW_PURPOSE})
-        if type(value) is not bytes or len(value) > MAX_PREVIEW_BYTES:
+        cipher = self._cipher(purpose, _BINARY)
+        limit, header = _BINARY[purpose]
+        if type(value) is not bytes or len(value) > limit:
             raise ValueError()
-        return cipher.encrypt(_PREVIEW_HEADER + value)
+        return cipher.encrypt(header + value)
 
     @_safe
     def open_bytes(self, purpose: str, blob: bytes) -> bytes:
-        cipher = self._cipher(purpose, {PREVIEW_PURPOSE})
-        plaintext = self._decrypt(cipher, blob, MAX_PREVIEW_BYTES + len(_PREVIEW_HEADER))
-        if not plaintext.startswith(_PREVIEW_HEADER):
+        cipher = self._cipher(purpose, _BINARY)
+        limit, header = _BINARY[purpose]
+        plaintext = self._decrypt(cipher, blob, limit + len(header))
+        if not plaintext.startswith(header):
             raise ValueError()
-        return plaintext[len(_PREVIEW_HEADER):]
+        return plaintext[len(header):]
 
     @_safe
     def source_key(self, owner: str, account_subject: str, media_id: str) -> str:
