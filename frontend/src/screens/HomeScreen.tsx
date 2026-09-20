@@ -64,7 +64,7 @@ export default function HomeScreen(props: ScreenProps) {
     finally { if (original === current.current) { pending.current = false; setBusy(''); } }
   }
   const cards: Record<string, React.ReactNode> = {
-    calendar: <SectionCard style={[styles.bento, bento]} title={chosenDay ? `${shortDay(chosenDay)} 的安排` : '接下来的安排'} action={<Button contentStyle={styles.primaryContent} compact onPress={() => props.onNavigate('calendar')}>全部日程</Button>}>
+    calendar: props.calendarVerified===false ? <SectionCard style={[styles.bento,bento]} title="日程"><EmptyState title="日程暂时隐藏" description="请联网并刷新，核对登录身份后继续查看。" /></SectionCard> : <SectionCard style={[styles.bento, bento]} title={chosenDay ? `${shortDay(chosenDay)} 的安排` : '接下来的安排'} action={<Button contentStyle={styles.primaryContent} compact onPress={() => props.onNavigate('calendar')}>全部日程</Button>}>
       <Text variant="bodySmall" style={muted}>{focusName} + 共同 · 忙碌 {duration(summary.busyMinutes)}{summary.allDay ? ` · 全天 ${summary.allDay} 项` : ''}</Text>
       {days.length > 1 && <View style={styles.week}><WorkloadStrip summary={summary} selected={chosenDay} onSelect={setSelectedDay} /></View>}
       {appointments.length ? appointments.map(event => <EventRow key={event.id} event={event} day={chosenDay || (bounds(event).start < now ? today : dayKey(bounds(event).start))} props={props} />)
