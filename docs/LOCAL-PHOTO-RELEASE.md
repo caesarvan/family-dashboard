@@ -10,6 +10,8 @@
 
 使用 `build_local_photo_release.py prepare/verify/build/validate` 生成全新包、镜像和精确节点测试原件。可复用既有 Expo 构建，条件是完整 required inputs 的集合及每个 Git blob、磁盘和 export 字节一致。最终应用 source、包和新镜像必须以实际结果绑定；本适配不预填未来身份。
 
+父镜像的旧 Expo 目录可能由 root 持有，已记录首次真实构建在 `dashboard` 用户清理时遇到 `PermissionError`，原失败保留。构建器只接受经过闭合单行语法校验的 `Config.User`（名称或数字 ID，可带组名／组 ID，拒绝空值、空白、控制字符和变量展开）；仅原目录清理步骤临时 `USER 0`，随后逐字恢复父用户（本批为 `dashboard`）再执行原 COPY，不修改目录权限。原路径／符号链接检查、最终 Config 完全相同与恰好增加 cleanup／COPY 两个文件系统层的校验保持。离线配方测试不代替修订后的实际 Linux 构建。
+
 `prepare_local_photo_activation.py --inputs-file <固定输入JSON> --env-sha256 <摘要> --output <全新目录>` 只准备候选。输入为 `package`、`build`、`validation`、`selection`、固定 `parentAudit`、`image_overlap`、`nginx_raw` 及 `reviews`。资源输入分别包含 `input` 与 `run` 的 `{root,sha256}`，绑定原 `input.json`／`result.json` 和完整原件哈希；审查角色固定为 `source/browser/release/linux/resources`，每份 `{path,sha256}` 必须实际通过。审查者需在这些报告中保留各子项来源及失败历史。任何缺失、FAIL、OOM、清理失败、原件或 runtime 不符都拒绝。
 
 资源测试是在固定依赖父镜像上挂载完整应用 runtime 的真实 HTTP 实验，不冒称使用新生成镜像；准入要求两套 runtime 字节完全一致。最终镜像另由真实构建与精确节点验证绑定。Nginx 两处 raw location 必须精确匹配，真实两家庭／TLS／无临时原图记录及权限负向证据不可用离线工具测试代替。
