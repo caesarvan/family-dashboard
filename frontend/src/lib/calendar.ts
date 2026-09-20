@@ -62,3 +62,57 @@ export function timeLabel(event: CalendarEvent, day: string): string {
 }
 export function duration(minutes: number): string { return minutes < 60 ? `${Number(minutes.toFixed(1))} 分钟` : `${Number((minutes / 60).toFixed(1))} 小时`; }
 export function isLocalEvent(event: CalendarEvent): boolean { return !event.sync; }
+
+export type CalendarConflictSpan = { day: string; start: number; end: number; minutes: number };
+export type CalendarConflict = {
+  key: string;
+  first: Readonly<CalendarEvent>;
+  second: Readonly<CalendarEvent>;
+  overlaps: CalendarConflictSpan[];
+  minutes: number;
+};
+
+function validCalendarDay(day: string): boolean {
+  const start = dayStart(day);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) && Number.isFinite(start) && dayKey(start) === day;
+}
+
+/** Derive pairs only from the caller's current authorized state; never a write credential. */
+export function calendarConflicts(events: readonly CalendarEvent[], days: readonly string[], focus: string): CalendarConflict[] {
+  const selected = [...new Set(days)].filter(validCalendarDay).sort().map(day => ({ day, start: dayStart(day) }));
+  if (!selected.length) return [];
+  const firstDay = selected[0].start, lastDayEnd = selected[selected.length - 1].start + DAY;
+  // State contains one current row per ID. Repeated references must not duplicate a pair.
+  const seen = new Set<string>();
+  const timed: { event: CalendarEvent; start: number; end: number }[] = [];
+  for (const event of events) {
+    if (seen.has(event.id)) continue;
+    seen.add(event.id);
+    if (event.allDay || (event.owner !== focus && event.owner !== 'shared')) continue;
+    const value = bounds(event);
+    if (!Number.isFinite(value.start) || !Number.isFinite(value.end) || value.end <= value.start ||
+      !validCalendarDay(event.start.slice(0, 10)) || !validCalendarDay(event.end.slice(0, 10)) ||
+      value.start >= lastDayEnd || value.end <= firstDay) continue;
+    timed.push({ event, ...value });
+  }
+  timed.sort((a, b) => a.start - b.start || (a.event.id < b.event.id ? -1 : a.event.id > b.event.id ? 1 : 0));
+  const result: CalendarConflict[] = [];
+  for (let i = 0; i < timed.length; i++) {
+    const a = timed[i];
+    for (let j = i + 1; j < timed.length; j++) {
+      const b = timed[j];
+      if (b.start >= a.end) break;
+      const start = Math.max(a.start, b.start), end = Math.min(a.end, b.end);
+      const overlaps: CalendarConflictSpan[] = [];
+      for (const day of selected) {
+        const clippedStart = Math.max(start, day.start), clippedEnd = Math.min(end, day.start + DAY);
+        if (clippedEnd > clippedStart) overlaps.push({ day: day.day, start: clippedStart, end: clippedEnd, minutes: (clippedEnd - clippedStart) / 60_000 });
+      }
+      if (!overlaps.length) continue;
+      const [first, second] = a.event.id < b.event.id ? [a.event, b.event] : [b.event, a.event];
+      result.push({ key: JSON.stringify([first.id, second.id]), first, second, overlaps,
+        minutes: overlaps.reduce((total, span) => total + span.minutes, 0) });
+    }
+  }
+  return result.sort((a, b) => a.overlaps[0].start - b.overlaps[0].start || (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+}

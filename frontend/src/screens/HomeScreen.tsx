@@ -3,7 +3,7 @@ import { Platform, StyleSheet, View, useWindowDimensions } from 'react-native';
 import { Button, Divider, IconButton, Text, useTheme } from 'react-native-paper';
 import type { ListItem, ScreenProps } from '../lib/types';
 import { dependencyStates } from '../lib/taskDependencies';
-import { bounds, dayKey, duration, eventsForDay, overlapsDay, rangeDays, rangeSummary, shortDay } from '../lib/calendar';
+import { bounds, calendarConflicts, dayKey, duration, eventsForDay, overlapsDay, rangeDays, rangeSummary, shortDay } from '../lib/calendar';
 import { EmptyState, SectionCard } from '../ui/components';
 import { useDisplayDensity } from '../ui/theme';
 import { EventRow, RangeControls, WorkloadStrip } from './CalendarScreen';
@@ -41,6 +41,7 @@ export default function HomeScreen(props: ScreenProps) {
   if (layoutOpen) return <HomeLayoutPanel onClose={() => setLayoutOpen(false)} onPendingChange={props.onHomeLayoutPending} />;
   const { state } = props, today = dayKey(), now = Date.now(), days = rangeDays(props.mode);
   const summary = rangeSummary(state.events, days, props.focus);
+  const conflicts = calendarConflicts(state.events, days, props.focus);
   const upcoming = state.events.filter(event => days.some(day => overlapsDay(event, day)) && (bounds(event).end > now || bounds(event).start === now))
     .sort((a, b) => bounds(a).start - bounds(b).start || a.id.localeCompare(b.id)).slice(0, 3);
   const chosenDay = selectedDay && days.includes(selectedDay) ? selectedDay : undefined;
@@ -66,6 +67,13 @@ export default function HomeScreen(props: ScreenProps) {
   const cards: Record<string, React.ReactNode> = {
     calendar: <SectionCard style={[styles.bento, bento]} title={chosenDay ? `${shortDay(chosenDay)} 的安排` : '接下来的安排'} action={<Button contentStyle={styles.primaryContent} compact onPress={() => props.onNavigate('calendar')}>全部日程</Button>}>
       <Text variant="bodySmall" style={muted}>{focusName} + 共同 · 忙碌 {duration(summary.busyMinutes)}{summary.allDay ? ` · 全天 ${summary.allDay} 项` : ''}</Text>
+      {conflicts.length > 0 && <View testID="home-calendar-conflicts" style={styles.conflicts}>
+        <Button icon="calendar-clock" contentStyle={styles.primaryContent} style={styles.conflictAction}
+          accessibilityLabel={`查看当前范围的 ${conflicts.length} 组时间重叠`} onPress={() => props.onNavigate('calendar')}>
+          {conflicts.length} 组时间重叠 · 查看
+        </Button>
+        <Text variant="bodySmall" style={muted}>当前范围 · {focusName} + 共同；每两个安排计一组。</Text>
+      </View>}
       {days.length > 1 && <View style={styles.week}><WorkloadStrip summary={summary} selected={chosenDay} onSelect={setSelectedDay} /></View>}
       {appointments.length ? appointments.map(event => <EventRow key={event.id} event={event} day={chosenDay || (bounds(event).start < now ? today : dayKey(bounds(event).start))} props={props} />)
         : <EmptyState title={chosenDay ? '这天还没有安排' : '接下来没有已记录的安排'} action={<Button contentStyle={styles.primaryContent} onPress={() => props.onEdit('events')}>添加安排</Button>} />}
@@ -145,6 +153,7 @@ const styles = StyleSheet.create({
   grid: { flexDirection: 'row', flexWrap: 'wrap' }, gridWide: { alignItems: 'flex-start' }, card: { minWidth: 0, flexGrow: 1, flexShrink: 1 }, cardNarrow: { width: '100%' }, bento: { flex: 1 },
   financeUnconfirmed: { gap: 16 }, financeAction: { alignSelf: 'flex-start' },
   flex: { flex: 1, minWidth: 0, gap: 4 }, week: { marginTop: 12 }, money: { gap: 8 },
+  conflicts: { marginTop: 8, gap: 4 }, conflictAction: { alignSelf: 'flex-start', maxWidth: '100%' },
   balance: { fontSize: 32, lineHeight: 40, fontWeight: '600', letterSpacing: -0.8 }, balanceWide: { fontSize: 40, lineHeight: 48, fontWeight: '600', letterSpacing: -1.2 },
   moneyDetails: { flexDirection: 'row', gap: 16 },
   task: { flexDirection: 'row', alignItems: 'center', gap: 8 }, taskCheckbox: { margin: 0, minWidth: 44, minHeight: 44 },
