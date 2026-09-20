@@ -14,6 +14,7 @@ import { SelectionRow } from '../ui/SelectionRow';
 import PhotoJourneySuggestions from '../components/PhotoJourneySuggestions';
 import MemberVideoPlayer from '../components/MemberVideoPlayer';
 import { photoSuggestionBody, readPhotoJourneySuggestions, type PhotoJourneySuggestions as Suggestions } from '../lib/photoJourneySuggestions';
+import { memoryOffsetAfterDateChange, photoMemoriesQuery, readPhotoMemories, type PhotoMemories } from '../lib/photoMemories';
 
 type Editor = { item: Photo; caption: string; visibility: 'private' | 'shared'; journeyId: string; grants: string[]; savedGrants: string[]; tvConsent: boolean; blocked: boolean; suggestionReview: boolean; message: string };
 type Receipt = { path: string; body: Record<string, unknown> };
@@ -54,6 +55,8 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   const [error, setError] = useState(''); const [notice, setNotice] = useState('');
   const [scope, setScope] = useState('mine'); const [offset, setOffset] = useState(0);
   const [page, setPage] = useState<PhotoPage>({ items: [], total: 0, hasMore: false });
+  const [memories, setMemories] = useState<PhotoMemories | null>(null);
+  const memoryDate = useRef<string | null>(null);
   const [accounts, setAccounts] = useState<PhotoAccount[]>([]); const [accountId, setAccountId] = useState('');
   const [devices, setDevices] = useState<PhotoDevice[]>([]); const [journeys, setJourneys] = useState<PhotoJourney[]>([]);
   const [imports, setImports] = useState<PhotoImport[]>([]); const [importDetail, setImportDetail] = useState<ImportDetail | null>(null);
@@ -101,7 +104,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
 
   const clearIdentity = () => {
     deniedRef.current = true; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort()); setDenied(true); setPage({ items: [], total: 0, hasMore: false });
-    setEditor(null); editorRef.current = null; setImportDetail(null); importRef.current = null;
+    memoryDate.current = null; setMemories(null); setEditor(null); editorRef.current = null; setImportDetail(null); importRef.current = null;
     setAccounts([]); setDevices([]); setJourneys([]); setImports([]); setSelected([]);
     setCreateReceipt(null); setConfirmReceipt(null); setDecision(null); setError('登录身份已变化，正在重新读取。');
     void latest.current.refresh();
@@ -121,11 +124,25 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
   async function gallery(nextScope = scope, nextOffset = offset) {
     const ticket = ++serial.current.gallery;
     const data = await checked(async () => {
+      if (nextScope === 'memories') {
+        const memories = readPhotoMemories(await request(photoMemoriesQuery(nextOffset)), nextOffset);
+        return { items: memories.items.map(row => row.item), total: memories.total, hasMore: memories.hasMore, memories };
+      }
       const result = await request<PhotoPage>(`/media/items?scope=${nextScope}&limit=24&offset=${nextOffset}`);
       if (!Array.isArray(result.items) || result.items.length > 24) throw new Error('图库数据无法核对。');
-      result.items.forEach(validatePhoto); return result;
+      result.items.forEach(validatePhoto); return { ...result, memories: null };
     }, () => ticket === serial.current.gallery);
-    setPage(data); setLoading(false);
+    if (data.memories) {
+      const next = memoryOffsetAfterDateChange(memoryDate.current, data.memories);
+      memoryDate.current = data.memories.referenceDate;
+      if (next !== nextOffset) {
+        setPage({ items: [], total: 0, hasMore: false }); setMemories(null); setLoading(true);
+        // The existing focus lifecycle reads offset 0 with a fresh identity
+        // fence. Never briefly install the new day's second page as its start.
+        setOffset(next); return;
+      }
+    }
+    setPage({ items: data.items, total: data.total, hasMore: data.hasMore }); setMemories(data.memories); setLoading(false);
   }
   async function support() {
     const [accountData, deviceData, journeyData, importData] = await checked(() => Promise.all([
@@ -201,7 +218,7 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
 
   function conceal() {
     active.current = false; ++epoch.current; fence.current.invalidate(); suggestionFence.current.invalidate(); requests.current.forEach(value => value.abort());
-    setFocused(false); setPage({ items: [], total: 0, hasMore: false }); setJourneyMenu(false); setAccountMenu(false); setDecision(null);
+    setFocused(false); setPage({ items: [], total: 0, hasMore: false }); setMemories(null); setJourneyMenu(false); setAccountMenu(false); setDecision(null);
   }
   async function resume() {
     if (!alive.current || !routeActive.current || !available() || deniedRef.current || active.current) return;
@@ -483,11 +500,32 @@ function PhotoWorkspace(props: Props & { identityKey?: string }) {
         </View>}
       </View>
     </SectionCard>}
-    <View style={styles.actions}><SegmentedButtons style={styles.scope} value={scope} onValueChange={value => { if (!busy) { setScope(value); setOffset(0); setLoading(true); } }} buttons={[{ value: 'mine', label: '我的照片', disabled: busy }, { value: 'shared', label: '家人共享', disabled: busy }]} /><Button icon="refresh" disabled={busy} onPress={() => void readAction(async () => { await Promise.all([gallery(), support()]); })}>刷新</Button></View>
-    {loading ? <ActivityIndicator accessibilityLabel="正在读取相册" /> : !page.items.length ? <EmptyState title={scope === 'mine' ? '把想回看的照片留下' : '还没有家人共享的照片'} description={scope === 'mine' ? '先选择照片，预览后再确认保存。默认只有你能看见。' : '家人明确共享后，照片才会出现在这里。'} action={scope === 'mine' ? <Button onPress={() => setImportOpen(true)}>从 Google Photos 选择</Button> : undefined} /> : <View style={styles.grid}>{page.items.map(item => <Card key={item.id} mode="outlined" accessibilityLabel={(item.mediaType === 'video' ? '查看视频：' : '查看照片：') + (item.caption || '未添加说明')} onPress={() => { if (!busy) void readAction(() => readEditor(item.id)); }} style={[styles.photoCard, { width: cardWidth }]}>
-      {renderPhoto(item, item.caption || (item.mediaType === 'video' ? '视频封面' : '已保存的照片'))}<Card.Content style={styles.photoCopy}>{item.mediaType === 'video' && <Text variant="bodySmall">{videoDescription(item)}</Text>}<Text variant="bodyMedium">{item.caption || '未添加说明'}</Text><Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.visibility === 'private' ? '仅我自己' : '家庭共享'}{item.journey ? ' · ' + item.journey.title : ''}</Text></Card.Content>
-    </Card>)}</View>}
-    <View style={styles.actions}><Text variant="bodySmall">共 {page.total} 项 · 第 {Math.floor(offset / 24) + 1} 页</Text><Button disabled={!offset || busy} onPress={() => setOffset(v => Math.max(0, v - 24))}>上一页</Button><Button disabled={!page.hasMore || busy} onPress={() => setOffset(v => v + 24)}>下一页</Button></View>
+    <View style={styles.actions}><SegmentedButtons style={styles.scope} value={scope} onValueChange={value => { if (!busy) { setScope(value); setOffset(0); setLoading(true); } }} buttons={[{ value: 'mine', label: '我的照片', disabled: busy }, { value: 'shared', label: '家人共享', disabled: busy }, { value: 'memories', label: '那年今日', disabled: busy }]} /><Button icon="refresh" disabled={busy} onPress={() => void readAction(async () => { await Promise.all([gallery(), support()]); })}>刷新</Button></View>
+    {scope === 'memories' && !loading && memories && <View style={{ gap: 6 }} testID="photo-memories-summary">
+      <Text variant="titleLarge" accessibilityRole="header">{Number(memories.referenceDate.slice(5, 7))} 月 {Number(memories.referenceDate.slice(8))} 日，那些年的今天</Text>
+      <Text variant="bodyMedium">按来源日期（北京时间）回看你保存的照片。</Text>
+      {!!memories.unknownSourceTimeCount && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{memories.unknownSourceTimeCount} 张照片没有可核对的来源日期，暂未纳入回看。</Text>}
+    </View>}
+    {loading ? <ActivityIndicator accessibilityLabel="正在读取相册" /> : !page.items.length ? <EmptyState
+      title={scope === 'memories' ? offset ? '这一页暂时没有照片' : '还没有往年同日的照片' : scope === 'mine' ? '把想回看的照片留下' : '还没有家人共享的照片'}
+      description={scope === 'memories' ? offset ? '照片可能已变化，回到第一页查看最新内容。' : '回看只使用已记录的来源日期，不会用导入日期补齐。' : scope === 'mine' ? '先选择照片，预览后再确认保存。默认只有你能看见。' : '家人明确共享后，照片才会出现在这里。'}
+      action={scope === 'memories' && offset ? <Button onPress={() => setOffset(0)}>返回第一页</Button> : scope === 'mine' ? <Button onPress={() => setImportOpen(true)}>从 Google Photos 选择</Button> : undefined} />
+      : <View style={styles.grid}>{page.items.map((item, index) => {
+        const memory = scope === 'memories' ? memories?.items[index] : undefined;
+        const year = memory?.sourceLocalDate.slice(0, 4);
+        return <React.Fragment key={item.id}>
+          {memory && (!index || memories?.items[index - 1].sourceLocalDate.slice(0, 4) !== year) && <Text variant="titleMedium" accessibilityRole="header" style={{ width: '100%' }}>{year} 年 · {memory.yearsAgo} 年前</Text>}
+          <Card mode="outlined" accessibilityLabel={(item.mediaType === 'video' ? '查看视频：' : '查看照片：') + (item.caption || '未添加说明')} onPress={() => { if (!busy) void readAction(() => readEditor(item.id)); }} style={[styles.photoCard, { width: cardWidth }]}>
+            {renderPhoto(item, item.caption || (item.mediaType === 'video' ? '视频封面' : '已保存的照片'))}<Card.Content style={styles.photoCopy}>
+              {item.mediaType === 'video' && <Text variant="bodySmall">{videoDescription(item)}</Text>}
+              {memory && <Text variant="bodySmall">来源日期：{memory.sourceLocalDate}</Text>}
+              <Text variant="bodyMedium">{item.caption || '未添加说明'}</Text><Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>{item.visibility === 'private' ? '仅我自己' : '家庭共享'}{item.journey ? ' · ' + item.journey.title : ''}</Text>
+            </Card.Content>
+          </Card>
+        </React.Fragment>;
+      })}</View>}
+    <View style={styles.actions}><Text variant="bodySmall">共 {page.total} 项 · 第 {Math.floor(offset / 24) + 1} 页</Text><Button disabled={!offset || busy || loading} onPress={() => setOffset(v => Math.max(0, v - 24))}>上一页</Button><Button disabled={!page.hasMore || busy || loading || scope === 'memories' && offset + 24 > 4000} onPress={() => setOffset(v => v + 24)}>下一页</Button></View>
+    {scope === 'memories' && page.hasMore && offset + 24 > 4000 && <Text variant="bodySmall">已到达当前可浏览范围，可返回第一页查看。</Text>}
     <Portal><Dialog testID="photo-editor" visible={!!editor} onDismiss={closeEditor} dismissable={!busy} style={[styles.dialog, { maxHeight: height - 40 }]}>
       <Dialog.Title>{editor?.item.mediaType === 'video' ? '视频详情' : '照片详情'}</Dialog.Title>
       <Dialog.ScrollArea style={styles.dialogScroll}><ScrollView contentContainerStyle={styles.dialogContent} keyboardShouldPersistTaps="handled">
