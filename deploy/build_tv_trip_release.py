@@ -28,7 +28,7 @@ PRESERVED_RUNTIME_SHA256 = '6dce39a483cd7a58c5ba17f96a966a3f3d635434196c672b7385
 PARENT_RUNTIME_SHA256 = '0346c47f289d338a056628bf6a64aafe43044ac77fadf37f9416aee1dd7ec44b'
 PARENT_MODULES = {'media_playback.py': 'ccdb4fb6ddc9bd58cbb8568c9e0112f374d6ca365d2708c5dee83413facce90d'}
 # Fixed full API candidate; independent review and composed validation are still required.
-CHANGED_MODULES = {'media_trip_playback.py': '372a94780c48649dc51e3f0b7c4d82acbce720ce99f8e13788a8c5e1fc45e40b', 'media_playback.py': '08970ad107d02760b30321a8de72fd1320f70373b00fa127de386d24dd411dad'}
+CHANGED_MODULES = {'media_trip_playback.py': '372a94780c48649dc51e3f0b7c4d82acbce720ce99f8e13788a8c5e1fc45e40b', 'media_playback.py': '2aa8884f52fd56d5d685596c66484724957167854c6a2d73ae9c4424f8dfdf51'}
 CHANGED_RUNTIME_FILES = frozenset(CHANGED_MODULES)
 RUNTIME_ADDITIONS = parent.RUNTIME_ADDITIONS | {'media_trip_playback.py'}
 FRONTEND_TESTS = parent.FRONTEND_TESTS | {'frontend/tests/tvTripRecap.test.mjs'}
