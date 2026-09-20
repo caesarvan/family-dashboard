@@ -91,11 +91,15 @@ class Lifecycle:
         self.root = Path(root).absolute()
         self.app_image, self.decoder_image = immutable(app_image), immutable(decoder_image)
         need(len({self.app_image, self.decoder_image, PARENT_IMAGE, WEB_IMAGE}) == 4, 'distinct_candidate_images_required')
-        need(mode in ('video-migration', 'local-photo-source-update'), 'unsupported_lifecycle_mode')
+        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update'), 'unsupported_lifecycle_mode')
         self.mode = mode
+        self.source_update = mode != 'video-migration'
         self.parent_image, self.before_compose, self.parent_services = PARENT_IMAGE, BEFORE_COMPOSE, OLD_SERVICES
-        if mode == 'local-photo-source-update':
-            from deploy import build_local_photo_release as photos
+        if self.source_update:
+            if mode == 'discovery-source-update':
+                from deploy import build_discovery_release as photos
+            else:
+                from deploy import build_local_photo_release as photos
             need(self.decoder_image == photos.DECODER_IMAGE and self.app_image != photos.PARENT_IMAGE,
                  'local_photo_images_changed')
             self.parent_image, self.before_compose = photos.PARENT_IMAGE, photos.COMPOSE_SHA256
@@ -137,13 +141,13 @@ class Lifecycle:
                  'application_identity_changed')
             mounts = mount_map(value)
             volume(mounts, '/data', VOLUME)
-            expected = {'/data', '/tmp'} | ({'/decoder-private'} if name == 'media' and (phase == 'candidate' or self.mode == 'local-photo-source-update') else set())
+            expected = {'/data', '/tmp'} | ({'/decoder-private'} if name == 'media' and (phase == 'candidate' or self.source_update) else set())
             need(set(mounts) <= expected and ('/tmp' not in mounts or mounts['/tmp'].get('Type') == 'tmpfs'),
                  'application_unexpected_mount')
-            if name == 'media' and (phase == 'candidate' or self.mode == 'local-photo-source-update'):
+            if name == 'media' and (phase == 'candidate' or self.source_update):
                 volume(mounts, '/decoder-private', SOCKET_VOLUME)
             env = environment(value['Config'].get('Env'))
-            if self.mode == 'local-photo-source-update' and name == 'media':
+            if self.source_update and name == 'media':
                 need(env.get('MEDIA_VIDEO_SOCKET') == SOCKET, 'parent_socket_environment_changed')
         elif name == 'decoder':
             decoder_contract(value)
@@ -189,7 +193,7 @@ class Lifecycle:
                 need(sha(runtime_environment(value['Config']['Env'])) == captured[name]['environmentSha256'],
                      'environment_changed_before_stop')
         sequence = [('web', 30), ('sync', 60), ('media', 1200)]
-        if phase == 'candidate' or self.mode == 'local-photo-source-update':
+        if phase == 'candidate' or self.source_update:
             sequence.append(('decoder', 30))
         sequence.append(('app', 60))
         stopped = []
@@ -253,7 +257,7 @@ class Lifecycle:
         for value in (migrated, preserved):
             need(value.get('verified') is True and type(value.get('households')) is int and value['households'] >= 1
                  and value.get('databases') == value['households'] + 1, 'incomplete_preservation_receipt')
-        if self.mode == 'local-photo-source-update':
+        if self.source_update:
             # begin() is an actual backup receipt, never relabelled as migration.
             for key, expected in (('planSha256', plan_sha256), ('sourceIdentitySha256', source_identity_sha256)):
                 need(isinstance(expected, str) and re.fullmatch('[0-9a-f]{64}', expected)
