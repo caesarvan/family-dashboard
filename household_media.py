@@ -10,6 +10,7 @@ import json
 import math
 import re
 import secrets
+import sqlite3
 from threading import BoundedSemaphore, Lock
 import time
 import traceback
@@ -26,6 +27,7 @@ from journey_time import TimeIssue, date_only, zone
 
 CONSENT_VERSION = 'media-v1'
 MAX_SELECTION = 20
+DUPLICATE_SCAN_LIMIT = 1000
 OWNER_BYTES = 100 * 1024 * 1024
 HOUSEHOLD_BYTES = 200 * 1024 * 1024
 ITEM_RESERVATION = 3 * 1024 * 1024
@@ -948,6 +950,86 @@ class MediaLibrary:
                           sourceCreatedAt=source_time if known else None,sourceTimeState='known' if known else 'unknown')
         return result
 
+    @staticmethod
+    def _display_fingerprint(meta):
+        digest = meta.get('sha256')
+        if (meta.get('contentType') != 'image/jpeg'
+                or type(digest) is not str or re.fullmatch('[a-f0-9]{64}', digest) is None
+                or any(type(meta.get(k)) is not int or not 0 < meta[k] <= high
+                       for k, high in (('width', 1600), ('height', 1600), ('bytes', 2 * 1024 * 1024)))):
+            return None
+        return (digest, meta['width'], meta['height'], meta['bytes'])
+
+    def _duplicate_source(self, con, row, meta):
+        source = meta.get('source', 'google-photos')
+        if (source not in ('google-photos', 'local-upload')
+                or (source == 'local-upload') != (row['account_id'] is None)
+                or not self._media_authority(con, row)):
+            return None
+        return source
+
+    def _duplicate_snapshot(self, con, uid, owner, limit, offset):
+        # Neither the target nor the bounded owner scan reads image/video BLOBs.
+        target = con.execute('SELECT '+ITEM_VIEW+" FROM media_items WHERE id=? AND owner=? "
+            "AND state='ready' AND confirmed_at IS NOT NULL", (uid, owner)).fetchone()
+        if target is None:
+            raise MediaError('not_found')
+        meta = self._metadata(target)
+        if meta.get('mediaType', 'photo') != 'photo':
+            raise MediaError('not_found')
+        source = self._duplicate_source(con, target, meta)
+        if source is None:
+            raise MediaError('reauth')
+        fingerprint = self._display_fingerprint(meta)
+        if fingerprint is None:
+            raise MediaError('unavailable')
+        rows = con.execute('SELECT '+ITEM_VIEW+" FROM media_items WHERE owner=? AND id!=? "
+            "AND state='ready' AND confirmed_at IS NOT NULL ORDER BY id LIMIT ?",
+            (owner, uid, DUPLICATE_SCAN_LIMIT + 1)).fetchall()
+        matches, scanned, unverifiable = [], 0, 0
+        for row in rows[:DUPLICATE_SCAN_LIMIT]:
+            try:
+                value = self._metadata(row)
+                if value.get('mediaType', 'photo') != 'photo':
+                    continue
+                current_source = self._duplicate_source(con, row, value)
+                current_fingerprint = self._display_fingerprint(value)
+            except (MediaError, MediaCryptoError, KeyError, TypeError, ValueError):
+                current_source = current_fingerprint = None
+            if current_source is None or current_fingerprint is None:
+                unverifiable += 1
+                continue
+            scanned += 1
+            if current_source != source and current_fingerprint == fingerprint:
+                matches.append(row)
+        return dict(photoId=uid, photoRevision=target['revision'],
+            matchBasis='display-copy-sha256', label='展示副本一致，原图未核验',
+            items=[self._item_dto(con, row, owner) for row in matches[offset:offset+limit]],
+            total=len(matches), limit=limit, offset=offset, hasMore=offset+limit<len(matches),
+            coverage=dict(scope='mine', scanLimit=DUPLICATE_SCAN_LIMIT, scanned=scanned,
+                          capped=len(rows)>DUPLICATE_SCAN_LIMIT, unverifiable=unverifiable))
+
+    def duplicate_hints(self, uid, limit, offset):
+        uid = _id(uid)
+        with self._suggestion_transaction() as con:
+            owner = g.actor['id']
+            self._duplicate_snapshot(con, uid, owner, limit, offset)
+            # Drop the potentially stale read snapshot and rebuild the entire
+            # result/counts. The short final reservation prevents a concurrent
+            # source revocation or item edit during projection; it writes nothing.
+            con.rollback()
+            try:
+                con.execute('BEGIN IMMEDIATE')
+            except sqlite3.OperationalError as error:
+                if getattr(error, 'sqlite_errorcode', 0) & 255 in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+                    raise MediaError('unavailable') from error
+                raise
+            self._member(con)
+            result = self._duplicate_snapshot(con, uid, owner, limit, offset)
+            # The enclosing read fence rolls back and checks the original signed
+            # session again, including household/platform membership changes.
+        return result
+
     def on_this_day(self, limit, offset):
         """Read confirmed owner photos by source date without touching media bytes."""
         with self._suggestion_transaction() as con:
@@ -1226,7 +1308,7 @@ class MediaLibrary:
             raw=self.cipher.open_bytes('media-preview',blob)
         except MediaCryptoError:
             pass
-        if raw is None or len(raw)!=meta['bytes'] or hashlib.sha256(raw).hexdigest()!=meta['sha256']:
+        if raw is None or len(raw)!=meta.get('bytes') or hashlib.sha256(raw).hexdigest()!=meta.get('sha256'):
             raise MediaError('unavailable')
         with self.transaction() as con:
             current=self._tv(con) if television else self._member(con)
@@ -1427,6 +1509,12 @@ def register_media_library(app, db, Problem, body, require_member, audit):
         if request.args:
             raise MediaError('invalid_input')
         return jsonify(engine.journey_suggestions(uid))
+
+    @app.get('/api/media/items/<uid>/duplicates')
+    def media_duplicate_hints(uid):
+        require_member()
+        query = _query(set(), default=20, maximum=20)
+        return jsonify(engine.duplicate_hints(uid, query['limit'], query['offset']))
 
     @app.route('/api/media/items/<uid>/tv-grants',methods=['GET','PUT'])
     def media_tv_grants(uid):

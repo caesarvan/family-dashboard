@@ -24,7 +24,17 @@ HOST_BUDGET = {'preflightMiB': 672, 'preflightSamples': 3, 'preflightIntervalSec
                'abortBelowMiB': 256, 'sampleIntervalSeconds': .25, 'maxSampleLagSeconds': 1}
 
 
-def plan_images(plan):
+def _profile(mode=None):
+    # Only these two source-controlled policies exist. No JSON-selected import.
+    need(mode in (None, 'discovery-source-update'), 'unsupported_source_update_profile')
+    if mode == 'discovery-source-update':
+        from deploy import prepare_discovery_activation
+        return prepare_discovery_activation
+    return sys.modules[__name__]
+
+
+def plan_images(plan, *, mode=None):
+    cfg = _profile(mode); package = cfg.package
     images = plan.get('images')
     need(isinstance(images, dict) and set(images) == {'app', 'decoder'} and
          images['decoder'] == package.DECODER_IMAGE and
@@ -33,10 +43,11 @@ def plan_images(plan):
     return images
 
 
-def check_plan(plan):
-    plan_images(plan)
-    need(plan.get('kind') == KIND and plan.get('parentSource') == PARENT_SOURCE and
-         plan.get('parentManifest') == PARENT_MANIFEST and plan.get('schemaBefore') == [73, 9] and
+def check_plan(plan, *, mode=None):
+    cfg = _profile(mode)
+    cfg.plan_images(plan)
+    need(plan.get('kind') == cfg.KIND and plan.get('parentSource') == cfg.PARENT_SOURCE and
+         plan.get('parentManifest') == cfg.PARENT_MANIFEST and plan.get('schemaBefore') == [73, 9] and
          plan.get('schemaAfter') == [73, 9] and plan.get('productionWritesDuringPreparation') is False and
          re.fullmatch('[0-9a-f]{40}', plan.get('sourceHead', '')) and
          re.fullmatch('[0-9a-f]{40}', plan.get('tree', '')), 'local_photo_plan_changed')
@@ -154,9 +165,10 @@ def resources(spec, profile, meta):
             'run': {'result.json': spec['run']['sha256'], **result['artifacts']}}
 
 
-def verify_evidence(inputs):
+def verify_evidence(inputs, *, mode=None):
+    cfg = _profile(mode); package = cfg.package
     need(set(inputs) == {'package', 'build', 'validation', 'selection', 'parentAudit',
-                         'image_overlap', 'nginx_raw', 'reviews'}, 'release_inputs_incomplete')
+                         'image_overlap', 'nginx_raw', 'reviews'} | ({'duplicates'} if mode else set()), 'release_inputs_incomplete')
     p = inputs['package']; need(set(p) == {'root', 'sha256'} and Path(p['root']).is_absolute(), 'package_descriptor')
     value = package.verify_package(p['root'], p['sha256']); meta = value['metadata']
     folder, built = record(inputs['build'], 'build.json')
@@ -169,7 +181,7 @@ def verify_evidence(inputs):
     need(built['parentImage'] == package.PARENT_IMAGE and built['addedLayers'] == 2 and
          built['runtimeHashes'] == meta['runtimeFiles'] and validation['imageId'] == built['imageId'] and
          validation.get('allPassed') is True and validation.get('containerExitCode') == 0, 'application_build_or_tests_failed')
-    plan_images({'images': {'app': built['imageId'], 'decoder': package.DECODER_IMAGE}})
+    cfg.plan_images({'images': {'app': built['imageId'], 'decoder': package.DECODER_IMAGE}})
     s = inputs['selection']; need(set(s) == {'path', 'sha256'}, 'selection_descriptor')
     need(Path(s['path']).is_absolute(), 'selection_location')
     selection = package.builder.selection_record(regular(s['path']).read_bytes(), s['sha256'], meta)
@@ -179,16 +191,20 @@ def verify_evidence(inputs):
     reviewed(parent)
     verified = {'package': previous.file_map(Path(p['root'])), 'build': previous.file_map(folder),
                 'validation': previous.file_map(vroot), 'selection': s['sha256'], 'parentAudit': parent['sha256']}
-    for profile in ('image_overlap', 'nginx_raw'):
-        verified[profile] = resources(inputs[profile], profile, meta)
-    need(isinstance(inputs['reviews'], dict) and set(inputs['reviews']) == REVIEW_ROLES, 'independent_reviews_missing')
+    if mode:
+        verified.update(cfg.resource_evidence(inputs, value, built))
+    else:
+        for profile in ('image_overlap', 'nginx_raw'):
+            verified[profile] = resources(inputs[profile], profile, meta)
+    need(isinstance(inputs['reviews'], dict) and set(inputs['reviews']) == cfg.REVIEW_ROLES, 'independent_reviews_missing')
     verified['reviews'] = {}
     for name, spec in inputs['reviews'].items():
         reviewed(spec); verified['reviews'][name] = spec['sha256']
     return value, built, verified
 
 
-def prepare(inputs_file, env_sha256, output):
+def prepare(inputs_file, env_sha256, output, *, mode=None):
+    cfg = _profile(mode); package = cfg.package
     need(re.fullmatch('[0-9a-f]{64}', env_sha256), 'environment_digest_required')
     output = Path(output).absolute(); regular(output.parent, directory=True)
     need(not output.exists() and not output.is_symlink() and '..' not in output.parts, 'exclusive_candidate_required')
@@ -200,8 +216,8 @@ def prepare(inputs_file, env_sha256, output):
                 else: yield from locations(item)
     for path in (Path(inputs_file).absolute(), *locations(inputs)):
         need(not output.is_relative_to(path) and not path.is_relative_to(output), 'output_overlaps_input')
-    value, built, verified = verify_evidence(inputs); meta = value['metadata']
-    blobs = {n: value['blobs'][n] for n in OPERATORS}
+    value, built, verified = cfg.verify_evidence(inputs); meta = value['metadata']
+    blobs = {n: value['blobs'][n] for n in cfg.OPERATORS}
     executing = Path(__file__).resolve().parents[1]
     need(all(regular(executing/n).read_bytes() == raw for n, raw in blobs.items()), 'executed_operator_changed')
     output.mkdir(mode=0o700)
@@ -214,22 +230,22 @@ def prepare(inputs_file, env_sha256, output):
         regular(path, directory=path.is_dir()); path.chmod(0o755 if path.is_dir() else 0o644)
     operator = {'head': meta['sourceHead'], 'tree': meta['tree'], 'files': {n: sha(raw) for n, raw in blobs.items()}}
     put(output/'operator.json', operator)
-    plan = {'kind': KIND, 'parentSource': PARENT_SOURCE, 'parentManifest': PARENT_MANIFEST,
+    plan = {'kind': cfg.KIND, 'parentSource': cfg.PARENT_SOURCE, 'parentManifest': cfg.PARENT_MANIFEST,
             'sourceHead': meta['sourceHead'], 'tree': meta['tree'],
             'images': {'app': built['imageId'], 'decoder': package.DECODER_IMAGE},
             'envSha256': env_sha256, 'inputs': inputs, 'verifiedEvidence': verified,
             'operatorSha256': sha(encoded(operator)), 'schemaBefore': [73, 9], 'schemaAfter': [73, 9],
             'productionWritesDuringPreparation': False}
-    check_plan(plan)
-    need(verify_evidence(inputs)[2] == verified, 'evidence_changed_during_prepare')
+    cfg.check_plan(plan)
+    need(cfg.verify_evidence(inputs)[2] == verified, 'evidence_changed_during_prepare')
     put(output/'plan.json', plan)
     return {'prepared': True, 'planSha256': sha(encoded(plan)), 'operatorSha256': sha(encoded(operator))}
 
 
-def main(argv=None):
+def main(argv=None, *, mode=None):
     parser = argparse.ArgumentParser(description=__doc__)
     for name in ('inputs-file', 'env-sha256', 'output'): parser.add_argument('--'+name, required=True)
-    print(json.dumps(prepare(**vars(parser.parse_args(argv)))))
+    print(json.dumps(prepare(**vars(parser.parse_args(argv)), mode=mode)))
 
 
 if __name__ == '__main__': main()

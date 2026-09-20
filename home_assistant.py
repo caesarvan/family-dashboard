@@ -713,6 +713,20 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
                                     'journey': journey, 'visibility': projected['visibility'], 'revision': projected['revision']})
         return matches
 
+    def search_place_metadata(con, owner, term):
+        matches = []
+        # The places route owns coordinate projection. Search deliberately reads
+        # no coordinate columns and returns only this smaller text allowlist.
+        rows = con.execute("SELECT id,name,country,city,status,journey_id,visibility,revision FROM journey_places WHERE deleted_at IS NULL AND (owner=? OR visibility='shared') ORDER BY id", (owner,))
+        for row in rows:
+            linked = con.execute("SELECT j.id,j.trip_id,e.data FROM journey_workflows j JOIN entities e ON e.id=j.trip_id AND e.kind='trips' WHERE j.id=?", (row['journey_id'],)).fetchone() if row['journey_id'] else None
+            journey = {'id': linked['id'], 'tripId': linked['trip_id'], 'title': json.loads(linked['data'])['title']} if linked else None
+            if term in (' '.join(row[k] or '' for k in ('name', 'country', 'city')) + ' ' + (journey['title'] if journey else '')).casefold():
+                matches.append({'id': row['id'], 'kind': 'places', 'title': row['name'], 'country': row['country'],
+                                'city': row['city'], 'status': row['status'], 'journey': journey,
+                                'visibility': row['visibility'], 'revision': row['revision']})
+        return matches
+
     def search_records(query, limit=20, offset=0, *, context=None):
         if not isinstance(query, str) or not 1 <= len(query.strip()) <= 100:
             raise Problem('搜索词须为 1～100 字')
@@ -736,25 +750,17 @@ def register_assistant(app, db, Problem, body, require_member, audit, limited, v
                                     ('id', 'title', 'variant', 'location', 'unit', 'visibility', 'revision',
                                      'onHandQty', 'inTransitQty', 'plannedQty')}})
             matches.extend(search_media_metadata(con, owner, term))
-            # The places route owns coordinate projection. Search deliberately reads
-            # no coordinate columns and returns only this smaller text allowlist.
-            rows = con.execute("SELECT id,name,country,city,status,journey_id,visibility,revision FROM journey_places WHERE deleted_at IS NULL AND (owner=? OR visibility='shared') ORDER BY id", (owner,))
-            for row in rows:
-                linked = con.execute("SELECT j.id,j.trip_id,e.data FROM journey_workflows j JOIN entities e ON e.id=j.trip_id AND e.kind='trips' WHERE j.id=?", (row['journey_id'],)).fetchone() if row['journey_id'] else None
-                journey = {'id': linked['id'], 'tripId': linked['trip_id'], 'title': json.loads(linked['data'])['title']} if linked else None
-                if term in (' '.join(row[k] or '' for k in ('name', 'country', 'city')) + ' ' + (journey['title'] if journey else '')).casefold():
-                    matches.append({'id': row['id'], 'kind': 'places', 'title': row['name'], 'country': row['country'],
-                                    'city': row['city'], 'status': row['status'], 'journey': journey,
-                                    'visibility': row['visibility'], 'revision': row['revision']})
+            matches.extend(search_place_metadata(con, owner, term))
             from journey_documents import search_metadata
             matches.extend(search_metadata(con, owner, query))
         # Re-resolve visible metadata after releasing the first read snapshot:
         # sharing withdrawal/deletion during that snapshot must not leave stale
-        # document/media titles or counts in the result. Both passes use the original
+        # document/media/place titles or counts in the result. Both passes use the original
         # member/household context and the domain metadata projection; no BLOBs.
         with authorized(context, recheck_read=True) as con:
-            matches = [item for item in matches if item['kind'] not in ('documents', 'events', 'media')] + search_metadata(con, owner, query)
+            matches = [item for item in matches if item['kind'] not in ('documents', 'events', 'media', 'places')] + search_metadata(con, owner, query)
             matches.extend(search_media_metadata(con, owner, term))
+            matches.extend(search_place_metadata(con, owner, term))
             # Calendar sharing can also be withdrawn while the first snapshot is open.
             for item in records():
                 if item['kind'] == 'events' and term in (item.get('title', '') + ' ' + item.get('location', '')).casefold():

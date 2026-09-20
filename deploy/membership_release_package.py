@@ -50,6 +50,9 @@ def baseline_values(baseline=None):
     # Explicit audited callers only; defaults keep the original migration contract.
     if baseline is None:
         return 'membership-release-package', PARENT_IMAGE, OLD_MANIFEST
+    if baseline == 'local-photo-r1-discovery':
+        from deploy import build_discovery_release as photos
+        return photos.KIND, photos.PARENT_IMAGE, photos.OLD_MANIFEST
     if baseline == 'media-video-r1-local-photo':
         from deploy import build_local_photo_release as photos
         return photos.KIND, photos.PARENT_IMAGE, photos.OLD_MANIFEST
@@ -105,6 +108,11 @@ def baseline_values(baseline=None):
 
 def fixed_files(baseline=None):
     baseline_values(baseline)
+    if baseline == 'local-photo-r1-discovery':
+        from deploy import build_discovery_release as photos
+        return {**FIXED, 'Dockerfile': photos.DOCKER_AFTER,
+                'compose.yaml': photos.COMPOSE_SHA256, 'deploy/nginx.conf': photos.NGINX_AFTER,
+                **photos.DECODER_SOURCE_PINS}
     if baseline == 'media-video-r1-local-photo':
         from deploy import build_local_photo_release as photos
         return {**FIXED, 'Dockerfile': photos.DOCKER_AFTER,
@@ -280,6 +288,9 @@ def selected_sources(tracked, policy, *, baseline=None):
     required = set(constants['FILES']) | {SELF} | {'frontend/' + n for n in
         ('package.json', 'package-lock.json', 'app.json', 'tsconfig.json', 'README.md', 'LICENSE',
          'tests/journeySegments.test.ts', 'tsconfig.tests.json', 'typecheck.mjs')}
+    if baseline == 'local-photo-r1-discovery':
+        from deploy import build_discovery_release as photos
+        required |= photos.RUNTIME_ADDITIONS | photos.FRONTEND_TESTS | photos.BROWSER_SCRIPTS | set(photos.DECODER_SOURCE_PINS)
     if baseline == 'media-video-r1-local-photo':
         from deploy import build_local_photo_release as photos
         required |= photos.RUNTIME_ADDITIONS | photos.FRONTEND_TESTS | photos.BROWSER_SCRIPTS | set(photos.DECODER_SOURCE_PINS)
@@ -393,7 +404,7 @@ def validate_export_names(names, *, baseline=None):
 def runtime_files(files, *, baseline=None):
     result = {n: h for n, h in files.items() if n.startswith('static/') or n == 'requirements.txt'
               or n.endswith('.py') and '/' not in n}
-    if baseline == 'media-video-r1-local-photo':
+    if baseline in ('media-video-r1-local-photo', 'local-photo-r1-discovery'):
         result.pop('media_video_service.py', None)  # Fixed decoder-only root module, retained in source.
     return result
 
@@ -408,6 +419,17 @@ def validate_maps(metadata, manifest, evidence, *, baseline=None):
     need(not any(n.startswith(PREFIX) for n in source), 'source/export overlap')
     need(files == {**source, **{PREFIX + n: h for n, h in exports.items()}}, 'manifest partition differs')
     need(metadata['runtimeFiles'] == runtime_files(files, **baseline_kwargs(baseline)), 'runtime partition differs')
+    if baseline == 'local-photo-r1-discovery':
+        from deploy import build_discovery_release as photos
+        non_expo = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}
+        preserved = {n: h for n, h in non_expo.items() if n not in photos.CHANGED_RUNTIME_FILES}
+        need(len(non_expo) == photos.NON_EXPO_RUNTIME_COUNT
+             and photos.CHANGED_RUNTIME_FILES <= non_expo.keys()
+             and len(preserved) == photos.PRESERVED_RUNTIME_COUNT
+             and digest(encoded(preserved)) == photos.PRESERVED_RUNTIME_SHA256,
+             'discovery runtime differs from installed 110-file preservation baseline')
+        need(all(non_expo.get(n) == h for n, h in photos.CHANGED_MODULES.items()),
+             'discovery changed modules differ from reviewed source')
     if baseline == 'media-video-r1-local-photo':
         from deploy import build_local_photo_release as photos
         non_expo = {n: h for n, h in metadata['runtimeFiles'].items() if not n.startswith(PREFIX)}

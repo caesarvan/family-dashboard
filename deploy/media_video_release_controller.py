@@ -53,10 +53,12 @@ DATA_ACTIONS = {
 
 
 def verify_operator(candidate, expected, *, mode='video-migration'):
-    need(mode in ('video-migration', 'local-photo-source-update'), 'unsupported_release_mode')
+    need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update'), 'unsupported_release_mode')
     policy = prepare
     if mode == 'local-photo-source-update':
         from deploy import prepare_local_photo_activation as policy
+    elif mode == 'discovery-source-update':
+        from deploy import prepare_discovery_activation as policy
     manifest = read(candidate / 'operator.json', expected)
     need(set(manifest['files']) == set(policy.OPERATORS), 'operator_closure_changed')
     source_hashes(candidate / 'operator', manifest['files'], exact=False)
@@ -77,25 +79,29 @@ class Controller:
         self.plan = read(self.candidate / 'plan.json', plan_sha256)
         self.runner = runner
         self.source = self.candidate / 'source'
-        need(mode in ('video-migration', 'local-photo-source-update'), 'unsupported_release_mode')
+        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update'), 'unsupported_release_mode')
         self.mode, self.policy = mode, prepare
+        self.source_update = mode != 'video-migration'
         self.images, self.parent_image, self.before_schema = prepare.IMAGES, services.PARENT_IMAGE, [71, 9]
         self.release_prefix = 'media-video-73-'
         self.data_prefix, self.data_actions = DATA_PREFIX, DATA_ACTIONS
-        if mode == 'local-photo-source-update':
-            from deploy import prepare_local_photo_activation as policy
+        if self.source_update:
+            if mode == 'discovery-source-update':
+                from deploy import prepare_discovery_activation as policy
+            else:
+                from deploy import prepare_local_photo_activation as policy
             self.policy, self.images = policy, policy.plan_images(self.plan)
             self.parent_image, self.before_schema = policy.package.PARENT_IMAGE, [73, 9]
-            self.release_prefix = 'local-photo-73-'
+            self.release_prefix = 'discovery-73-' if mode == 'discovery-source-update' else 'local-photo-73-'
             self.data_prefix = DATA_PREFIX.replace('check_media_video_migration', 'media_video_release_data')
             self.data_actions = {'backup': DATA_ACTIONS['backup'], 'check': DATA_ACTIONS['check'],
                 'verify-rollback': 'from deploy.activate_local_photo_release import verify_restored_group; value=verify_restored_group(root,proof,**kwargs)'}
             policy.check_plan(self.plan)
-        need(self.plan.get('kind') == ('local-photo-five-service-source-update-v1' if mode == 'local-photo-source-update'
+        need(self.plan.get('kind') == (self.policy.KIND if self.source_update
                                       else 'media-video-five-service-activation-v1') and
              self.plan.get('parentSource') == self.policy.PARENT_SOURCE and
              self.plan.get('parentManifest') == self.policy.PARENT_MANIFEST and
-             (mode == 'local-photo-source-update' or self.plan.get('sourceHead') == prepare.APP_SOURCE) and self.plan.get('images') == self.images and
+             (self.source_update or self.plan.get('sourceHead') == prepare.APP_SOURCE) and self.plan.get('images') == self.images and
              self.plan.get('schemaBefore') == self.before_schema and self.plan.get('schemaAfter') == [73, 9], 'plan_contract_changed')
         self.lifecycle = services.Lifecycle(self.call, **dict(app_image=self.images['app'],
                                                              decoder_image=self.images['decoder']), root=self.root, mode=mode)
@@ -118,16 +124,16 @@ class Controller:
         source_hashes(self.source, self.files, exact=True)
         need(sha(regular(self.source / 'RELEASE-MANIFEST.json').read_bytes()) == self.metadata['manifestSha256'],
              'candidate_manifest_changed')
-        self.runtime = (self.metadata['runtimeFiles'] if self.mode == 'local-photo-source-update'
+        self.runtime = (self.metadata['runtimeFiles'] if self.source_update
                         else build.runtime_map('app', self.metadata['contexts']['app']))
         need(self.metadata['sourceHead'] == self.plan['sourceHead'], 'plan_source_changed')
         self.build = built
-        if self.mode == 'local-photo-source-update':
+        if self.source_update:
             need(built['imageId'] == self.images['app'] and self.metadata['tree'] == self.plan['tree'], 'plan_image_or_tree_changed')
 
     def check_images(self):
         # Only inspect existing immutable images. Stage never creates/runs a probe.
-        if self.mode == 'local-photo-source-update':
+        if self.source_update:
             app = self.lifecycle.inspect(self.images['app'])
             decoder = self.lifecycle.inspect(self.images['decoder'])
             need(app.get('Id') == self.images['app'] and decoder.get('Id') == self.images['decoder'],
@@ -146,7 +152,7 @@ class Controller:
         old = read(self.root / 'RELEASE-MANIFEST.json', self.policy.PARENT_MANIFEST)
         need(old.get('sourceHead') == self.policy.PARENT_SOURCE, 'parent_source_changed')
         source_hashes(self.root, old['files'])
-        if self.mode == 'local-photo-source-update':
+        if self.source_update:
             need(old['files'].get('deploy/nginx.conf') == self.policy.package.NGINX_BEFORE, 'parent_nginx_changed')
         env = regular(self.root / '.env')
         need(stat.S_IMODE(env.stat().st_mode) == 0o600 and sha(env.read_bytes()) == self.plan['envSha256'],
@@ -186,7 +192,7 @@ class Controller:
         put(self.release / 'app-runtime.env', raw)
         preserved_images = {}
         images = [('app', self.parent_image), ('web', services.WEB_IMAGE)]
-        if self.mode == 'local-photo-source-update': images.append(('decoder', self.images['decoder']))
+        if self.source_update: images.append(('decoder', self.images['decoder']))
         for role, image in images:
             tag = 'family-dashboard-preserved:'+self.release.name.lower()+'-'+role
             self.docker('tag', image, tag)
@@ -368,7 +374,7 @@ print(json.dumps({'initialized':True,'households':len(hs)}))
             self.record('app_only_stopped_preservation_verified', result=preserved)
             self.socket_ready()
             binding = {}
-            if self.mode == 'local-photo-source-update':
+            if self.source_update:
                 binding = {'plan_sha256': self.plan_sha,
                            'source_identity_sha256': sha(encoded(read(self.release/'proof/identity.json'))[:-1])}
             current = self.lifecycle.start_after_preservation(migrated, preserved, **binding)
