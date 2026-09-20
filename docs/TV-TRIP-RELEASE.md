@@ -12,16 +12,18 @@
 
 ## 真实迁移原件
 
-`migrationRehearsal` 使用 `{input:{root,sha256},run:{root,sha256}}`。工具头与应用头分开：input 的 sourceHead/tree 是冻结 probe；runtimeSourceHead 固定 `add881ed6a7d455e2743ce2affa6cf8b931b47d2`，实际镜像与完整 root runtime 必须匹配最终包。历史父为 e8。新旧 reader、初始化模块及 probe 的源码闭包逐字匹配最终包。
+`migrationRehearsal` 使用 `{input:{root,sha256},run:{root,sha256}}`。工具头与应用头分开：input 的 sourceHead/tree 是冻结 probe；runtimeSourceHead 固定 `aa55f3e7154ec5076ca0ec2360df30e9cf73f981`，实际镜像与完整 root runtime 必须匹配最终包。历史父为 e8。新旧 reader、初始化模块及 probe 的源码闭包逐字匹配最终包。
 
 必须完成 verify/seed/migrate/startup/check/rollback75/partial/populate77/restart/restore77 十阶段，虚构两户三库、部分失败不可重放、完整恢复。非空 77 的精确每新表行数为 `media_playback_journeys:2`、`media_playback_operations:3`。只接受真实成功及其全部输入/运行原件；本地合成回执测试不满足此门槛。
 
 ## Linux 选择与容量
 
-精确 94 节点 = 已审 API/会话/原播放 94 项中的 93 项，加 `tests/test_tv_trip_capacity.py::test_four_wsgi_reads_2000_media_100_stops_no_large_blob`。单列排除 `test_real_video_in_scoped_playlist_preserves_native_progress`，它依赖 app 镜像没有的 FFmpeg，继续引用原独立浏览器/真实视频证据，不记为 Linux skip。选择 allowedSkips 必须为空，节点集合及四测试模块 SHA 固定；十个间接 fixture 模块另按源码 SHA 校验，不伪造为被执行节点。
+精确 118 节点 = 已审 API/会话/原播放 94 项中的 93 项，加 24 项 TV 元数据读取修复回归，以及 `tests/test_tv_trip_capacity.py::test_four_wsgi_reads_2000_media_100_stops_no_large_blob`。单列排除 `test_real_video_in_scoped_playlist_preserves_native_progress`，它依赖 app 镜像没有的 FFmpeg，继续引用原独立浏览器/真实视频证据，不记为 Linux skip。选择 allowedSkips 必须为空，节点集合及五测试模块 SHA 固定；12 个间接 fixture 模块另按源码 SHA 校验，不伪造为被执行节点。
 
 容量 fixture 先以真实会话、上传确认和授权建立一张合成照片，再人工填充加密存储至 2000 张、100 个共享站点、两台已配对 TV；不是 2000 次云导入。四线程分别调用两台 TV GET、成员 control GET 和真实 journey-preview POST。记录真实请求重叠、响应内容/大小/摘要、扫描次数、全表前后摘要，只归一 `member_sessions.last_seen_at`。authorizer 在测量期间拒绝预览及视频缓存 BLOB 列；fixture 初始化和全表摘要在该区间之外。该证据是 Flask WSGI 容量，不是 Gunicorn/Nginx 吞吐、真实电视或解码压力证明。
 
 现有 builder 的 validate 会收集 `/proof/tv-trip-capacity.json`。根执行器获准仅对本次 validation create 的固定 argv 把 `--memory 1024m` 替换为 `--memory 384m` 并增加 `--memory-swap 384m`；共享 builder 源码不变。执行器须保留原始/转换 argv、实际 inspect HostConfig、全部命令和 owned 清理。容量测试及 prepare 均要求 Linux cgroup memory.max=402653184、swap.max=0，max/oom/oom_kill=0，记录进程 RSS 与 cgroup peak。Windows可验证真实 WSGI 逻辑，但缺少 Linux cgroup 的结果不会获发布准入。
 
 正式运行前必须使用已审最终业务字节。本地发布接线测试仅使用真实控制器加录制 Docker runner；不是实际 Docker、迁移演练或生产操作。
+
+原 `test_raw_json_rejected` 六个参数仅增加稳定短 ID（包括 17,000 字符的拒绝输入），参数、断言和测试体不变。118 节点同时通过实际共享 builder 的节点长度/来源校验；选择 SHA 使用 UTF-8、LF 的规范 JSON 字节。迁移运行闭包及 `runtimeSourceHead` 不受测试 ID 改名影响。

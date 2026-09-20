@@ -155,7 +155,7 @@ def test_strict_mutation_fields(env,changes):
 
 
 @pytest.mark.parametrize('raw',['null','[]','{"revision":0,"revision":1,"action":"start"}',
-    '{"revision":NaN,"action":"start"}','{"revision":1e999,"action":"start"}','x'*17000])
+    '{"revision":NaN,"action":"start"}','{"revision":1e999,"action":"start"}','x'*17000], ids=['null','array','duplicate-key','nan','infinity','oversize'])
 def test_raw_json_rejected(env,raw):
     uid,_,_ = device(env)
     c,h = login(env[0])

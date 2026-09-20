@@ -25,14 +25,14 @@ OPERATORS = sorted(set(parent.OPERATORS) | {
 REVIEW_ROLES = shared.REVIEW_ROLES | {'migration'}
 INPUT_ROLES = {'package', 'build', 'validation', 'selection', 'parentAudit', 'retainedAssistantList', 'migrationRehearsal', 'reviews'}
 # Exact collected selection; fixture dependencies are pinned separately from executed nodes.
-TEST_MODULES = {'tests/test_media_trip_playback.py': 'dd35d418661675f36683d3cf6f7e7b23faf6262d27b4203af50ce9c781ea223a', 'tests/test_media_trip_playback_sessions.py': 'e1889212ce4d39991294f78f7ccca521f05ac881f1994c7aaebcd311ee6c88d9', 'tests/test_media_playback.py': '4d0c0ac7b11a4c51c5dc0ebc940884876d77c778fce2299a1383d9b479191559', 'tests/test_tv_trip_capacity.py': '13674de3e143a860496e406c35b4ff9a2289ffefc8b9499ed51a7d666e702501'}
-FIXTURE_MODULES = {'tests/test_app.py': 'c1990dfff2fe13aa26a24ce905e06303cab0411155ad806f15a53239abb0690e', 'tests/test_device_sessions.py': '082d4fe6dc3a29e6b8b36556a7501ea6166dac550ff9313dcec81f762c0e625a', 'tests/test_google_photos_picker.py': 'b4df91dd11dfd9996d5b28370a59e1c00804f83bbd2c306df2f184b31fb958e8', 'tests/test_household_media.py': 'eda3f97d185f7ddae0c4315f99cf82a1abfebee234be1037925e88f0c973e781', 'tests/test_household_spaces.py': '378110afadca3bc2dd4b1c9fd77c1ce9c2f75f57fe44ba664dde8846c386a0fc', 'tests/test_journey_documents.py': '62dcb646b57b519f4e8055e4aea1c6f6e534894ad9a5833ae147d55411b9fff5', 'tests/test_journey_places.py': '36173296c3859e31be5ebf40535b959a1b2d319c70ca96983b570f9ed55028f8', 'tests/test_journey_routes.py': 'f9d4b9cf96cd17fbffb4a60c6094de74fb51a8a79fdde092593384313f343e99', 'tests/test_media_video_integration.py': 'fa5b30efaa5a0f196209c23627c445fcf16d5daa568633802641f6a2732473bf', 'tests/test_media_video_tv.py': 'b3ff05cd37bee702ef98d6f844c5ad925be44d314a4f2f68b456db6ae7ac906c'}
-REQUIRED_NODEIDS_SHA256 = 'e497a538fe04cd4438bfeff75c5e1fdbf9e05a572dab008448ed308326bdebe6'
+TEST_MODULES = {'tests/test_media_trip_playback.py': 'dd35d418661675f36683d3cf6f7e7b23faf6262d27b4203af50ce9c781ea223a', 'tests/test_media_trip_playback_sessions.py': 'e1889212ce4d39991294f78f7ccca521f05ac881f1994c7aaebcd311ee6c88d9', 'tests/test_media_playback.py': '576ccc1443b16327ddee09ad3b6bfe33fa61a924b346f3402baa5d4e12db5cb3', 'tests/test_tv_trip_capacity.py': '13674de3e143a860496e406c35b4ff9a2289ffefc8b9499ed51a7d666e702501', 'tests/test_tv_playback_projection.py': 'c2450599a33441cd868db2b1005f3d5a0084af78a68d86d7c7386a67a3dd5b73'}
+FIXTURE_MODULES = {'tests/test_app.py': 'c1990dfff2fe13aa26a24ce905e06303cab0411155ad806f15a53239abb0690e', 'tests/test_device_sessions.py': '082d4fe6dc3a29e6b8b36556a7501ea6166dac550ff9313dcec81f762c0e625a', 'tests/test_google_photos_picker.py': 'b4df91dd11dfd9996d5b28370a59e1c00804f83bbd2c306df2f184b31fb958e8', 'tests/test_household_media.py': 'eda3f97d185f7ddae0c4315f99cf82a1abfebee234be1037925e88f0c973e781', 'tests/test_household_spaces.py': '378110afadca3bc2dd4b1c9fd77c1ce9c2f75f57fe44ba664dde8846c386a0fc', 'tests/test_journey_documents.py': '62dcb646b57b519f4e8055e4aea1c6f6e534894ad9a5833ae147d55411b9fff5', 'tests/test_journey_places.py': '36173296c3859e31be5ebf40535b959a1b2d319c70ca96983b570f9ed55028f8', 'tests/test_journey_routes.py': 'f9d4b9cf96cd17fbffb4a60c6094de74fb51a8a79fdde092593384313f343e99', 'tests/test_local_photo_import.py': '0915c9358a792a3938289aa0b63d6af87b548a03421930cdc6bfab21cf105dac', 'tests/test_media_portability.py': '65259ace1e6abd3510488c2378bfb99fe5956291e506295d8f0da6caf5d6f2a3', 'tests/test_media_video_integration.py': 'fa5b30efaa5a0f196209c23627c445fcf16d5daa568633802641f6a2732473bf', 'tests/test_media_video_tv.py': 'b3ff05cd37bee702ef98d6f844c5ad925be44d314a4f2f68b456db6ae7ac906c'}
+REQUIRED_NODEIDS_SHA256 = '3e375811e710948aea8a341f2a09a0033f8fb80deaf9cccae431595cdb88930e'
 
 
 MIGRATION_STAGES = {'verify', 'seed', 'migrate', 'startup', 'check', 'rollback75',
                     'partial', 'populate77', 'restart', 'restore77'}
-MIGRATION_RUNTIME_SOURCE = 'add881ed6a7d455e2743ce2affa6cf8b931b47d2'
+MIGRATION_RUNTIME_SOURCE = 'aa55f3e7154ec5076ca0ec2360df30e9cf73f981'
 MIGRATION_CLOSURE = {
     'media_trip_playback.py', 'journey_finance.py', 'finance_hub.py', 'financial_files.py',
     'finance_source_bridge.py', 'finance_baseline.py',
@@ -222,7 +222,7 @@ def verify_capacity(spec, value, built):
 
 
 def verify_selection(selection, metadata):
-    need(len(selection['nodeids']) == 94 and TEST_MODULES and REQUIRED_NODEIDS_SHA256 and selection['allowedSkips'] == {} and
+    need(len(selection['nodeids']) == 118 and TEST_MODULES and REQUIRED_NODEIDS_SHA256 and selection['allowedSkips'] == {} and
          sha(package.package.encoded(sorted(selection['nodeids']))) == REQUIRED_NODEIDS_SHA256 and
          set(selection['modules']) == set(TEST_MODULES) and
          all(metadata['sourceFiles'].get(n) == h for n, h in {**TEST_MODULES, **FIXTURE_MODULES}.items()),
