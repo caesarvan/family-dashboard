@@ -369,7 +369,8 @@ def main():
     parser.add_argument('--temp-root', required=True, type=Path)
     parser.add_argument('--case', action='append', choices=CASES, dest='cases')
     args = parser.parse_args()
-    assert sys.dont_write_bytecode and not sys.flags.optimize
+    if not sys.dont_write_bytecode or sys.flags.optimize:
+        raise RuntimeError('Run with -B and without Python optimization')
     assert re.fullmatch('[a-f0-9]{40}', args.expected_head) and re.fullmatch('[a-f0-9]{64}', args.expected_build_evidence)
     root, temp_root = args.source_root.resolve(), args.temp_root.resolve()
     bundle = args.bundle.absolute()
@@ -415,6 +416,7 @@ def main():
             finally:
                 browser.close()
     except Exception:
+        report['passed'] = False
         report['failure'] = traceback.format_exc(); print(report['failure'], flush=True)
     finally:
         try:
@@ -427,7 +429,8 @@ def main():
             report['temporaryFixturesRemoved'] = len(report['scenarioResults']) == len(cases) and all(
                 c['temporaryFixtureRemoved'] and c['listenerStopped'] for c in report['scenarioResults'])
             report['passed'] = report['passed'] and all(report[k] for k in ('sourceUnchanged', 'bundleUnchanged',
-                'fixturesUnchanged', 'sourceStillFrozen', 'temporaryFixturesRemoved'))
+                'fixturesUnchanged', 'sourceStillFrozen', 'temporaryFixturesRemoved')) and not (
+                report['pageErrors'] or report['externalRequests'])
         except Exception:
             report['passed'] = False; report['finalEvidenceFailure'] = traceback.format_exc()
         write_json(out / 'result.json', report)
