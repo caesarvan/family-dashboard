@@ -38,7 +38,7 @@ test('unknown report resolves only from committed sequence, new control revision
 function harness(options={}) {
   const ts=createRequire(import.meta.url)('typescript');let state=snapshot(),now=0,dirty=true,dead=false,cursor=0,tree;
   const values=[],effects=[],cleanups=[],timers=new Map(),listeners=new Map(),calls=[],revoked=[],created=[];
-  let timerId=0,assetGate=null,unknownPost=false,reportFail=false,denied=false;
+  let timerId=0,assetGate=null,reportGate=null,unknownPost=false,reportFail=false,denied=false;
   const same=(a,b)=>Array.isArray(a)&&Array.isArray(b)&&a.length===b.length&&a.every((x,i)=>Object.is(x,b[i]));
   const react={createElement(type,props,...children){return{type,props:{...props,children:children.flat(Infinity)}};},
     useRef(v){const i=cursor++;return values[i]||=( {current:v});},
@@ -72,9 +72,11 @@ function harness(options={}) {
       if(body.revision!==state.revision||body.playId!==state.progress.playId||body.sequence<=state.progress.sequence)return response(path,{},'application/json',409);
       if(body.event==='ended'){state.revision++;state.progress={playId:state.revision.toString(16).padStart(24,'0'),positionMs:0,sequence:0,durationMs:8000};}
       else state.progress={...state.progress,positionMs:body.positionMs,sequence:body.sequence};
+      const committed=raw();
+      if(body.event==='checkpoint'&&reportGate)await reportGate.promise;
       if(unknownPost){unknownPost=false;throw new Error('response lost after commit');}
       if(reportFail)return response(path,{},'application/json',503);
-      return response(path,raw());
+      return response(path,committed);
     }
     throw new Error('Unexpected path '+path);
   };
@@ -87,9 +89,11 @@ function harness(options={}) {
   const nodes=(n=tree)=>!n||typeof n!=='object'?[]:[n,...(n.props.children||[]).flatMap(x=>nodes(x))];
   const text=(n=tree)=>typeof n==='string'?n:!n||typeof n!=='object'?'':n.props.children.map(text).join(' ');
   async function flush(){for(let i=0;i<35;i++){if(dirty&&!dead){dirty=false;cursor=0;tree=Component(props);for(const n of nodes())if(n.props.ref){const el=n.type==='video'?movie:image;n.props.ref.current=el;if(n.type==='video'){el.onloadedmetadata=n.props.onLoadedMetadata;el.oncanplay=n.props.onCanPlay;el.onended=n.props.onEnded;}}while(effects.length)effects.shift()();}await new Promise(setImmediate);}}
-  async function advance(ms){const end=now+ms;while(now<end){const dt=Math.min(100,end-now);now+=dt;if(!movie.paused&&!movie.ended){movie.currentTime=Math.min(movie.duration,movie.currentTime+dt/1000);if(movie.currentTime>=movie.duration){movie.ended=true;movie.onended?.();}}for(const[id,t]of [...timers])if(t.at<=now){if(t.repeat)t.at=now+t.ms;else timers.delete(id);t.fn();}await flush();}}
+  async function advance(ms){const end=now+ms;while(now<end){const dt=Math.min(100,end-now);now+=dt;if(!movie.paused&&!movie.ended){movie.currentTime=Math.min(movie.duration,movie.currentTime+dt/1000);if(movie.currentTime>=movie.duration){movie.ended=true;movie.paused=true;movie.onended?.();}}for(const[id,t]of [...timers])if(t.at<=now){if(t.repeat)t.at=now+t.ms;else timers.delete(id);t.fn();}await flush();}}
   const close=()=>{dead=true;cleanups.forEach(fn=>fn?.());};
   return{calls,created,revoked,movie,flush,advance,close,text,get state(){return state;},pause(){state.paused=true;state.revision++;},resume(){state.paused=false;state.revision++;},
+    next(){state.revision++;state.progress={...state.progress,playId:'e'.repeat(24),positionMs:0,sequence:0};},
+    gateReport(){let release;reportGate={promise:new Promise(r=>release=r)};return()=>{release();reportGate=null;};},
     gate(){let release;assetGate={promise:new Promise(r=>release=r)};return()=>{release();assetGate=null;};},unknown(){unknownPost=true;},deny(){denied=true;},
     async retry(){options.busy=false;nodes().find(n=>n.type==='Button').props.onPress();await flush();},
     async event(name){if(name==='offline')navigator.onLine=false;if(name==='visibilitychange')document.hidden=true;for(const f of listeners.get(name)||[])f();await flush();}};
@@ -164,4 +168,30 @@ test('classic TV offers same-origin modern entry without media fetch or playback
   listeners.pagehide();assert(children[0].removed);window.MediaTV.ensureDisplay();
   context.user={role:'member'};window.MediaTV.notifyIdentityChanged();assert(children[1].removed);
   window.MediaTV.ensureDisplay();assert.equal(children.length,2);assert.equal(timerCalls,0);assert.equal(fetches,0);
+});
+test('actual delayed checkpoint cannot lose a real video ended; advances exactly once after response',async t=>{
+  const h=harness();t.after(h.close);await h.flush();const release=h.gateReport();await h.advance(8200);
+  assert(h.movie.ended&&h.movie.paused);assert.equal(h.state.revision,1);
+  assert(h.calls.some(c=>c.body?.event==='checkpoint'));assert(!h.calls.some(c=>c.body?.event==='ended'));
+  release();await h.flush();await h.advance(300);
+  const reports=h.calls.filter(c=>c.body?.event==='ended');assert.equal(reports.length,1);
+  assert.equal(reports[0].body.playId,playId);assert.equal(reports[0].body.positionMs,8000);assert.equal(h.state.revision,2);
+});
+for(const action of ['pause','deny','next','offline'])test('actual delayed checkpoint ending respects '+action+' before slot is released',async t=>{
+  const h=harness();t.after(h.close);await h.flush();const release=h.gateReport();await h.advance(8200);
+  if(action==='offline')await h.event('offline');else h[action]();
+  await h.advance(900);release();await h.flush();await h.advance(2100);
+  assert(!h.calls.some(c=>c.body?.event==='ended'),'obsolete/paused/unauthorized end must not be sent');
+  if(action==='next'){
+    assert(h.calls.some(c=>c.body?.event==='ready'&&c.body.playId==='e'.repeat(24)));
+    assert.equal(h.movie.paused,false);assert.equal(h.state.revision,2);
+  }else assert(h.movie.paused);
+});
+test('actual delayed checkpoint with unknown response freezes end until a current GET resolves it',async t=>{
+  const h=harness();t.after(h.close);await h.flush();const release=h.gateReport();await h.advance(8200);
+  h.unknown();release();await h.flush();assert(h.text().includes('提交结果尚未核对'));
+  assert(h.movie.paused&&h.movie.src==='');assert(!h.calls.some(c=>c.body?.event==='ended'));
+  await h.advance(300);assert(!h.text().includes('提交结果尚未核对'));
+  assert(!h.calls.some(c=>c.body?.event==='ended'));assert.equal(h.state.revision,1);
+  assert.equal(h.calls.filter(c=>c.body?.event==='checkpoint'&&c.body.sequence===2).length,1);
 });

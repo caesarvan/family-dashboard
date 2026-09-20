@@ -113,7 +113,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
       if (frame.kind === 'photo') {
         if (video.current) { video.current.pause(); video.current.hidden = true; }
         if (image.current) { if (image.current.src !== frame.url) image.current.src = frame.url; image.current.hidden = false; }
-        if (!frame.ready && !frame.preparing) { frame.preparing = true; void send('ready', state.progress!.positionMs); }
+        if (!frame.ready && !frame.preparing) void send('ready', state.progress!.positionMs);
       } else if (video.current) {
         const element = video.current;
         if (image.current) image.current.hidden = true;
@@ -121,7 +121,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
         if (element.readyState < 1) return;
         if (!frame.positioned) { element.currentTime = state.progress!.positionMs / 1000; frame.positioned = true; }
         element.hidden = false;
-        if (!frame.ready && !frame.preparing && element.readyState >= 2) { frame.preparing = true; void send('ready', state.progress!.positionMs); }
+        if (!frame.ready && !frame.preparing && element.readyState >= 2) void send('ready', state.progress!.positionMs);
         if (state.paused || !frame.ready || unknown) element.pause();
         else if (element.paused && !element.ended && !frame.blocked && !frame.playPending) {
           const target = frame; target.playPending = true;
@@ -233,6 +233,7 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
     async function send(event: TVProgressEvent, position: number) {
       if (reportRequest || unknown || !state?.item || !state.progress || !frame || !available() || !lease.valid(frame.ticket, performance.now())) return;
       const before = state, target = frame;
+      if (event === 'ready') target.preparing = true;
       const intent = progressIntent(before, event, Math.min(before.progress!.durationMs, Math.max(before.progress!.positionMs, position)));
       const operation: Request = { controller: new AbortController(), ticket: lease.ticket() };
       reportRequest = operation; sending = intent;
@@ -280,7 +281,9 @@ export default function TVPhotoPlayer({ deviceId, active, onUnauthorized }: TVPh
       if (now >= nextPoll) void poll();
       if (!frame?.ready || !state?.progress || unknown || !lease.valid(frame.ticket, now)) return;
       const offset = actualPosition();
-      if (!state.paused && frame.kind === 'photo' && offset >= state.progress.durationMs) void send('ended', offset);
+      // Native ended may fire while a checkpoint is awaiting its response.
+      // Recheck the current element after that slot clears; never infer video end from time.
+      if (!state.paused && (frame.kind === 'photo' ? offset >= state.progress.durationMs : video.current?.ended)) void send('ended', offset);
       else if (!state.paused && now - lastCheckpoint >= 5000 && (frame.kind === 'photo' || !video.current?.paused && !video.current?.seeking)) void send('checkpoint', offset);
     }, 100);
     const hide = () => invalidate('error');
