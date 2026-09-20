@@ -175,6 +175,23 @@ def resource_samples(samples):
                  and int(events.get('oom_group_kill', 0)) == 0, 'cgroup memory event')
 
 
+def checked_client_database(output, proof):
+    client = Path(output)/'client'
+    finished = read(client/'finished.json')
+    need(proof.get('passed') is True and finished == {'passed': True, 'resultSha256': sha(client/'result.json')},
+         'client workload failed: '+str(proof.get('failure') or 'invalid completion receipt'))
+    database = read(client/'database.json')
+    before, after = (read(Path(output)/'app'/('database-'+phase+'.json')) for phase in ('before', 'after'))
+    expected = {'before': before['sha256'], 'after': after['sha256'], 'beforeTables': before['tables'],
+                'afterTables': after['tables'], 'normalization': before['normalization']}
+    need(database == expected and after['normalization'] == before['normalization'], 'app/client database snapshots differ')
+    responses = read(client/'database-http.json')
+    need(len(responses) == 2 and all(r['method'] == 'GET' and r['status'] == 200
+         and r['path'] == '/api/_probe/database-snapshot/'+phase and r['body'] == value
+         for r, phase, value in zip(responses, ('before', 'after'), (before, after))), 'snapshot HTTP evidence differs')
+    return database
+
+
 def run(prepared, output, expected_input_sha256):
     need(sys.platform == 'linux' and sys.dont_write_bytecode and not sys.flags.optimize, 'Linux -B without -O required')
     prepared = safe(prepared, remote=True); c = checked_input(prepared)
@@ -220,8 +237,8 @@ def run(prepared, output, expected_input_sha256):
             if (output/'client/finished.json').exists(): break
             time.sleep(.25)
         resource_samples(samples)
-        proof = read(output/'client/result.json'); database = read(output/'client/database.json')
-        need(proof['passed'] and read(output/'client/finished.json') == {'passed': True, 'resultSha256': sha(output/'client/result.json')}, 'HTTP workload failed')
+        proof = read(output/'client/result.json')
+        database = checked_client_database(output, proof)
         need(database['before'] == database['after'], 'business database changed')
         save(output/'database.json', database); save(output/'control/release.json', {'release': True})
         _, raw = ex.call(['wait', owned['client']], timeout=10, guard=monitor)
@@ -377,10 +394,30 @@ class Observations:
             save(self.output/('request-'+key+'.json'), self.rows[key])
 
 
+def register_database_snapshots(app, output):
+    """Fixture-only channel on the private probe network; never added to /app."""
+    from flask import abort, jsonify
+    engine = app.extensions['household_media']; phases = []; lock = threading.Lock()
+    @app.get('/api/_probe/database-snapshot/<phase>')
+    def snapshot(phase):
+        if phase not in ('before', 'after'): abort(404)
+        with engine.transaction() as con:
+            if engine._member(con) != 'member1': abort(403)
+        with lock:
+            if phases != ([] if phase == 'before' else ['before']): abort(409)
+            value = db_snapshot(engine.sessions.path)
+            with engine.transaction() as con:
+                if engine._member(con) != 'member1': abort(403)
+            save(Path(output)/('database-'+phase+'.json'), value)
+            phases.append(phase)
+        return jsonify(value)
+
+
 def measured_app():
     from flask import g, request
     from app import create_app
     forbid_outbound(); app = create_app(); engine = app.extensions['household_media']
+    register_database_snapshots(app, '/proof')
     observer = Observations('/proof'); original = engine.sessions.db
     @contextmanager
     def connections():
@@ -473,7 +510,9 @@ def client_inside():
         wait_file('/observations/gunicorn-worker.json')
         ready = read('/observations/ready.json')
         need(request('POST', '/api/login', {'username': 'member1', 'password': PASSWORD})['status'] == 200, 'real HTTP login failed')
-        before = db_snapshot(Path('/data/household.sqlite3')); save('/proof/ready.json', {'authenticated': True})
+        snapshot = request('GET', '/api/_probe/database-snapshot/before')
+        need(snapshot['status'] == 200, 'app-side before snapshot failed')
+        before = snapshot['body']; save('/proof/ready.json', {'authenticated': True})
         wait_file('/control/go.json'); barrier = threading.Barrier(4, timeout=10)
         path = '/api/media/items/'+ready['targetId']+'/duplicates?limit=20&offset=0'
         def query(i): barrier.wait(); return request('GET', path, key=str(i))
@@ -481,7 +520,9 @@ def client_inside():
         recovery = request('GET', path, key='recovery')
         observations = {str(i): read('/observations/request-'+str(i)+'.json') for i in (*range(4), 'recovery')}
         proof = checked_proof(responses, observations, recovery)
-        after = db_snapshot(Path('/data/household.sqlite3'))
+        snapshot = request('GET', '/api/_probe/database-snapshot/after')
+        need(snapshot['status'] == 200, 'app-side after snapshot failed')
+        after = snapshot['body']
         database = {'before': before['sha256'], 'after': after['sha256'], 'beforeTables': before['tables'],
                     'afterTables': after['tables'], 'normalization': before['normalization']}
         save('/proof/database.json', database); need(database['before'] == database['after'], 'business data changed')
@@ -490,6 +531,8 @@ def client_inside():
         # Login response contains CSRF/session descriptors; retain only measured
         # synthetic duplicate bodies, never signed cookies or credentials.
         save('/proof/http.json', [r for r in records if r['id'] is not None])
+        save('/proof/database-http.json', [r for r in records if r['path'] in (
+            '/api/_probe/database-snapshot/before', '/api/_probe/database-snapshot/after')])
         proof.update(passed=failure is None, failure=failure); save('/proof/result.json', proof)
         save('/proof/finished.json', {'passed': failure is None, 'resultSha256': sha('/proof/result.json')})
     need(failure is None, 'client workload failed; inspect originals')

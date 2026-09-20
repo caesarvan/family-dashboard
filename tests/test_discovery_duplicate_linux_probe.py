@@ -225,3 +225,102 @@ def test_pressure_stops_all_verified_owned_ids_before_inspection_and_keeps_failu
     result = p.read(tmp_path/'run/result.json')
     assert not result['passed'] and 'pressure' in result['failure'] and result['cleanupErrors'] == []
     assert (tmp_path/'run/app-final.json').exists() and (tmp_path/'run/client-final.json').exists()
+
+
+@pytest.fixture
+def snapshot_channel(tmp_path, monkeypatch):
+    from app import create_app
+    monkeypatch.setenv('MEMBER1_PASSWORD', p.PASSWORD)
+    monkeypatch.setenv('MEMBER2_PASSWORD', p.PASSWORD)
+    app = create_app({'DATA_DIR': str(tmp_path/'data'), 'SECRET_KEY': p.SECRET,
+                      'PUBLIC_ORIGIN': p.PUBLIC, 'SESSION_COOKIE_SECURE': True})
+    assert not app.testing
+    output = tmp_path/'observed'; output.mkdir()
+    p.register_database_snapshots(app, output)
+    client = app.test_client()
+    assert client.post('/api/login', base_url=p.PUBLIC,
+                       json={'username': 'member1', 'password': p.PASSWORD}).status_code == 200
+    return app, client, output
+
+
+def test_snapshot_channel_real_wal_transaction_and_http_match(snapshot_channel):
+    from contextlib import closing
+    app, client, output = snapshot_channel
+    path = app.extensions['household_media'].sessions.path
+    with closing(sqlite3.connect(path)) as writer:
+        assert writer.execute('PRAGMA journal_mode').fetchone()[0] == 'wal'
+        writer.execute('PRAGMA wal_autocheckpoint=0')
+        writer.execute('CREATE TABLE probe_business(id TEXT, encrypted BLOB)'); writer.commit()
+        writer.execute('PRAGMA wal_checkpoint(TRUNCATE)')
+        writer.execute('INSERT INTO probe_business VALUES(?,?)', ('one', b'synthetic secret content')); writer.commit()
+        assert Path(str(path)+'-wal').stat().st_size > 0
+        before = client.get('/api/_probe/database-snapshot/before', base_url=p.PUBLIC)
+        assert before.status_code == 200
+        assert before.json['tables']['probe_business']['rows'] == 1
+        assert before.json == p.db_snapshot(path) == p.read(output/'database-before.json')
+        assert b'synthetic secret content' not in before.data
+        writer.execute('UPDATE probe_business SET encrypted=?', (b'changed encrypted bytes',)); writer.commit()
+        after = client.get('/api/_probe/database-snapshot/after', base_url=p.PUBLIC)
+        assert after.status_code == 200 and after.json == p.read(output/'database-after.json')
+        assert after.json['sha256'] != before.json['sha256']
+        assert after.json['tables']['probe_business']['sha256'] != before.json['tables']['probe_business']['sha256']
+    assert before.json['normalization'] == {'member_sessions': ['last_seen_at']}
+
+
+def test_snapshot_channel_authentication_and_once_only_order(snapshot_channel):
+    app, client, output = snapshot_channel
+    path = '/api/_probe/database-snapshot/'
+    assert app.test_client().get(path+'before', base_url=p.PUBLIC).status_code == 401
+    other = app.test_client()
+    assert other.post('/api/login', base_url=p.PUBLIC,
+                      json={'username': 'member2', 'password': p.PASSWORD}).status_code == 200
+    assert other.get(path+'before', base_url=p.PUBLIC).status_code == 403
+    assert client.get(path+'outside', base_url=p.PUBLIC).status_code == 404
+    assert client.get(path+'after', base_url=p.PUBLIC).status_code == 409
+    assert not list(output.iterdir())
+    before = client.get(path+'before', base_url=p.PUBLIC); assert before.status_code == 200
+    assert client.get(path+'before', base_url=p.PUBLIC).status_code == 409
+    after = client.get(path+'after', base_url=p.PUBLIC); assert after.status_code == 200
+    assert before.json == after.json
+    assert client.get(path+'after', base_url=p.PUBLIC).status_code == 409
+    assert set(x.name for x in output.iterdir()) == {'database-before.json', 'database-after.json'}
+
+
+def test_client_failure_precedes_missing_database_result(tmp_path):
+    client = tmp_path/'client'; client.mkdir()
+    failure = {'passed': False, 'failure': 'OperationalError: unable to open database file'}
+    p.save(client/'result.json', failure)
+    p.save(client/'finished.json', {'passed': False, 'resultSha256': p.sha(client/'result.json')})
+    with pytest.raises(RuntimeError, match='client workload failed: OperationalError: unable to open database file'):
+        p.checked_client_database(tmp_path, failure)
+    assert not (client/'database.json').exists()
+    assert p.read(client/'result.json') == failure
+
+
+@pytest.mark.parametrize('tamper', ['none', 'database', 'http'])
+def test_snapshot_channel_coordinator_checks_app_originals(tmp_path, tamper):
+    app = tmp_path/'app'; app.mkdir(); client = tmp_path/'client'; client.mkdir()
+    value = {'sha256': 'a'*64, 'tables': {'business': {'rows': 1, 'sha256': 'b'*64}},
+             'normalization': {'member_sessions': ['last_seen_at']}}
+    for phase in ('before', 'after'): p.save(app/('database-'+phase+'.json'), value)
+    proof = {'passed': True, 'failure': None}; p.save(client/'result.json', proof)
+    p.save(client/'finished.json', {'passed': True, 'resultSha256': p.sha(client/'result.json')})
+    database = {'before': value['sha256'], 'after': value['sha256'], 'beforeTables': value['tables'],
+                'afterTables': value['tables'], 'normalization': value['normalization']}
+    http = [{'method': 'GET', 'status': 200, 'path': '/api/_probe/database-snapshot/'+phase, 'body': value}
+            for phase in ('before', 'after')]
+    if tamper == 'database': database['after'] = 'c'*64
+    if tamper == 'http': http[1]['path'] = '/api/_probe/database-snapshot/before'
+    p.save(client/'database.json', database); p.save(client/'database-http.json', http)
+    if tamper == 'none': assert p.checked_client_database(tmp_path, proof) == database
+    else:
+        with pytest.raises(RuntimeError, match='snapshot'): p.checked_client_database(tmp_path, proof)
+
+
+def test_snapshot_channel_client_mount_remains_readonly(tmp_path, monkeypatch):
+    monkeypatch.setattr(p, 'ROOT', tmp_path)
+    prepared = tmp_path/'input'; prepared.mkdir(); output = tmp_path/'output'; output.mkdir()
+    for name in ('app', 'client', 'data', 'control'): (output/name).mkdir()
+    argv = p.container_args('client', 'a'*64, 'dd-'+'b'*16, prepared, output, {'imageId': 'sha256:'+'e'*64})
+    assert 'type=bind,src='+str(output/'data')+',dst=/data,readonly' in argv
+    assert '--memory=64m' in argv and '--memory-swap=64m' in argv and '--read-only' in argv
