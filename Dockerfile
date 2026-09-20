@@ -2,11 +2,14 @@ FROM python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 DATA_DIR=/data PYTHONTZPATH=""
 WORKDIR /app
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && useradd -u 10001 -m dashboard && mkdir /data && chown dashboard:dashboard /data
+RUN pip install --no-cache-dir -r requirements.txt && useradd -u 10001 -m dashboard \
+ && mkdir /data /decoder-private && chown dashboard:dashboard /data /decoder-private \
+ && chmod 0700 /decoder-private
 COPY app.py frontend_runtime.py member_sessions.py household_members.py tv_display.py sync_health.py ./
 COPY household_memberships.py personal_accounts.py membership_storage.py membership_http.py ./
 COPY cloud_accounts.py cloud_providers.py sync_worker.py ./
 COPY google_photos_picker.py media_crypto.py media_images.py household_media.py media_import_worker.py media_playback.py ./
+COPY media_videos.py media_video_storage.py media_playback_progress.py media_video_transport.py ./
 COPY shopping_media.py shopping_settlement.py finance_baseline.py spending_observations.py ./
 COPY finance_source_bridge.py finance_accounts.py journey_time.py journey_reschedule.py ./
 COPY finance_analysis.py finance_fx.py ./
