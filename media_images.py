@@ -4,6 +4,7 @@ Pillow can repair some malformed JPEG entropy streams, even with truncation
 disabled. This module checks container completeness and fully loads pixels; it
 does not claim to detect every damaged JPEG that Pillow can still decode.
 """
+from contextlib import closing
 from dataclasses import dataclass, field
 from hashlib import sha256
 from io import BytesIO
@@ -12,7 +13,7 @@ from typing import Literal
 import warnings
 import zlib
 
-from PIL import Image, ImageFile, ImageOps
+from PIL import Image, ImageFile, ImageOps, WebPImagePlugin
 
 
 MAX_INPUT_BYTES = 8 * 1024 * 1024
@@ -21,6 +22,7 @@ MAX_EDGE = 1600
 MAX_OUTPUT_BYTES = 2 * 1024 * 1024
 JPEG_QUALITIES = (90, 85, 80, 75, 65)
 FORMATS = {'image/jpeg': 'JPEG', 'image/png': 'PNG', 'image/webp': 'WEBP'}
+_WEBP_PILLOW_VERSION = '12.3.0'
 _DECODE_LOCK = Lock()
 _MESSAGES = {
     'invalid_input': '请提供有效的图片字节和媒体类型。',
@@ -225,6 +227,58 @@ def _check_image(source, fmt):
         raise MediaImageError('multiple_frames')
 
 
+def _verify_image(raw, fmt):
+    # ImageFile.__exit__ only closes file pointers. End this scope before opening
+    # the decoding image so WebP's retained decoder/canvas is also released.
+    with closing(Image.open(BytesIO(raw), formats=[fmt])) as checked:
+        _check_image(checked, fmt)
+        checked.verify()
+
+
+def _webp_frame(raw):
+    # This narrow adapter depends on the pinned Pillow WebP plugin. Its normal
+    # load() keeps the decoder canvas, returned frame bytes and a copied raw
+    # pixel core alive together. Fully decode first, then leave this scope to
+    # release the plugin/decoder before mapping the complete frame below.
+    if (Image.__version__ != _WEBP_PILLOW_VERSION or
+            Image.core.PILLOW_VERSION != _WEBP_PILLOW_VERSION):
+        raise MediaImageError('unsafe_decoder_configuration')
+    with closing(Image.open(BytesIO(raw), formats=['WEBP'])) as source:
+        _check_image(source, 'WEBP')
+        if type(source) is not WebPImagePlugin.WebPImageFile:
+            raise MediaImageError('unsafe_decoder_configuration')
+        size, _, _, frames, rawmode = source._decoder.get_info()
+        if (size != source.size or frames != 1 or rawmode not in ('RGBA', 'RGBX') or
+                rawmode != source.rawmode or source.mode != ('RGB' if rawmode == 'RGBX' else 'RGBA')):
+            raise MediaImageError('unsafe_decoder_configuration')
+        frame = source._decoder.get_next()  # Actual libwebp full-frame decode.
+        if (type(frame) is not tuple or len(frame) != 2 or type(frame[0]) is not bytes or
+                len(frame[0]) != size[0] * size[1] * 4 or type(frame[1]) is not int):
+            raise MediaImageError('invalid_image')
+        return size, rawmode, source.info.copy(), frame[0]
+
+
+def _load_image(raw, fmt):
+    if fmt == 'WEBP':
+        size, rawmode, info, pixels = _webp_frame(raw)
+        # RGBX is opaque padding, never an alpha channel. Both modes are mapped
+        # read-only by pinned Pillow; the image owns a reference to these bytes.
+        image = Image.frombuffer(rawmode, size, pixels, 'raw', rawmode, 0, 1)
+        if image.mode != rawmode or image.size != size or not image.readonly:
+            image.close()
+            raise MediaImageError('unsafe_decoder_configuration')
+        image.info = info
+        return image
+    source = Image.open(BytesIO(raw), formats=[fmt])
+    try:
+        _check_image(source, fmt)
+        source.load()  # Do not use draft/thumbnail before full decode.
+        return source
+    except BaseException:
+        source.close()
+        raise
+
+
 def _encode(clean):
     for quality in JPEG_QUALITIES:
         output = BytesIO()
@@ -263,16 +317,12 @@ def sanitize_media_preview(raw: bytes, mime_type: str) -> Preview:
         # Python 3.12 runtime warning filters are not context-local per thread.
         with _DECODE_LOCK, warnings.catch_warnings():
             warnings.simplefilter('error')
-            with Image.open(BytesIO(raw), formats=[fmt]) as checked:
-                _check_image(checked, fmt)
-                checked.verify()
-            with Image.open(BytesIO(raw), formats=[fmt]) as source:
-                _check_image(source, fmt)
-                source.load()  # Do not use draft/thumbnail before full decode.
+            _verify_image(raw, fmt)
+            with closing(_load_image(raw, fmt)) as source:
                 ImageOps.exif_transpose(source, in_place=True)
                 source.thumbnail((MAX_EDGE, MAX_EDGE), Image.Resampling.LANCZOS)
-                with source.convert('RGBA') as rgba, Image.new('RGB', source.size, 'white') as clean:
-                    with rgba.getchannel('A') as alpha:
+                with closing(source.convert('RGBA')) as rgba, closing(Image.new('RGB', source.size, 'white')) as clean:
+                    with closing(rgba.getchannel('A')) as alpha:
                         clean.paste(rgba, mask=alpha)
                     result = _encode(clean)
                     width, height = clean.size

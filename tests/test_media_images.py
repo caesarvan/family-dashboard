@@ -104,7 +104,8 @@ def test_palette_transparency_is_not_lost():
 
 @pytest.mark.parametrize('orientation,labels', [(1, 'rgby'), (2, 'gryb'), (3, 'ybgr'), (4, 'byrg'),
                                                 (5, 'rbgy'), (6, 'bryg'), (7, 'ygbr'), (8, 'gyrb')])
-def test_all_exif_orientations_applied_before_metadata_removal(orientation, labels):
+@pytest.mark.parametrize('fmt', ['PNG', 'WEBP'])
+def test_all_exif_orientations_applied_before_metadata_removal(orientation, labels, fmt):
     colors = {'r': (255, 0, 0), 'g': (0, 255, 0), 'b': (0, 0, 255), 'y': (255, 255, 0)}
     with Image.new('RGB', (80, 40)) as image:
         for region, label in [((0, 0, 40, 20), 'r'), ((40, 0, 80, 20), 'g'),
@@ -114,8 +115,8 @@ def test_all_exif_orientations_applied_before_metadata_removal(orientation, labe
         exif[274] = orientation
         exif[270] = SECRET.decode()
         out = BytesIO()
-        image.save(out, format='PNG', exif=exif)
-    with unpack(sanitize_media_preview(out.getvalue(), 'image/png')) as result:
+        image.save(out, format=fmt, exif=exif)
+    with unpack(sanitize_media_preview(out.getvalue(), MIMES[fmt])) as result:
         assert result.size == ((40, 80) if orientation >= 5 else (80, 40))
         positions = [(5, 5), (result.width-6, 5), (5, result.height-6), (result.width-6, result.height-6)]
         for label, point in zip(labels, positions):
