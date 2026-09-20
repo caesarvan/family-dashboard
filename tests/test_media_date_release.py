@@ -130,3 +130,62 @@ def test_fixed_parent_runtime_and_media_processing_are_compared():
                                        blob(author, 'household_media.py'))
     current['media_images.py'] = '0'*64
     with pytest.raises(ReleaseError): prepare.runtime_boundary(old, current)
+
+
+@pytest.fixture(scope='module')
+def date_input_maps():
+    # Real current source hashes; synthetic exports only exercise map validation.
+    # No package/build is produced or represented as a real Expo execution.
+    tracked = set(subprocess.check_output(['git', 'ls-files'], cwd=ROOT).decode().splitlines())
+    selected = policy.selected_sources(tracked, (ROOT/'deploy/prepare_release.py').read_bytes(),
+                                       baseline=package.BASELINE)
+    sources = {name: sha((ROOT/name).read_bytes()) for name in selected}
+    exports = {name: sha(b'synthetic') for name in
+               ['index.html', 'metadata.json', '_expo/static/js/web/entry-test.js'] +
+               ['assets/%02d.png' % index for index in range(20)]}
+    inputs = {name: sources[name] for name in policy.required_build_inputs(sources)}
+    evidence = dict(schemaVersion=1, kind='membership-expo-build', buildExit=0,
+        bundleMarkers=True, head='a'*40, tree='b'*40, inputFiles=inputs, files=exports,
+        supplementalTestInputs={name: sources[name] for name in package.SUPPLEMENTAL_INPUTS},
+        additionalTestInputs={})
+    files = {**sources, **{policy.PREFIX+name: digest for name, digest in exports.items()}}
+    metadata = dict(kind=package.KIND, parentImage=package.PARENT_IMAGE,
+        oldManifestSha256=package.OLD_MANIFEST, sourceFiles=sources, exportFiles=exports,
+        runtimeFiles=policy.runtime_files(files, baseline=package.BASELINE),
+        fixedFiles=policy.fixed_files(package.BASELINE), inputFiles=inputs,
+        buildSourceHead=evidence['head'], buildSourceTree=evidence['tree'],
+        sourceHead='c'*40, tree='d'*40)
+    return metadata, {'files': files}, evidence
+
+
+def test_empty_date_additional_inputs_validates_complete_maps(date_input_maps):
+    policy.validate_maps(*date_input_maps, baseline=package.BASELINE)
+
+
+@pytest.mark.parametrize('fault', ['missing', 'null', 'list', 'nonempty'])
+def test_empty_date_additional_inputs_rejects_other_shapes(date_input_maps, fault):
+    metadata, manifest, evidence = deepcopy(date_input_maps)
+    if fault == 'missing':
+        del evidence['additionalTestInputs']
+    else:
+        evidence['additionalTestInputs'] = {
+            'null': None, 'list': [], 'nonempty': {'tests/extra.py': '0'*64}}[fault]
+    with pytest.raises(ValueError, match='explicit empty media date build inputs required'):
+        policy.validate_maps(metadata, manifest, evidence, baseline=package.BASELINE)
+
+
+@pytest.mark.parametrize('fault', ['empty', 'digest'])
+def test_date_required_supplements_remain_strict(date_input_maps, fault):
+    metadata, manifest, evidence = deepcopy(date_input_maps)
+    if fault == 'empty':
+        evidence['supplementalTestInputs'] = {}
+    else:
+        name = next(iter(evidence['supplementalTestInputs']))
+        evidence['supplementalTestInputs'][name] = '0'*64
+    with pytest.raises(ValueError):
+        policy.validate_maps(metadata, manifest, evidence, baseline=package.BASELINE)
+
+
+def test_generic_hash_map_still_requires_nonempty():
+    with pytest.raises(ValueError, match='nonempty file map required'):
+        policy.hash_map({})

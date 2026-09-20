@@ -465,7 +465,11 @@ def validate_maps(metadata, manifest, evidence, *, baseline=None):
              'media date runtime differs from reviewed preservation boundary')
         for field, names in (('supplementalTestInputs', photos.SUPPLEMENTAL_INPUTS),
                              ('additionalTestInputs', photos.ADDITIONAL_INPUTS)):
-            extra = hash_map(evidence.get(field))
+            extra = evidence.get(field)
+            if names:
+                extra = hash_map(extra)
+            else:
+                need(type(extra) is dict and not extra, 'explicit empty media date build inputs required')
             need(set(extra) == names and all(source.get(n) == h for n, h in extra.items()),
                  'media date supplemental build inputs differ')
     if baseline == 'finance-flow-r1-journey-finance':
