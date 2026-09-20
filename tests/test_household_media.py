@@ -347,6 +347,41 @@ def test_database_record_and_ciphertext_binding(env,monkeypatch):
     assert c.get('/api/media/items/'+item['id']+'/preview').status_code==503
 
 
+@pytest.mark.parametrize('field,value,missing', [
+    pytest.param('bytes', None, True, id='missing-bytes'),
+    pytest.param('sha256', None, True, id='missing-sha256'),
+    pytest.param('bytes', None, False, id='null-bytes'),
+    pytest.param('bytes', 'not-a-size', False, id='invalid-bytes'),
+    pytest.param('bytes', 1, False, id='mismatched-bytes'),
+    pytest.param('sha256', None, False, id='null-sha256'),
+    pytest.param('sha256', [], False, id='invalid-sha256'),
+    pytest.param('sha256', '0' * 64, False, id='mismatched-sha256'),
+])
+def test_preview_incomplete_integrity_metadata_fails_closed(env, field, value, missing):
+    client, _, item = saved(env)
+    endpoint = '/api/media/items/' + item['id'] + '/preview'
+    valid = client.get(endpoint)
+    assert valid.status_code == 200 and valid.content_type == 'image/jpeg'
+    assert valid.data == preview().data
+    engine = env[1]
+    with engine.transaction(True) as con:
+        row = con.execute('SELECT * FROM media_items WHERE id=?', (item['id'],)).fetchone()
+        metadata = engine._metadata(row)
+        if missing:
+            metadata.pop(field)
+        else:
+            metadata[field] = value
+        con.execute('UPDATE media_items SET metadata_cipher=? WHERE id=?',
+                    (engine._seal('media-metadata', row, metadata), item['id']))
+        before = dict(con.execute('SELECT * FROM media_items WHERE id=?', (item['id'],)).fetchone())
+    response = client.get(endpoint)
+    assert response.status_code == 503
+    assert response.is_json and response.json['code'] == 'unavailable'
+    assert valid.data not in response.data
+    with engine.transaction() as con:
+        assert dict(con.execute('SELECT * FROM media_items WHERE id=?', (item['id'],)).fetchone()) == before
+
+
 def test_preview_rechecks_revocation_after_decrypt(env,monkeypatch):
     c,h,item=saved(env)
     uid,tv,_=device(env)
