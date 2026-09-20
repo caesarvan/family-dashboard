@@ -230,8 +230,13 @@ class Run(LocalRun):
                     route.abort('failed')
                 finally: actual.dispose()
             page.route(self.base + path + '/apply', discard, times=1)
-            page.get_by_test_id('assistant-list-apply').click()
+            # Pending is visible before transport completes; wait for our actual abort.
+            with page.expect_event('requestfailed', predicate=lambda request: request.method == 'POST'
+                    and request.url == self.base + path + '/apply', timeout=TIMEOUT) as aborted:
+                page.get_by_test_id('assistant-list-apply').click()
+            assert aborted.value.failure == 'net::ERR_FAILED'
             expect(page.get_by_test_id('assistant-list-unknown')).to_be_visible()
+            expect(page.get_by_test_id('assistant-list-recheck')).to_be_enabled()
             assert len(lost) == 1; committed = self.snapshot()
             self.saved(before, committed, plan, lost[0], [value]); self.storage(page, uid)
             self.capture(page, 'unknown-original-plan-1280', page.get_by_test_id('assistant-list-unknown'))

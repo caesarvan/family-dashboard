@@ -33,3 +33,9 @@
 每次输出独占 `test-results/assistant-list-<UTC>/`：实际执行脚本、每流程真实 HTTP／数据库证据、三张截图、异常原件、`result.json`。报告分别写执行 source、构建 source、输入及导出前后散列和已加载夹具路径；父夹具 map 保留，新工具依赖使用独立 `listFixtureHashes`。上下文关闭、数据库连接显式 closing、请求线程 join、HTTPS listener 停止及临时目录删除都是成功条件。没有 SSH、生产访问、云发布、付款、扣库或外部账户验收。
 
 控件接缝由前端作者明确约定：`assistant-list-action-<index>`、`action-edit-<index>`、`assistant-action-editor`、`action-title/due/note/quantity/budget`、`action-owner-<id>`、`action-priority-<value>`、`action-edit-save/cancel`、`assistant-list-apply/unknown/recheck/receipt`。正式执行前仍须对冻结 UI 核验这些名称；不能用隐藏控件或更宽断言掩盖契约不一致。
+
+## 首次执行与定向修正
+
+组合 `e8f0427b35157074d179bc4de86a7c5c4db0a755` 的首次真实执行保留手机流程通过、桌面流程失败：桌面工具把提交初始 pending 面板出现误当作 `route.fetch()` 和响应丢弃已完成，过早断言回执数量。原结果 `assistant-list-20260920T211223987951Z/result.json`（SHA256 `27a5c4dfa5a2ba03051a5270ae4802b254bc63b1cf6d144b4c44c9b47591973c`）不改写。
+
+修正只在触发前注册有界、精确 POST 路径的 `requestfailed` 等待，确认实际回执已取得并由工具 abort 后，再要求原 pending 面板可见、核对按钮可用。真实回执、数据库保全及恰一次 POST 的断言不变；只补验桌面流程，手机证据保留，不把修正的静态检查写成浏览器通过。
