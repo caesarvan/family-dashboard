@@ -12,7 +12,7 @@
 
 沿原 `prepare_local_photo_activation.py` 的 inputs JSON 描述符，使用 `package`、`build`、`validation`、`selection`、`parentAudit`、`image_overlap`、`nginx_raw`、`reviews`，新增必需 `duplicates`。每个资源描述符是 `{input:{root,sha256},run:{root,sha256}}`，root 是绝对独占目录，分别绑定 `input.json` 和 `result.json`，连同所有原件重读校验。独立审查角色仍为 source/browser/release/linux/resources。
 
-旧照片资源仅证明父版完整112输入下的原媒体路径。工具先验证原112 map，再验证候选110保持与两文件旧／新固定 SHA，实际 AST 比较证明除指定搜索和新增重复提示函数外其余旧逻辑不变。计划记录 `retained-parent-media-paths-only`；不会称新两模块已做旧整组资源测试。
+旧照片资源仅证明父版完整112输入下的原媒体路径。工具先验证原112 map，再验证候选110保持与两文件旧／新固定 SHA。AST 比较只允许指定搜索、新增重复提示函数，以及预览完整性条件中 `bytes`／`sha256` 两处缺失安全读取；整个条件必须精确匹配，解密、拒绝输出与再次核权的其余语句不变，不能忽略整个预览函数。该守卫让缺少完整性字段的记录返回“暂不可用”，其定向回归单独验证。计划记录 `retained-parent-media-paths-only`；旧资源只覆盖有效元数据的原路径，不证明新异常路径或新两模块的整组资源负载。
 
 新重复提示资源必须绑定候选镜像、完整112运行输入、23导出和实际构建记录。384MiB应用／64MiB客户端，640MiB三次主机准入、256MiB底线、250ms监控；必须实际观察四请求重叠、扫描调用、零BLOB读取和恢复200。目标1项加1001候选＝本人1002 ready记录，扫描上限1000且覆盖受限。四请求仅允许200或明确503 `unavailable`。核最终容器停止、原数据库不变、cgroup峰值和 max／oom／oom_kill全零。缺失、失败或原件不全均拒绝，不表示任意生产满载容量。具体字段见 `duplicate_resources` 与新探针合同；没有真实结果时不能组装计划。
 

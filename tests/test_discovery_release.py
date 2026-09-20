@@ -18,7 +18,7 @@ ROOT = Path(__file__).resolve().parents[1]
 ADAPTERS = {'deploy/build_discovery_release.py', 'deploy/prepare_discovery_activation.py',
     'deploy/activate_discovery_release.py', 'tests/test_discovery_release.py', 'docs/DISCOVERY-RELEASE.md'}
 FEATURES = {'home_assistant.py': 'e2a349476095c3c2d91105cf2354af4cfda4e2fe',
-            'household_media.py': 'e436b6804fabfbd999eb51980336c0a2fd520f35'}
+            'household_media.py': '9b9f47aa67c46fe428316262d1c5f73919a1ba6b'}
 
 
 def git_blob(head, name):
@@ -43,7 +43,8 @@ def test_static_profiles_keep_old_defaults_and_reject_unregistered_mode():
 def test_actual_pinned_git_ast_retains_old_media_paths(name):
     old, new = git_blob(package.INSTALLED_SOURCE, name), git_blob(FEATURES[name], name)
     proof = prepare.unchanged_media_ast(name, old, new)
-    assert proof['unchangedOutsidePinnedDiscoveryNodes']
+    assert proof['unchangedOutsidePinnedNodes']
+    assert proof['previewMissingIntegrityGuard'] == (name == 'household_media.py')
     with pytest.raises(ReleaseError, match='resource_module_pin_changed'):
         prepare.unchanged_media_ast(name, old, new+b'\n# unreviewed change\n')
 
@@ -53,6 +54,24 @@ def test_ast_rejects_media_method_change_even_if_a_pin_is_accidentally_updated(m
     changed = git_blob(FEATURES[name], name).replace(b'class MediaLibrary:', b'class MediaLibrary:\n    altered = True')
     monkeypatch.setitem(package.CHANGED_MODULES, name, sha(changed))
     with pytest.raises(ReleaseError, match='resource_media_behavior_changed'):
+        prepare.unchanged_media_ast(name, old, changed)
+
+
+@pytest.mark.parametrize('fault', ['lookup-default', 'integrity-bypass', 'return-unverified'])
+def test_preview_guard_exception_cannot_hide_integrity_changes(monkeypatch, fault):
+    name = 'household_media.py'; old = git_blob(package.INSTALLED_SOURCE, name)
+    raw = git_blob(FEATURES[name], name)
+    replacements = {
+        'lookup-default': (b"len(raw)!=meta.get('bytes')", b"len(raw)!=meta.get('bytes', len(raw))"),
+        'integrity-bypass': (b"hashlib.sha256(raw).hexdigest()!=meta.get('sha256')", b'False'),
+        'return-unverified': (b"raise MediaError('unavailable')\n        with self.transaction() as con:\n            current=self._tv(con)",
+                              b"return Response(raw, content_type='image/jpeg')\n        with self.transaction() as con:\n            current=self._tv(con)"),
+    }
+    before, after = replacements[fault]
+    assert raw.count(before) == 1
+    changed = raw.replace(before, after)
+    monkeypatch.setitem(package.CHANGED_MODULES, name, sha(changed))
+    with pytest.raises(ReleaseError, match='resource_preview_guard_changed|resource_media_behavior_changed'):
         prepare.unchanged_media_ast(name, old, changed)
 
 

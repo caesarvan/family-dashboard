@@ -30,7 +30,7 @@ PARENT_MODULES = {
 }
 CHANGED_MODULES = {
     'home_assistant.py': '16f1de26a2470b01bedef183dec39eefb4601b4aa66572cc375ab8ec8a87fe02',
-    'household_media.py': '1a8c120b9ee7c43d560ff7f2d23a9731549aee25e6c058a9982b4b1a3bcd0f31',
+    'household_media.py': 'ec115045b5711fdd7dadbe15cda4cc7c76d4a06254e332eb4c40a440fbfcda1a',
 }
 CHANGED_RUNTIME_FILES = frozenset(CHANGED_MODULES)
 RUNTIME_ADDITIONS = parent.RUNTIME_ADDITIONS

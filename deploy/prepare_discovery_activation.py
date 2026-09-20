@@ -30,10 +30,11 @@ def prepare(**kwargs): return shared.prepare(**kwargs, mode=MODE)
 
 
 def unchanged_media_ast(name, before, after):
-    """Compare all pre-existing executable AST except the pinned search-only body.
+    """Compare existing AST outside search additions and two integrity lookups.
 
     Full old/new module hashes are pinned separately; this check additionally
-    proves that the allowed additions do not modify import/decode/playback paths.
+    The preview exception permits only missing-key-safe reads of bytes/sha256;
+    its remaining decryption, integrity rejection and authority checks must match.
     """
     need(sha(before) == package.PARENT_MODULES[name] and sha(after) == package.CHANGED_MODULES[name],
          'resource_module_pin_changed')
@@ -53,11 +54,20 @@ def unchanged_media_ast(name, before, after):
             media = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'MediaLibrary')
             added = {'_display_fingerprint', '_duplicate_source', '_duplicate_snapshot', 'duplicate_hints'}
             media.body = [n for n in media.body if not (isinstance(n, ast.FunctionDef) and n.name in added)]
+            preview = next(n for n in media.body if isinstance(n, ast.FunctionDef) and n.name == 'preview')
+            guards = [n for n in preview.body if isinstance(n, ast.If)]
+            safe_condition = "raw is None or len(raw)!=meta.get('bytes') or hashlib.sha256(raw).hexdigest()!=meta.get('sha256')"
+            original_condition = "raw is None or len(raw)!=meta['bytes'] or hashlib.sha256(raw).hexdigest()!=meta['sha256']"
+            need(len(guards) == 1 and ast.dump(guards[0].test, include_attributes=False)
+                 == ast.dump(ast.parse(safe_condition, mode='eval').body, include_attributes=False),
+                 'resource_preview_guard_changed')
+            guards[0].test = ast.parse(original_condition, mode='eval').body
             register = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == 'register_media_library')
             register.body = [n for n in register.body if not (isinstance(n, ast.FunctionDef) and n.name == 'media_duplicate_hints')]
         return ast.dump(tree, include_attributes=False)
     need(normalize(before, False) == normalize(after, True), 'resource_media_behavior_changed')
-    return {'before': sha(before), 'after': sha(after), 'unchangedOutsidePinnedDiscoveryNodes': True}
+    return {'before': sha(before), 'after': sha(after), 'unchangedOutsidePinnedNodes': True,
+            'previewMissingIntegrityGuard': name == 'household_media.py'}
 
 
 def parent_resources(spec, profile, value):
