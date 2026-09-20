@@ -5,15 +5,16 @@ export type PhotoJourneySuggestion = {
   journeyId: string; journeyRevision: number; tripRevision: number;
   title: string; start: string; end: string;
   referenceTimezone: string; referenceTimezoneSource: 'legacy_default' | 'plan';
-  sourceDate: string; alreadyLinked: boolean;
+  sourceDate?: string; matchDate?: string; alreadyLinked: boolean;
   reason: { code: 'date_overlap'; message: string };
 };
 export type PhotoJourneySuggestions = {
+  version?: 2; userConfirmedDate?: string | null; dateBasis?: 'userConfirmedDate' | 'sourceCreatedAt' | 'unknown';
   photoId: string; photoRevision: number;
   sourceTimeState: 'known' | 'unknown'; sourceCreatedAt: string | null;
   currentJourneyId: string | null; suggestions: PhotoJourneySuggestion[];
   limit: 20; hasMore: boolean;
-  reason: { code: 'date_overlap' | 'source_time_unknown' | 'no_matching_journeys'; message: string };
+  reason: { code: 'date_overlap' | 'date_unknown' | 'source_time_unknown' | 'no_matching_journeys'; message: string };
 };
 
 const invalid = (): never => { throw new Error('照片或旅行建议已变化，请重新读取后核对。'); };
@@ -55,7 +56,8 @@ function reason<C extends PhotoJourneySuggestions['reason']['code']>(raw: unknow
 export function readPhotoJourneySuggestions(raw: unknown, photo: Photo): PhotoJourneySuggestions {
   validatePhoto(photo);
   if (!photo.canManage || (photo.journey !== null && (!photo.journey || !isMediaId(photo.journey.id) || !isMediaId(photo.journey.tripId)))) return invalid();
-  const v = object(raw, ['photoId', 'photoRevision', 'sourceTimeState', 'sourceCreatedAt', 'currentJourneyId', 'suggestions', 'limit', 'hasMore', 'reason']);
+  const v2 = !!raw && typeof raw === 'object' && (raw as Record<string, unknown>).version === 2;
+  const v = object(raw, [...(v2 ? ['version', 'userConfirmedDate', 'dateBasis'] : []), 'photoId', 'photoRevision', 'sourceTimeState', 'sourceCreatedAt', 'currentJourneyId', 'suggestions', 'limit', 'hasMore', 'reason']);
   const photoId = id(v.photoId), photoRevision = revision(v.photoRevision);
   const currentJourneyId = v.currentJourneyId === null ? null : id(v.currentJourneyId);
   if (photoId !== photo.id || photoRevision !== photo.revision || currentJourneyId !== (photo.journey?.id ?? null)
@@ -68,12 +70,16 @@ export function readPhotoJourneySuggestions(raw: unknown, photo: Photo): PhotoJo
   if (Object.hasOwn(origin, 'sourceCreatedAt') || Object.hasOwn(origin, 'sourceTimeState')) {
     if (origin.sourceCreatedAt !== sourceCreatedAt || origin.sourceTimeState !== sourceTimeState) return invalid();
   }
+  const userConfirmedDate = v2 ? v.userConfirmedDate === null ? null : date(v.userConfirmedDate) : null;
+  const dateBasis = userConfirmedDate !== null ? 'userConfirmedDate' : sourceTimeState === 'known' ? 'sourceCreatedAt' : 'unknown';
+  if (v2 && (v.dateBasis !== dateBasis || userConfirmedDate !== (photo.userConfirmedDate ?? null))) return invalid();
   const hasMore = boolean(v.hasMore), seen = new Set<string>();
   const suggestions = v.suggestions.map(rawRow => {
-    const row = object(rawRow, ['journeyId', 'journeyRevision', 'tripRevision', 'title', 'start', 'end', 'referenceTimezone', 'referenceTimezoneSource', 'sourceDate', 'alreadyLinked', 'reason']);
-    const journeyId = id(row.journeyId), start = date(row.start), end = date(row.end), sourceDate = date(row.sourceDate);
+    const row = object(rawRow, ['journeyId', 'journeyRevision', 'tripRevision', 'title', 'start', 'end', 'referenceTimezone', 'referenceTimezoneSource', v2 ? 'matchDate' : 'sourceDate', 'alreadyLinked', 'reason']);
+    const journeyId = id(row.journeyId), start = date(row.start), end = date(row.end), sourceDate = date(v2 ? row.matchDate : row.sourceDate);
     const referenceTimezone = text(row.referenceTimezone, 100);
     const referenceTimezoneSource = row.referenceTimezoneSource;
+    if (v2 && dateBasis === 'userConfirmedDate' && sourceDate !== userConfirmedDate) return invalid();
     if (seen.has(journeyId) || start > sourceDate || sourceDate > end
       || !/^[A-Za-z0-9_+.-]+(?:\/[A-Za-z0-9_+.-]+)*$/.test(referenceTimezone)
       || (referenceTimezoneSource !== 'plan' && referenceTimezoneSource !== 'legacy_default')
@@ -83,12 +89,12 @@ export function readPhotoJourneySuggestions(raw: unknown, photo: Photo): PhotoJo
     if (alreadyLinked !== (journeyId === currentJourneyId)) return invalid();
     return { journeyId, journeyRevision: revision(row.journeyRevision), tripRevision: revision(row.tripRevision),
       title: text(row.title, 500), start, end, referenceTimezone,
-      referenceTimezoneSource: referenceTimezoneSource as 'plan' | 'legacy_default', sourceDate, alreadyLinked,
+      referenceTimezoneSource: referenceTimezoneSource as 'plan' | 'legacy_default', ...(v2 ? { matchDate: sourceDate } : { sourceDate }), alreadyLinked,
       reason: reason(row.reason, 'date_overlap') };
   });
-  if ((hasMore && suggestions.length !== 20) || (sourceTimeState === 'unknown' && (suggestions.length || hasMore))) return invalid();
-  const code = sourceTimeState === 'unknown' ? 'source_time_unknown' : suggestions.length ? 'date_overlap' : 'no_matching_journeys';
-  return { photoId, photoRevision, sourceTimeState, sourceCreatedAt, currentJourneyId, suggestions, limit: 20, hasMore, reason: reason(v.reason, code) };
+  if ((hasMore && suggestions.length !== 20) || (dateBasis === 'unknown' && (suggestions.length || hasMore))) return invalid();
+  const code = dateBasis === 'unknown' ? v2 ? 'date_unknown' : 'source_time_unknown' : suggestions.length ? 'date_overlap' : 'no_matching_journeys';
+  return { ...(v2 ? { version: 2 as const, userConfirmedDate, dateBasis } : {}), photoId, photoRevision, sourceTimeState, sourceCreatedAt, currentJourneyId, suggestions, limit: 20, hasMore, reason: reason(v.reason, code) };
 }
 
 export function photoSuggestionBody(photo: Photo, suggestions: PhotoJourneySuggestions, journeyId: string): {
