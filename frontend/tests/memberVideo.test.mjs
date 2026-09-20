@@ -36,6 +36,17 @@ const response = (chunks = [new Uint8Array([0, 1, 2, 3])], headers = {}, status 
   start(controller) { chunks.forEach(value => controller.enqueue(value)); controller.close(); },
 }), { status, headers: { 'Content-Type': 'video/mp4', ...headers } });
 
+test('backend video result codes map to fixed actionable copy, including provider not-ready; unknown text stays hidden', () => {
+  const expected = { video_not_ready: /Google.*其他照片可正常保存/, video_invalid_input: /媒体类型无效/,
+    video_too_large: /100 MiB.*64 MiB/, video_too_long: /十分钟/, video_unsupported: /色彩格式暂不支持/,
+    video_invalid: /无法安全解码/, video_timeout: /处理超时/, video_tools_unavailable: /服务尚未就绪/ };
+  for (const [code, pattern] of Object.entries(expected)) {
+    assert.match(photos.photoError(code), pattern); assert(!photos.photoError(code).includes('未记录'));
+  }
+  assert(!photos.photoError('video_provider_secret=https://private.invalid').includes('private.invalid'));
+  assert(photos.photoError('video_unknown_future').includes('未记录'));
+});
+
 test('video DTO is strict; legacy photos still work and travel projection retains only validated video fields', () => {
   const legacy = { ...item }; for (const key of ['mediaType', 'videoUrl', 'durationMs', 'hasAudio']) delete legacy[key];
   assert.equal(photos.validatePhoto(legacy), legacy);
