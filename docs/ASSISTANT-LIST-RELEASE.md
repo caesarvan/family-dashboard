@@ -1,6 +1,6 @@
 # 助理清单确认：发布适配
 
-本轮候选尚未发布。父版为照片日期源码 `5fae5c5d7c809ddc1dd5d09f68bd56cbeb6d7fa1`，生产保持75张家庭表、9张平台表与app/sync/media/decoder/web五服务。当前状态见 [README](../README.md)，行为契约见 [助理清单](ASSISTANT-LIST-EDITING.md)。固定适配不适用于其他父版，历史计划不可重放。
+本批已发布，实际身份、单次执行回执与验证范围见[助理清单验收](ASSISTANT-LIST-ACCEPTANCE.md#assistant-list-release)；本次计划已消费，不得重放。以下记录当次固定适配，后续候选必须重新绑定实际父版与新计划。当次父版为照片日期源码 `5fae5c5d7c809ddc1dd5d09f68bd56cbeb6d7fa1`，生产保持75张家庭表、9张平台表与app/sync/media/decoder/web五服务。当前状态见 [README](../README.md)，行为契约见 [助理清单](ASSISTANT-LIST-EDITING.md)。固定适配不适用于其他父版，历史计划不可重放。
 
 本批只改 `home_assistant.py` 和 Expo 界面。草案、首次确认绑定及回执沿既有 `assistant_plans` JSON 持久化，没有DDL、回填、新依赖、云发布或模型协议变更。新增GET只供本人核对原计划；采购截止日期沿已有实体字段保存。
 

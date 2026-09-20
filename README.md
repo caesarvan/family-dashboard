@@ -2,9 +2,9 @@
 
 面向伴侣共同管理的家庭看板：手机和电脑负责安排与维护，两块电视按各自侧重成员展示日程、公共资金和已授权影像。个人财务、私人资料与家庭共享分别授权。
 
-**当前已发布：本人照片日期确认。** 2026-09-21 04:23:48（北京时间）激活，2026-09-21 04:24:41只读回读通过，非作者生产审查通过。本人设备照片可补充日期，用于旅行建议与「那年今日」，共享和电视许可分别保持。现为 **75 张户内表、9 张平台表、五个服务**。
+**当前已发布：助理清单调整与结果恢复。** 2026-09-21 05:41:15（北京时间）激活，05:41:40只读回读通过。待办和采购草案可在保存前调整分工、日期及预算；结果不明时按原计划核对，刷新也能找回原回执。现为 **75 张户内表、9 张平台表、五个服务**。
 
-[日常管理](https://home.caesarcharles.world/) · [电视配对](https://home.caesarcharles.world/tv) · [私有 GitHub 仓库](https://github.com/caesarvan/family-dashboard) · [最新发布证据](docs/MEDIA-CONFIRMED-DATE-ACCEPTANCE.md#media-date-release)
+[日常管理](https://home.caesarcharles.world/) · [电视配对](https://home.caesarcharles.world/tv) · [私有 GitHub 仓库](https://github.com/caesarvan/family-dashboard) · [最新发布证据](docs/ASSISTANT-LIST-ACCEPTANCE.md#assistant-list-release)
 
 相册原照片详情可主动「查找重复照片」，结果仅说明「展示副本一致，原图未核验」；助理地点结果可打开原地图／旅行／照片再返回查询。本人实际操作与实体电视仍待验收，此前discovery批次的分段验证与生产边界见[对应验收](docs/DISCOVERY-ACCEPTANCE.md#discovery-release)。
 
@@ -17,6 +17,7 @@
 | 你要做什么 | 最短入口 |
 |---|---|
 | 使用家庭看板 | [成员使用手册](docs/USER-GUIDE.md)；日程、待办、采购、旅行从主导航进入 |
+| 调整并保存助理清单 | 家庭助理 → 描述待办／采购 → 整理并预览 → 调整 → 勾选并确认保存；未知结果先核对原计划 |
 | 归集本人旅行费用 | 已保存旅行 → 我的旅行费用 → 选择实际付款 → 预览归集 → 确认归集 |
 | 导入设备照片 | 相册 → 选择照片 → 设备照片 → 上传并生成预览 → 明确私密保存 |
 | 确认设备照片日期 | 相册 → 我的照片 → 已保存照片详情 → 本人确认日期；日期单独保存或明确清除 |
@@ -26,7 +27,7 @@
 | 分享照片或视频 | 原详情明确家庭共享；电视另按每台设备授权，二者不互相代替 |
 | 绑定日历和清单 | 设置中的账户与自动同步；注册和权限说明见 [Microsoft / Google 接入](docs/ACCOUNT-SYNC.md) |
 | 新 agent 接手 | 本 README → [HANDOFF](docs/HANDOFF.md) → 模块契约 → [开发指南](docs/DEVELOPMENT.md) |
-| 更新已有服务器 | 先核 [当前发布合同](docs/MEDIA-CONFIRMED-DATE-RELEASE.md)，再读部署与恢复文档；不要重放历史计划 |
+| 更新已有服务器 | 先核 [当前发布合同](docs/ASSISTANT-LIST-RELEASE.md)，再读部署与恢复文档；不要重放历史计划 |
 
 原 README 的 515 行发布历史和全部链接保存在 [2026-09-20 历史快照](docs/README-HISTORY-20260920.md)。历史段落中的“当前”不再作为现行架构或部署依据。
 
@@ -48,7 +49,7 @@
 | 那年今日 | 本人确认日期或可靠来源日期、年份分组、分页、原详情编辑返回、跨午夜回到首页 | 设备照片可由本人补充日期；都未知时不纳入回看，不改写原始拍摄时间 |
 | 公共财务 | 荷包手工快照、预算、旅行准备金、储蓄、出资比例及批准的资产／负债汇总 | 小荷包和银行未自动连接，不执行转账、理财或交易 |
 | 个人财务 | 账单／订单预览确认、分类预算、来源基线、消费观察、持仓、资产账户及历史估值分析 | 仅本人；各来源不重复加总，缺失估值不当零；无银行／券商自动连接 |
-| 家庭助理 | 本地概览、已有旅行／资料／照片／库存搜索；旅行草案与改期、预算和支出查询 | 写入前预览确认；可选模型与本地规则分开，不自动向云端发布 |
+| 家庭助理 | 本地概览、已有旅行／资料／照片／库存搜索；旅行草案与改期、预算和支出查询；待办／采购逐项调整及原结果恢复 | 写入前预览确认；可选模型与本地规则分开，不自动向云端发布 |
 | 成员与家庭 | 成员登录、邀请、移除／退出、登录设备撤销、明确家庭切换、第三方身份绑定 | 现行容量和成员限制见平台契约；没有公开商业化运营承诺 |
 | 个人导出 | 本人数据 ZIP、JSON／CSV，明确选择附带共享记录，带散列清单 | 媒体与资料导出为允许的元数据；不含他人私密、令牌或原文件 BLOB，无一键导入 |
 
@@ -108,9 +109,9 @@ flowchart LR
 | 视频／电视媒体 | [media_import_worker.py](media_import_worker.py)、[media_video_service.py](media_video_service.py)、[media_playback.py](media_playback.py) | [视频交付](docs/MEDIA-VIDEO-ACCEPTANCE.md)、[电视布局](docs/TV-DISPLAY.md) |
 | 采购／库存 | [shopping_settlement.py](shopping_settlement.py)、[inventory_core.py](inventory_core.py)、[inventory_sources.py](inventory_sources.py) | [实付核对](docs/SHOPPING-SETTLEMENT.md)、[物品交付](docs/INVENTORY-DELIVERY.md) |
 | 财务／来源／投资 | [finance_hub.py](finance_hub.py)、[finance_baseline.py](finance_baseline.py)、[finance_accounts.py](finance_accounts.py)、[investment_import.py](investment_import.py) | [财务 API](docs/FINANCE-API.md)、[来源桥接](docs/FINANCE-SOURCE-BRIDGE.md)、[投资导入](docs/INVESTMENT-IMPORT.md) |
-| 助理 | [home_assistant.py](home_assistant.py)、[assistant_trip_intent.py](assistant_trip_intent.py) | [平台 API](docs/PLATFORM-API.md)、[资料照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-UI.md) |
+| 助理 | [home_assistant.py](home_assistant.py)、[assistant_trip_intent.py](assistant_trip_intent.py) | [平台 API](docs/PLATFORM-API.md)、[清单调整与恢复](docs/ASSISTANT-LIST-EDITING.md)、[资料照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-UI.md) |
 | 本人导出 | [data_portability.py](data_portability.py) | [导出格式与权限](docs/PORTABILITY.md) |
-| 打包／发布 | [deploy](deploy) | [当前五服务发布合同](docs/MEDIA-CONFIRMED-DATE-RELEASE.md)、[完整验收索引](docs/VALIDATION.md) |
+| 打包／发布 | [deploy](deploy) | [当前五服务发布合同](docs/ASSISTANT-LIST-RELEASE.md)、[完整验收索引](docs/VALIDATION.md) |
 
 常用接口从 `/api/me`、`/api/state`、`/api/items/*`、`/api/accounts/*`、`/api/media/*`、`/api/assistant/*` 和 `/api/portability/*` 进入。精确方法／路径参见 [路由索引](docs/PLATFORM-ROUTES.md)，字段、错误码和可见范围以各模块契约与源码为准。
 
@@ -148,9 +149,9 @@ flowchart LR
 
 ## 部署、备份与故障恢复
 
-当前服务器为 racknerd VPS／Ubuntu，Name.com 管理域名 DNS，Nginx 负责 HTTPS。现有生产使用 app、sync、media、decoder、web 五服务；此前旅行费用完成73→75迁移，本批照片日期更新保持75/9，不做迁移。
+当前服务器为 racknerd VPS／Ubuntu，Name.com 管理域名 DNS，Nginx 负责 HTTPS。现有生产使用 app、sync、media、decoder、web 五服务；此前旅行费用完成73→75迁移，本批助理清单更新保持75/9，不做迁移。
 
-**当前已发布版本的合同是 [MEDIA-CONFIRMED-DATE-RELEASE](docs/MEDIA-CONFIRMED-DATE-RELEASE.md)。** 该合同记录旅行费用父版 `302a62d` 到 `5fae5c5` 的已完成发布，计划已消费，禁止重放。下次必须以届时实际线上版本为父版重新适配并生成新计划。[DEPLOYMENT](docs/DEPLOYMENT.md)和 [OPERATIONS](docs/OPERATIONS.md)中的旧表数、旧镜像及迁移命令保留历史含义，不能覆盖本页和最新验收所绑定的父版。
+**当前已发布版本的合同是 [ASSISTANT-LIST-RELEASE](docs/ASSISTANT-LIST-RELEASE.md)。** 该合同记录照片日期父版 `5fae5c5` 到 `e8f0427` 的已完成发布，计划已消费，禁止重放。下次必须以届时实际线上版本为父版重新适配并生成新计划。[DEPLOYMENT](docs/DEPLOYMENT.md)和 [OPERATIONS](docs/OPERATIONS.md)中的旧表数、旧镜像及迁移命令保留历史含义，不能覆盖本页和最新验收所绑定的父版。
 
 | 环节 | 必须保留的核验 |
 |---|---|
@@ -166,7 +167,7 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 
 备份须覆盖平台注册库与所有已登记家庭，保留散列清单和配套密钥。在线备份不等同跨库原子快照；恢复必须保持完整家庭映射，按 [会话恢复合同](docs/MEMBER-SESSIONS.md#恢复后使旧成员登录失效)处理旧登录。
 
-此前旅行费用批次已完成隔离两户三库73→75迁移、部分失败收停、完整73恢复和非空75恢复；本批另以合成两户三库验证非空75表启动保全与完整组恢复。生产本次只做75/9保全，没有迁移或恢复数据库。发布只读回读也不代表重新校验活库内容、备份SQLite字节或worker业务tick。
+此前旅行费用批次已完成隔离两户三库73→75迁移、部分失败收停、完整73恢复和非空75恢复；照片日期批次另有非空75表启动保全与完整组恢复的合成证据。本批助理清单没有重新执行恢复演练，实际生产只做75/9保全，没有迁移或恢复数据库。发布只读回读也不代表重新校验活库内容、备份SQLite字节或worker业务tick。
 
 不要删除数据卷、覆盖密钥、仅回退镜像或只恢复一个家庭。已有业务写入时先保全现场，再确定恢复策略；旧71／73表、四服务或已消费迁移入口不能操作当前75/9五服务环境。
 
@@ -187,7 +188,8 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 
 | 证据入口 | 能确认什么 |
 |---|---|
-| [本人照片日期确认](docs/MEDIA-CONFIRMED-DATE-ACCEPTANCE.md#media-date-release) | 当前部署 source `5fae5c5`、manifest `25d2b49`、app镜像 `fb94ae0`；手机宽度 R1 与桌面 R2 分轮浏览器、Linux55项，以及本次生产75/9保全与只读回读 |
+| [助理清单调整与恢复](docs/ASSISTANT-LIST-ACCEPTANCE.md#assistant-list-release) | 当前部署 source `e8f0427`、manifest `670859d`、app镜像 `e5195f8`；手机R1和桌面R3分轮浏览器、Linux55项、生产75/9保全与只读回查 |
+| [本人照片日期确认](docs/MEDIA-CONFIRMED-DATE-ACCEPTANCE.md#media-date-release) | 此前部署 source `5fae5c5`、manifest `25d2b49`、app镜像 `fb94ae0`；手机宽度 R1 与桌面 R2 分轮浏览器、Linux55项，以及本次生产75/9保全与只读回读 |
 | [本人旅行费用归集](docs/JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release) | 此前部署 source `302a62d`、manifest `9a44d4c`、app镜像 `1f957a9`；3/3真实浏览器、Linux46项、73→75隔离迁移／恢复，以及本次生产迁移、保全和只读回读 |
 | [通用账单收支方向列](docs/FINANCE-FLOW-ACCEPTANCE.md#finance-flow-release) | 此前部署 source `53ea3fd`、manifest `e6898a2`、app镜像 `cdbe470`；22项Node、两组tsc、3/3浏览器、新Linux33项及实际生产保全／回读，继承证据范围单列 |
 | [地点入口与重复提示](docs/DISCOVERY-ACCEPTANCE.md#discovery-release) | 此前 source `63dc634`、manifest `7b77dfb`、app镜像 `b63c1f5`；保留125与新增9项Linux、5＋1分段浏览器、四请求资源及生产回读；当批 main `1d589e6` 仅追加四份后验文档 |
@@ -199,7 +201,7 @@ app／sync／media使用同一应用镜像；最近一批保留原 decoder镜像
 | [资料与照片搜索](docs/ASSISTANT-DOCUMENT-SEARCH-ACCEPTANCE.md#assistant-document-search-release) | 早期授权元数据搜索与原详情往返；地点新入口的后续证据见此前地点批次验收 |
 | [VALIDATION](docs/VALIDATION.md)与[历史README](docs/README-HISTORY-20260920.md) | 更早模块、分轮成功／失败和固定原件索引，按对应版本解释 |
 
-最近一批照片日期生产发布实际为一户两库：完整备份后75/9保持，全部表、数据、settings与序列在app启动后停止核验时一致；1236安装文件、三个应用服务各136运行文件与decoder原4文件核对通过。五服务运行且无OOM／重启，app／decoder健康，备份timer active。完整SHA和原件集中在[最新验收页](docs/MEDIA-CONFIRMED-DATE-ACCEPTANCE.md#media-date-release)；实际安装 source 固定为 `5fae5c5`，Git合并与后续文档提交不改变该部署身份。
+最近一批助理清单生产发布实际为一户两库：完整备份后75/9保持，全部表、数据、settings与序列在app启动后停止核验时一致；1249安装文件、三个应用服务各136运行文件与decoder原4文件核对通过。五服务运行且无OOM／重启，app／decoder健康，备份timer active。完整SHA和原件集中在[最新验收页](docs/ASSISTANT-LIST-ACCEPTANCE.md#assistant-list-release)；实际安装 source 固定为 `e8f0427`，Git合并与后续文档提交不改变该部署身份。
 
 失败也属于交付记录：设备照片浏览器曾因会话预期和无界等待失败；图像资源R1 OOM、R2触限及首次构建权限失败均保留。R3通过不抹去此前失败，也不扩成任意负载保证。
 
