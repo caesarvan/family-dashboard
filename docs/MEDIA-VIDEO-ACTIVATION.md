@@ -52,4 +52,17 @@ python -B <candidate>/operator/deploy/media_video_release_controller.py verify-r
 
 双锁／helper 修订 R5 仅运行 16 项相关用例：9 项新增、7 项受影响流程复验，全部通过；累计为 40 个唯一用例／57 次执行。覆盖两把锁的竞争、第二把锁打开失败及异常释放；Windows 使用真实原生文件锁适配，只证明描述符与释放流程，不冒充 Linux `flock` 实测。helper 的超时、中断、未知创建、收停失败和身份变化使用记录型 Docker 模拟；停止 PID 和卷写者断言不是实际容器结果。
 
-新控制器自身的完整 Linux 隔离演练和生产运行均尚未完成。当前 worker100 未通过、response64 没有成功原件，不能组装实际可执行发布计划；现有独立 codec、迁移和浏览器证据不能填补资源验证缺口。
+## 2026-09-20 候选验证进展
+
+最初的资源准入失败与第一轮维护窗口失败均保留。第二轮受控维护窗口中，`worker100` 和 `response64` 两项真实 Linux 实验已分别通过，非作者报告 `media-video-ipc-resource-execution-independent-r2.json` 的 SHA256 为 `c1937d436a03e13adced9e82a4efab29cb036707080dc2e961a680e8d6d38c97`。两项都使用固定 app／decoder 镜像及 384／768 MiB 限额；前者实际完成 100 MiB 输入下载、IPC、保存与响应，后者验证明确构造的 64 MiB 完整显示响应。未发生 OOM／内存限额事件；两项不代表最坏编码复杂度或生产持续并发容量。维护窗口已恢复原 media 进程和备份 timer；没有验证恢复后的业务 worker tick。
+
+实际准备曾因 Windows 长路径、原独审报告的 `decision` 字段不兼容而失败。长路径输入修正后，工具 `b61d0d51ddc65eb5ff32b5793fb36d98591f6dfd` 增加对已有报告字段的严格兼容；16 项定向检查与非作者差异审查通过，没有修改原审查报告或放宽资源、迁移、应用包检查。随后本机准备 R3 成功，独审明确仅证明本机准备，Windows 绝对路径不可直接用于服务器。
+
+在服务器最终证据路径重新准备也已实际退出 0（原 PID 912559），只创建候选和回执，没有执行 `stage` 或 `activate`：
+
+- 候选：`/opt/family-dashboard-candidates/media-video-b61-20260920-r1`。
+- 计划 SHA256：`650ddf8b547e8c781b8184a8a6ecb0ebf18867d71f2f087a9e6bbc679b265f66`。
+- operator SHA256：`954007aa8478b6a8d32af4220c0ff58515c2c87c008f823bc194ef3fd7b8aea8`，与本机成功准备相同。
+- 本机原件归档：访问目录下 `media-video-activation-server-r1/evidence`，包含实际命令、终态、计划、输入、原审查报告及服务器候选文件摘要；这些原件保持在 Git 外。
+
+服务器准备已通过非作者核对：`media-video-activation-server-independent-r1.json`，SHA256 `6013459bc5a308c17c3fb3121d13802d5805aaa3b402c0f2cab84835b1bb4608`，结论仅为 `PASS_SERVER_PREPARATION_NOT_ACTIVATION`。17 件下载原件和 1113 个来源／manifest／operator 文件均核对一致，与本机 R3 的计划仅有 12 处绝对路径变化，证据映射相同。新控制器自身的完整 Linux 五服务隔离演练和生产运行尚未完成；演练工具首轮独审发现监控初始化失败回执及预存 socket 卷准入问题，必须修正并复审后执行。已有单项迁移、媒体资源与浏览器成功不能替代该演练，也不表示视频已经上线。
