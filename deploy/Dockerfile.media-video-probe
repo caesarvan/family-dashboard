@@ -1,0 +1,15 @@
+FROM sha256:a783c58c882748d273c5956e2d94a43c99261c61c6b41f0489118d9fd96f6654
+USER root
+ARG FFMPEG_VERSION
+RUN test -n "$FFMPEG_VERSION" && apt-get update \
+ && apt-get install --no-install-recommends -y "ffmpeg=$FFMPEG_VERSION" \
+ && rm -rf /var/lib/apt/lists/*
+RUN python -m pip install --no-cache-dir pytest==9.0.2
+WORKDIR /probe
+COPY probe.py inputs.json Dockerfile ./
+COPY runtime ./runtime
+COPY fixtures ./fixtures
+COPY tests/test_media_videos.py ./tests/test_media_videos.py
+RUN python -B probe.py fingerprint --output /probe/toolchain.json
+USER 10001:10001
+ENTRYPOINT ["python", "-B", "/probe/probe.py"]
