@@ -91,12 +91,14 @@ class Lifecycle:
         self.root = Path(root).absolute()
         self.app_image, self.decoder_image = immutable(app_image), immutable(decoder_image)
         need(len({self.app_image, self.decoder_image, PARENT_IMAGE, WEB_IMAGE}) == 4, 'distinct_candidate_images_required')
-        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update'), 'unsupported_lifecycle_mode')
+        need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update', 'finance-flow-source-update'), 'unsupported_lifecycle_mode')
         self.mode = mode
         self.source_update = mode != 'video-migration'
         self.parent_image, self.before_compose, self.parent_services = PARENT_IMAGE, BEFORE_COMPOSE, OLD_SERVICES
         if self.source_update:
-            if mode == 'discovery-source-update':
+            if mode == 'finance-flow-source-update':
+                from deploy import build_finance_flow_release as photos
+            elif mode == 'discovery-source-update':
                 from deploy import build_discovery_release as photos
             else:
                 from deploy import build_local_photo_release as photos
