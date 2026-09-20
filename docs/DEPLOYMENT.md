@@ -1,6 +1,12 @@
 # 部署、更新与恢复交接
 
-## 当前日程重叠版本：71/9
+## 当前本地日程隐私版本：71/9
+
+2026-09-20 10:11:17（北京时间）激活，10:18:48 独立生产只读审计通过。一户两库保持 71/9，没有 DDL 或旧数据回填。[使用与集中验收](CALENDAR-PRIVACY-ACCEPTANCE.md#calendar-privacy-release)固定了实际 source、镜像、包、已消费计划和阶段原件；发布入口为 `build_calendar_privacy_release.py`／`activate_calendar_privacy_release.py`，合同见[发布适配](CALENDAR-PRIVACY-RELEASE.md)。
+
+本批包含 107 个非 Expo 运行文件：4 个明确变动、103 个与父版一致；其余 23 个为正式 Expo 导出。停写后备份完整库组，app-only 启动并停下后严格核对全部表、settings、序列和非空提醒数据，再恢复服务。实际 stage／activate 已消费，不得重放；后续候选必须绑定当前安装身份和新计划。
+
+## 历史日程重叠版本：71/9
 
 2026-09-20 08:47:27（北京时间）激活，08:49:19 独立生产只读审计通过。一户两库保持 71/9；本批只替换 Expo 界面，106 个非 Expo 运行文件与提醒父版一致。[使用与集中验收](CALENDAR-CONFLICTS-ACCEPTANCE.md#calendar-conflicts-release)包含固定包、实际镜像、已消费计划和原件。发布适配为 `build_expo_calendar_conflicts_release.py`／`activate_expo_calendar_conflicts_release.py`，见[合同](EXPO-CALENDAR-CONFLICTS-RELEASE.md)。
 

@@ -1,12 +1,20 @@
 # 联合开发接手说明
 
-## 最新发布：日程时间重叠
+## 最新发布：本地日程默认私密
+
+2026-09-20 10:11:17（北京时间）激活，10:18:48 独立生产只读审计通过。 新建本地日程／ICS 默认私人，统一权限覆盖 state、CRUD、助理、导出与电视；旧共享及已选择云来源保持。[使用与集中验收](CALENDAR-PRIVACY-ACCEPTANCE.md#calendar-privacy-release)。[PR #17](https://github.com/caesarvan/family-dashboard/pull/17) 合入 main `a6c0c39`，与安装 source `8d3e637` 同树；一户两库保持 71/9。
+
+后端接缝为 `calendar_privacy.py` 及 app／assistant／portability 的统一过滤；前端使用 `stateVerified`、稳定身份和原 ID／revision。43 个 Linux 用例、R1 后两项＋R4 首项浏览器、正式构建和生产审计分别留证。已消费计划不重放，纯文档提交不改变运行包。
+
+视频处理及后台接线、成员相册播放仍在独立候选开发，未进入本次部署；后续需完成界面、电视、Linux 媒体依赖与资源限额及新表迁移组合验证。A–D 本人完整验收仍 0/4，真实云目标待选，实体电视暂无法验证。
+
+## 此前发布：日程时间重叠
 
 2026-09-20 08:47:27（北京时间）激活，08:49:19 独立生产只读审计通过。首页范围内重叠入口、日程展开详情及原本地安排修改已上线；生产一户两库保持 71/9，无迁移、云写入或新 API。[使用与集中验收](CALENDAR-CONFLICTS-ACCEPTANCE.md#calendar-conflicts-release)。私有仓库 [PR #14](https://github.com/caesarvan/family-dashboard/pull/14) 合入 main `6fdf36e`，与安装 source `ffb0b3c` 同树；后续纯文档提交不改变运行包。
 
 接缝为 `calendar.ts` 的 `calendarConflicts`、`CalendarConflictsPanel.tsx` 与 HomeScreen／CalendarScreen；从当前授权 state 派生，两两计组，全天／首尾相接不计入，原 ID／revision 编辑不创建副本。正式构建、R1 两项＋R2 一项浏览器、Linux 3 项与生产审计分别留证，不累加为一次全量。
 
-下一独立候选为本地日程默认私密及明确共享，后端与界面已通过分支审查，正式新构建已通过；真实浏览器验证尚待完成，未部署。继续独立分支／worktree、非作者审查后合入；A–D 本人完整验收仍 0/4，真实云目标待选，实体电视暂无法验证。
+本地日程默认私密随后已按文首记录上线；下方保留各历史版本范围。
 
 ## 此前发布：本人站内提醒
 
