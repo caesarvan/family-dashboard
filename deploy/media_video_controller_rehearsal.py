@@ -576,17 +576,23 @@ def restore_fixture(c, transport, bundle):
     proof = c.release/'proof'
     # Use the complete documented restore program without replacing its SQLite algorithm.
     code = """from pathlib import Path
-import json,shutil,sys
+import hashlib,json,shutil,sys
 proof=Path('/proof');root=Path('/data')
 receipt=json.loads((proof/'backup.json').read_bytes())
 group=proof/'backup-group';manifest=json.loads((group/'backups'/receipt['manifest']).read_bytes())
 assert len(manifest['snapshots'])==3
+missing=[]
 for name in ['backups/'+receipt['manifest'],*[x['path'] for x in manifest['snapshots']]]:
  src=group/name;target=root/name
  assert src.resolve().is_relative_to(group.resolve()) and target.resolve().is_relative_to(root.resolve())
+ assert src.is_file() and not src.is_symlink() and not target.is_symlink()
+ if target.exists():
+  assert target.is_file() and hashlib.sha256(src.read_bytes()).digest()==hashlib.sha256(target.read_bytes()).digest()
+ else: missing.append((src,target))
+for src,target in missing:
  target.parent.mkdir(mode=0o700,parents=True,exist_ok=True)
- assert not target.exists()
- shutil.copyfile(src,target);target.chmod(0o600)
+ with src.open('rb') as source,target.open('xb') as destination: shutil.copyfileobj(source,destination)
+ target.chmod(0o600)
 sys.argv=['documented-restore',receipt['manifest'],'platform','default']
 exec(compile(Path('/restore.py').read_text(),'<fixed-documented-restore>','exec'),{'__name__':'__main__'})
 """
