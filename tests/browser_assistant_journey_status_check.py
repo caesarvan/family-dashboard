@@ -126,7 +126,7 @@ class Run(BaseRun):
     def query(self, page, prompt, term):
         page.get_by_role('textbox', name='告诉助理你的需求', exact=True).fill(prompt)
         return self.exchange(page, 'candidates', 'GET', candidate_path(term),
-                             lambda: button(page, '整理并预览').click())[0]
+                             lambda: button(page, '查询').click())[0]
 
     def choose(self, page, uid):
         control = page.get_by_test_id(PREFIX + 'candidate-' + uid).get_by_role('button')
@@ -169,8 +169,11 @@ class Run(BaseRun):
             assert current['summary']['tasks'] == dict(done=1, total=2, remaining=1, blocked=0)
             assert current['summary']['shopping'] == dict(done=1, total=1, remaining=0)
             assert current['trip']['tripId'] == first['tripId']
-            expect(page.get_by_test_id(PREFIX + 'query')).to_have_value('合成冰岛')
+            expect(page.get_by_test_id(PREFIX + 'question')).to_have_text('原问题：合成冰岛旅行准备得怎么样')
             self.capture(page, 'fresh-after-original-completion-390', page.get_by_test_id(PREFIX + 'summary'))
+            self.exchange(page, 'return-query', 'GET', candidate_path('合成冰岛'),
+                          lambda: page.get_by_test_id(PREFIX + 'back-candidates').click())
+            expect(page.get_by_test_id(PREFIX + 'query')).to_have_value('合成冰岛')
             actual = self.get(ctx, '/api/journeys/' + first['id'])
             assert next(t for t in actual['tasks'] if t['id'] == tasks[0]['id'])['done'] is True
             assert actual['shopping'][0]['done'] is True
@@ -213,7 +216,7 @@ class Run(BaseRun):
             assert len(later['items']) == 1 and later['summary']['tasks']['total'] == 21
             assert later['items'][0]['id'] not in {item['id'] for item in current['items']}
             self.capture(page, 'original-page-two-1280', page.get_by_test_id(PREFIX + 'status'))
-            self.exchange(page, 'items-page-one', 'GET', status_path(uid, version=version),
+            self.exchange(page, 'items-page-one', 'GET', status_path(uid),
                           lambda: page.get_by_test_id(PREFIX + 'items-prev').click())
             task = target['tasks'][0]
             self.write(ctx, 'PATCH', '/api/items/tasks/' + task['id'], dict(revision=task['revision'], done=True))
@@ -235,10 +238,33 @@ class Run(BaseRun):
                 old = self.get(ctx, '/api/me')['user']['id']; self.login(ctx, 2)
                 new = self.get(ctx, '/api/me')['user']['id']; assert new != old
                 before = self.snapshot()
+                page.evaluate('''() => {
+                  window.__ajsLateSummary = false;
+                  window.__ajsObserver = new MutationObserver(() => {
+                    if (document.querySelector('[data-testid="assistant-journey-status-summary"]')) window.__ajsLateSummary = true;
+                  });
+                  window.__ajsObserver.observe(document.body, {subtree:true, childList:true});
+                }''')
                 route, status, headers, raw = held.pop()
-                route.fulfill(status=status, headers=headers, body=raw)
+                issued = []
+                def requested(req):
+                    if req.method == 'GET' and req.url == self.base + '/api/me':
+                        issued.append(req)
+                page.on('request', requested)
+                try:
+                    with page.expect_request_finished(predicate=lambda req: req in issued, timeout=15000) as finished:
+                        route.fulfill(status=status, headers=headers, body=raw)
+                    identity = finished.value.response()
+                    assert identity.status == 200 and identity.json()['user']['id'] == new
+                    expect(page.get_by_role('textbox', name='告诉助理你的需求', exact=True)).to_be_enabled(timeout=15000)
+                finally:
+                    page.remove_listener('request', requested)
                 expect(page.get_by_test_id(PREFIX + 'summary')).to_have_count(0)
-                expect(page.get_by_test_id(PREFIX + 'query')).to_have_count(0, timeout=15000)
+                expect(page.get_by_test_id(PREFIX + 'query')).to_have_count(0)
+                reappeared = page.evaluate('''() => {window.__ajsObserver.disconnect(); return window.__ajsLateSummary;}''')
+                assert reappeared is False
+                self.record('late-identity-postflight', dict(member=new, status=identity.status,
+                            completedRealIdentityRead=True, summaryReappeared=reappeared))
             self.capture(page, 'late-identity-cleared-1280', page.get_by_role('heading', name='家庭助理', exact=True))
             after = self.snapshot()
             assert before == after
