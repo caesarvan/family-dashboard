@@ -19,7 +19,8 @@ function Workspace(props: Props & { identityKey: string }) {
   const focused = useRef(false), appActive = useRef(AppState.currentState !== 'background' && AppState.currentState !== 'inactive');
   const [flow, setFlow] = useState<JourneyStatusFlow | null>(null), [state, setState] = useState<StatusState | null>(null);
   const [trip, setTrip] = useState<{ id?: string; key: number } | null>(null), sequence = useRef(0), tripRef = useRef(trip); tripRef.current = trip;
-  const pending = useRef({ reschedule: false, documents: false, segments: false, import: false, finance: false });
+  const pending = useRef({ planning: false, reschedule: false, documents: false, segments: false, import: false, finance: false });
+  const [planningPending, setPlanningPending] = useState(false);
   const current = () => focused.current && appActive.current && front() && latest.current.online && latest.current.identityKey === props.identityKey;
   useEffect(() => {
     const next = new JourneyStatusFlow(props.identityKey, props.initialPrompt, {
@@ -28,9 +29,9 @@ function Workspace(props: Props & { identityKey: string }) {
     setFlow(next); setState(next.state); if (current()) void next.resume();
     return () => next.close();
   }, [props.identityKey]);
-  useFocusEffect(useCallback(() => { focused.current = true; if (current()) void flow?.resume(); return () => { focused.current = false; flow?.conceal(); }; }, [flow]));
+  useFocusEffect(useCallback(() => { focused.current = true; if (current()) void flow?.resume(tripRef.current?.id); return () => { focused.current = false; flow?.conceal(); }; }, [flow]));
   useEffect(() => {
-    const visibility = () => { if (current()) void flow?.resume(); else flow?.conceal(); };
+    const visibility = () => { if (current()) void flow?.resume(tripRef.current?.id); else flow?.conceal(); };
     const subscription = AppState.addEventListener('change', value => { appActive.current = value === 'active'; visibility(); });
     if (typeof document !== 'undefined') document.addEventListener('visibilitychange', visibility);
     if (typeof window !== 'undefined') { window.addEventListener('offline', visibility); window.addEventListener('online', visibility); }
@@ -38,19 +39,21 @@ function Workspace(props: Props & { identityKey: string }) {
     return () => { clearInterval(timer); subscription.remove(); if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', visibility);
       if (typeof window !== 'undefined') { window.removeEventListener('offline', visibility); window.removeEventListener('online', visibility); } };
   }, [flow]);
-  useEffect(() => { if (!household.online) flow?.conceal(); else if (current()) void flow?.resume(); }, [household.online]);
+  useEffect(() => { if (!household.online) flow?.conceal(); else if (current()) void flow?.resume(tripRef.current?.id); }, [household.online]);
+  const pendingPlanning = useCallback((v: boolean) => { pending.current.planning = v; setPlanningPending(v); }, []);
   const pendingReschedule = useCallback((v: boolean) => { pending.current.reschedule = v; props.screenProps.onReschedulePending?.(v); }, [props.screenProps.onReschedulePending]);
   const pendingDocuments = useCallback((v: boolean) => { pending.current.documents = v; props.screenProps.onDocumentsPending?.(v); }, [props.screenProps.onDocumentsPending]);
   const pendingSegments = useCallback((v: boolean) => { pending.current.segments = v; props.screenProps.onSegmentsPending?.(v); }, [props.screenProps.onSegmentsPending]);
   const pendingImport = useCallback((v: boolean) => { pending.current.import = v; props.screenProps.onTripImportPending?.(v); }, [props.screenProps.onTripImportPending]);
   const pendingFinance = useCallback((v: boolean) => { pending.current.finance = v; props.screenProps.onJourneyFinancePending?.(v); }, [props.screenProps.onJourneyFinancePending]);
-  const shown = !!state?.visible && current() && !state.expired;
+  const originalAuthorized = !trip || (trip.id ? state?.result?.view === 'status' && state.result.trip.tripId === trip.id : state?.result?.view === 'candidates');
+  const shown = !!state?.visible && current() && !state.expired && originalAuthorized;
   const locked = !shown || !!state?.busy;
   const hidden = <SectionCard title="旅行查询暂时隐藏"><View testID="assistant-journey-status-hidden" style={styles.page}>
     <Text accessibilityRole={state?.error ? 'alert' : undefined}>{state?.error || '联网并核对当前身份后继续，查询只保留在本页。'}</Text>
-    <Button testID="assistant-journey-status-refresh" disabled={!!state?.busy || !current() || !!state?.expired} onPress={() => void flow?.resume()}>重新读取</Button>
+    <Button testID="assistant-journey-status-refresh" disabled={!!state?.busy || !current() || !!state?.expired} onPress={() => void flow?.resume(trip?.id)}>重新读取</Button>
     {!trip && <Button disabled={!!state?.busy} onPress={() => props.onBack(state?.expired ? '' : state?.prompt || '')}>返回助理</Button>}
-    {trip && <Button disabled={!!state?.busy || Object.values(pending.current).some(Boolean)} onPress={() => {
+    {trip && !planningPending && <Button disabled={!!state?.busy || Object.values(pending.current).some(Boolean)} onPress={() => {
       if (state?.busy || Object.values(pending.current).some(Boolean)) return;
       setTrip(null); tripRef.current = null; if (current()) void flow?.resume();
     }}>放弃未提交编辑，返回准备查询</Button>}
@@ -58,7 +61,7 @@ function Workspace(props: Props & { identityKey: string }) {
   if (trip) return <View style={styles.page}>
     {!shown && hidden}
     <View style={shown ? undefined : { display: 'none' }}>
-      <TripsScreen {...props.screenProps} key={trip.key} tripRequest={trip}
+      <TripsScreen {...props.screenProps} key={trip.key} tripRequest={trip.id ? trip : undefined} onPlanningPending={pendingPlanning}
         onReschedulePending={pendingReschedule} onDocumentsPending={pendingDocuments} onSegmentsPending={pendingSegments}
         onTripImportPending={pendingImport} onJourneyFinancePending={pendingFinance}
         onExitPlanning={() => {

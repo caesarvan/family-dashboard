@@ -127,7 +127,13 @@ export class JourneyStatusFlow {
   private current(ticket: number) { return this.alive && this.foreground && !this.state.expired && this.io.current() && ticket === this.serial; }
   conceal() { this.foreground = false; ++this.serial; this.job?.abort(); this.job = null; this.emit({ result: null, visible: false, busy: false, error: '' }); }
   close() { this.conceal(); this.alive = false; }
-  async resume() { if (!this.alive || this.state.expired || !this.io.current()) return; this.foreground = true; await this.load(true); }
+  async resume(originalTripId?: string) {
+    if (!this.alive || this.state.expired || !this.io.current() || this.state.busy) return;
+    this.foreground = true;
+    if (originalTripId && this.state.selection.target?.tripId !== originalTripId)
+      this.emit({ selection: { ...this.state.selection, target: { tripId: id(originalTripId), section: 'tasks', offset: 0 } } });
+    await this.load(true);
+  }
   editQuery(value: string) { if (!this.state.visible || this.state.busy || Array.from(value).length > 100) return; this.emit({ query: value, result: null }); }
   async search() {
     if (!this.state.visible || this.state.busy) return;

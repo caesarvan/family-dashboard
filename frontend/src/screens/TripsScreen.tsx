@@ -27,7 +27,7 @@ import TripImportPanel from '../components/TripImportPanel';
 import JourneyFinancePanel from '../components/JourneyFinancePanel';
 import {readJourneyDetail, SegmentDiscarded, SegmentError, SegmentFence, segmentRequest, type SegmentSession} from '../lib/journeySegments';
 
-type Props=ScreenProps & {tripRequest?:{key:number;id?:string}; onReturnMap?:()=>void; initialDraft?:Draft; onExitPlanning?:()=>void; onReschedulePending?: (pending:boolean)=>void};
+type Props=ScreenProps & {tripRequest?:{key:number;id?:string}; onReturnMap?:()=>void; initialDraft?:Draft; onExitPlanning?:()=>void; onReschedulePending?: (pending:boolean)=>void; onPlanningPending?: (pending:boolean)=>void};
 type Pending={previewToken:string;idempotencyKey:string};
 type TravelPanel={kind:'calendar'|'tasks'|'places'|'reschedule'|'documents'|'segments'|'recap'|'routes'|'finance';journeyId:string;tripId:string;returnToRoutes?:boolean}|{kind:'map';view:MapView;tripId:string}|{kind:'photos';journeyId:string;view:MapView;tripId:string}|{kind:'import';key:number};
 export default function TripsScreen(props:Props) {
@@ -59,6 +59,8 @@ export default function TripsScreen(props:Props) {
   const [journeys,setJourneys]=useState<Journey[]|null>(null),[detail,setDetail]=useState<Journey|null>(null),[legacy,setLegacy]=useState<Trip|null>(null);
   const [draft,setDraft]=useState<Draft|null>(initial.current.draft),[preview,setPreview]=useState<Preview|null>(null),[pending,setPending]=useState<Pending|null>(null);
   const [uncertain,setUncertain]=useState(false),[blocked,setBlocked]=useState(false),[busy,setBusy]=useState(''),[reading,setReadingState]=useState(false);
+  useEffect(()=>{props.onPlanningPending?.(!!busy||uncertain);},[busy,uncertain,props.onPlanningPending]);
+  useEffect(()=>()=>{props.onPlanningPending?.(false);},[props.onPlanningPending]);
   const readingNow=useRef(false);
   const setReading=(value:boolean)=>{readingNow.current=value;setReadingState(value);};
   const [error,setError]=useState(initial.current.error),[notice,setNotice]=useState(''),[query,setQuery]=useState(''),[discard,setDiscard]=useState(false);
@@ -165,6 +167,7 @@ export default function TripsScreen(props:Props) {
   }
   async function apply(){
     if(!pending||busy||blocked||!online||writing.current)return;const key=actor,payload=pending;writing.current=true;setBusy('apply');setError('');
+    props.onPlanningPending?.(true);
     try{
       const result=await mutate<unknown>('/journeys/apply','POST',payload);
       if(!current(key))return;

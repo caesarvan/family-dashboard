@@ -131,10 +131,10 @@ test('bounded GET streams enforce bytes and never use write method or credential
 });
 
 // Actual screen/component callbacks; React host and network are controlled substitutes.
-function screen(entry = false) {
+function screen(entry = false, realTrips = false) {
   let holder, cursor = 0, dirty = true, tree; const slots = new Map(), effects = [], listeners = new Map(), intervals = [];
   const changed = (a,b) => !a || !b || a.length !== b.length || a.some((v,i) => v !== b[i]);
-  const react = { createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.flat(Infinity).filter(x => x !== null && x !== undefined && x !== false) } }),
+  const react = { Fragment: 'Fragment', createElement: (type, props, ...children) => ({ type, props: { ...props, children: children.flat(Infinity) } }),
     useState(v) { const h = holder, i = cursor++; if (!(i in h)) h[i] = typeof v === 'function' ? v() : v; return [h[i], v => { h[i] = typeof v === 'function' ? v(h[i]) : v; dirty = true; }]; },
     useRef(v) { const i = cursor++; return holder[i] ||= { current: v }; },
     useEffect(fn,deps) { const h = holder, i = cursor++; if (changed(h[i]?.deps,deps)) { const old=h[i]; h[i]={ deps }; effects.push(() => { old?.cleanup?.(); h[i].cleanup=fn(); }); } },
@@ -148,6 +148,20 @@ function screen(entry = false) {
     '../screens/TripsScreen':{__esModule:true,default:'TripsScreen'},'../lib/assistantJourneyStatus':{...lib,statusRead:f.get},
     '../ui/SelectionRow':{SelectionRow:'SelectionRow'},'../lib/trips':{shoppingScheduleText:()=>''}};
   mocks['react-native-paper'].useTheme=()=>({colors:{onSurfaceVariant:'#555'}});
+  const originalWrites=[];
+  if(realTrips){
+    delete mocks['../screens/TripsScreen'];delete mocks['../lib/trips'];
+    Object.assign(mocks['react-native-paper'],{Checkbox:{Android:'Checkbox'},Dialog:Object.assign('Dialog',{Title:'DialogTitle',Content:'DialogContent',Actions:'DialogActions'}),List:{Accordion:'Accordion'},Portal:'Portal',Searchbar:'Searchbar',IconButton:'IconButton'});
+    mocks['../ui/components'].EmptyState='EmptyState';mocks['../ui/ItemEditor']={ShoppingScheduleFields:'ShoppingScheduleFields'};mocks['./ListScreen']={money:n=>String(n)};
+    for(const name of ['./JourneyCalendarPanel','./JourneyTasksPanel','./JourneyPlacesPanel','./JourneyReschedulePanel','./MapScreen','./TripPhotosScreen','./JourneyDocumentsPanel','../components/JourneySegmentsPanel','../components/TripRecapPanel','../components/JourneyRoutesPanel','../components/TripImportPanel','../components/JourneyFinancePanel'])mocks[name]={__esModule:true,default:'Unused'};
+    mocks['../lib/api']={ApiError,request:async path=>{if(path==='/me')return copy(f.f.session);if(path==='/journeys')return {journeys:[]};throw Error('Unexpected original read '+path);}};
+    household.mutate=async(path,method,body)=>{
+      originalWrites.push({path,method,body:copy(body)});
+      if(path==='/journeys/preview')return {plan:{...copy(body.plan),checklist:[]},canApply:true,previewToken:'original-preview-token',expiresIn:300,summary:{create:{trips:1},update:{},detach:0,warnings:[],conflicts:[],preserved:[],cloudReviews:[],policyNotice:''}};
+      if(path==='/journeys/apply')throw new ApiError('Synthetic response lost after dispatch',0);
+      throw Error('Unexpected original write '+path);
+    };
+  }
   const dispatch=[];
   if(entry){
     class FakeFlow { constructor(user,io,emit) {this.emit=emit;this.state={ready:true,visible:true,busy:false,expired:false,modelConfigured:true,selected:[],edits:{}};}async load(){this.emit(this.state);}setForeground(){}close(){}async plan(...v){dispatch.push(['plan',...v]);} }
@@ -155,16 +169,17 @@ function screen(entry = false) {
     for(const n of ['./JourneyBriefPanel','./TripsScreen','./JourneyDocumentsPanel','./PhotosScreen','./MapWorkspace','../components/ExistingTripChangePanel','../components/AssistantFinanceQueryPanel','../components/AssistantActionEditor'])mocks[n]={__esModule:true,default:n};
     mocks['../components/AssistantJourneyStatusPanel']={__esModule:true,default:'StatusPanel'};
   }
-  const actual=loader(mocks,{document,navigator,window,setTimeout:()=>1,clearTimeout(){},setInterval:(fn,ms)=>{intervals.push({fn,ms});return intervals.length;},clearInterval(){}});
+  const actual=loader(mocks,{document,navigator,window,crypto:globalThis.crypto,setTimeout:()=>1,clearTimeout(){},setInterval:(fn,ms)=>{intervals.push({fn,ms});return intervals.length;},clearInterval(){}});
   const Component=actual(resolve(root,entry?'screens/AssistantScreen.tsx':'components/AssistantJourneyStatusPanel.tsx'))[entry?'AssistantScreen':'default'];
-  const screenProps={user:household.user,state:{people:[],tasks:[],shopping:[],trips:[]},onNavigate(){},onEdit(){}};
+  const screenProps={user:household.user,state:{people:[{id:'member1',name:'本人'}],tasks:[],shopping:[],trips:[]},onNavigate(){},onEdit(){}};
   const props=entry?screenProps:{initialPrompt:'冰岛旅行还有哪些没做',screenProps,onBack:p=>dispatch.push(['back',p])};
   function render(n,path='root') { if(!n||typeof n!=='object')return n; if(typeof n.type==='function'){holder=slots.get(path)||{};slots.set(path,holder);cursor=0;return render(n.type(n.props),path+'/render');} return {...n,props:{...n.props,children:(n.props.children||[]).map((c,i)=>render(c,path+'/'+(c?.props?.key??i)))}}; }
   async function flush(){for(let t=0;t<3;t++){for(let i=0;i<30;i++){if(dirty){dirty=false;tree=render({type:Component,props});}while(effects.length)effects.shift()();await Promise.resolve();}await new Promise(r=>setImmediate(r));}}
-  const nodes=()=>{const out=[];function walk(n){if(!n||typeof n!=='object')return;out.push(n);n.props.children?.forEach(walk);}walk(tree);return out;};
-  const text=(n=tree)=>n==null||typeof n==='boolean'?'':typeof n!=='object'?String(n):(n.props.children||[]).map(text).join(' ');
+  const nodes=()=>{const out=[];function walk(n){if(!n||typeof n!=='object')return;out.push(n);n.props.children?.forEach(walk);if(n.props.action)walk(n.props.action);}walk(tree);return out;};
+  const text=(n=tree)=>n==null||typeof n==='boolean'?'':typeof n!=='object'?String(n):(n.props.children||[]).map(c=>c==null?'':text(c)).join(' ');
   const find=id=>{const n=nodes().filter(n=>n.props.testID===id||n.props.accessibilityLabel===id);assert.equal(n.length,1,id);return n[0];};
-  return {f:f.f,household,props,dispatch,flush,nodes,text,find,intervals,
+  return {f:f.f,household,props,dispatch,flush,nodes,text,find,intervals,originalWrites,
+    visibleNodes(){const out=[];function walk(n){if(!n||typeof n!=='object'||n.props.style?.display==='none')return;out.push(n);n.props.children?.forEach(walk);if(n.props.action)walk(n.props.action);}walk(tree);return out;},
     async click(id){const n=find(id);assert(!n.props.disabled,id);n.props.onPress();await flush();},
     async press(label){const n=nodes().find(n=>n.type==='Button'&&text(n)===label);assert(n&&!n.props.disabled,label);n.props.onPress();await flush();},
     async fill(id,value){find(id).props.onChangeText(value);await flush();},
@@ -177,17 +192,40 @@ test('actual TSX selects original ID, shows current blockers/shopping and return
   await h.click('assistant-journey-status-shopping');assert.match(h.text(),/转换插头/);assert.match(h.text(),/不代表已经下单、付款或入库/);
   await h.click('assistant-journey-status-tasks');await h.click('assistant-journey-status-items-next');await h.click('assistant-journey-status-open');
   const trip=h.nodes().find(n=>n.type==='TripsScreen');assert.equal(trip.props.tripRequest.id,tid);
-  for(const callback of ['onReschedulePending','onDocumentsPending','onSegmentsPending','onTripImportPending','onJourneyFinancePending']) {
+  for(const callback of ['onPlanningPending','onReschedulePending','onDocumentsPending','onSegmentsPending','onTripImportPending','onJourneyFinancePending']) {
     trip.props[callback](true);trip.props.onExitPlanning();await h.flush();assert(h.nodes().some(n=>n.type==='TripsScreen'));trip.props[callback](false);
   }
   h.f.version=v2;trip.props.onExitPlanning();await h.flush();assert.match(h.text(),/第一页/);assert.match(h.text(),/原问题：/);
 });
-test('actual TSX unavailable trip after background has explicit local exit without bypassing pending writes', async () => {
+test('actual TSX unavailable original stays hidden and retries only its ID before showing content', async () => {
   const h=screen();await h.flush();await h.press('查看这趟准备');await h.click('assistant-journey-status-open');
-  const trip=h.nodes().find(n=>n.type==='TripsScreen');trip.props.onReschedulePending(true);await h.offline();
-  let button=h.nodes().find(n=>n.type==='Button'&&h.text(n)==='放弃未提交编辑，返回准备查询');assert(button.props.disabled);button.props.onPress();await h.flush();assert(h.nodes().some(n=>n.type==='TripsScreen'));
-  trip.props.onReschedulePending(false);h.f.failStatus=[404,'journey_status_unavailable'];await h.online();
-  await h.press('放弃未提交编辑，返回准备查询');assert(!h.nodes().some(n=>n.type==='TripsScreen'));assert(h.find('assistant-journey-status-candidate-'+tid));
+  const trip=h.nodes().find(n=>n.type==='TripsScreen');trip.props.onPlanningPending(true);await h.offline();
+  assert(!h.nodes().some(n=>n.type==='Button'&&h.text(n)==='放弃未提交编辑，返回准备查询'));
+  h.f.failStatus=[404,'journey_status_unavailable'];await h.online();assert(!h.visibleNodes().some(n=>n.type==='TripsScreen'));
+  const start=h.f.calls.length;await h.click('assistant-journey-status-refresh');
+  const reads=h.f.calls.slice(start).filter(c=>c.path!=='/me');assert.equal(reads.length,1);assert.equal(reads[0].path,lib.statusPath({query:'冰岛',offset:0,target:{tripId:tid,section:'tasks',offset:0}}));
+  assert(h.visibleNodes().some(n=>n.type==='TripsScreen'));assert.equal(h.nodes().find(n=>n.type==='TripsScreen').props.key,trip.props.key);
+  trip.props.onPlanningPending(false);await h.offline();h.f.failStatus=[404,'journey_status_unavailable'];await h.online();
+  assert(!h.visibleNodes().some(n=>n.type==='TripsScreen'));await h.press('放弃未提交编辑，返回准备查询');
+  assert(!h.nodes().some(n=>n.type==='TripsScreen'));assert(h.find('assistant-journey-status-candidate-'+tid));
+});
+
+test('actual TripsScreen list entry does not create a draft or send writes', async () => {
+  const h=screen(false,true);await h.flush();await h.click('assistant-journey-status-trips');
+  assert(h.visibleNodes().some(n=>n.type==='Searchbar'));assert(h.nodes().some(n=>n.type==='PageHeader'&&n.props.title==='旅行'));
+  assert(!h.nodes().some(n=>n.props.accessibilityLabel==='旅行名称'));assert.equal(h.originalWrites.length,0);
+});
+
+test('actual TripsScreen unknown apply survives hiding and restores the identical preview token and request ID', async () => {
+  const h=screen(false,true);await h.flush();await h.click('assistant-journey-status-trips');await h.press('计划第一趟旅行');
+  await h.fill('旅行名称','合成未决旅行');await h.fill('城市 1','合成城市');await h.press('预览变更');await h.click('确认保存旅行');
+  assert.match(h.text(),/保存结果暂时未知/);const original=h.originalWrites.find(v=>v.path==='/journeys/apply');assert(original);assert.match(original.body.idempotencyKey,/^[a-f0-9]{32}$/);
+  await h.offline();assert(!h.visibleNodes().some(n=>n.props.accessibilityLabel==='旅行名称'));
+  assert(!h.nodes().some(n=>n.type==='Button'&&h.text(n)==='放弃未提交编辑，返回准备查询'));
+  assert(h.nodes().some(n=>n.props.accessibilityLabel==='核对原保存'));assert.equal(h.originalWrites.filter(v=>v.path==='/journeys/apply').length,1);
+  await h.online();assert(h.visibleNodes().some(n=>n.props.accessibilityLabel==='核对原保存'));assert.equal(h.find('旅行名称').props.value,'合成未决旅行');
+  assert.equal(h.originalWrites.filter(v=>v.path==='/journeys/apply').length,1);await h.click('核对原保存');
+  const applies=h.originalWrites.filter(v=>v.path==='/journeys/apply');assert.equal(applies.length,2);assert.deepEqual(applies[1].body,original.body);
 });
 test('actual TSX hides offline and post-me failure, then rechecks same selection', async () => {
   const h=screen();await h.flush();await h.press('查看这趟准备');await h.offline();assert(!h.text().includes('冰岛'));await h.online();assert(h.find('assistant-journey-status-status'));
