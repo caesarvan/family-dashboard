@@ -66,7 +66,8 @@ def test_default_no_write_and_explicit_schema(env):
     default = c.get(path(uid))
     assert default.status_code == 200
     assert default.json == dict(deviceId=uid, revision=0, mode='dashboard', paused=False,
-        intervalSeconds=10, position=0, photoCount=0, canStart=False, updatedAt=None)
+        intervalSeconds=10, position=0, photoCount=0, canStart=False, updatedAt=None,
+        scope='all', journeyReview=None)
     assert tv.get('/api/media-tv/playback').json['item'] is None
     with env[1].transaction() as con:
         assert con.execute('SELECT count(*) FROM media_playback').fetchone()[0] == 0
@@ -154,7 +155,7 @@ def test_strict_mutation_fields(env,changes):
 
 
 @pytest.mark.parametrize('raw',['null','[]','{"revision":0,"revision":1,"action":"start"}',
-    '{"revision":NaN,"action":"start"}','{"revision":1e999,"action":"start"}','x'*17000])
+    '{"revision":NaN,"action":"start"}','{"revision":1e999,"action":"start"}','x'*17000], ids=['null','array','duplicate-key','nan','infinity','oversize'])
 def test_raw_json_rejected(env,raw):
     uid,_,_ = device(env)
     c,h = login(env[0])

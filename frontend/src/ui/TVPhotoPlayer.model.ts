@@ -1,7 +1,9 @@
+import { readJourneyScope, journeyCanStart, type JourneyReview } from '../lib/tvTripRecap.ts';
 export type TVPhotoPlayerProps = { deviceId: string; active: boolean; onUnauthorized: () => void };
 export type TVPhoto = { id: string; revision: number; width: number; height: number; previewUrl: string;
   mediaType?: 'photo' | 'video'; videoUrl?: string; durationMs?: number; hasAudio?: boolean };
 export type TVPlayback = {
+  scope?: 'all' | 'journey'; journeyReview?: JourneyReview | null;
   deviceId: string; revision: number; mode: 'dashboard' | 'photos'; paused: boolean;
   intervalSeconds: number; position: number; photoCount: number; canStart: boolean;
   updatedAt: string | null; serverTime: string; validUntil: string; item: TVPhoto | null;
@@ -28,10 +30,11 @@ function instant(value: unknown): number {
 export function readTVPlayback(value: unknown, deviceId: string): TVPlayback {
   if (!isTVPhotoId(deviceId) || !record(value)) throw new Error('Invalid display state');
   if (value.deviceId !== deviceId) throw new TVPhotoIdentityChanged('Display identity changed');
+  const scope = readJourneyScope(value);
   if (!integer(value.revision, 0, Number.MAX_SAFE_INTEGER) || (value.mode !== 'dashboard' && value.mode !== 'photos')
     || typeof value.paused !== 'boolean' || !integer(value.intervalSeconds, 5, 120)
     || !integer(value.photoCount, 0, 2000) || !integer(value.position, 0, Math.max(0, value.photoCount - 1))
-    || typeof value.canStart !== 'boolean' || value.canStart !== (value.photoCount > 0)) throw new Error('Invalid display state');
+    || typeof value.canStart !== 'boolean' || value.canStart !== journeyCanStart(scope.journeyReview, value.photoCount)) throw new Error('Invalid display state');
   instant(value.serverTime); instant(value.validUntil);
   if (value.updatedAt !== null) instant(value.updatedAt);
   if (value.mode === 'dashboard' && (value.photoCount !== 0 || value.item !== null)) throw new Error('Invalid dashboard state');
@@ -54,7 +57,7 @@ export function readTVPlayback(value: unknown, deviceId: string): TVPlayback {
       }
     }
   }
-  const result: TVPlayback = { deviceId, revision: value.revision, mode: value.mode as TVPlayback['mode'], paused: value.paused,
+  const result: TVPlayback = { ...scope, deviceId, revision: value.revision, mode: value.mode as TVPlayback['mode'], paused: value.paused,
     intervalSeconds: value.intervalSeconds, position: value.position, photoCount: value.photoCount,
     canStart: value.canStart, updatedAt: value.updatedAt as string | null, serverTime: value.serverTime as string,
     validUntil: value.validUntil as string, item };

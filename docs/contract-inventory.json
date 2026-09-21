@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-19T13:53:01.122354+00:00",
+  "generatedAt": "2026-09-20T22:40:01.518664+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -73,6 +73,12 @@
       "path": "/api/assistant/plan",
       "source": "home_assistant.py",
       "endpoint": "plan"
+    },
+    {
+      "method": "GET",
+      "path": "/api/assistant/plans/<uid>",
+      "source": "home_assistant.py",
+      "endpoint": "read_plan"
     },
     {
       "method": "POST",
@@ -397,6 +403,36 @@
       "path": "/api/finance-hub/investments/operations/<rid>",
       "source": "investment_operations.py",
       "endpoint": "investment_operation_result"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/journey-allocations",
+      "source": "journey_finance.py",
+      "endpoint": "journey_finance_allocations"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/journey-allocations/confirm",
+      "source": "journey_finance.py",
+      "endpoint": "journey_finance_confirm"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/journey-allocations/operations/<rid>",
+      "source": "journey_finance.py",
+      "endpoint": "journey_finance_operation"
+    },
+    {
+      "method": "GET",
+      "path": "/api/finance-hub/journey-allocations/payments",
+      "source": "journey_finance.py",
+      "endpoint": "journey_finance_payments"
+    },
+    {
+      "method": "POST",
+      "path": "/api/finance-hub/journey-allocations/preview",
+      "source": "journey_finance.py",
+      "endpoint": "journey_finance_preview"
     },
     {
       "method": "GET",
@@ -801,6 +837,24 @@
       "endpoint": "media_playback_control"
     },
     {
+      "method": "POST",
+      "path": "/api/media-playback/devices/<uid>/journey-preview",
+      "source": "media_trip_playback.py",
+      "endpoint": "media_trip_preview"
+    },
+    {
+      "method": "POST",
+      "path": "/api/media-playback/devices/<uid>/journey-start",
+      "source": "media_trip_playback.py",
+      "endpoint": "media_trip_start"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media-playback/operations/<request_id>",
+      "source": "media_trip_playback.py",
+      "endpoint": "media_trip_operation"
+    },
+    {
       "method": "GET",
       "path": "/api/media-tv/items",
       "source": "household_media.py",
@@ -814,9 +868,21 @@
     },
     {
       "method": "GET",
+      "path": "/api/media-tv/items/<uid>/video",
+      "source": "household_media.py",
+      "endpoint": "media_tv_video"
+    },
+    {
+      "method": "GET",
       "path": "/api/media-tv/playback",
       "source": "media_playback.py",
       "endpoint": "media_playback_tv"
+    },
+    {
+      "method": "POST",
+      "path": "/api/media-tv/playback/progress",
+      "source": "media_playback.py",
+      "endpoint": "media_playback_progress"
     },
     {
       "method": "GET",
@@ -874,6 +940,12 @@
     },
     {
       "method": "GET",
+      "path": "/api/media/items/<uid>/duplicates",
+      "source": "household_media.py",
+      "endpoint": "media_duplicate_hints"
+    },
+    {
+      "method": "GET",
       "path": "/api/media/items/<uid>/journey-suggestions",
       "source": "household_media.py",
       "endpoint": "media_journey_suggestions"
@@ -895,6 +967,36 @@
       "path": "/api/media/items/<uid>/tv-grants",
       "source": "household_media.py",
       "endpoint": "media_tv_grants"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media/items/<uid>/video",
+      "source": "household_media.py",
+      "endpoint": "media_video"
+    },
+    {
+      "method": "POST",
+      "path": "/api/media/local-imports",
+      "source": "media_local_upload.py",
+      "endpoint": "local_photo_create"
+    },
+    {
+      "method": "PUT",
+      "path": "/api/media/local-imports/<uid>/files/<slot_id>",
+      "source": "media_local_upload.py",
+      "endpoint": "local_photo_upload"
+    },
+    {
+      "method": "POST",
+      "path": "/api/media/local-imports/<uid>/finish",
+      "source": "media_local_upload.py",
+      "endpoint": "local_photo_finish"
+    },
+    {
+      "method": "GET",
+      "path": "/api/media/memories/on-this-day",
+      "source": "household_media.py",
+      "endpoint": "media_on_this_day"
     },
     {
       "method": "GET",
@@ -1129,6 +1231,24 @@
       "path": "/api/task-publish/state",
       "source": "task_publish.py",
       "endpoint": "task_publication_state"
+    },
+    {
+      "method": "GET",
+      "path": "/api/task-reminders",
+      "source": "task_reminders.py",
+      "endpoint": "inbox"
+    },
+    {
+      "method": "POST",
+      "path": "/api/task-reminders/<task_id>/actions",
+      "source": "task_reminders.py",
+      "endpoint": "action"
+    },
+    {
+      "method": "GET",
+      "path": "/api/task-reminders/operations/<request_id>",
+      "source": "task_reminders.py",
+      "endpoint": "operation"
     },
     {
       "method": "GET",
@@ -2773,6 +2893,130 @@
         "primaryKey": false
       }
     ],
+    "hub_journey_allocation_operations": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "payload_hash",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "operation",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "allocation_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "completed_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "hub_journey_allocations": [
+      {
+        "name": "id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "journey_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "trip_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "payment_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "amount_cents",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "status",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "source_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "accepted_net_cents",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "accepted_refunded_cents",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
     "hub_reconciliations": [
       {
         "name": "id",
@@ -4133,6 +4377,144 @@
         "primaryKey": false
       }
     ],
+    "media_playback_journeys": [
+      {
+        "name": "device_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "journey_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "route_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "route_selected",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "started_by",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "start_request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "media_playback_operations": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "payload_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "device_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "kind",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "completed_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "media_playback_progress": [
+      {
+        "name": "device_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "item_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "item_revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "play_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "position_ms",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "report_seq",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "reported_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
     "media_tv_grants": [
       {
         "name": "media_id",
@@ -4149,6 +4531,32 @@
       {
         "name": "granted_by",
         "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "media_video_cache": [
+      {
+        "name": "media_id",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": true
+      },
+      {
+        "name": "cache_key",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "cipher",
+        "type": "BLOB",
         "notNull": true,
         "primaryKey": false
       },
@@ -4721,6 +5129,94 @@
       {
         "name": "next_attempt",
         "type": "REAL",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "updated_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "task_reminder_operations": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "request_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "intent_digest",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "result",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "created_at",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": false
+      }
+    ],
+    "task_reminders": [
+      {
+        "name": "owner",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "task_id",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "due",
+        "type": "TEXT",
+        "notNull": true,
+        "primaryKey": true
+      },
+      {
+        "name": "read_at",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "snoozed_until",
+        "type": "TEXT",
+        "notNull": false,
+        "primaryKey": false
+      },
+      {
+        "name": "revision",
+        "type": "INTEGER",
+        "notNull": true,
+        "primaryKey": false
+      },
+      {
+        "name": "active",
+        "type": "INTEGER",
         "notNull": true,
         "primaryKey": false
       },
