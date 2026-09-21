@@ -55,8 +55,44 @@ def status_path(uid, section='tasks', offset=0, version=None):
 
 class Run(BaseRun):
     record = LocalRun.record
-    completed_json = LocalRun.completed_json
     capture = CalendarRun.capture
+
+    def completed_json(self, page, name, method, url, trigger, expected_status=200):
+        # Polling can use the same URL. Bind both events to a newly issued
+        # request, never to an older matching response/completion in flight.
+        issued = []
+        phase = 'armed'
+        def started(request):
+            if not issued and request.method == method and request.url == url:
+                issued.append(request)
+        def matches(request):
+            return bool(issued) and request is issued[0]
+        def progress(value, **details):
+            nonlocal phase
+            phase = value
+            self.record(name + '-' + phase, dict(phase=phase, timeoutMs=15000, **details))
+            print('PHASE ' + name + ' ' + phase, flush=True)
+        page.on('request', started)
+        try:
+            with page.expect_request_finished(predicate=matches, timeout=15000) as completed:
+                with page.expect_response(lambda response: matches(response.request), timeout=15000) as pending:
+                    progress('before-dispatch', method=method, url=url)
+                    trigger()
+                response = pending.value
+                progress('headers', status=response.status, method=response.request.method,
+                         url=response.url, request=response.request.post_data_json)
+                assert response.status == expected_status
+            request = completed.value
+            assert request is issued[0] and request is response.request and request.failure is None
+            progress('transport-complete', method=request.method, url=request.url)
+            value = response.json()
+            progress('json', request=request.post_data_json, response=value)
+            return value, request.post_data_json
+        except Exception as error:
+            self.record(name + '-failed', dict(phase=phase, errorType=type(error).__name__, timeoutMs=15000))
+            raise
+        finally:
+            page.remove_listener('request', started)
 
     def __init__(self, *args):
         lifecycle = args[-1]
