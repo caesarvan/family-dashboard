@@ -1,6 +1,6 @@
 # 电视单趟旅行回顾
 
-实现契约，开发基线 `904fde5665b6f5063ac90f9c752556a70daeb108`。本批尚未发布；当前生产仍为[助理清单版本](ASSISTANT-LIST-ACCEPTANCE.md#assistant-list-release)。
+实现契约，开发基线 `904fde5665b6f5063ac90f9c752556a70daeb108`。本批已于2026-09-21 08:03:18（北京时间）上线，生产源码为 `d4346d34ed5271699f2cffac7c29aa098edc8a07`，户内77表／平台9表；后续文档提交不改变生产source。实际验证和上线回执见[集中验收](TV-TRIP-ACCEPTANCE.md#tv-trip-release)，[助理清单版本](ASSISTANT-LIST-ACCEPTANCE.md#assistant-list-release)为上一版。
 
 ## 家庭成员的操作
 
