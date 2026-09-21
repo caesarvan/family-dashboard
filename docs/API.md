@@ -1,6 +1,12 @@
 # 家庭看板接口文档
 
-## 电视单趟旅行回顾（候选，未上线）
+## 已有旅行准备情况查询（候选，未上线）
+
+新增成员只读 `GET /api/assistant/journey-status`，完整参数、分页、来源版本与错误见 [查询合同](ASSISTANT-JOURNEY-STATUS.md)。空词或名称查询返回当前家庭的旅行候选；明确选择原 `tripId` 后，返回可核实的准备／采购计数及未完成事项。候选每页20项，最多核对1000趟；状态每类最多100项，后页须携带 `sourceVersion`，来源变化返回409。
+
+本接口不调用模型、不创建旅行或事项、不执行云同步。TV无权读取，成员读取前后复核当前家庭与会话，响应禁止缓存；旧旅行、关联缺失及超限均明确标记覆盖不足，不能解释为“全部准备妥当”。打开原旅行处理后，返回须重新读取；本候选不增加表或改变77/9结构。
+
+## 电视单趟旅行回顾（已发布）
 
 新增三条成员接口，精确字段见 [播放合同](TV-TRIP-PLAYBACK.md)，操作步骤见 [使用说明](TV-TRIP-USER-GUIDE.md)。沿用当前家庭、成员首尾会话核验、JSON、Origin／CSRF；TV Cookie 不能调用成员写接口。
 
@@ -16,7 +22,7 @@
 
 ## 本人旅行费用归集（已发布）
 
-只归集本人已有人民币付款净额，不修改原交易、采购或共享旅行金额；五接口与恢复/导出合同见 [JOURNEY-FINANCE](JOURNEY-FINANCE.md)。前缀 `/api/finance-hub/journey-allocations`：GET 根（本人历史/旅行分页）、GET `/payments`（原付款）、POST `/preview`、POST `/confirm`（原requestId+token）、GET `/operations/<requestId>`（200/found=false仍表示未知）。读取需当前成员，电视禁止；写入需Origin/CSRF/事务身份复核。两新表73→75已在此前旅行费用发布完成，现行生产仍75/9，见[旅行费用验收](JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release)。
+只归集本人已有人民币付款净额，不修改原交易、采购或共享旅行金额；五接口与恢复/导出合同见 [JOURNEY-FINANCE](JOURNEY-FINANCE.md)。前缀 `/api/finance-hub/journey-allocations`：GET 根（本人历史/旅行分页）、GET `/payments`（原付款）、POST `/preview`、POST `/confirm`（原requestId+token）、GET `/operations/<requestId>`（200/found=false仍表示未知）。读取需当前成员，电视禁止；写入需Origin/CSRF/事务身份复核。两新表73→75已在此前旅行费用发布完成，该批次为75/9，见[旅行费用验收](JOURNEY-FINANCE-ACCEPTANCE.md#journey-finance-release)；当前生产结构以 [README](../README.md) 为准。
 
 ## 本人站内提醒（已发布）
 
@@ -30,7 +36,7 @@
 
 提醒 revision 与 task.revision 分开。已读／暂缓不改任务、依赖或云端；未知结果保留原 intent，身份复核失败不能误报未保存。成员撤权隐藏并清理本人历史。个人导出仅含本人最小状态与操作时间，不导出请求编号或扩大共享，见[导出合同](TASK-REMINDERS-PORTABILITY.md)。本次已完成两张空表的首次迁移，无回填；后续更新与恢复须按[发布合同](TASK-REMINDERS-RELEASE.md)绑定实际版本，不能重放。
 
-当前为 **71 张户内表与 9 张平台表**，本人站内提醒新增两表，旧 69 表和平台表保全；实际发布与独立审计见[提醒验收](TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。本地任务依赖继续使用原 CRUD。下方基础接口与历史段落保留原契约和当时计数，不代表当前总数；字段、权限与恢复规则以对应模块文档为准。
+该批次发布后为 **71 张户内表与 9 张平台表**，本人站内提醒新增两表，旧 69 表和平台表保全；实际发布与独立审计见[提醒验收](TASK-REMINDERS-ACCEPTANCE.md#task-reminders-release)。本地任务依赖继续使用原 CRUD。下方基础接口与历史段落保留原契约和当时计数，不代表当前总数；字段、权限与恢复规则以对应模块文档为准。
 
 ## 本地待办前置事项（已发布）
 

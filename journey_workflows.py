@@ -13,8 +13,9 @@ import hashlib
 import json
 import re
 import secrets
+import sqlite3
 
-from flask import Response, g, jsonify
+from flask import Response, g, jsonify, request
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from journey_time import TimeIssue, normalize_segment, project, warnings as time_warnings, zone
 from journey_reschedule import RescheduleError, items_for as reschedule_items, prepare as prepare_reschedule
@@ -357,9 +358,9 @@ def register_journeys(app, db, Problem, body, require_member, audit):
         return json.loads(con.execute("SELECT data FROM settings WHERE id='journey_namespace'").fetchone()[0])
 
     @contextmanager
-    def edit_read_snapshot(member=True):
+    def edit_read_snapshot(member=True, *, initialize=True):
         captured = member_identity() if member else None
-        con = ready()
+        con = ready() if initialize else db()
         # Legacy-cookie resolution can leave an implicit UPDATE transaction.
         # Never carry that earlier snapshot into this request's source reads.
         con.rollback()
@@ -523,6 +524,286 @@ def register_journeys(app, db, Problem, body, require_member, audit):
                           templates=[{'id': 'domestic', 'name': '国内旅行', 'checklist': defaults(False)},
                                      {'id': 'international', 'name': '境外旅行', 'checklist': defaults(True)}])
         return jsonify(result)
+
+    def status_object(raw):
+        if type(raw) is not str:
+            raise ValueError('unverifiable source')
+        try:
+            value = json.loads(raw)
+        except (ValueError, TypeError, RecursionError):
+            raise ValueError('unverifiable source') from None
+        if type(value) is not dict:
+            raise ValueError('unverifiable source')
+        return value
+
+    def status_text(value, maximum, *, empty=False):
+        if (type(value) is not str or len(value) > maximum or not empty and not value.strip()
+                or any(ord(char) < 32 for char in value)):
+            raise ValueError('unverifiable text')
+        return value
+
+    def status_day(value, *, empty=False):
+        if empty and value == '':
+            return value
+        if type(value) is not str or not re.fullmatch(r'\d{4}-\d{2}-\d{2}', value):
+            raise ValueError('unverifiable date')
+        return date.fromisoformat(value).isoformat()
+
+    def status_id(value):
+        return type(value) is str and re.fullmatch(r'[a-f0-9]{24}', value) is not None
+
+    def status_revision(value):
+        if type(value) is not int or not 1 <= value <= 9_007_199_254_740_991:
+            raise ValueError('unverifiable revision')
+        return value
+
+    def status_digest(value):
+        # SQLite TEXT columns can contain malformed binary values after storage
+        # damage. Bind that source without projecting or serializing its bytes.
+        encoded = json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(',', ':'),
+                             default=lambda raw: {'binarySha256': hashlib.sha256(raw).hexdigest()})
+        return hashlib.sha256(encoded.encode()).hexdigest()
+
+    def status_trip(con, row):
+        value = status_object(row['data'])
+        if not status_id(row['id']):
+            raise ValueError('unverifiable trip')
+        trip = {'tripId': row['id'], 'journeyId': None, 'journeyRevision': None,
+                'tripRevision': status_revision(row['revision']),
+                'title': status_text(value.get('title'), 100),
+                'destination': status_text(value.get('destination', ''), 80, empty=True),
+                'start': status_day(value.get('start')), 'end': status_day(value.get('end'))}
+        if trip['end'] < trip['start']:
+            raise ValueError('unverifiable dates')
+        workflow = con.execute('SELECT id,trip_id,revision FROM journey_workflows WHERE trip_id=?', (row['id'],)).fetchone()
+        if workflow is None and ('journeyId' not in value or value['journeyId'] == ''):
+            return trip, 'legacy'
+        if workflow is not None and status_id(workflow['id']) and value.get('journeyId') == workflow['id']:
+            link = con.execute("SELECT entity_id,kind FROM journey_links WHERE journey_id=? AND item_key='trip'", (workflow['id'],)).fetchone()
+            if link and link['entity_id'] == row['id'] and link['kind'] == 'trips':
+                try:
+                    revision = status_revision(workflow['revision'])
+                except ValueError:
+                    return trip, 'needs_review'
+                trip.update(journeyId=workflow['id'], journeyRevision=revision)
+                return trip, 'available'
+        return trip, 'needs_review'
+
+    def status_candidates(con, query, offset):
+        matches, scanned, unverifiable, capped = [], 0, 0, False
+        # Iterate rather than retaining 1000 complete trip JSON strings. No
+        # unbounded /journeys detail, generic assistant search or media reads.
+        rows = con.execute("SELECT id,data,revision FROM entities WHERE kind='trips' ORDER BY id LIMIT 1001")
+        for row in rows:
+            if scanned == 1000:
+                capped = True
+                break
+            scanned += 1
+            try:
+                trip, state = status_trip(con, row)
+            except ValueError:
+                unverifiable += 1
+                continue
+            if query.casefold() in (trip['title'] + ' ' + trip['destination']).casefold():
+                trip.pop('journeyRevision')
+                matches.append({**trip, 'status': state})
+        page = matches[offset:offset + 20]
+        return {'version': 1, 'view': 'candidates', 'query': query, 'items': page, 'limit': 20, 'offset': offset,
+                'nextOffset': offset + len(page) if offset + len(page) < len(matches) else None,
+                'coverage': {'scannedTrips': scanned, 'scanLimit': 1000, 'capped': capped, 'unverifiable': unverifiable}}
+
+    def status_detail(con, uid, section, offset):
+        row = con.execute("SELECT id,data,revision FROM entities WHERE kind='trips' AND id=?", (uid,)).fetchone()
+        if row is None:
+            return None
+        try:
+            trip, state = status_trip(con, row)
+        except ValueError:
+            return None
+        sources = [('trip', dict(row))]
+        result = {'version': 1, 'view': 'status', 'state': 'ready' if state == 'available' else state,
+                  'trip': trip, 'summary': None, 'section': section, 'items': [], 'limit': 20,
+                  'offset': offset, 'nextOffset': None,
+                  'coverage': {'complete': False, 'unverifiable': 0 if state == 'legacy' else 1,
+                               'reasonCodes': ['legacy_without_workflow' if state == 'legacy' else 'linked_source_unavailable']}}
+        if state != 'available':
+            result['sourceVersion'] = status_digest([sources, result])
+            return result
+        workflow = con.execute('SELECT plan FROM journey_workflows WHERE id=?', (trip['journeyId'],)).fetchone()
+        sources.append(('plan', workflow['plan']))
+        try:
+            plan = status_object(workflow['plan'])
+        except ValueError:
+            result['state'] = 'needs_review'
+            result['sourceVersion'] = status_digest([sources, result])
+            return result
+        issues, reasons, groups, owner_ids = set(), set(), {'tasks': [], 'shopping': []}, set()
+        for kind, field, prefix in (('tasks', 'checklist', 'task:'), ('shopping', 'shopping', 'shopping:')):
+            expected = plan.get(field)
+            if type(expected) is not list or len(expected) > 100:
+                issues.add(kind + ':plan')
+                if type(expected) is list and len(expected) > 100:
+                    reasons.add('item_limit')
+                expected = expected[:100] if type(expected) is list else []
+            keys = []
+            for item in expected:
+                key = item.get('key') if type(item) is dict else None
+                if type(key) is not str or not re.fullmatch(r'[A-Za-z0-9_-]{1,64}', key) or prefix + key in keys:
+                    issues.add(kind + ':plan')
+                else:
+                    keys.append(prefix + key)
+            rows = con.execute('''SELECT l.item_key,l.kind AS link_kind,l.entity_id,e.kind,e.data,e.revision
+                FROM journey_links l LEFT JOIN entities e ON e.id=l.entity_id
+                WHERE l.journey_id=? AND (l.kind=? OR l.item_key LIKE ?)
+                ORDER BY l.entity_id,l.item_key LIMIT 101''', (trip['journeyId'], kind, prefix + '%')).fetchall()
+            if len(rows) > 100:
+                reasons.add('item_limit')
+                issues.add(kind + ':limit')
+            seen = set()
+            for linked_row in rows[:100]:
+                key = linked_row['item_key']
+                seen.add(key)
+                sources.append((kind, dict(linked_row)))
+                try:
+                    value = status_object(linked_row['data'])
+                    if (key not in keys or linked_row['kind'] != kind or linked_row['link_kind'] != kind
+                            or not status_id(linked_row['entity_id']) or value.get('journeyId') != trip['journeyId']
+                            or value.get('tripId') != uid or type(value.get('done', False)) is not bool):
+                        raise ValueError('unverifiable link')
+                    owner_id = status_text(value.get('owner', 'shared'), 100)
+                    item = {'kind': kind, 'id': linked_row['entity_id'], 'revision': status_revision(linked_row['revision']),
+                            'title': status_text(value.get('title'), 100), 'owner': owner_id,
+                            'due': status_day(value.get('due', ''), empty=True)}
+                    if kind == 'shopping':
+                        item.update(quantity=status_text(value.get('quantity', '1 件'), 30), priority=value.get('priority', 'normal'))
+                        if item['priority'] not in ('low', 'normal', 'high'):
+                            raise ValueError('unverifiable priority')
+                    else:
+                        dependencies.ids(value.get('dependsOn', []))
+                    groups[kind].append((item, value))
+                    owner_ids.add(owner_id)
+                except (ValueError, dependencies.DependencyError):
+                    issues.add(key)
+            issues.update(set(keys) - seen)
+        # At most 200 distinct owners and 100*20 direct predecessors. In
+        # particular, never call task_graph(): it reads every household task.
+        owners = {'shared': '一起'}
+        for owner_id in sorted(owner_ids - {'shared'}):
+            member = con.execute("SELECT u.name FROM users u JOIN household_memberships m ON m.member_id=u.id WHERE u.id=? AND m.state='active'", (owner_id,)).fetchone()
+            if member:
+                try:
+                    owners[owner_id] = status_text(member['name'], 20)
+                except ValueError:
+                    pass
+        predecessors = sorted({uid for _, value in groups['tasks'] for uid in value.get('dependsOn', [])})
+        graph = {}
+        for start in range(0, len(predecessors), 400):
+            batch = predecessors[start:start + 400]
+            for predecessor in con.execute('SELECT id,data,revision FROM entities WHERE kind=\'tasks\' AND id IN (' + ','.join('?' for _ in batch) + ') ORDER BY id', batch):
+                sources.append(('dependency', dict(predecessor)))
+                try:
+                    if not status_id(predecessor['id']):
+                        raise ValueError('unverifiable dependency ID')
+                    value = status_object(predecessor['data'])
+                    status_revision(predecessor['revision'])
+                    status_text(value.get('title'), 100)
+                    if type(value.get('done', False)) is not bool:
+                        raise ValueError('unverifiable dependency')
+                    graph[predecessor['id']] = value
+                except ValueError:
+                    pass
+        summary, pages = {}, {}
+        for kind, items in groups.items():
+            pending, done, blocked = [], 0, 0
+            for item, value in items:
+                owner_id = item['owner']
+                item['owner'] = {'id': owner_id if owner_id in owners else None, 'name': owners.get(owner_id)}
+                if value.get('done') is True:
+                    done += 1
+                    continue
+                if kind == 'tasks':
+                    projection = dependencies.project(value, graph)
+                    blocked += bool(projection['blockedBy'])
+                    item.update(dependencyStatus=projection['dependencyStatus'], blockers=[
+                        {'id': target, 'title': graph[target]['title'], 'reason': 'unfinished'}
+                        if target in graph and not graph[target].get('sync') else
+                        {'id': None, 'title': None, 'reason': 'unavailable'} for target in projection['blockedBy']])
+                pending.append(item)
+            pages[kind] = pending
+            summary[kind] = {'done': done, 'total': len(items), 'remaining': len(pending)}
+            if kind == 'tasks':
+                summary[kind]['blocked'] = blocked
+        if issues:
+            reasons.add('linked_source_unavailable')
+        result.update(state='needs_review' if issues else 'ready', summary=summary,
+                      coverage={'complete': not issues, 'unverifiable': len(issues), 'reasonCodes': sorted(reasons)})
+        # Bind all counted sources, not only the visible page, and owner labels.
+        # The digest is a freshness check, not an authorization capability.
+        result['sourceVersion'] = status_digest([trip, sources, owners, summary, result['coverage']])
+        page = pages[section][offset:offset + 20]
+        result.update(items=page, nextOffset=offset + len(page) if offset + len(page) < len(pages[section]) else None)
+        return result
+
+    @app.get('/api/assistant/journey-status')
+    def assistant_journey_status():
+        require_member()
+        args = request.args
+        selected = 'tripId' in args
+        allowed = {'tripId', 'section', 'offset', 'limit', 'sourceVersion'} if selected else {'q', 'offset', 'limit'}
+        offset = args.get('offset', '0')
+        if (set(args) - allowed or any(len(args.getlist(key)) != 1 for key in args)
+                or args.get('limit', '20') != '20' or not re.fullmatch(r'0|[1-9]\d{0,2}', offset)
+                or int(offset) % 20 or int(offset) > (80 if selected else 980)
+                or selected and (not status_id(args['tripId']) or args.get('section', 'tasks') not in ('tasks', 'shopping')
+                    or ('sourceVersion' in args and not re.fullmatch(r'[a-f0-9]{64}', args['sourceVersion']))
+                    or int(offset) > 0 and 'sourceVersion' not in args)
+                or not selected and (len(args.get('q', '').strip()) > 100 or any(ord(c) < 32 for c in args.get('q', '')))):
+            return jsonify(error='旅行准备查询参数不正确', code='invalid_journey_status_query'), 400
+        con, timeout = None, None
+        try:
+            con = db()
+            timeout = sqlite3.Connection.execute(con, 'PRAGMA busy_timeout').fetchone()[0]
+            sqlite3.Connection.execute(con, 'PRAGMA busy_timeout=1000')
+            # Release the first read snapshot and re-project authoritative rows
+            # under a fresh one. Each pass also checks the original real session
+            # after rollback; neither path lazily initializes schemas/settings.
+            for _ in range(2):
+                with edit_read_snapshot(initialize=False) as con:
+                    result = (status_detail(con, args['tripId'], args.get('section', 'tasks'), int(offset))
+                              if selected else status_candidates(con, args.get('q', '').strip(), int(offset)))
+            if result is None:
+                return jsonify(error='原旅行已不可用，请重新选择', code='journey_status_unavailable'), 404
+            if selected and 'sourceVersion' in args and args['sourceVersion'] != result['sourceVersion']:
+                return jsonify(error='旅行准备已变化，请重新读取', code='stale_journey_status'), 409
+            # The 256 KiB wire budget includes up to 400 predecessor titles.
+            # UTF-8 avoids inflating valid non-ASCII titles via \u escaping.
+            response = Response(pack(result), mimetype='application/json')
+            response.headers['Cache-Control'] = 'no-store'
+            return response
+        except Exception as exc:
+            # The coordinated member guard may wrap a busy SQLite read in its
+            # own 503. Only a concrete busy/locked cause permits this mapping;
+            # authentication failures and unrelated storage errors keep theirs.
+            if not isinstance(exc, sqlite3.OperationalError) and getattr(exc, 'status', None) != 503:
+                raise
+            cause, busy, seen = exc, False, set()
+            while cause is not None and id(cause) not in seen and len(seen) < 8:
+                seen.add(id(cause))
+                if isinstance(cause, sqlite3.OperationalError) and any(word in str(cause).lower() for word in ('locked', 'busy')):
+                    busy = True
+                    break
+                cause = cause.__cause__ or cause.__context__
+            if not busy:
+                raise
+            return jsonify(error='旅行准备暂时无法读取，请稍后重试', code='unavailable'), 503
+        finally:
+            if con is not None:
+                con.rollback()
+                if timeout is not None:
+                    # Restore only this connection-local setting. A coordinated
+                    # execute would re-enter authorization while still locked
+                    # and could overwrite the original, recoverable 503.
+                    sqlite3.Connection.execute(con, f'PRAGMA busy_timeout={int(timeout)}')
 
     @app.get('/api/journeys')
     def journey_list():
