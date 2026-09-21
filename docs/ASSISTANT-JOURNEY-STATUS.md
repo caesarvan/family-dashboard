@@ -1,10 +1,10 @@
 # 助理：查询已有旅行准备情况
 
-待实现合同；核查基线 `3d62d153d8e2bdef319c0dd48f0833daf03c419b`。本片只读，不表示已经开发、验证或发布。目标：询问已有旅行 → 明确选择原旅行 → 查看尚未完成的准备与采购 → 在原旅行处理 → 返回同一查询核对最新状态。
+实现已进入独立候选，尚未发布。API `bc3619d` 与 UI 修正 `594b455` 已分别通过针对检查及非作者审查；完整 Expo 构建、真实浏览器组合流程和候选 Linux 验证仍待执行，不能把分支检查当作上线验收。路径：询问已有旅行 → 明确选择原旅行 → 查看尚未完成的准备与采购 → 在原旅行处理 → 返回同一查询核对最新状态。
 
-## 现有依据与最小接入
+## 接入基线与实现边界
 
-- `frontend/src/lib/assistantJourney.ts` 的 `isJourneyRequest` 只要命中“旅行/行程/旅游”等词便进入新建简报；`AssistantScreen.tsx` 的提交分流目前没有准备状态查询。
+- 接入前基线 `3d62d153d8e2bdef319c0dd48f0833daf03c419b` 的 `isJourneyRequest` 命中“旅行/行程/旅游”等词便进入新建简报。本候选在 `AssistantScreen.tsx` 中先识别明确的准备状态问句，再保留原新建路径。
 - `journey_workflows.py` 的 `linked`、`detail` 已以 `journey_links` 和当前 `entities` 计算准备/采购进度；任务阻塞沿 `task_dependencies.project`。不得用最初 `plan.checklist` 的文字或完成状态替代现有事项。
 - 当前 `/api/journeys` 会展开全部旅行详情，普通 `/api/assistant/search` 又混合多种记录，不能在客户端截取它们冒充旅行专用分页。新增下面一个窄只读入口，在 `register_journeys` 内复用成员读取围栏和关联语义；不改变这两个旧接口。
 - 处理仍打开 `TripsScreen` 的原 `tripRequest.id`。复用它的准备/采购原实体操作、既有改期/同步入口和未知写结果恢复；状态页不提供完成、编辑、同步或新建按钮。
