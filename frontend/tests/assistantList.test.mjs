@@ -166,7 +166,7 @@ function screenHarness(home = false) {
     '../lib/api': { request: f.io.read }, '../lib/household': { useHousehold: () => household }, '../ui/components': { PageHeader: 'PageHeader', SectionCard: 'SectionCard', EmptyState: 'EmptyState' },
     '../ui/SelectionRow': { SelectionRow: 'SelectionRow' }, '../ui/theme': { useDisplayDensity: () => ({}) }, './CalendarScreen': { EventRow: 'EventRow', RangeControls: 'RangeControls', WorkloadStrip: 'WorkloadStrip' },
   };
-  for (const name of ['./JourneyBriefPanel', './TripsScreen', './JourneyDocumentsPanel', './PhotosScreen', './MapWorkspace', '../components/ExistingTripChangePanel', '../components/AssistantFinanceQueryPanel', './HomeLayoutPanel', '../ui/TaskRemindersPanel']) mocks[name] = { __esModule: true, default: 'Unused' };
+  for (const name of ['./JourneyBriefPanel', './TripsScreen', './JourneyDocumentsPanel', './PhotosScreen', './MapWorkspace', '../components/ExistingTripChangePanel', '../components/AssistantFinanceQueryPanel', '../components/AssistantJourneyStatusPanel', './HomeLayoutPanel', '../ui/TaskRemindersPanel']) mocks[name] = { __esModule: true, default: 'Unused' };
   const actual = loader(mocks, { document, navigator, window, setTimeout: () => 1, clearTimeout() {} });
   const Component = actual(resolve(root, home ? 'screens/HomeScreen.tsx' : 'screens/AssistantScreen.tsx'))[home ? 'default' : 'AssistantScreen'];
   const edits = [], props = { user: sessionValue.user, state: { people: [{ id: 'alice', name: '本人' }, { id: 'bob', name: '伙伴' }], events: [], tasks: [], shopping: [], trips: [], finance: {} }, layout: { order: ['shopping'], hidden: [] }, focus: 'alice', mode: 'today', onEdit: (...args) => edits.push(args), onNavigate() {} };
