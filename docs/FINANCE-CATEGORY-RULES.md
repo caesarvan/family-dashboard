@@ -70,6 +70,10 @@
 
 不返回 owner。`rulesVersion` 是当前本人全部规则（含 disabled）按 id 升序投影为 `[id,revision,status,source,title,category]` 数组后，使用 UTF-8、`ensure_ascii=False`、紧凑分隔符、无尾换行的规范 JSON SHA-256。空集合也有稳定摘要。任何新建／停用都会变更此摘要；同人其它规则改变造成保守的重新预览是预期行为。
 
+所有投影均逐字段构造，不能使用 `**json.loads(...)`、`{...raw}` 或原 JSON 直接返回。Rule 从固定数据库列读取并核验：id／createdFromTransactionId 为 24 位 hex，source/status 为上述枚举，title 为合法非占位匹配标题，category 为合法目标分类，revision 为严格整数，两个时间为有效 UTC ISO 时间。额外存储列不进入 DTO；缺列、坏值或无法验证的规则使该规则请求失败，不跳过后再声称列表完整。
+
+RuleReceipt 的 JSON 必须恰含 §5.4 六个字段；requestId 为 32 位 hex，ruleId 为 24 位 hex，operation/status 为相符枚举（create/active、disable/disabled），revision 为严格整数（create 恰 1、disable 至少 2），completedAt 为有效 UTC ISO 时间；还须与操作表的 request_id／operation／rule_id／completed_at 一致。额外 `amountCents`、`flow` 或任何未列字段不得透传或影响财务计算。缺字段、额外字段、坏类型或未知协议版本均拒绝，不能包装成 found=false／成功回执后允许重新提交。新协议外层只接受严格整数 `version=1`；无单独 version 的 Rule／RuleReceipt 不接受伪造的额外版本字段。
+
 ### 5.2 GET `/api/finance-hub/category-rules`
 
 参数仅 `status=active|disabled|all`（默认 active）、可选 source、`page`（默认 0，规范十进制非负整数，最多 8 位）。固定 `pageSize=20`，排序 `created_at DESC, id ASC`；在同一快照计算列表、total 和 rulesVersion。
@@ -133,7 +137,7 @@ HTTP 200；找不到回执只表示本次读取尚未观察到它，不证明旧
 
 ### 5.6 错误与恢复
 
-新规则 API 沿 `{error,code}`：400 `invalid_request`（字段、类型、格式）；401 `session_changed`；403 `forbidden`（TV／CSRF／来源）；404 `not_found`（原记录／规则不可读）；409 `conflict`（版本、唯一键、依赖变化），`request_conflict` 或 `preview_expired`；409 `capacity_exceeded`；503 `unavailable`（SQLite busy/locked，不吞其它 SQLite 异常）。超正文上限沿公共 413。
+新规则 API 沿 `{error,code}`：400 `invalid_request`（字段、类型、格式）；401 `session_changed`；403 `forbidden`（TV／CSRF／来源）；404 `not_found`（原记录／规则不可读）；409 `conflict`（版本、唯一键、依赖变化），`request_conflict` 或 `preview_expired`；409 `capacity_exceeded`；503 `unavailable`（SQLite busy/locked，不吞其它 SQLite 异常）；503 `data_unavailable`（规则／操作存储投影不符合本协议，不输出坏值）。超正文上限沿公共 413。
 
 首次明确拒绝可保留草稿后重新预览。超时、断网或无法解析响应为未知，保留原 requestId/原确认体；即使后来收到拒绝，也不能抹掉先前的未知提交。
 
@@ -177,6 +181,20 @@ categoryProvenance: {
 
 仅此新模式保存该字段；旧记录不回填猜测。appliedRule 是入账时快照，停用／替换规则不改它。原人工 PATCH 实际改变 category 时，若已有该字段，则保留 sourceCategory/appliedRule 并将 manuallyOverridden 置 true；仅方向／共享变更或原分类值原样回传不改变此标记。曾人工修改后再改回规则分类仍保留 true。字段是历史依据，不把旧规则状态当当前授权或当前分类。
 
+**categoryProvenance 仅原交易 owner 的响应／导出可见，交易本身 shared 也不共享它。** owner 由真实数据库原行与当前会话核对，不能信任 transaction.data 中的 owner。所有共享、助理金额汇总及其它非 owner 投影都必须显式剔除 categoryProvenance 和下述 categoryProvenanceStatus；不能因规则 API 私有，就假定存进交易 JSON 的字段自然安全。
+
+本人交易 DTO 固定采用以下策略，界面只据服务端状态展示：
+
+| 存储情况 | 本人响应／本人 JSON 导出 |
+|---|---|
+| 没有 categoryProvenance（旧交易） | `categoryProvenanceStatus:"unrecorded"`，不含 categoryProvenance；表示未记录依据，不推断来源或规则。 |
+| 完整有效的 v1 依据 | `categoryProvenanceStatus:"recorded"`，categoryProvenance 只含上面四字段，appliedRule 只含 id/revision/category。 |
+| 字段存在但损坏、版本未知或有额外字段 | `categoryProvenanceStatus:"needs_review"`，完全省略 categoryProvenance，固定文案「分类依据待核对」，不回显坏值或猜测命中规则。 |
+
+依据校验要求严格整数 version=1、sourceCategory 为原解析所得 0–60 字符合法文本、manuallyOverridden 为严格布尔；appliedRule 只能为 null 或恰含 24 位 hex id、正整数 revision、1–60 字符 category 的对象。数组、缺键、额外金额／方向字段、未知版本等整体按 needs_review，不用挑选部分坏对象制造有效依据。不得用当前规则表反向“修复”历史依据。
+
+坏依据不使有效原交易消失或阻断账本读取：原 category/flow/amountCents 和去重／退款／预算计算只取原权威字段，金额算法不读取此新嵌套对象。读取不改库；对坏依据的正常人工分类 PATCH 也不擅自重建其历史快照，返回仍 needs_review。此降级仅适用于附加的 categoryProvenance，不放宽原金额或交易字段本身的校验。
+
 true 的成功导入回执在原字段上增加 `categoryRules:{version:1,rulesVersion,applied,changed}`，数值只数本次实际 INSERT 的行；存入原回执，GET／重放返回原值。旧模式回执不增加该字段。已有 requestId、receiptId、resultMonths 和“删除后明确重导”等原合同不变。
 
 ### 6.3 财务语义
@@ -205,16 +223,23 @@ unknown 时只允许核对原请求及受保护的退出操作，不能另起保
 
 在当前本人 ZIP 的 personal 段新增 `categoryRules:Rule[]`（含停用历史）与 `categoryRuleOperations:RuleReceipt[]`；summary 提供这两个本人计数。只输出本协议明确列出的业务字段，不输出 owner、token、payload_hash、context 或内部签名摘要。
 
-本人 transactions JSON 中保留经过类型白名单核对的 categoryProvenance；旧无字段保持缺失。本人 transactionImportReceipts 的导出白名单增加本协议 categoryRules 统计。现有交易 CSV 保持原列及当前 category，不为首批另造可执行规则导入／恢复格式；完整依据在 JSON。
+本人 transactions JSON 严格复用 §6.2 的 categoryProvenanceStatus／categoryProvenance 策略，旧无依据字段仍保持缺失，不直接复制交易 JSON 的新嵌套对象。本人 transactionImportReceipts 的导出白名单增加本协议 categoryRules 统计：恰含 version=1、64 位 hex rulesVersion、严格非负整数 applied/changed，且 changed≤applied≤回执 imported；不透传未知键／版本。规则、操作回执或新增回执统计损坏时拒绝本次完整导出并提示数据待核对，不输出冒充完整的部分 ZIP；交易附加依据损坏则仅降级为 needs_review，原账本与其金额仍可导出。
 
 `includeShared=true` 也不导出他人规则／回执／categoryProvenance；共享汇总不能出现 ruleId、来源标题或匹配条件。导出结束前继续按现有 ImportSession 复核身份。
+
+实现必须逐一核对以下原始读取接缝，禁止只检查新规则路由：
+
+- `finance_hub._row` 目前展开交易 data，且同时被本人 ledger 和 `hub_shared` 使用；默认通用投影应剔除新依据及状态，仅经原行 owner 检查的本人响应显式附加安全投影。本人 overview、transactions、对账内原交易投影和 PATCH 回包都应用同一规则，不能让某条回包漏用。
+- `hub_shared`（`GET /api/finance-hub/shared`）读取全户交易后仍只输出原五个汇总字段；`assistant_finance_query._ledger/answer` 即使查询本人，也只输出原金额／分类汇总 DTO，不携带规则依据或新增状态。进入跨成员计算／汇总前剔除该嵌套元数据，不能依赖最终某次序列化碰巧不含它。
+- `data_portability.decoded_rows` / personal.transactions 不能继续原样展开此新字段；本人显式投影，shared 部分显式排除规则／操作／依据及状态。核对采购实付与旅行归集的原付款投影也继续按已有字段白名单，不新增共享文本或规则字段。
 
 ## 9. 实现责任边界
 
 | 必须接线的模块 | 最小修改 |
 |---|---|
 | 新 `finance_category_rules.py` | 两表 DDL、无隐式 commit 的 initializer、本人规则 API／操作回执、快照与确定性应用、导出白名单。 |
-| `finance_hub.py` | 注册新模块；新导入开关与签名／版本绑定；事务内应用与原回执统计；人工分类 PATCH 保留历史依据。旧解析指纹／flow 算法不改。 |
+| `finance_hub.py` | 注册新模块；新导入开关与签名／版本绑定；事务内应用与原回执统计；人工分类 PATCH 保留历史依据；本人／共享原交易回包执行 §6.2/§8 投影。旧解析指纹／flow 算法不改。 |
+| `assistant_finance_query.py` | `_ledger/answer` 显式剔除新增依据／状态，保持原金额和分类汇总 DTO；不增加规则查询或模型能力。 |
 | `data_portability.py` | 本人 summary/JSON 规则及回执、嵌套 provenance 白名单。 |
 | `Dockerfile` | 精确 COPY 新模块；`app.py` 已调用 register_finance_hub，可由后者注册，无必要不增加第二处注册。 |
 | `frontend/src/lib/financeImport.ts`、`FinanceImportPanel.tsx` | 严格解析可选 DTO、付款开关、旧预览失效、规则显示与既有导入恢复。 |
@@ -235,6 +260,6 @@ unknown 时只允许核对原请求及受保护的退出操作，不能另起保
 5. **导入版本与未知结果：** true 预览后新建／停用任何本人规则，旧首次确认零入账并要求新预览；真实导入已 commit 后规则变化，仍按原 requestId 恢复原统计，无第二批交易。缺字段／false 的旧预览、旧 token 和旧回执保留。
 6. **分类不改变交易身份：** 带转账／还款／unknown／refund 的文件分类命中后，逐行原 flow、fingerprint、sourceRowKey、金额／日期／来源不变。人工修正旧分类后重导不覆盖旧值，也不新建重复记录。
 7. **退款／预算边界：** 确认的跨月部分退款继续使用原付款当前分类，未分配部分用退款自身分类，币种独立；orders、重复支付、transfer/unknown 不进入新增支出。采购实付、旅行归集／paid 和公共余额原样保留。
-8. **停用／替换及导出：** 原交易删除后仍可停用；停用不改旧入账，下一次新导入不命中；显式创建替代规则有新 ID、旧 provenance 不变。本人 JSON 可追溯，伙伴／共享导出无新私有字段。验证空／非空两表初始化、现有库保全及容量上限。
+8. **停用／替换及投影：** 原交易删除后仍可停用；停用不改旧入账，下一次新导入不命中；显式创建替代规则有新 ID、旧 provenance 不变。本人 ledger／PATCH／JSON 能读安全依据；同一交易改 shared 后，伙伴共享汇总、助理本人／共享汇总、TV、includeShared 导出仍无规则 ID、sourceCategory、依据／状态等新增私有字段。注入错类型、额外 amountCents/flow、未知版本：规则／操作 fail closed，交易依据仅 needs_review，原有效交易数量及金额／退款／预算完全不变，响应／ZIP 无坏对象，读取不改库。另验空／非空两表初始化、现有库保全及容量上限。
 
 真正浏览器可收束为手机完整导入闭环和桌面未知恢复／版本竞争／身份隔离两条流程；更细输入组合由真实 API/SQLite 与聚焦前端检查覆盖。A–D 本人完整验收、真实账单样本和生产迁移均另列，不由合成结果替代。
