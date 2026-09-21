@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-09-20T22:40:01.518664+00:00",
+  "generatedAt": "2026-09-21T00:44:21.072634+00:00",
   "scope": "local source; isolated new databases; no production verification",
   "routes": [
     {
@@ -67,6 +67,12 @@
       "path": "/api/assistant/journey-brief",
       "source": "home_assistant.py",
       "endpoint": "journey_brief"
+    },
+    {
+      "method": "GET",
+      "path": "/api/assistant/journey-status",
+      "source": "journey_workflows.py",
+      "endpoint": "assistant_journey_status"
     },
     {
       "method": "POST",
