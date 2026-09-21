@@ -54,10 +54,12 @@ DATA_ACTIONS = {
 
 def verify_operator(candidate, expected, *, mode='video-migration'):
     need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update',
-                  'finance-flow-source-update', 'journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update', 'tv-trip-75-to-77'), 'unsupported_release_mode')
+                  'finance-flow-source-update', 'journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update', 'tv-trip-75-to-77', 'assistant-journey-status-source-update'), 'unsupported_release_mode')
     policy = prepare
     if mode == 'local-photo-source-update':
         from deploy import prepare_local_photo_activation as policy
+    elif mode == 'assistant-journey-status-source-update':
+        from deploy import prepare_assistant_journey_status_activation as policy
     elif mode == 'tv-trip-75-to-77':
         from deploy import prepare_tv_trip_activation as policy
     elif mode == 'assistant-list-source-update':
@@ -91,16 +93,18 @@ class Controller:
         self.runner = runner
         self.source = self.candidate / 'source'
         need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update',
-                      'finance-flow-source-update', 'journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update', 'tv-trip-75-to-77'), 'unsupported_release_mode')
+                      'finance-flow-source-update', 'journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update', 'tv-trip-75-to-77', 'assistant-journey-status-source-update'), 'unsupported_release_mode')
         self.mode, self.policy = mode, prepare
         self.source_update = mode != 'video-migration'
         self.needs_migration = mode in ('video-migration', 'journey-finance-73-to-75', 'tv-trip-75-to-77')
-        self.after_schema = [77, 9] if mode == 'tv-trip-75-to-77' else [75, 9] if mode in ('journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update') else [73, 9]
+        self.after_schema = [77, 9] if mode in ('tv-trip-75-to-77', 'assistant-journey-status-source-update') else [75, 9] if mode in ('journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update') else [73, 9]
         self.images, self.parent_image, self.before_schema = prepare.IMAGES, services.PARENT_IMAGE, [71, 9]
         self.release_prefix = 'media-video-73-'
         self.data_prefix, self.data_actions = DATA_PREFIX, DATA_ACTIONS
         if self.source_update:
-            if mode == 'tv-trip-75-to-77':
+            if mode == 'assistant-journey-status-source-update':
+                from deploy import prepare_assistant_journey_status_activation as policy
+            elif mode == 'tv-trip-75-to-77':
                 from deploy import prepare_tv_trip_activation as policy
             elif mode == 'assistant-list-source-update':
                 from deploy import prepare_assistant_list_activation as policy
@@ -121,7 +125,13 @@ class Controller:
             self.data_prefix = DATA_PREFIX.replace('check_media_video_migration', 'media_video_release_data')
             self.data_actions = {'backup': DATA_ACTIONS['backup'], 'check': DATA_ACTIONS['check'],
                 'verify-rollback': 'from deploy.activate_local_photo_release import verify_restored_group; value=verify_restored_group(root,proof,**kwargs)'}
-            if mode == 'tv-trip-75-to-77':
+            if mode == 'assistant-journey-status-source-update':
+                self.before_schema = [77, 9]
+                self.release_prefix = 'assistant-journey-status-77-'
+                self.data_prefix = DATA_PREFIX.replace('check_media_video_migration', 'tv_trip_release_data')
+                self.data_actions = {'backup': DATA_ACTIONS['backup'], 'check': DATA_ACTIONS['check'],
+                    'verify-rollback': 'from deploy.activate_assistant_journey_status_release import verify_restored_group; value=verify_restored_group(root,proof,**kwargs)'}
+            elif mode == 'tv-trip-75-to-77':
                 self.before_schema = [75, 9]
                 self.release_prefix = 'tv-trip-77-'
                 self.data_prefix = DATA_PREFIX.replace('check_media_video_migration', 'check_tv_trip_migration')

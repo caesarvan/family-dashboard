@@ -92,12 +92,14 @@ class Lifecycle:
         self.app_image, self.decoder_image = immutable(app_image), immutable(decoder_image)
         need(len({self.app_image, self.decoder_image, PARENT_IMAGE, WEB_IMAGE}) == 4, 'distinct_candidate_images_required')
         need(mode in ('video-migration', 'local-photo-source-update', 'discovery-source-update',
-                      'finance-flow-source-update', 'journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update', 'tv-trip-75-to-77'), 'unsupported_lifecycle_mode')
+                      'finance-flow-source-update', 'journey-finance-73-to-75', 'media-date-source-update', 'assistant-list-source-update', 'tv-trip-75-to-77', 'assistant-journey-status-source-update'), 'unsupported_lifecycle_mode')
         self.mode = mode
         self.source_update = mode != 'video-migration'
         self.parent_image, self.before_compose, self.parent_services = PARENT_IMAGE, BEFORE_COMPOSE, OLD_SERVICES
         if self.source_update:
-            if mode == 'tv-trip-75-to-77':
+            if mode == 'assistant-journey-status-source-update':
+                from deploy import build_assistant_journey_status_release as photos
+            elif mode == 'tv-trip-75-to-77':
                 from deploy import build_tv_trip_release as photos
             elif mode == 'assistant-list-source-update':
                 from deploy import build_assistant_list_release as photos
