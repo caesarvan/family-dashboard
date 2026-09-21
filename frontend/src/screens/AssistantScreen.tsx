@@ -3,7 +3,7 @@ import { AppState, StyleSheet, View } from 'react-native';
 import { useFocusEffect } from 'expo-router';
 import { Button, Chip, Divider, HelperText, Text, TextInput, useTheme } from 'react-native-paper';
 import { request } from '../lib/api';
-import { assistantPlanOptions, assistantTripRequest, isAssistantSearchRequest, isExistingTripChangeRequest, isJourneyRequest, journeySessionKey } from '../lib/assistantJourney';
+import { assistantPlanOptions, assistantTripRequest, isAssistantSearchRequest, isExistingTripChangeRequest, isJourneyRequest, isJourneyStatusRequest, journeySessionKey } from '../lib/assistantJourney';
 import type { Draft, Session } from '../lib/trips';
 import JourneyBriefPanel from './JourneyBriefPanel';
 import TripsScreen from './TripsScreen';
@@ -21,6 +21,7 @@ import { isAssistantFinanceQuery } from '../lib/assistantFinanceQuery';
 import AssistantActionEditor from '../components/AssistantActionEditor';
 import { actionDraft, browserPlanStorage, editedAction, type ActionDraft } from '../lib/assistantList';
 import { shoppingScheduleText } from '../lib/trips';
+import AssistantJourneyStatusPanel from '../components/AssistantJourneyStatusPanel';
 
 function inventorySummary(item: Match) {
   const quantities = [item.onHandQty, item.inTransitQty, item.plannedQty];
@@ -29,6 +30,7 @@ function inventorySummary(item: Match) {
 }
 
 type JourneyPanel = { kind: 'brief'; key: number; prompt: string; useModel: boolean; prepare: boolean }
+  | { kind: 'journey_status'; key: number; prompt: string }
   | { kind: 'finance_query'; key: number; prompt: string; useModel: boolean; modelConfigured: boolean }
   | { kind: 'trip_change'; key: number; prompt: string; useModel: boolean; modelConfigured: boolean }
   | { kind: 'planning'; key: number; draft: Draft }
@@ -79,10 +81,10 @@ function AssistantEntry(props: ScreenProps) {
   }
   useFocusEffect(useCallback(() => {
     focused.current = true;
-    return () => { focused.current = false; conceal(); if (panelRef.current?.kind !== 'finance_query' && !reschedulePending.current && !documentsPending.current && !segmentsPending.current && !tripImportPending.current) { setPanel(null); setSourcePrompt(''); setSourceSearch(undefined); } };
+    return () => { focused.current = false; conceal(); if (panelRef.current?.kind !== 'finance_query' && panelRef.current?.kind !== 'journey_status' && !reschedulePending.current && !documentsPending.current && !segmentsPending.current && !tripImportPending.current) { setPanel(null); setSourcePrompt(''); setSourceSearch(undefined); } };
   }, [actor]));
   useEffect(() => {
-    if (!panel || panel.kind === 'finance_query') return;
+    if (!panel || panel.kind === 'finance_query' || panel.kind === 'journey_status') return;
     void verify();
     const subscription = AppState.addEventListener('change', state => { if (state === 'active') void verify(); else conceal(); });
     const visibility = () => { if (document.hidden) conceal(); else void verify(); };
@@ -112,6 +114,12 @@ function AssistantEntry(props: ScreenProps) {
     const next: JourneyPanel = { kind: 'finance_query', key: ++sequence.current, prompt, useModel, modelConfigured };
     panelRef.current = next; setPanel(next);
   };
+  const beginJourneyStatus = (prompt: string) => {
+    if (!available() || panelRef.current) return;
+    setSourcePrompt(prompt); setSourceSearch(undefined);
+    const next: JourneyPanel = { kind: 'journey_status', key: ++sequence.current, prompt };
+    panelRef.current = next; setPanel(next);
+  };
   const openExisting = (match: Match, prompt: string, search: SearchReturn) => {
     if (!available() || panelRef.current) return;
     const target = assistantTripRequest(match, sequence.current + 1);
@@ -129,7 +137,9 @@ function AssistantEntry(props: ScreenProps) {
     panelRef.current = next; setPanel(next);
   };
   if (!panel) return <AssistantWorkspace {...props} initialPrompt={sourcePrompt} initialSearch={sourceSearch}
-    onJourney={begin} onTripChange={beginTripChange} onFinanceQuery={beginFinanceQuery} onExistingTrip={openExisting} onContent={openContent} />;
+    onJourney={begin} onTripChange={beginTripChange} onFinanceQuery={beginFinanceQuery} onJourneyStatus={beginJourneyStatus} onExistingTrip={openExisting} onContent={openContent} />;
+  if (panel.kind === 'journey_status') return <AssistantJourneyStatusPanel key={panel.key} initialPrompt={panel.prompt} screenProps={props}
+    onBack={prompt => { if (available()) { setSourcePrompt(prompt); panelRef.current = null; setPanel(null); } }} />;
   if (panel.kind === 'finance_query') return <AssistantFinanceQueryPanel key={panel.key} initialPrompt={panel.prompt} initialUseModel={panel.useModel} modelConfigured={panel.modelConfigured} screenProps={props}
     onBack={prompt => { if (available()) { setSourcePrompt(prompt); panelRef.current = null; setPanel(null); } }} />;
   if (panel.kind === 'documents') return <JourneyDocumentsPanel key={panel.key} journeyId={panel.journeyId} initialDocumentId={panel.id} onPendingChange={pendingDocuments}
@@ -173,6 +183,7 @@ function AssistantWorkspace(props: ScreenProps & {
   initialPrompt?: string; initialSearch?: SearchReturn; onJourney: (prompt: string, useModel: boolean, prepare: boolean) => void;
   onTripChange: (prompt: string, useModel: boolean, modelConfigured: boolean) => void;
   onFinanceQuery: (prompt: string, useModel: boolean, modelConfigured: boolean) => void;
+  onJourneyStatus: (prompt: string) => void;
   onExistingTrip: (match: Match, prompt: string, search: SearchReturn) => void;
   onContent: (match: Match, prompt: string, search: SearchReturn) => void;
 }) {
@@ -229,6 +240,7 @@ function AssistantWorkspace(props: ScreenProps & {
   const localSearch = isAssistantSearchRequest(prompt);
   const financeQuery = isAssistantFinanceQuery(prompt);
   const tripChange = isExistingTripChangeRequest(prompt);
+  const journeyStatus = !financeQuery && isJourneyStatusRequest(prompt);
   const selected = view?.selected || [], draft = view?.plan, receipt = view?.receipt;
   const changedPrompt = !!draft && prompt.trim() !== view?.planPrompt;
   const people = props.state.people;
@@ -245,8 +257,8 @@ function AssistantWorkspace(props: ScreenProps & {
         <Chip key={text} disabled={editingLocked} onPress={() => { if (!editingLocked) setPrompt(text); }}>{text.startsWith('待办') ? '整理待办' : text.startsWith('采购') ? '准备采购' : text === '搜索：旅行凭证' ? '找资料照片' : text.startsWith('搜索') ? '查找家里物品' : text === '本月花了多少' ? '查询支出' : '本周概览'}</Chip>)}</View>
       <SelectionRow label="使用已配置的 AI 整理" checked={useModel} disabled={editingLocked || !view?.modelConfigured}
         onPress={() => { if (!editingLocked && view?.modelConfigured) { setUseModel(!useModel); setIncludeContext(false); } }} />
-      {localSearch && <Text variant="bodySmall">本次只查找已有记录，不会发送给 AI。</Text>}
-      {useModel && !localSearch && <><Text variant="bodySmall">{financeQuery ? '仅本次问题文字发送给 AI；不会附带账本、预算金额或家庭资料。' : tripChange ? '本次文字及必要候选的旅行标题、日期、时区会发送给已配置的 AI。结果是建议，尚未改期。' : '本次文字会发送给已配置的 AI 服务。结果是建议，尚未执行。'}</Text>
+      {(localSearch || journeyStatus) && <Text variant="bodySmall">本次只查找已有记录，不会发送给 AI。</Text>}
+      {useModel && !localSearch && !journeyStatus && <><Text variant="bodySmall">{financeQuery ? '仅本次问题文字发送给 AI；不会附带账本、预算金额或家庭资料。' : tripChange ? '本次文字及必要候选的旅行标题、日期、时区会发送给已配置的 AI。结果是建议，尚未改期。' : '本次文字会发送给已配置的 AI 服务。结果是建议，尚未执行。'}</Text>
         {!tripChange && !financeQuery && <SelectionRow label="附带近期日程和待办标题" checked={includeContext} disabled={editingLocked}
           onPress={() => { if (!editingLocked) setIncludeContext(!includeContext); }} />}</>}
       {!view?.modelConfigured && <Text variant="bodySmall" style={{ color: theme.colors.onSurfaceVariant }}>可直接查询预算支出、整理本地待办采购或搜索已有记录。</Text>}
@@ -255,12 +267,14 @@ function AssistantWorkspace(props: ScreenProps & {
           if (editingLocked || !prompt.trim()) return;
           if (isAssistantFinanceQuery(prompt)) props.onFinanceQuery(prompt, useModel, !!view?.modelConfigured);
           else if (isExistingTripChangeRequest(prompt)) props.onTripChange(prompt, useModel, !!view?.modelConfigured);
+          else if (isJourneyStatusRequest(prompt)) props.onJourneyStatus(prompt);
           else if (isJourneyRequest(prompt)) props.onJourney(prompt, useModel, true);
           else {
             const options = assistantPlanOptions(prompt, useModel, includeContext);
             void flow?.plan(prompt, options.useModel, options.includeHouseholdContext);
           }
-        }}>{financeQuery ? '查询' : '整理并预览'}</Button>
+        }}>{financeQuery || journeyStatus ? '查询' : '整理并预览'}</Button>
+      <Button testID="assistant-journey-status-entry" mode="outlined" disabled={editingLocked} onPress={() => { if (!editingLocked) props.onJourneyStatus(prompt); }}>查询旅行准备情况</Button>
       <Text variant="bodySmall">输入“搜索 关键词”“查找关键词”或“找一下关键词”可查找当前可见的记录；搜索始终只在本地进行。</Text>
       <Text variant="bodySmall">资料可按标题、文件名或关联旅行查找；照片可按说明或关联旅行查找。</Text>
     </SectionCard>}
